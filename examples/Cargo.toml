@@ -1,0 +1,9 @@
+
+[package]
+name = "examples"
+version = "0.0.1"
+authors = ["Denis Benato <benato.denis96@gmail.com>"]
+edition = "2021"
+
+[dependencies]
+vulkan_framework = { path = "../vulkan_framework" }
