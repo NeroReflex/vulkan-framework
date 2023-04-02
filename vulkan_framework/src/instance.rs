@@ -71,9 +71,10 @@ impl Instance {
         let mut engine_bytes = engine_name.to_owned().into_bytes();
         engine_bytes.push(b"\0"[0]);
 
-        let mut validation_layer_name_bytes =
-            String::from("VK_LAYER_KHRONOS_validation").into_bytes();
-        validation_layer_name_bytes.push(b"\0"[0]);
+        let validation_layer_name_bytes = b"VK_LAYER_KHRONOS_validation\0"
+            .iter()
+            .map(|c| *c as c_char)
+            .collect::<Vec<c_char>>();
 
         let data = Box::<InstanceData>::new(InstanceData {
             application_name: app_bytes

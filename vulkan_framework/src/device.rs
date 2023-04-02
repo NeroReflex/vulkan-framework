@@ -24,6 +24,8 @@ struct DeviceData {
     validation_layers: bool,
 }
 
+pub type check_fn_type = dyn Fn(u32) -> bool;
+
 pub struct Device {
     data: Box<DeviceData>,
     instance: Weak<crate::instance::Instance>,
@@ -60,7 +62,14 @@ impl Device {
         self.data.validation_layers
     }
 
-    fn corresponds() -> bool {
+    fn corresponds<F>(
+        operations: &[queue_family::QueueFamilySupportedOperationType],
+        queue_family: &ash::vk::QueueFamilyProperties,
+        device: &ash::vk::PhysicalDevice,
+        family_index: u32,
+        max_queues: u32,
+        get_physical_device_presentation_support: &check_fn_type,
+    ) -> bool {
         todo!()
     }
 
@@ -69,6 +78,7 @@ impl Device {
         queue_descriptors: &[queue_family::ConcreteQueueFamilyDescriptor],
         device_extensions: &[String],
         device_layers: &[String],
+        get_physical_device_presentation_support: &check_fn_type,
     ) -> Result<Rc<Device>, VkError> {
         // queue cannot be capable of nothing...
         if queue_descriptors.is_empty() {
@@ -124,9 +134,9 @@ impl Device {
                                 */
                                 if instance.are_validation_layers_enabled() {
                                     enabled_layers.push(
-                                        "VK_LAYER_KHRONOS_validation\0"
-                                            .chars()
-                                            .map(|c| c as c_char)
+                                        b"VK_LAYER_KHRONOS_validation\0"
+                                            .iter()
+                                            .map(|c| *c as c_char)
                                             .collect::<Vec<c_char>>(),
                                     );
                                 }
@@ -162,8 +172,10 @@ impl Device {
                                     queue_family::ConcreteQueueFamilyDescriptor,
                                 )> = vec![];
 
-                                for current_requested_queue_family_descriptor in
-                                    queue_descriptors.iter()
+                                for (
+                                    current_requested_q8e8e_family_index,
+                                    current_requested_queue_family_descriptor,
+                                ) in queue_descriptors.iter().enumerate()
                                 {
                                     let mut suitable_found = false;
                                     'suitable_queue_family_search: for (
@@ -172,7 +184,16 @@ impl Device {
                                     ) in
                                         queue_family_properties.iter().enumerate()
                                     {
-                                        if Self::corresponds() {
+                                        if Self::corresponds::<&check_fn_type>(
+                                            current_requested_queue_family_descriptor
+                                                .get_supported_operations(),
+                                            current_descriptor,
+                                            phy_device,
+                                            current_requested_q8e8e_family_index as u32,
+                                            current_requested_queue_family_descriptor.max_queues()
+                                                as u32,
+                                            get_physical_device_presentation_support,
+                                        ) {
                                             let mut queue_create_info =
                                                 ash::vk::DeviceQueueCreateInfo::default();
                                             queue_create_info.queue_family_index =

@@ -31,6 +31,7 @@ fn main() {
             required_queues.as_slice().as_ref(),
             device_extensions.as_slice().as_ref(),
             device_layers.as_slice().as_ref(),
+            { todo!() },
         ) {
             println!("Device opened successfully");
         } else {

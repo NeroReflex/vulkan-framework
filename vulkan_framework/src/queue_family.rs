@@ -30,4 +30,8 @@ impl ConcreteQueueFamilyDescriptor {
     pub fn get_queue_priorities(&self) -> &[f32] {
         self.queue_priorities.as_slice()
     }
+
+    pub fn get_supported_operations(&self) -> &[QueueFamilySupportedOperationType] {
+        self.supported_operations.as_slice().as_ref()
+    }
 }
