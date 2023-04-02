@@ -1,4 +1,1 @@
-pub struct VkError {
-
-}
-
+pub struct VkError {}

@@ -1,3 +1,5 @@
+use crate::instance;
+use crate::instance::InstanceOwned;
 use crate::queue_family;
 use ash;
 
@@ -6,7 +8,11 @@ use crate::result::VkError;
 use std::os::raw::c_char;
 use std::vec::Vec;
 
-use std::rc::{Weak, Rc};
+use std::rc::{Rc, Weak};
+
+pub(crate) trait DeviceOwned {
+    fn get_parent_device(&self) -> Weak<crate::device::Device>;
+}
 
 struct DeviceData {
     selected_physical_device: ash::vk::PhysicalDevice,
@@ -15,6 +21,7 @@ struct DeviceData {
     required_family_collection: Vec<(u32, queue_family::ConcreteQueueFamilyDescriptor)>,
     enabled_extensions: Vec<Vec<c_char>>,
     enabled_layers: Vec<Vec<c_char>>,
+    validation_layers: bool,
 }
 
 pub struct Device {
@@ -23,13 +30,19 @@ pub struct Device {
     device: ash::Device,
 }
 
+impl InstanceOwned for Device {
+    fn get_parent_instance(&self) -> Weak<crate::instance::Instance> {
+        self.instance.clone()
+    }
+}
+
 impl Drop for Device {
     fn drop(&mut self) {
-        match self.instance.upgrade() {
-            Some(instance) => {
-                unsafe {
-                    instance.native_handle().destroy_instance(instance.get_alloc_callbacks());
-                }
+        match self.get_parent_instance().upgrade() {
+            Some(instance) => unsafe {
+                instance
+                    .native_handle()
+                    .destroy_instance(instance.get_alloc_callbacks());
             },
             None => {
                 assert!(true == false)
@@ -39,6 +52,14 @@ impl Drop for Device {
 }
 
 impl Device {
+    pub fn native_handle(&self) -> &ash::Device {
+        &self.device
+    }
+
+    pub fn are_validation_layers_enabled(&self) -> bool {
+        self.data.validation_layers
+    }
+
     fn corresponds() -> bool {
         todo!()
     }
@@ -47,11 +68,11 @@ impl Device {
         instance_weak_ptr: Weak<crate::instance::Instance>,
         queue_descriptors: &[queue_family::ConcreteQueueFamilyDescriptor],
         device_extensions: &[String],
-        device_layers: &[String]
+        device_layers: &[String],
     ) -> Result<Rc<Device>, VkError> {
         // queue cannot be capable of nothing...
         if queue_descriptors.is_empty() {
-            return Err(VkError {})
+            return Err(VkError {});
         }
 
         match instance_weak_ptr.upgrade() {
@@ -60,94 +81,135 @@ impl Device {
                     match instance.native_handle().enumerate_physical_devices() {
                         Err(_err) => {
                             return Err(VkError {});
-                        },
+                        }
                         Ok(physical_devices) => {
                             let mut best_physical_device_score: i128 = -1;
                             let mut selected_physical_device: Option<DeviceData> = None;
-        
+
                             if physical_devices.is_empty() {
                                 return Err(VkError {});
                             }
-        
+
                             'suitable_device_search: for phy_device in physical_devices.iter() {
-                                let enabled_extensions = device_extensions.iter().map(|ext_name| {
-                                    let mut ext_bytes = ext_name.to_owned().into_bytes();
-                                    ext_bytes.push(b"\0"[0]);
-                
-                                    ext_bytes.iter().map(|b| *b as c_char).collect::<Vec<c_char>>()
-                                }
-                                ).collect::<Vec<Vec<c_char>>>();
-        
-                                let mut enabled_layers = device_layers.iter().map(|ext_name| {
-                                    let mut ext_bytes = ext_name.to_owned().into_bytes();
-                                    ext_bytes.push(b"\0"[0]);
-                
-                                    ext_bytes.iter().map(|b| *b as c_char).collect::<Vec<c_char>>()
-                                }
-                                ).collect::<Vec<Vec<c_char>>>();
-        
+                                let enabled_extensions = device_extensions
+                                    .iter()
+                                    .map(|ext_name| {
+                                        let mut ext_bytes = ext_name.to_owned().into_bytes();
+                                        ext_bytes.push(b"\0"[0]);
+
+                                        ext_bytes
+                                            .iter()
+                                            .map(|b| *b as c_char)
+                                            .collect::<Vec<c_char>>()
+                                    })
+                                    .collect::<Vec<Vec<c_char>>>();
+
+                                let mut enabled_layers = device_layers
+                                    .iter()
+                                    .map(|ext_name| {
+                                        let mut ext_bytes = ext_name.to_owned().into_bytes();
+                                        ext_bytes.push(b"\0"[0]);
+
+                                        ext_bytes
+                                            .iter()
+                                            .map(|b| *b as c_char)
+                                            .collect::<Vec<c_char>>()
+                                    })
+                                    .collect::<Vec<Vec<c_char>>>();
+
                                 /*
                                 Previous implementations of Vulkan made a distinction between instance and device specific validation layers, but this is no longer the case.
                                 That means that the enabledLayerCount and ppEnabledLayerNames fields of VkDeviceCreateInfo are ignored by up-to-date implementations.
                                 However, it is still a good idea to set them anyway to be compatible with older implementations:
                                 */
                                 if instance.are_validation_layers_enabled() {
-                                    enabled_layers.push("VK_LAYER_KHRONOS_validation\0".chars().map(|c| c as c_char).collect::<Vec<c_char>>());
+                                    enabled_layers.push(
+                                        "VK_LAYER_KHRONOS_validation\0"
+                                            .chars()
+                                            .map(|c| c as c_char)
+                                            .collect::<Vec<c_char>>(),
+                                    );
                                 }
-        
-                                let phy_device_features = instance.native_handle().get_physical_device_features(phy_device.to_owned()); 
-                                let phy_device_properties = instance.native_handle().get_physical_device_properties(phy_device.to_owned());
-        
+
+                                let phy_device_features = instance
+                                    .native_handle()
+                                    .get_physical_device_features(phy_device.to_owned());
+                                let phy_device_properties = instance
+                                    .native_handle()
+                                    .get_physical_device_properties(phy_device.to_owned());
+
                                 let msbytes = match phy_device_properties.device_type {
                                     DISCRETE_GPU => 0xC000000000000000u64,
                                     INTEGRATED_GPU => 0x8000000000000000u64,
                                     VK_PHYSICAL_DEVICE_TYPE_CPU => 0x4000000000000000u64,
-                                    _ => 0x0000000000000000u64
+                                    _ => 0x0000000000000000u64,
                                 };
-        
+
                                 let current_score = msbytes | 0 as u64;
-        
+
                                 // get queues properties (used to check if all requested queues are available on this device)
-                                let queue_family_properties = instance.native_handle().get_physical_device_queue_family_properties(phy_device.to_owned());
-        
+                                let queue_family_properties = instance
+                                    .native_handle()
+                                    .get_physical_device_queue_family_properties(
+                                        phy_device.to_owned(),
+                                    );
+
                                 // Check if all requested queues are supported
-                                let mut selected_queues: Vec<ash::vk::DeviceQueueCreateInfo> = vec!();
-                                let mut required_family_collection: Vec<(u32, queue_family::ConcreteQueueFamilyDescriptor)> = vec!();
-        
-                                for current_requested_queue_family_descriptor in queue_descriptors.iter() {
-        
+                                let mut selected_queues: Vec<ash::vk::DeviceQueueCreateInfo> =
+                                    vec![];
+                                let mut required_family_collection: Vec<(
+                                    u32,
+                                    queue_family::ConcreteQueueFamilyDescriptor,
+                                )> = vec![];
+
+                                for current_requested_queue_family_descriptor in
+                                    queue_descriptors.iter()
+                                {
                                     let mut suitable_found = false;
-                                    'suitable_queue_family_search: for (family_index, current_descriptor) in queue_family_properties.iter().enumerate() {
-        
+                                    'suitable_queue_family_search: for (
+                                        family_index,
+                                        current_descriptor,
+                                    ) in
+                                        queue_family_properties.iter().enumerate()
+                                    {
                                         if Self::corresponds() {
-                                            let mut queue_create_info = ash::vk::DeviceQueueCreateInfo::default();
-                                            queue_create_info.queue_family_index = family_index as u32;
-                                            queue_create_info.queue_count = current_requested_queue_family_descriptor.max_queues();
-                                            queue_create_info.p_queue_priorities = current_requested_queue_family_descriptor.get_queue_priorities().as_ptr();
-        
+                                            let mut queue_create_info =
+                                                ash::vk::DeviceQueueCreateInfo::default();
+                                            queue_create_info.queue_family_index =
+                                                family_index as u32;
+                                            queue_create_info.queue_count =
+                                                current_requested_queue_family_descriptor
+                                                    .max_queues();
+                                            queue_create_info.p_queue_priorities =
+                                                current_requested_queue_family_descriptor
+                                                    .get_queue_priorities()
+                                                    .as_ptr();
+
                                             selected_queues.push(queue_create_info);
-                                            required_family_collection.push((family_index as u32, current_requested_queue_family_descriptor.clone()));
-                                            
+                                            required_family_collection.push((
+                                                family_index as u32,
+                                                current_requested_queue_family_descriptor.clone(),
+                                            ));
+
                                             suitable_found = true;
-        
+
                                             // found a suitable queue. Stop the search.
                                             break 'suitable_queue_family_search;
                                         }
-        
                                     }
-        
+
                                     // if any of the queue is not supported continue the search for a suitable device
                                     if !suitable_found {
                                         continue 'suitable_device_search;
                                     }
                                 }
-        
+
                                 /*
                                 if (deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU) { // Exclude inadequate devices
                                     currentScore = 0;
                                 }
                                 */
-        
+
                                 let currently_selected_device_data = DeviceData {
                                     selected_physical_device: phy_device.clone(),
                                     selected_device_features: phy_device_features,
@@ -155,76 +217,87 @@ impl Device {
                                     required_family_collection: required_family_collection,
                                     enabled_extensions: enabled_extensions,
                                     enabled_layers: enabled_layers,
+                                    validation_layers: instance.are_validation_layers_enabled(),
                                 };
-        
+
                                 match selected_physical_device {
                                     Some(currently_selected_device) => {
                                         if best_physical_device_score < current_score as i128 {
                                             best_physical_device_score = current_score as i128;
-                                            selected_physical_device = Some(currently_selected_device_data);
+                                            selected_physical_device =
+                                                Some(currently_selected_device_data);
                                         } else {
-                                            selected_physical_device = Some(currently_selected_device);
+                                            selected_physical_device =
+                                                Some(currently_selected_device);
                                         }
-                                    },
+                                    }
                                     None => {
                                         best_physical_device_score = current_score as i128;
-                                        selected_physical_device = Some(currently_selected_device_data);
+                                        selected_physical_device =
+                                            Some(currently_selected_device_data);
                                     }
                                 }
                             }
-        
+
                             match selected_physical_device {
                                 Some(selected_device) => {
-                                    let layers_ptr = selected_device.enabled_layers.iter().map(|str| str.as_ptr()).collect::<Vec<*const c_char>>();
-                                    let extensions_ptr = selected_device.enabled_extensions.iter().map(|str| str.as_ptr()).collect::<Vec<*const c_char>>();
-        
-                                    let mut device_create_info = ash::vk::DeviceCreateInfo::default();
-        
-                                    device_create_info.queue_create_info_count = selected_device.selected_queues.len() as u32;
-                                    device_create_info.p_queue_create_infos = selected_device.selected_queues.as_slice().as_ptr();
-        
-                                    device_create_info.p_enabled_features = &selected_device.selected_device_features;
-        
-                                    device_create_info.enabled_layer_count = layers_ptr.len() as u32;
-                                    device_create_info.pp_enabled_layer_names = layers_ptr.as_slice().as_ptr();
-        
-                                    device_create_info.enabled_extension_count = extensions_ptr.len() as u32;
-                                    device_create_info.pp_enabled_extension_names = extensions_ptr.as_slice().as_ptr();
-        
+                                    let layers_ptr = selected_device
+                                        .enabled_layers
+                                        .iter()
+                                        .map(|str| str.as_ptr())
+                                        .collect::<Vec<*const c_char>>();
+                                    let extensions_ptr = selected_device
+                                        .enabled_extensions
+                                        .iter()
+                                        .map(|str| str.as_ptr())
+                                        .collect::<Vec<*const c_char>>();
+
+                                    let mut device_create_info =
+                                        ash::vk::DeviceCreateInfo::default();
+
+                                    device_create_info.queue_create_info_count =
+                                        selected_device.selected_queues.len() as u32;
+                                    device_create_info.p_queue_create_infos =
+                                        selected_device.selected_queues.as_slice().as_ptr();
+
+                                    device_create_info.p_enabled_features =
+                                        &selected_device.selected_device_features;
+
+                                    device_create_info.enabled_layer_count =
+                                        layers_ptr.len() as u32;
+                                    device_create_info.pp_enabled_layer_names =
+                                        layers_ptr.as_slice().as_ptr();
+
+                                    device_create_info.enabled_extension_count =
+                                        extensions_ptr.len() as u32;
+                                    device_create_info.pp_enabled_extension_names =
+                                        extensions_ptr.as_slice().as_ptr();
+
                                     return match instance.native_handle().create_device(
                                         selected_device.selected_physical_device.to_owned(),
                                         &device_create_info,
-                                        instance.get_alloc_callbacks()
+                                        instance.get_alloc_callbacks(),
                                     ) {
-                                        Ok(device) => {
-                                            Ok(
-                                                Rc::new(
-                                                    Self {
-                                                        data: Box::new(selected_device),
-                                                        device: device,
-                                                        instance: instance_weak_ptr
-                                                    }
-                                                )
-                                            )
-                                        },
-                                        Err(_err) => {
-                                            Err(VkError {  })
-                                        }
-                                    }
-                                },
+                                        Ok(device) => Ok(Rc::new(Self {
+                                            data: Box::new(selected_device),
+                                            device: device,
+                                            instance: instance_weak_ptr,
+                                        })),
+                                        Err(_err) => Err(VkError {}),
+                                    };
+                                }
                                 None => {
-                                    return Err(VkError {  });
+                                    return Err(VkError {});
                                 }
                             }
-                            
                         }
                     }
                 }
-            },
+            }
             None => {
                 assert!(true == false);
 
-                return Err(VkError {  });
+                return Err(VkError {});
             }
         }
     }
