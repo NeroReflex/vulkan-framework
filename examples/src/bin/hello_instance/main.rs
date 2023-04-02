@@ -6,7 +6,13 @@ fn main() {
 	let app_name = String::from("hello_triangle");
 	let api_version = vulkan_framework::instance::InstanceAPIVersion::Version1_0;
 
-	if let Ok(_instance) = vulkan_framework::instance::Instance::new(instance_extensions.as_slice(), &engine_name, &app_name, &api_version) {
+	if let Ok(_instance) = vulkan_framework::instance::Instance::new(
+		instance_extensions.as_slice(),
+		&engine_name,
+		&app_name,
+		&api_version,
+		true
+	) {
 		println!("Vulkan instance created");
 	} else {
 		println!("Error creating vulkan instance");
