@@ -78,7 +78,7 @@ impl Device {
 
         for feature in operations {
             match feature {
-                Transfer => {
+                queue_family::QueueFamilySupportedOperationType::Transfer => {
                     if !queue_family
                         .queue_flags
                         .contains(ash::vk::QueueFlags::TRANSFER)
@@ -86,12 +86,12 @@ impl Device {
                         feature_found = false;
                     }
                 }
-                Present => {
+                queue_family::QueueFamilySupportedOperationType::Present => {
                     if !get_physical_device_presentation_support(instance, device, family_index) {
                         feature_found = false;
                     }
                 }
-                Graphics => {
+                queue_family::QueueFamilySupportedOperationType::Graphics => {
                     if !queue_family
                         .queue_flags
                         .contains(ash::vk::QueueFlags::GRAPHICS)
@@ -99,7 +99,7 @@ impl Device {
                         feature_found = false;
                     }
                 }
-                Compute => {
+                queue_family::QueueFamilySupportedOperationType::Compute => {
                     if !queue_family
                         .queue_flags
                         .contains(ash::vk::QueueFlags::COMPUTE)
@@ -192,7 +192,7 @@ impl Device {
                                     .native_handle()
                                     .get_physical_device_properties(phy_device.to_owned());
 
-                                let msbytes = match phy_device_properties.device_type {
+                                let msbytes = match phy_device_properties.device_type.as_raw() {
                                     DISCRETE_GPU => 0xC000000000000000u64,
                                     INTEGRATED_GPU => 0x8000000000000000u64,
                                     VK_PHYSICAL_DEVICE_TYPE_CPU => 0x4000000000000000u64,
