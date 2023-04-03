@@ -31,7 +31,7 @@ fn main() {
             required_queues.as_slice().as_ref(),
             device_extensions.as_slice().as_ref(),
             device_layers.as_slice().as_ref(),
-            { todo!() },
+            |instance, phy_dev, queue_family| -> bool { true },
         ) {
             println!("Device opened successfully");
         } else {

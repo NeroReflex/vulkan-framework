@@ -24,7 +24,7 @@ struct DeviceData {
     validation_layers: bool,
 }
 
-pub type check_fn_type = dyn Fn(u32) -> bool;
+pub type CheckPresentationSupport = fn(&ash::Instance, &ash::vk::PhysicalDevice, u32) -> bool;
 
 pub struct Device {
     data: Box<DeviceData>,
@@ -41,11 +41,10 @@ impl InstanceOwned for Device {
 impl Drop for Device {
     fn drop(&mut self) {
         match self.get_parent_instance().upgrade() {
-            Some(instance) => unsafe {
-                instance
-                    .native_handle()
-                    .destroy_instance(instance.get_alloc_callbacks());
-            },
+            Some(instance) => {
+                let alloc_callbacks = instance.get_alloc_callbacks();
+                unsafe { self.device.destroy_device(alloc_callbacks) }
+            }
             None => {
                 assert!(true == false)
             }
@@ -63,14 +62,59 @@ impl Device {
     }
 
     fn corresponds<F>(
+        instance: &ash::Instance,
         operations: &[queue_family::QueueFamilySupportedOperationType],
         queue_family: &ash::vk::QueueFamilyProperties,
         device: &ash::vk::PhysicalDevice,
         family_index: u32,
         max_queues: u32,
-        get_physical_device_presentation_support: &check_fn_type,
+        get_physical_device_presentation_support: CheckPresentationSupport,
     ) -> bool {
-        todo!()
+        let mut feature_found = max_queues >= queue_family.queue_count;
+
+        if !feature_found {
+            return false;
+        }
+
+        for feature in operations {
+            match feature {
+                Transfer => {
+                    if !queue_family
+                        .queue_flags
+                        .contains(ash::vk::QueueFlags::TRANSFER)
+                    {
+                        feature_found = false;
+                    }
+                }
+                Present => {
+                    if !get_physical_device_presentation_support(instance, device, family_index) {
+                        feature_found = false;
+                    }
+                }
+                Graphics => {
+                    if !queue_family
+                        .queue_flags
+                        .contains(ash::vk::QueueFlags::GRAPHICS)
+                    {
+                        feature_found = false;
+                    }
+                }
+                Compute => {
+                    if !queue_family
+                        .queue_flags
+                        .contains(ash::vk::QueueFlags::COMPUTE)
+                    {
+                        feature_found = false;
+                    }
+                }
+            }
+        }
+
+        if !feature_found {
+            return false;
+        }
+
+        feature_found
     }
 
     pub fn new(
@@ -78,7 +122,7 @@ impl Device {
         queue_descriptors: &[queue_family::ConcreteQueueFamilyDescriptor],
         device_extensions: &[String],
         device_layers: &[String],
-        get_physical_device_presentation_support: &check_fn_type,
+        get_physical_device_presentation_support: CheckPresentationSupport,
     ) -> Result<Rc<Device>, VkError> {
         // queue cannot be capable of nothing...
         if queue_descriptors.is_empty() {
@@ -184,7 +228,8 @@ impl Device {
                                     ) in
                                         queue_family_properties.iter().enumerate()
                                     {
-                                        if Self::corresponds::<&check_fn_type>(
+                                        if Self::corresponds::<&CheckPresentationSupport>(
+                                            instance.native_handle(),
                                             current_requested_queue_family_descriptor
                                                 .get_supported_operations(),
                                             current_descriptor,

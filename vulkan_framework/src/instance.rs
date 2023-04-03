@@ -35,9 +35,10 @@ pub struct Instance {
 
 impl Drop for Instance {
     fn drop(&mut self) {
+        let alloc_callbacks = self.get_alloc_callbacks();
         //println!("> Dropping {}", self.name);
         unsafe {
-            self.instance.destroy_instance(self.get_alloc_callbacks());
+            self.instance.destroy_instance(alloc_callbacks);
         }
     }
 }

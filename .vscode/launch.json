@@ -100,6 +100,43 @@
         {
             "type": "lldb",
             "request": "launch",
+            "name": "Debug executable 'hello_device'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=hello_device",
+                    "--package=examples"
+                ],
+                "filter": {
+                    "name": "hello_device",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'hello_device'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=hello_device",
+                    "--package=examples"
+                ],
+                "filter": {
+                    "name": "hello_device",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
             "name": "Debug unit tests in library 'vulkan_framework'",
             "cargo": {
                 "args": [
