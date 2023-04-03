@@ -123,7 +123,7 @@ impl Instance {
         unsafe {
             let app_info = ash::vk::ApplicationInfo {
                 s_type: ash::vk::StructureType::APPLICATION_INFO,
-                p_next: ::std::ptr::null(),
+                p_next: std::ptr::null(),
                 p_application_name: data.as_ref().application_name.as_ptr(),
                 application_version: 0,
                 p_engine_name: data.as_ref().engine_name.as_ptr(),

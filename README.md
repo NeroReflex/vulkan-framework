@@ -5,4 +5,7 @@ This framework aims to assist the developer with vulkan common operations and re
 
 You are __NOT__ limited to the functionality of the framework: while the C++ version exposed native vulkan handles this one exposes ash data that is a wrapper around vulkan raw API specification, therefore evey feature of vulkan can be used as it is usable in plain C.
 
+## Portability
+This project is designed to run everywhere vulkan is supported and a rust compiler is available.
 
+To achieve this goal only rust's standard library and ash is used, everything else that might be needed (as the sdl2 glue) __MUST__ be manually imported by the developer.

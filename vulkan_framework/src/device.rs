@@ -61,11 +61,25 @@ impl Device {
         self.data.validation_layers
     }
 
-    fn corresponds<F>(
-        instance: &ash::Instance,
+    /**
+     * Check if the given queue family supports at least specified operations.
+     * In case of present capabilities, that are bound to specific platform, the user-provided function is invoked to determine compatibility
+     * 
+     *
+     * @param operations slice with the set of requested capabilities to support
+     * @param instance the vulkan low-level instance
+     * @param device the vulkan low-level physical device
+     * @param queue_family the queue the current queue family properties
+     * @param family_index the queue family index
+     * @param get_physical_device_presentation_support the user-provided function to ba used when checking for presentation support
+     * 
+     * @return true iif all requested operations are supported for the given queue family
+     */
+    fn corresponds(
         operations: &[queue_family::QueueFamilySupportedOperationType],
-        queue_family: &ash::vk::QueueFamilyProperties,
+        instance: &ash::Instance,
         device: &ash::vk::PhysicalDevice,
+        queue_family: &ash::vk::QueueFamilyProperties,
         family_index: u32,
         max_queues: u32,
         get_physical_device_presentation_support: CheckPresentationSupport,
@@ -228,12 +242,12 @@ impl Device {
                                     ) in
                                         queue_family_properties.iter().enumerate()
                                     {
-                                        if Self::corresponds::<&CheckPresentationSupport>(
-                                            instance.native_handle(),
+                                        if Self::corresponds(
                                             current_requested_queue_family_descriptor
                                                 .get_supported_operations(),
-                                            current_descriptor,
+                                            instance.native_handle(),
                                             phy_device,
+                                            current_descriptor,
                                             current_requested_q8e8e_family_index as u32,
                                             current_requested_queue_family_descriptor.max_queues()
                                                 as u32,

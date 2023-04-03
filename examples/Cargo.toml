@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 vulkan_framework = { path = "../vulkan_framework" }
+vulkan_framework_sdl2_glue = { path = "../vulkan_framework_sdl2_glue" }

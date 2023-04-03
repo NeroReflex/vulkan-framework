@@ -2,4 +2,5 @@
 members = [
     "examples",
     "vulkan_framework",
+    "vulkan_framework_sdl2_glue",
 ]
