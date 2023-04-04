@@ -137,6 +137,43 @@
         {
             "type": "lldb",
             "request": "launch",
+            "name": "Debug executable 'hello_window'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=hello_window",
+                    "--package=examples"
+                ],
+                "filter": {
+                    "name": "hello_window",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'hello_window'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=hello_window",
+                    "--package=examples"
+                ],
+                "filter": {
+                    "name": "hello_window",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
             "name": "Debug unit tests in library 'vulkan_framework'",
             "cargo": {
                 "args": [
@@ -147,6 +184,25 @@
                 ],
                 "filter": {
                     "name": "vulkan_framework",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'vulkan_framework_sdl2_glue'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=vulkan_framework_sdl2_glue"
+                ],
+                "filter": {
+                    "name": "vulkan_framework_sdl2_glue",
                     "kind": "lib"
                 }
             },

@@ -64,7 +64,7 @@ impl Device {
     /**
      * Check if the given queue family supports at least specified operations.
      * In case of present capabilities, that are bound to specific platform, the user-provided function is invoked to determine compatibility
-     * 
+     *
      *
      * @param operations slice with the set of requested capabilities to support
      * @param instance the vulkan low-level instance
@@ -72,7 +72,7 @@ impl Device {
      * @param queue_family the queue the current queue family properties
      * @param family_index the queue family index
      * @param get_physical_device_presentation_support the user-provided function to ba used when checking for presentation support
-     * 
+     *
      * @return true iif all requested operations are supported for the given queue family
      */
     fn corresponds(

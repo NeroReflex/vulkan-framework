@@ -1,5 +1,5 @@
-pub mod window;
 pub mod prelude;
+pub mod window;
 
 use sdl2_sys::*;
 
