@@ -3,6 +3,8 @@ use std::ffi::c_int;
 use std::ffi::c_uint;
 use std::ffi::CStr;
 
+use ash::vk::Handle;
+
 use crate::prelude::*;
 
 use sdl2_sys::SDL_WindowFlags::*;
@@ -10,6 +12,7 @@ use sdl2_sys::*;
 
 pub struct Window {
     window: *mut SDL_Window,
+    surface: Option<VkSurfaceKHR>
 }
 
 impl Drop for Window {
@@ -62,7 +65,28 @@ impl Window {
             }
         }
 
-        Ok(Self { window: window })
+        Ok(Self { window: window, surface: Option::<VkSurfaceKHR>::None })
+    }
+
+    pub fn create_surface(
+        &mut self,
+        instance: &ash::Instance,
+    ) -> Result<ash::vk::SurfaceKHR, SDL2Error> {
+        unsafe {
+            let mut surface: VkSurfaceKHR = 0;
+
+            let handle = instance.handle();
+
+            let surface_creation_result = SDL_Vulkan_CreateSurface(
+                self.window,
+                ash::vk::Handle::as_raw(handle) as usize,
+                &mut surface,
+            );
+            match surface_creation_result {
+                SDL_bool::SDL_TRUE => Ok(ash::vk::SurfaceKHR::from_raw(surface)),
+                SDL_bool::SDL_FALSE => Err(SDL2Error::new(std::ptr::null())),
+            }
+        }
     }
 
     pub fn get_vulkan_instance_extensions(&mut self) -> Result<Vec<String>, SDL2Error> {

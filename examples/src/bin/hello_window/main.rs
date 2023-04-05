@@ -57,16 +57,27 @@ fn main() {
                 ) {
                     println!("Vulkan instance created");
 
-                    if let Ok(_device) = vulkan_framework::device::Device::new(
-                        Rc::downgrade(&instance),
-                        required_queues.as_slice().as_ref(),
-                        device_extensions.as_slice().as_ref(),
-                        device_layers.as_slice().as_ref(),
-                        |instance, phy_dev, queue_family| -> bool { true },
-                    ) {
-                        println!("Device opened successfully");
-                    } else {
-                        println!("Error opening a suitable device");
+                    match window.create_surface(instance.native_handle()) {
+                        Ok(surface) => {
+                            println!("Vulkan rendering surface created successfully");
+
+                            if let Ok(_device) = vulkan_framework::device::Device::new(
+                                Rc::downgrade(&instance),
+                                required_queues.as_slice().as_ref(),
+                                device_extensions.as_slice().as_ref(),
+                                device_layers.as_slice().as_ref(),
+                                |instance, phy_dev, queue_family| -> bool { true },
+                            ) {
+                                println!("Device opened successfully");
+                            } else {
+                                println!("Error opening a suitable device");
+                            }
+
+                            // TODO: destroy surface
+                        }
+                        Err(err) => {
+                            println!("Error creating vulkan rendering surface: {}", err);
+                        }
                     }
                 } else {
                     println!("Error creating vulkan instance");
