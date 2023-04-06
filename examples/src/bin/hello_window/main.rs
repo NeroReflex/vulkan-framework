@@ -9,13 +9,19 @@ fn main() {
     let app_name = String::from("hello_window");
     let api_version = vulkan_framework::instance::InstanceAPIVersion::Version1_0;
 
-    let device_extensions: Vec<String> = vec![];
+    let device_extensions: Vec<String> = vec![
+        //ash::vk::extensions::
+    ];
     let device_layers: Vec<String> = vec![];
-    let required_queues: Vec<vulkan_framework::queue_family::ConcreteQueueFamilyDescriptor> = vec![
-        vulkan_framework::queue_family::ConcreteQueueFamilyDescriptor::new(
-            [vulkan_framework::queue_family::QueueFamilySupportedOperationType::Compute].as_slice(),
+    let mut required_queues: Vec<vulkan_framework::queue_family::ConcreteQueueFamilyDescriptor> = vec![
+        /*vulkan_framework::queue_family::ConcreteQueueFamilyDescriptor::new(
+            [
+                vulkan_framework::queue_family::QueueFamilySupportedOperationType::Transfer,
+                vulkan_framework::queue_family::QueueFamilySupportedOperationType::Compute,
+            ]
+            .as_slice(),
             [1.0f32].as_slice(),
-        ),
+        ),*/
     ];
 
     // initialize sdl2 context
@@ -54,6 +60,7 @@ fn main() {
                     &app_name,
                     &api_version,
                     true,
+                    true,
                 ) {
                     println!("Vulkan instance created");
 
@@ -61,12 +68,22 @@ fn main() {
                         Ok(surface) => {
                             println!("Vulkan rendering surface created successfully");
 
+                            required_queues.push(
+                                vulkan_framework::queue_family::ConcreteQueueFamilyDescriptor::new(
+                                    [
+                                        vulkan_framework::queue_family::QueueFamilySupportedOperationType::Graphics,
+                                        vulkan_framework::queue_family::QueueFamilySupportedOperationType::Transfer,
+                                        vulkan_framework::queue_family::QueueFamilySupportedOperationType::Present(surface)
+                                        ].as_slice(),
+                                    [1.0f32].as_slice(),
+                                )
+                            );
+
                             if let Ok(_device) = vulkan_framework::device::Device::new(
                                 Rc::downgrade(&instance),
                                 required_queues.as_slice().as_ref(),
                                 device_extensions.as_slice().as_ref(),
                                 device_layers.as_slice().as_ref(),
-                                |instance, phy_dev, queue_family| -> bool { true },
                             ) {
                                 println!("Device opened successfully");
                             } else {
@@ -74,6 +91,8 @@ fn main() {
                             }
 
                             // TODO: destroy surface
+
+                            //println!("HERE");
                         }
                         Err(err) => {
                             println!("Error creating vulkan rendering surface: {}", err);

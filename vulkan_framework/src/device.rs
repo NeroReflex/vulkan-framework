@@ -1,7 +1,10 @@
 use crate::instance;
 use crate::instance::InstanceOwned;
 use crate::queue_family;
+
 use ash;
+use ash::extensions;
+use ash::vk::Handle;
 
 use crate::result::VkError;
 
@@ -23,8 +26,6 @@ struct DeviceData {
     enabled_layers: Vec<Vec<c_char>>,
     validation_layers: bool,
 }
-
-pub type CheckPresentationSupport = fn(&ash::Instance, &ash::vk::PhysicalDevice, u32) -> bool;
 
 pub struct Device {
     data: Box<DeviceData>,
@@ -63,72 +64,127 @@ impl Device {
 
     /**
      * Check if the given queue family supports at least specified operations.
-     * In case of present capabilities, that are bound to specific platform, the user-provided function is invoked to determine compatibility
+     * The return value is a score representing a fit, 0 is for best-fit, the greather the number the worst is the fit.
      *
+     * @param operations slice with the set of requested capabilities to support (framework)
+     * @param instance the vulkan low-level instance (native)
+     * @param device the vulkan low-level physical device (native)
+     * @param queue_family the current queue family properties (native)
+     * @param family_index the current queue family index (native)
      *
-     * @param operations slice with the set of requested capabilities to support
-     * @param instance the vulkan low-level instance
-     * @param device the vulkan low-level physical device
-     * @param queue_family the queue the current queue family properties
-     * @param family_index the queue family index
-     * @param get_physical_device_presentation_support the user-provided function to ba used when checking for presentation support
-     *
-     * @return true iif all requested operations are supported for the given queue family
+     * @return Some(score) iif all requested operations are supported for the given queue family, None otherwise.
      */
     fn corresponds(
         operations: &[queue_family::QueueFamilySupportedOperationType],
         instance: &ash::Instance,
         device: &ash::vk::PhysicalDevice,
+        surface_extension: Option<&ash::extensions::khr::Surface>,
         queue_family: &ash::vk::QueueFamilyProperties,
         family_index: u32,
         max_queues: u32,
-        get_physical_device_presentation_support: CheckPresentationSupport,
-    ) -> bool {
-        let mut feature_found = max_queues >= queue_family.queue_count;
-
-        if !feature_found {
-            return false;
+    ) -> Option<u16> {
+        if max_queues < queue_family.queue_count {
+            return None;
         }
 
+        let mut score = 0;
+
         for feature in operations {
+            // get an initial score based on support of stuff
+            match queue_family
+                .queue_flags
+                .contains(ash::vk::QueueFlags::TRANSFER)
+            {
+                true => score += 1,
+                false => score += 0,
+            };
+
+            match queue_family
+                .queue_flags
+                .contains(ash::vk::QueueFlags::COMPUTE)
+            {
+                true => score += 1,
+                false => score += 0,
+            };
+
+            match queue_family
+                .queue_flags
+                .contains(ash::vk::QueueFlags::GRAPHICS)
+            {
+                true => score += 1,
+                false => score += 0,
+            };
+
+            /*match queue_family.queue_flags.contains(ash::vk::QueueFlags::) {
+                true => score += 1,
+                false => score += 0
+            };*/
+
             match feature {
                 queue_family::QueueFamilySupportedOperationType::Transfer => {
                     if !queue_family
                         .queue_flags
                         .contains(ash::vk::QueueFlags::TRANSFER)
                     {
-                        feature_found = false;
+                        return None;
                     }
+
+                    score -= 1;
                 }
-                queue_family::QueueFamilySupportedOperationType::Present => {
-                    if !get_physical_device_presentation_support(instance, device, family_index) {
-                        feature_found = false;
+                queue_family::QueueFamilySupportedOperationType::Present(surface) => {
+                    unsafe {
+                        match surface_extension {
+                            Some(ext) => {
+                                match ext.get_physical_device_surface_support(
+                                    device.to_owned(),
+                                    family_index,
+                                    *surface,
+                                ) {
+                                    Ok(support) => match support {
+                                        true => {
+                                            score -= 1;
+                                        }
+                                        false => {
+                                            return None;
+                                        }
+                                    },
+                                    Err(_err) => {
+                                        return None;
+                                    }
+                                }
+                            }
+                            None => {
+                                return None;
+                            }
+                        }
                     }
+
+                    score -= 1;
                 }
                 queue_family::QueueFamilySupportedOperationType::Graphics => {
                     if !queue_family
                         .queue_flags
                         .contains(ash::vk::QueueFlags::GRAPHICS)
                     {
-                        feature_found = false;
+                        return None;
                     }
+
+                    score -= 1;
                 }
                 queue_family::QueueFamilySupportedOperationType::Compute => {
                     if !queue_family
                         .queue_flags
                         .contains(ash::vk::QueueFlags::COMPUTE)
                     {
-                        feature_found = false;
+                        return None;
                     }
+
+                    score -= 1;
                 }
             }
         }
 
-        if !feature_found {
-            return false;
-        }
-
-        feature_found
+        Some(score)
     }
 
     pub fn new(
@@ -136,7 +192,6 @@ impl Device {
         queue_descriptors: &[queue_family::ConcreteQueueFamilyDescriptor],
         device_extensions: &[String],
         device_layers: &[String],
-        get_physical_device_presentation_support: CheckPresentationSupport,
     ) -> Result<Rc<Device>, VkError> {
         // queue cannot be capable of nothing...
         if queue_descriptors.is_empty() {
@@ -190,7 +245,7 @@ impl Device {
                                 That means that the enabledLayerCount and ppEnabledLayerNames fields of VkDeviceCreateInfo are ignored by up-to-date implementations.
                                 However, it is still a good idea to set them anyway to be compatible with older implementations:
                                 */
-                                if instance.are_validation_layers_enabled() {
+                                if instance.is_debugging_enabled() {
                                     enabled_layers.push(
                                         b"VK_LAYER_KHRONOS_validation\0"
                                             .iter()
@@ -230,29 +285,62 @@ impl Device {
                                     queue_family::ConcreteQueueFamilyDescriptor,
                                 )> = vec![];
 
-                                for (
-                                    current_requested_q8e8e_family_index,
-                                    current_requested_queue_family_descriptor,
-                                ) in queue_descriptors.iter().enumerate()
+                                let mut available_queue_families: Vec<(
+                                    usize,
+                                    &ash::vk::QueueFamilyProperties,
+                                )> = queue_family_properties.iter().enumerate().collect();
+
+                                for current_requested_queue_family_descriptor in
+                                    queue_descriptors.iter()
                                 {
-                                    let mut suitable_found = false;
+                                    // this is the currently selected queue family (queue_family, score)
+                                    let mut selected_queue_family: Option<(usize, u16)> = None;
+
+                                    // the following for loop will search for the best fit for requested capabilities
                                     'suitable_queue_family_search: for (
                                         family_index,
                                         current_descriptor,
                                     ) in
-                                        queue_family_properties.iter().enumerate()
+                                        available_queue_families.clone()
                                     {
-                                        if Self::corresponds(
+                                        match Self::corresponds(
                                             current_requested_queue_family_descriptor
                                                 .get_supported_operations(),
                                             instance.native_handle(),
                                             phy_device,
+                                            instance.get_surface_khr_extension(),
                                             current_descriptor,
-                                            current_requested_q8e8e_family_index as u32,
+                                            family_index as u32,
                                             current_requested_queue_family_descriptor.max_queues()
                                                 as u32,
-                                            get_physical_device_presentation_support,
                                         ) {
+                                            Some(score) => {
+                                                // Found a suitable queue family.
+                                                // Use this queue family if it's a better fit than the previous one
+                                                match selected_queue_family {
+                                                    Some((_, best_fit_queue_score)) => {
+                                                        if best_fit_queue_score > score {
+                                                            selected_queue_family =
+                                                                Some((family_index, score))
+                                                        }
+                                                    }
+                                                    None => {
+                                                        selected_queue_family =
+                                                            Some((family_index, score))
+                                                    }
+                                                }
+
+                                                // Stop the search. This changes the algorithm from a "best fit" to a "first fit"
+                                                //break 'suitable_queue_family_search;
+                                            }
+                                            None => {}
+                                        }
+                                    }
+
+                                    // if any of the queue is not supported continue the search for a suitable device
+                                    // otherwise remove the current best fit from the queue of available queue_families to avoid choosing it two times
+                                    match selected_queue_family {
+                                        Some((family_index, _)) => {
                                             let mut queue_create_info =
                                                 ash::vk::DeviceQueueCreateInfo::default();
                                             queue_create_info.queue_family_index =
@@ -271,16 +359,17 @@ impl Device {
                                                 current_requested_queue_family_descriptor.clone(),
                                             ));
 
-                                            suitable_found = true;
+                                            available_queue_families = available_queue_families.iter().map(|(queue_family_index, queue_family_properties)| -> Option<(usize, &ash::vk::QueueFamilyProperties)> {
+                                                if *queue_family_index != family_index {
+                                                    return Some((*queue_family_index, queue_family_properties))
+                                                }
 
-                                            // found a suitable queue. Stop the search.
-                                            break 'suitable_queue_family_search;
+                                                None
+                                            }).into_iter().flatten().collect();
                                         }
-                                    }
-
-                                    // if any of the queue is not supported continue the search for a suitable device
-                                    if !suitable_found {
-                                        continue 'suitable_device_search;
+                                        None => {
+                                            continue 'suitable_device_search;
+                                        }
                                     }
                                 }
 
@@ -297,7 +386,7 @@ impl Device {
                                     required_family_collection: required_family_collection,
                                     enabled_extensions: enabled_extensions,
                                     enabled_layers: enabled_layers,
-                                    validation_layers: instance.are_validation_layers_enabled(),
+                                    validation_layers: instance.is_debugging_enabled(),
                                 };
 
                                 match selected_physical_device {

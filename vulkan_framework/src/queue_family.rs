@@ -3,7 +3,7 @@ pub enum QueueFamilySupportedOperationType {
     Compute,
     Graphics,
     Transfer,
-    Present,
+    Present(ash::vk::SurfaceKHR),
 }
 
 #[derive(Clone)]

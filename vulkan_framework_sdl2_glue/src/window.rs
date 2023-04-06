@@ -12,7 +12,7 @@ use sdl2_sys::*;
 
 pub struct Window {
     window: *mut SDL_Window,
-    surface: Option<VkSurfaceKHR>
+    surface: Option<VkSurfaceKHR>,
 }
 
 impl Drop for Window {
@@ -65,7 +65,10 @@ impl Window {
             }
         }
 
-        Ok(Self { window: window, surface: Option::<VkSurfaceKHR>::None })
+        Ok(Self {
+            window: window,
+            surface: Option::<VkSurfaceKHR>::None,
+        })
     }
 
     pub fn create_surface(

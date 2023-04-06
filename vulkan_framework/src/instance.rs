@@ -31,6 +31,8 @@ pub struct Instance {
     data: Box<InstanceData>,
     entry: ash::Entry,
     instance: ash::Instance,
+    surface_khr_ext: Option<ash::extensions::khr::Surface>,
+    debug_ext_ext: Option<ash::extensions::ext::DebugUtils>,
 }
 
 impl Drop for Instance {
@@ -44,6 +46,20 @@ impl Drop for Instance {
 }
 
 impl Instance {
+    pub(crate) fn get_debug_ext_extension(&self) -> Option<&ash::extensions::ext::DebugUtils> {
+        match self.debug_ext_ext.as_ref() {
+            Some(debug_ext_ext) => Some(debug_ext_ext),
+            None => None,
+        }
+    }
+
+    pub(crate) fn get_surface_khr_extension(&self) -> Option<&ash::extensions::khr::Surface> {
+        match self.surface_khr_ext.as_ref() {
+            Some(ext) => Some(ext),
+            None => None,
+        }
+    }
+
     pub fn get_alloc_callbacks(&self) -> Option<&ash::vk::AllocationCallbacks> {
         match self.data.alloc_callbacks.as_ref() {
             Some(callbacks) => Some(callbacks),
@@ -55,16 +71,22 @@ impl Instance {
         &self.instance
     }
 
-    pub fn are_validation_layers_enabled(&self) -> bool {
+    pub fn is_debugging_enabled(&self) -> bool {
         self.data.validation_layers
     }
 
+    /**
+     * Creates a new vulkan instance
+     *
+     *
+     */
     pub fn new(
         instance_extensions: &[String],
         engine_name: &String,
         app_name: &String,
         api_version: &InstanceAPIVersion,
-        enable_validation_layers: bool,
+        enable_present: bool,
+        enable_debugging: bool,
     ) -> Result<Rc<Instance>, VkError> {
         let mut app_bytes = app_name.to_owned().into_bytes();
         app_bytes.push(b"\0"[0]);
@@ -86,7 +108,7 @@ impl Instance {
                 .iter()
                 .map(|b| *b as c_char)
                 .collect::<Vec<c_char>>(),
-            enabled_layers: match enable_validation_layers {
+            enabled_layers: match enable_debugging {
                 true => vec![validation_layer_name_bytes
                     .iter()
                     .map(|b| *b as c_char)
@@ -105,7 +127,7 @@ impl Instance {
                         .collect::<Vec<c_char>>()
                 })
                 .collect(),
-            validation_layers: enable_validation_layers,
+            validation_layers: enable_debugging,
             alloc_callbacks: None,
         });
 
@@ -155,10 +177,26 @@ impl Instance {
                         None => None,
                     },
                 ) {
+                    //let swapchain_ext = ash::extensions::khr::Swapchain::new(&instance, )
+
+                    // also enable debugging extension for debug build
+                    let debug_ext = match enable_debugging {
+                        true => Some(ash::extensions::ext::DebugUtils::new(&entry, &instance)),
+                        false => None,
+                    };
+
+                    // if requested enable the swapchain required extension(s)
+                    let surface_ext = match enable_present {
+                        true => Some(ash::extensions::khr::Surface::new(&entry, &instance)),
+                        false => None,
+                    };
+
                     return Ok(Rc::new(Instance {
                         data: data,
                         entry: entry,
                         instance: instance,
+                        surface_khr_ext: surface_ext,
+                        debug_ext_ext: debug_ext,
                     }));
                 }
 

@@ -22,6 +22,7 @@ fn main() {
         &engine_name,
         &app_name,
         &api_version,
+        false,
         true,
     ) {
         println!("Vulkan instance created");
@@ -31,7 +32,6 @@ fn main() {
             required_queues.as_slice().as_ref(),
             device_extensions.as_slice().as_ref(),
             device_layers.as_slice().as_ref(),
-            |instance, phy_dev, queue_family| -> bool { true },
         ) {
             println!("Device opened successfully");
         } else {
