@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use ash;
 use vulkan_framework;
 
@@ -34,16 +36,13 @@ fn main() {
         Err(_) => return (),
     };
 
-    let _ = window
+    let raw_surface_khr = window
         .vulkan_create_surface(
             ash::vk::Handle::as_raw(instance.native_handle().handle().clone())
                 as sdl2::video::VkInstance,
         )
         .unwrap();
 
-    // validation layers error. Fuck.
-    drop(window);
-    drop(video_subsystem);
-    drop(sdl_context);
-    drop(instance);
+    let surface =
+        vulkan_framework::surface::Surface::from_raw(Arc::downgrade(&instance), raw_surface_khr);
 }

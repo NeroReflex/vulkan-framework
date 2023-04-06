@@ -73,7 +73,7 @@ impl Device {
      */
     fn corresponds(
         operations: &[queue_family::QueueFamilySupportedOperationType],
-        instance: &ash::Instance,
+        _instance: &ash::Instance,
         device: &ash::vk::PhysicalDevice,
         surface_extension: Option<&ash::extensions::khr::Surface>,
         queue_family: &ash::vk::QueueFamilyProperties,
@@ -156,6 +156,7 @@ impl Device {
                                 #[cfg(debug_assertions)]
                                 {
                                     println!("SurfaceKHR extension not available, have you forgotten to specify it on instance creation?");
+                                    assert_eq!(true, false)
                                 }
                                 return None;
                             }
@@ -164,6 +165,7 @@ impl Device {
                             #[cfg(debug_assertions)]
                             {
                                 println!("Specified Surface for Present does not exists (anymore?) have you dropped the last Arc<Surface> holding it?");
+                                assert_eq!(true, false)
                             }
                             return None;
                         }
@@ -470,7 +472,8 @@ impl Device {
                 }
             }
             None => {
-                assert!(true == false);
+                println!("The provided Instance does not exists (anymore?). Have you dropped the last Arc<> holding it before calling this function?");
+                assert_eq!(true, false);
 
                 return Err(VkError {});
             }

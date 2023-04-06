@@ -90,10 +90,13 @@ impl Window {
                 let surface_creation_result =
                     SDL_Vulkan_CreateSurface(self.window, instance.as_raw(), &mut surface);
                 match surface_creation_result {
-                    SDL_bool::SDL_TRUE => Ok(vulkan_framework::surface::Surface::from_raw(
-                        instance.clone(),
+                    SDL_bool::SDL_TRUE => match vulkan_framework::surface::Surface::from_raw(
+                        Arc::downgrade(&instance),
                         surface,
-                    )),
+                    ) {
+                        Ok(sfc) => Ok(sfc),
+                        Err(_err) => Err(SDL2Error::new(std::ptr::null())),
+                    },
                     SDL_bool::SDL_FALSE => Err(SDL2Error::new(std::ptr::null())),
                 }
             },

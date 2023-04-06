@@ -3,6 +3,7 @@ use ash;
 use std::sync::{Arc, Weak};
 
 use crate::instance::Instance;
+use crate::prelude::*;
 
 pub struct Surface {
     instance: Weak<Instance>,
@@ -17,26 +18,43 @@ impl Drop for Surface {
                     surface_khr_ext
                         .destroy_surface(self.surface, framework_instance.get_alloc_callbacks());
                 },
-                None => {}
+                None => {
+                    #[cfg(debug_assertions)]
+                    {
+                        println!("Surface KHR extension has not been loaded, have you forgotten to specify surface support at instance creation? You have to call manually call vkDestroySurfaceKHR before destroy the Instance.");
+                        assert_eq!(true, false)
+                    }
+                }
             },
-            None => {}
+            None => {
+                #[cfg(debug_assertions)]
+                {
+                    println!("Instance has already been deleted, if you had validation layers enabled you would have known.");
+                    assert_eq!(true, false)
+                }
+            }
         }
     }
 }
 
 impl Surface {
-    pub fn new(instance: Arc<Instance>, surface: ash::vk::SurfaceKHR) -> Arc<Self> {
-        Arc::new(Self {
-            instance: Arc::downgrade(&instance),
-            surface: surface,
-        })
+    pub fn new(instance: Weak<Instance>, surface: ash::vk::SurfaceKHR) -> VulkanResult<Arc<Self>> {
+        Self::from_raw(instance, ash::vk::Handle::as_raw(surface) as u64)
     }
 
-    pub fn from_raw(instance: Arc<Instance>, raw_surface_khr: u64) -> Arc<Self> {
-        Arc::new(Self {
-            instance: Arc::downgrade(&instance),
-            surface: ash::vk::Handle::from_raw(raw_surface_khr),
-        })
+    pub fn from_raw(instance: Weak<Instance>, raw_surface_khr: u64) -> VulkanResult<Arc<Self>> {
+        match instance.upgrade() {
+            Some(_) => Ok(Arc::new(Self {
+                instance: instance,
+                surface: ash::vk::Handle::from_raw(raw_surface_khr),
+            })),
+            None => {
+                println!("The provided Instance does not exists (anymore?). Have you dropped the last Arc<> holding it before calling this function?");
+                assert_eq!(true, false);
+
+                Err(VulkanError::new())
+            }
+        }
     }
 
     pub fn native_handle(&self) -> &ash::vk::SurfaceKHR {

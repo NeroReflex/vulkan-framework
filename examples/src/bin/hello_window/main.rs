@@ -68,36 +68,43 @@ fn main() {
                         Ok(surface_handle) => {
                             println!("Vulkan rendering surface created successfully");
 
-                            let surface = vulkan_framework::surface::Surface::from_raw(
-                                instance.clone(),
-                                surface_handle,
-                            );
+                            let surface: Arc<vulkan_framework::surface::Surface>;
 
-                            required_queues.push(
-                                vulkan_framework::queue_family::ConcreteQueueFamilyDescriptor::new(
-                                    [
-                                        vulkan_framework::queue_family::QueueFamilySupportedOperationType::Graphics,
-                                        vulkan_framework::queue_family::QueueFamilySupportedOperationType::Transfer,
-                                        vulkan_framework::queue_family::QueueFamilySupportedOperationType::Present(Arc::downgrade(&surface))
-                                        ].as_slice(),
-                                    [1.0f32].as_slice(),
-                                )
-                            );
-
-                            if let Ok(_device) = vulkan_framework::device::Device::new(
+                            match vulkan_framework::surface::Surface::from_raw(
                                 Arc::downgrade(&instance),
-                                required_queues.as_slice().as_ref(),
-                                device_extensions.as_slice().as_ref(),
-                                device_layers.as_slice().as_ref(),
+                                surface_handle,
                             ) {
-                                println!("Device opened successfully");
-                            } else {
-                                println!("Error opening a suitable device");
+                                Ok(sfc) => {
+                                    required_queues.push(
+                                        vulkan_framework::queue_family::ConcreteQueueFamilyDescriptor::new(
+                                            [
+                                                vulkan_framework::queue_family::QueueFamilySupportedOperationType::Graphics,
+                                                vulkan_framework::queue_family::QueueFamilySupportedOperationType::Transfer,
+                                                vulkan_framework::queue_family::QueueFamilySupportedOperationType::Present(Arc::downgrade(&sfc))
+                                                ].as_slice(),
+                                            [1.0f32].as_slice(),
+                                        )
+                                    );
+
+                                    surface = sfc;
+
+                                    println!("Surface registered");
+
+                                    if let Ok(_device) = vulkan_framework::device::Device::new(
+                                        Arc::downgrade(&instance),
+                                        required_queues.as_slice().as_ref(),
+                                        device_extensions.as_slice().as_ref(),
+                                        device_layers.as_slice().as_ref(),
+                                    ) {
+                                        println!("Device opened successfully");
+                                    } else {
+                                        println!("Error opening a suitable device");
+                                    }
+                                }
+                                Err(_err) => {
+                                    println!("Error registering the given surface");
+                                }
                             }
-
-                            // TODO: destroy surface
-
-                            //println!("HERE");
                         }
                         Err(err) => {
                             println!("Error creating vulkan rendering surface: {}", err);
