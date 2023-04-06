@@ -129,14 +129,16 @@ impl Device {
                     score -= 1;
                 }
                 queue_family::QueueFamilySupportedOperationType::Present(surface) => {
-                    unsafe {
-                        match surface_extension {
+                    match surface.upgrade() {
+                        Some(surface_handle) => match surface_extension {
                             Some(ext) => {
-                                match ext.get_physical_device_surface_support(
-                                    device.to_owned(),
-                                    family_index,
-                                    *surface,
-                                ) {
+                                match unsafe {
+                                    ext.get_physical_device_surface_support(
+                                        device.to_owned(),
+                                        family_index,
+                                        surface_handle.native_handle().to_owned(),
+                                    )
+                                } {
                                     Ok(support) => match support {
                                         true => {
                                             score -= 1;
@@ -151,12 +153,21 @@ impl Device {
                                 }
                             }
                             None => {
+                                #[cfg(debug_assertions)]
+                                {
+                                    println!("SurfaceKHR extension not available, have you forgotten to specify it on instance creation?");
+                                }
                                 return None;
                             }
+                        },
+                        None => {
+                            #[cfg(debug_assertions)]
+                            {
+                                println!("Specified Surface for Present does not exists (anymore?) have you dropped the last Arc<Surface> holding it?");
+                            }
+                            return None;
                         }
                     }
-
-                    score -= 1;
                 }
                 queue_family::QueueFamilySupportedOperationType::Graphics => {
                     if !queue_family
@@ -294,10 +305,8 @@ impl Device {
                                     let mut selected_queue_family: Option<(usize, u16)> = None;
 
                                     // the following for loop will search for the best fit for requested capabilities
-                                    /*'suitable_queue_family_search:*/ for (
-                                        family_index,
-                                        current_descriptor,
-                                    ) in
+                                    /*'suitable_queue_family_search:*/
+                                    for (family_index, current_descriptor) in
                                         available_queue_families.clone()
                                     {
                                         match Self::corresponds(

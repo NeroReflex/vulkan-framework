@@ -2,10 +2,11 @@ use std::ffi::c_char;
 use std::ffi::c_int;
 use std::ffi::c_uint;
 use std::ffi::CStr;
-
-use ash::vk::Handle;
+use std::sync::Arc;
 
 use crate::prelude::*;
+
+use vulkan_framework;
 
 //use sdl2_sys::SDL_WindowFlags::*;
 use sdl2_sys::*;
@@ -55,7 +56,8 @@ impl Window {
                 },
                 width,
                 height,
-                (sdl2_sys::SDL_WindowFlags::SDL_WINDOW_SHOWN as u32) | (sdl2_sys::SDL_WindowFlags::SDL_WINDOW_VULKAN as u32),
+                (sdl2_sys::SDL_WindowFlags::SDL_WINDOW_SHOWN as u32)
+                    | (sdl2_sys::SDL_WindowFlags::SDL_WINDOW_VULKAN as u32),
             );
         }
 
@@ -73,36 +75,29 @@ impl Window {
 
     /**
      * Create a vulkan surface given out as an ash handle from the current window.
-     * 
+     *
      * This function can only be called once per window.
      */
     pub fn create_surface(
         &mut self,
-        instance: &ash::Instance,
-    ) -> Result<ash::vk::SurfaceKHR, SDL2Error> {
+        instance: Arc<vulkan_framework::instance::Instance>,
+    ) -> Result<Arc<vulkan_framework::surface::Surface>, SDL2Error> {
         match self.surface {
-            Option::Some(_) => {
-                Err(SDL2Error::new(std::ptr::null()))
-            },
-            Option::None => {
-                unsafe {
-                    let mut surface: VkSurfaceKHR = 0;
-        
-                    let handle = instance.handle();
-        
-                    let surface_creation_result = SDL_Vulkan_CreateSurface(
-                        self.window,
-                        ash::vk::Handle::as_raw(handle) as usize,
-                        &mut surface,
-                    );
-                    match surface_creation_result {
-                        SDL_bool::SDL_TRUE => Ok(ash::vk::SurfaceKHR::from_raw(surface)),
-                        SDL_bool::SDL_FALSE => Err(SDL2Error::new(std::ptr::null())),
-                    }
+            Option::Some(_) => Err(SDL2Error::new(std::ptr::null())),
+            Option::None => unsafe {
+                let mut surface: VkSurfaceKHR = 0;
+
+                let surface_creation_result =
+                    SDL_Vulkan_CreateSurface(self.window, instance.as_raw(), &mut surface);
+                match surface_creation_result {
+                    SDL_bool::SDL_TRUE => Ok(vulkan_framework::surface::Surface::from_raw(
+                        instance.clone(),
+                        surface,
+                    )),
+                    SDL_bool::SDL_FALSE => Err(SDL2Error::new(std::ptr::null())),
                 }
-            }
+            },
         }
-        
     }
 
     pub fn get_vulkan_instance_extensions(&mut self) -> Result<Vec<String>, SDL2Error> {

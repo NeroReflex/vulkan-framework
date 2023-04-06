@@ -3,3 +3,4 @@ pub mod instance;
 pub mod prelude;
 pub mod queue_family;
 pub mod result;
+pub mod surface;

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use ash;
 use vulkan_framework;
+use vulkan_framework_sdl2_glue;
 
 fn main() {
     let mut instance_extensions = Vec::<String>::new();
@@ -13,28 +13,35 @@ fn main() {
         //ash::extensions::khr::swapchain::name
     ];
     let device_layers: Vec<String> = vec![];
-    let mut required_queues: Vec<vulkan_framework::queue_family::ConcreteQueueFamilyDescriptor> =
-        vec![];
+    let mut required_queues: Vec<vulkan_framework::queue_family::ConcreteQueueFamilyDescriptor> = vec![
+        /*vulkan_framework::queue_family::ConcreteQueueFamilyDescriptor::new(
+            [
+                vulkan_framework::queue_family::QueueFamilySupportedOperationType::Transfer,
+                vulkan_framework::queue_family::QueueFamilySupportedOperationType::Compute,
+            ]
+            .as_slice(),
+            [1.0f32].as_slice(),
+        ),*/
+    ];
 
-    let sdl_context = sdl2::init().unwrap();
-    let video_subsystem = sdl_context.video().unwrap();
+    // initialize sdl2 context
+    vulkan_framework_sdl2_glue::init();
 
     {
         // this parenthesis contains the window handle and closes before calling deinitialize(). This is important as Window::drop() MUST be called BEFORE calling deinitialize()!!!
         // create a sdl2 window
-        match video_subsystem.window("Window", 800, 600).vulkan().build() {
-            Ok(window) => {
+        match vulkan_framework_sdl2_glue::window::Window::new(&app_name, 640, 480, None, None) {
+            Ok(mut window) => {
                 println!("SDL2 window created");
 
-                match window.vulkan_instance_extensions() {
+                match window.get_vulkan_instance_extensions() {
                     Ok(required_extensions) => {
                         println!("To present frames in this window the following vulkan instance extensions must be enabled: ");
 
                         for (required_instance_extension_index, required_instance_extension_name) in
                             required_extensions.iter().enumerate()
                         {
-                            instance_extensions
-                                .push(String::from(*required_instance_extension_name));
+                            instance_extensions.push(required_instance_extension_name.clone());
                             println!(
                                 "    {}) {}",
                                 required_instance_extension_index,
@@ -60,18 +67,9 @@ fn main() {
                 ) {
                     println!("Vulkan instance created");
 
-                    match window
-                        .vulkan_create_surface(ash::vk::Handle::as_raw(
-                            instance.native_handle().handle().clone(),
-                        ) as sdl2::video::VkInstance)
-                    {
-                        Ok(surface_handle) => {
+                    match window.create_surface(instance.clone()) {
+                        Ok(surface) => {
                             println!("Vulkan rendering surface created successfully");
-
-                            let surface = vulkan_framework::surface::Surface::from_raw(
-                                instance.clone(),
-                                surface_handle,
-                            );
 
                             required_queues.push(
                                 vulkan_framework::queue_family::ConcreteQueueFamilyDescriptor::new(
@@ -112,4 +110,7 @@ fn main() {
             }
         }
     }
+
+    // deinitialize sdl2 context
+    vulkan_framework_sdl2_glue::deinit();
 }

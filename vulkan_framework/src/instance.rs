@@ -3,8 +3,8 @@ use ash::prelude::VkResult;
 use crate::result::VkError;
 
 use std::os::raw::c_char;
-use std::sync::{Arc, Weak};
 use std::string::String;
+use std::sync::{Arc, Weak};
 use std::vec::Vec;
 
 pub enum InstanceAPIVersion {
@@ -73,6 +73,10 @@ impl Instance {
 
     pub fn is_debugging_enabled(&self) -> bool {
         self.data.validation_layers
+    }
+
+    pub fn as_raw(&self) -> usize {
+        ash::vk::Handle::as_raw(self.instance.handle()) as usize
     }
 
     /**
