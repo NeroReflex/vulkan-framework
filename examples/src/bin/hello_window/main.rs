@@ -50,7 +50,7 @@ fn main() {
                         }
                     }
                     Err(err) => {
-                        println!("Error fetching required vulkan instance extensions!");
+                        println!("Error fetching required vulkan instance extensions: {}", err);
                     }
                 }
 
