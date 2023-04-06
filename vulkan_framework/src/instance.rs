@@ -3,7 +3,7 @@ use ash::prelude::VkResult;
 use crate::result::VkError;
 
 use std::os::raw::c_char;
-use std::rc::{Rc, Weak};
+use std::sync::{Arc, Weak};
 use std::string::String;
 use std::vec::Vec;
 
@@ -87,7 +87,7 @@ impl Instance {
         api_version: &InstanceAPIVersion,
         enable_present: bool,
         enable_debugging: bool,
-    ) -> Result<Rc<Instance>, VkError> {
+    ) -> Result<Arc<Instance>, VkError> {
         let mut app_bytes = app_name.to_owned().into_bytes();
         app_bytes.push(b"\0"[0]);
 
@@ -191,7 +191,7 @@ impl Instance {
                         false => None,
                     };
 
-                    return Ok(Rc::new(Instance {
+                    return Ok(Arc::new(Instance {
                         data: data,
                         entry: entry,
                         instance: instance,

@@ -1,17 +1,14 @@
-use crate::instance;
 use crate::instance::InstanceOwned;
 use crate::queue_family;
 
 use ash;
-use ash::extensions;
-use ash::vk::Handle;
 
 use crate::result::VkError;
 
 use std::os::raw::c_char;
 use std::vec::Vec;
 
-use std::rc::{Rc, Weak};
+use std::sync::{Arc, Weak};
 
 pub(crate) trait DeviceOwned {
     fn get_parent_device(&self) -> Weak<crate::device::Device>;
@@ -192,7 +189,7 @@ impl Device {
         queue_descriptors: &[queue_family::ConcreteQueueFamilyDescriptor],
         device_extensions: &[String],
         device_layers: &[String],
-    ) -> Result<Rc<Device>, VkError> {
+    ) -> Result<Arc<Device>, VkError> {
         // queue cannot be capable of nothing...
         if queue_descriptors.is_empty() {
             return Err(VkError {});
@@ -447,7 +444,7 @@ impl Device {
                                         &device_create_info,
                                         instance.get_alloc_callbacks(),
                                     ) {
-                                        Ok(device) => Ok(Rc::new(Self {
+                                        Ok(device) => Ok(Arc::new(Self {
                                             data: Box::new(selected_device),
                                             device: device,
                                             instance: instance_weak_ptr,

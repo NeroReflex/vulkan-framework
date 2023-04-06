@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use vulkan_framework;
 
@@ -28,7 +28,7 @@ fn main() {
         println!("Vulkan instance created");
 
         if let Ok(_device) = vulkan_framework::device::Device::new(
-            Rc::downgrade(&instance),
+            Arc::downgrade(&instance),
             required_queues.as_slice().as_ref(),
             device_extensions.as_slice().as_ref(),
             device_layers.as_slice().as_ref(),

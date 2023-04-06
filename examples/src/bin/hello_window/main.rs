@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use vulkan_framework;
 use vulkan_framework_sdl2_glue;
@@ -10,7 +10,7 @@ fn main() {
     let api_version = vulkan_framework::instance::InstanceAPIVersion::Version1_0;
 
     let device_extensions: Vec<String> = vec![
-        //ash::vk::extensions::
+        //ash::extensions::khr::swapchain::name
     ];
     let device_layers: Vec<String> = vec![];
     let mut required_queues: Vec<vulkan_framework::queue_family::ConcreteQueueFamilyDescriptor> = vec![
@@ -80,7 +80,7 @@ fn main() {
                             );
 
                             if let Ok(_device) = vulkan_framework::device::Device::new(
-                                Rc::downgrade(&instance),
+                                Arc::downgrade(&instance),
                                 required_queues.as_slice().as_ref(),
                                 device_extensions.as_slice().as_ref(),
                                 device_layers.as_slice().as_ref(),
