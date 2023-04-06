@@ -150,6 +150,12 @@
                 }
             },
             "args": [],
+            "env":
+            {
+                //"VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/radeon_icd.i686.json:/usr/share/vulkan/icd.d/radeon_icd.x86_64.json"
+                "VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/amd_icd32.json:/usr/share/vulkan/icd.d/amd_icd64.json"
+                //"VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/amd_pro_icd32.json:/usr/share/vulkan/icd.d/amd_pro_icd64.json"
+            },
             "cwd": "${workspaceFolder}"
         },
         {
