@@ -297,7 +297,7 @@ impl Device {
                                     let mut selected_queue_family: Option<(usize, u16)> = None;
 
                                     // the following for loop will search for the best fit for requested capabilities
-                                    'suitable_queue_family_search: for (
+                                    /*'suitable_queue_family_search:*/ for (
                                         family_index,
                                         current_descriptor,
                                     ) in
