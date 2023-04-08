@@ -4,14 +4,13 @@ use vulkan_framework;
 use vulkan_framework_sdl2_glue;
 
 fn main() {
-    let mut instance_extensions = Vec::<String>::new();
+    let mut instance_extensions = vec![String::from("VK_EXT_debug_utils")];
+
     let engine_name = String::from("None");
     let app_name = String::from("hello_window");
     let api_version = vulkan_framework::instance::InstanceAPIVersion::Version1_0;
 
-    let device_extensions: Vec<String> = vec![
-        //ash::extensions::khr::swapchain::name
-    ];
+    let device_extensions: Vec<String> = vec![String::from("VK_KHR_swapchain")];
     let device_layers: Vec<String> = vec![];
     let mut required_queues: Vec<vulkan_framework::queue_family::ConcreteQueueFamilyDescriptor> = vec![
         /*vulkan_framework::queue_family::ConcreteQueueFamilyDescriptor::new(
@@ -63,7 +62,6 @@ fn main() {
                     &app_name,
                     &api_version,
                     true,
-                    true,
                 ) {
                     println!("Vulkan instance created");
 
@@ -92,10 +90,6 @@ fn main() {
                             } else {
                                 println!("Error opening a suitable device");
                             }
-
-                            // TODO: destroy surface
-
-                            //println!("HERE");
                         }
                         Err(err) => {
                             println!("Error creating vulkan rendering surface: {}", err);

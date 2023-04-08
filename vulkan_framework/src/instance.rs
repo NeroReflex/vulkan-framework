@@ -27,12 +27,16 @@ pub(crate) struct InstanceData {
     alloc_callbacks: Option<ash::vk::AllocationCallbacks>,
 }
 
+pub struct InstanceExtensions {
+    surface_khr_ext: Option<ash::extensions::khr::Surface>,
+    debug_ext_ext: Option<ash::extensions::ext::DebugUtils>,
+}
+
 pub struct Instance {
     data: Box<InstanceData>,
     entry: ash::Entry,
     instance: ash::Instance,
-    surface_khr_ext: Option<ash::extensions::khr::Surface>,
-    debug_ext_ext: Option<ash::extensions::ext::DebugUtils>,
+    extensions: InstanceExtensions,
 }
 
 impl Drop for Instance {
@@ -47,14 +51,14 @@ impl Drop for Instance {
 
 impl Instance {
     pub(crate) fn get_debug_ext_extension(&self) -> Option<&ash::extensions::ext::DebugUtils> {
-        match self.debug_ext_ext.as_ref() {
+        match self.extensions.debug_ext_ext.as_ref() {
             Some(debug_ext_ext) => Some(debug_ext_ext),
             None => None,
         }
     }
 
     pub(crate) fn get_surface_khr_extension(&self) -> Option<&ash::extensions::khr::Surface> {
-        match self.surface_khr_ext.as_ref() {
+        match self.extensions.surface_khr_ext.as_ref() {
             Some(ext) => Some(ext),
             None => None,
         }
@@ -80,8 +84,17 @@ impl Instance {
     }
 
     /**
-     * Creates a new vulkan instance
+     * Creates a new vulkan instance with required instance extensions.
      *
+     * For each requested extension that is also supported by the framework an handle will be created and the user
+     * should be using it in case low-level operations are to be performed with native handles.
+     *
+     * *Hint*: for development build you should specify VK_EXT_debug_utils: it will help you a lot with validation layers
+     * giving you names of erroring stuff instead of raw handles.
+     *
+     * Supported extensions are:
+     *   - VK_EXT_debug_utils
+     *   - VK_KHR_surface
      *
      */
     pub fn new(
@@ -89,7 +102,6 @@ impl Instance {
         engine_name: &String,
         app_name: &String,
         api_version: &InstanceAPIVersion,
-        enable_present: bool,
         enable_debugging: bool,
     ) -> Result<Arc<Instance>, VkError> {
         let mut app_bytes = app_name.to_owned().into_bytes();
@@ -181,26 +193,38 @@ impl Instance {
                         None => None,
                     },
                 ) {
-                    //let swapchain_ext = ash::extensions::khr::Swapchain::new(&instance, )
-
                     // also enable debugging extension for debug build
-                    let debug_ext = match enable_debugging {
-                        true => Some(ash::extensions::ext::DebugUtils::new(&entry, &instance)),
-                        false => None,
+                    let debug_ext = match instance_extensions.iter().any(|ext| {
+                        *ext == String::from(
+                            ash::extensions::ext::DebugUtils::name()
+                                .to_str()
+                                .unwrap_or(""),
+                        )
+                    }) {
+                        true => {
+                            Option::Some(ash::extensions::ext::DebugUtils::new(&entry, &instance))
+                        }
+                        false => Option::None,
                     };
 
                     // if requested enable the swapchain required extension(s)
-                    let surface_ext = match enable_present {
-                        true => Some(ash::extensions::khr::Surface::new(&entry, &instance)),
-                        false => None,
+                    let surface_ext = match instance_extensions.iter().any(|ext| {
+                        *ext == String::from(
+                            ash::extensions::khr::Surface::name().to_str().unwrap_or(""),
+                        )
+                    }) {
+                        true => Option::Some(ash::extensions::khr::Surface::new(&entry, &instance)),
+                        false => Option::None,
                     };
 
                     return Ok(Arc::new(Instance {
                         data: data,
                         entry: entry,
                         instance: instance,
-                        surface_khr_ext: surface_ext,
-                        debug_ext_ext: debug_ext,
+                        extensions: InstanceExtensions {
+                            surface_khr_ext: surface_ext,
+                            debug_ext_ext: debug_ext,
+                        },
                     }));
                 }
 

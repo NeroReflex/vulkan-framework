@@ -14,6 +14,10 @@ pub(crate) trait DeviceOwned {
     fn get_parent_device(&self) -> Weak<crate::device::Device>;
 }
 
+struct DeviceExtensions {
+    swapchain_khr_ext: Option<ash::extensions::khr::Swapchain>,
+}
+
 struct DeviceData {
     selected_physical_device: ash::vk::PhysicalDevice,
     selected_device_features: ash::vk::PhysicalDeviceFeatures,
@@ -27,6 +31,7 @@ struct DeviceData {
 pub struct Device {
     data: Box<DeviceData>,
     instance: Weak<crate::instance::Instance>,
+    extensions: DeviceExtensions,
     device: ash::Device,
 }
 
@@ -86,6 +91,8 @@ impl Device {
 
         let mut score = 0;
 
+        let mut present_requested = false;
+
         for feature in operations {
             // get an initial score based on support of stuff
             match queue_family
@@ -112,11 +119,6 @@ impl Device {
                 false => score += 0,
             };
 
-            /*match queue_family.queue_flags.contains(ash::vk::QueueFlags::) {
-                true => score += 1,
-                false => score += 0
-            };*/
-
             match feature {
                 queue_family::QueueFamilySupportedOperationType::Transfer => {
                     if !queue_family
@@ -129,6 +131,7 @@ impl Device {
                     score -= 1;
                 }
                 queue_family::QueueFamilySupportedOperationType::Present(surface) => {
+                    present_requested = true;
                     match surface.upgrade() {
                         Some(surface_handle) => match surface_extension {
                             Some(ext) => {
@@ -197,6 +200,29 @@ impl Device {
         Some(score)
     }
 
+    /**
+     * Creates a new device from the given instance if a suitable one is found.
+     *
+     * This method can be called in every point in time, but it will not succeed if every Arc<Instance>
+     * has been dropped and therefore the vulkan instance is not valid anymore.
+     *
+     * This method will fail if the given amount of queue families is not available or it is impossible to find
+     * one or more suitable queue family for each family descriptor.
+     *
+     * For each requested extension that is also supported by the framework an handle will be created and the user
+     * should be using it in case low-level operations are to be performed with native handles.
+     *
+     * If the device is created successfully the given queue family descriptor index will be used to obtain the
+     * corresponding queue family on the opened device.
+     *
+     * Supported extensions are:
+     *   - VK_KHR_swapchain
+     *
+     * @param instance_weak_ptr a weak reference to the vulkan instance, will be upgraded to an Arc, will be stored inside the resulting Device (if any) (framework)
+     * @param queue_descriptors a slice that specified queue family minimal capabilities
+     * @param device_extensions a list of device extensions to be enabled
+     * @param device_layers a list of device layers to be enabled
+     */
     pub fn new(
         instance_weak_ptr: Weak<crate::instance::Instance>,
         queue_descriptors: &[queue_family::ConcreteQueueFamilyDescriptor],
@@ -299,6 +325,8 @@ impl Device {
                                     usize,
                                     &ash::vk::QueueFamilyProperties,
                                 )> = queue_family_properties.iter().enumerate().collect();
+
+                                let mut swapchain_khr_ext_to_be_enabled = false;
 
                                 for current_requested_queue_family_descriptor in
                                     queue_descriptors.iter()
@@ -455,11 +483,43 @@ impl Device {
                                         &device_create_info,
                                         instance.get_alloc_callbacks(),
                                     ) {
-                                        Ok(device) => Ok(Arc::new(Self {
-                                            data: Box::new(selected_device),
-                                            device: device,
-                                            instance: instance_weak_ptr,
-                                        })),
+                                        Ok(device) => {
+                                            // open requested swapchain extensions (or implied ones)
+                                            let swapchain_ext: Option<
+                                                ash::extensions::khr::Swapchain,
+                                            > = match device_extensions.iter().any(|ext| {
+                                                *ext == String::from(
+                                                    ash::extensions::khr::Swapchain::name()
+                                                        .to_str()
+                                                        .unwrap_or(""),
+                                                )
+                                            }) {
+                                                true => Option::Some(
+                                                    ash::extensions::khr::Swapchain::new(
+                                                        instance.native_handle(),
+                                                        &device,
+                                                    ),
+                                                ),
+                                                false => Option::None,
+                                            };
+
+                                            match instance.get_debug_ext_extension() {
+                                                Some(ext) => {
+                                                    // TODO: set device name
+                                                    todo!();
+                                                }
+                                                None => {}
+                                            }
+
+                                            Ok(Arc::new(Self {
+                                                data: Box::new(selected_device),
+                                                device: device,
+                                                extensions: DeviceExtensions {
+                                                    swapchain_khr_ext: swapchain_ext,
+                                                },
+                                                instance: instance_weak_ptr,
+                                            }))
+                                        }
                                         Err(_err) => Err(VkError {}),
                                     };
                                 }
