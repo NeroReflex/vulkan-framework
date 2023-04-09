@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use ash;
-use vulkan_framework;
+
+use vulkan_framework::queue_family::*;
+use vulkan_framework::device::*;
+use vulkan_framework::instance::*;
 
 fn main() {
     let mut instance_extensions = vec![String::from("VK_EXT_debug_utils")];
@@ -46,7 +49,7 @@ fn main() {
                     }
                 }
 
-                if let Ok(instance) = vulkan_framework::instance::Instance::new(
+                if let Ok(instance) = Instance::new(
                     instance_extensions.as_slice(),
                     &engine_name,
                     &app_name,
@@ -63,19 +66,17 @@ fn main() {
                         Ok(surface_handle) => {
                             println!("Vulkan rendering surface created successfully");
 
-                            let surface: Arc<vulkan_framework::surface::Surface>;
-
                             match vulkan_framework::surface::Surface::from_raw(
                                 Arc::downgrade(&instance),
                                 surface_handle,
                             ) {
                                 Ok(sfc) => {
-                                    let required_queues: Vec<vulkan_framework::queue_family::ConcreteQueueFamilyDescriptor> = vec![
-                                        vulkan_framework::queue_family::ConcreteQueueFamilyDescriptor::new(
+                                    let required_queues: Vec<ConcreteQueueFamilyDescriptor> = vec![
+                                        ConcreteQueueFamilyDescriptor::new(
                                             [
-                                                vulkan_framework::queue_family::QueueFamilySupportedOperationType::Graphics,
-                                                vulkan_framework::queue_family::QueueFamilySupportedOperationType::Transfer,
-                                                vulkan_framework::queue_family::QueueFamilySupportedOperationType::Present(Arc::downgrade(&sfc))
+                                                QueueFamilySupportedOperationType::Graphics,
+                                                QueueFamilySupportedOperationType::Transfer,
+                                                QueueFamilySupportedOperationType::Present(Arc::downgrade(&sfc))
                                                 ].as_slice(),
                                             [1.0f32].as_slice(),
                                         )
@@ -83,11 +84,12 @@ fn main() {
 
                                     println!("Surface registered");
 
-                                    if let Ok(_device) = vulkan_framework::device::Device::new(
+                                    if let Ok(_device) = Device::new(
                                         Arc::downgrade(&instance),
                                         required_queues.as_slice().as_ref(),
                                         device_extensions.as_slice().as_ref(),
                                         device_layers.as_slice().as_ref(),
+                                        Some("Opened Device")
                                     ) {
                                         println!("Device opened successfully");
                                     } else {

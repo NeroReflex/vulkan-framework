@@ -49,8 +49,11 @@ impl Surface {
                 surface: ash::vk::Handle::from_raw(raw_surface_khr),
             })),
             None => {
-                println!("The provided Instance does not exists (anymore?). Have you dropped the last Arc<> holding it before calling this function?");
-                assert_eq!(true, false);
+                #[cfg(debug_assertions)]
+                {
+                    println!("The provided Instance does not exists (anymore?). Have you dropped the last Arc<> holding it before calling this function?");
+                    assert_eq!(true, false);
+                }
 
                 Err(VulkanError::new())
             }

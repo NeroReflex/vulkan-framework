@@ -1,18 +1,19 @@
 use std::sync::Arc;
 
-use vulkan_framework;
+use vulkan_framework::instance::*;
+use vulkan_framework::device::*;
 
 fn main() {
     let instance_extensions = Vec::<String>::new();
     let engine_name = String::from("None");
     let app_name = String::from("hello_device");
-    let api_version = vulkan_framework::instance::InstanceAPIVersion::Version1_0;
+    let api_version = InstanceAPIVersion::Version1_0;
 
     let device_extensions: Vec<String> = vec![];
     let device_layers: Vec<String> = vec![];
     
 
-    if let Ok(instance) = vulkan_framework::instance::Instance::new(
+    if let Ok(instance) = Instance::new(
         instance_extensions.as_slice(),
         &engine_name,
         &app_name,
@@ -28,11 +29,12 @@ fn main() {
             ),
         ];
 
-        if let Ok(_device) = vulkan_framework::device::Device::new(
+        if let Ok(_device) = Device::new(
             Arc::downgrade(&instance),
             required_queues.as_slice().as_ref(),
             device_extensions.as_slice().as_ref(),
             device_layers.as_slice().as_ref(),
+            Some("Opened Device")
         ) {
             println!("Device opened successfully");
         } else {

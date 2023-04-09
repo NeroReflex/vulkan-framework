@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use vulkan_framework;
+use vulkan_framework::instance::*;
+use vulkan_framework::device::*;
+use vulkan_framework::queue_family::*;
+
 use vulkan_framework_glfw_glue;
 
 fn main() {
@@ -46,7 +49,7 @@ fn main() {
                     }
                 }
 
-                if let Ok(instance) = vulkan_framework::instance::Instance::new(
+                if let Ok(instance) = Instance::new(
                     instance_extensions.as_slice(),
                     &engine_name,
                     &app_name,
@@ -59,22 +62,23 @@ fn main() {
                         Ok(surface) => {
                             println!("Vulkan rendering surface created successfully");
 
-                            let required_queues: Vec<vulkan_framework::queue_family::ConcreteQueueFamilyDescriptor> = vec![
-                                vulkan_framework::queue_family::ConcreteQueueFamilyDescriptor::new(
+                            let required_queues: Vec<ConcreteQueueFamilyDescriptor> = vec![
+                                ConcreteQueueFamilyDescriptor::new(
                                     [
-                                        vulkan_framework::queue_family::QueueFamilySupportedOperationType::Graphics,
-                                        vulkan_framework::queue_family::QueueFamilySupportedOperationType::Transfer,
-                                        vulkan_framework::queue_family::QueueFamilySupportedOperationType::Present(Arc::downgrade(&surface))
+                                        QueueFamilySupportedOperationType::Graphics,
+                                        QueueFamilySupportedOperationType::Transfer,
+                                        QueueFamilySupportedOperationType::Present(Arc::downgrade(&surface))
                                         ].as_slice(),
                                     [1.0f32].as_slice(),
                                 )
                             ];
 
-                            if let Ok(_device) = vulkan_framework::device::Device::new(
+                            if let Ok(_device) = Device::new(
                                 Arc::downgrade(&instance),
                                 required_queues.as_slice().as_ref(),
                                 device_extensions.as_slice().as_ref(),
                                 device_layers.as_slice().as_ref(),
+                                Some("Opened Device")
                             ) {
                                 println!("Device opened successfully");
                             } else {

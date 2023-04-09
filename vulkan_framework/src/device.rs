@@ -91,8 +91,6 @@ impl Device {
 
         let mut score = 0;
 
-        let mut present_requested = false;
-
         for feature in operations {
             // get an initial score based on support of stuff
             match queue_family
@@ -131,7 +129,6 @@ impl Device {
                     score -= 1;
                 }
                 queue_family::QueueFamilySupportedOperationType::Present(surface) => {
-                    present_requested = true;
                     match surface.upgrade() {
                         Some(surface_handle) => match surface_extension {
                             Some(ext) => {
@@ -228,6 +225,7 @@ impl Device {
         queue_descriptors: &[queue_family::ConcreteQueueFamilyDescriptor],
         device_extensions: &[String],
         device_layers: &[String],
+        debug_name: Option<&str>
     ) -> Result<Arc<Device>, VkError> {
         // queue cannot be capable of nothing...
         if queue_descriptors.is_empty() {
@@ -503,15 +501,40 @@ impl Device {
                                                 false => Option::None,
                                             };
 
+                                            
                                             match instance.get_debug_ext_extension() {
                                                 Some(ext) => {
-                                                    // TODO: set device name
-                                                    let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::builder()
-                                                        .object_type(ash::vk::ObjectType::DEVICE)
-                                                        .object_handle(ash::vk::Handle::as_raw(device.handle()))
-                                                        .build();
+                                                    match debug_name {
+                                                        Some(name) => {
+                                                            let mut obj_name_bytes = name.as_bytes().iter().map(|a| *a).collect::<Vec<u8>>();
+                                                            obj_name_bytes.push(0x00u8);
+                                                            let object_name = std::ffi::CStr::from_bytes_with_nul_unchecked(obj_name_bytes.as_slice());
+                                                            // set device name for debugging
+                                                            let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::builder()
+                                                                .object_type(ash::vk::ObjectType::DEVICE)
+                                                                .object_handle(ash::vk::Handle::as_raw(device.handle()))
+                                                                .object_name(object_name)
+                                                                .build();
 
-                                                    let _ = ext.set_debug_utils_object_name(device.handle(), &dbg_info);
+                                                            match ext.set_debug_utils_object_name(device.handle(), &dbg_info) {
+                                                                Ok(_) => {
+                                                                    #[cfg(debug_assertions)]
+                                                                    {
+                                                                        println!("Device Debug object name changed");
+                                                                    }
+                                                                }
+                                                                Err(err) => {
+                                                                    #[cfg(debug_assertions)]
+                                                                    {
+                                                                        println!("Error setting the Debug name for the newly created Device, will use handle. Error: {}", err);
+                                                                        assert_eq!(true, false);
+                                                                    }
+                                                                }
+                                                            }
+                                                        },
+                                                        None => {}
+                                                    };
+                                                    
                                                 }
                                                 None => {}
                                             }
