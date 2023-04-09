@@ -1,11 +1,11 @@
-use std::sync::{Arc, Weak};
+use std::sync::{Arc, Weak, Mutex};
 
 #[derive(/*Copy,*/ Clone)]
 pub enum QueueFamilySupportedOperationType {
     Compute,
     Graphics,
     Transfer,
-    Present(Weak<crate::surface::Surface>),
+    Present(Weak<Mutex<crate::surface::Surface>>),
 }
 
 #[derive(Clone)]

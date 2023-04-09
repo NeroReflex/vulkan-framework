@@ -1,30 +1,44 @@
 use ash;
 
-use std::sync::{Arc, Weak};
+use std::sync::{Arc, Weak, Mutex};
 
 use crate::instance::Instance;
 use crate::prelude::*;
 
 pub struct Surface {
-    instance: Weak<Instance>,
+    instance: Weak<Mutex<Instance>>,
     surface: ash::vk::SurfaceKHR,
 }
 
 impl Drop for Surface {
     fn drop(&mut self) {
         match self.instance.upgrade() {
-            Some(framework_instance) => match framework_instance.get_surface_khr_extension() {
-                Some(surface_khr_ext) => unsafe {
-                    surface_khr_ext
-                        .destroy_surface(self.surface, framework_instance.get_alloc_callbacks());
-                },
-                None => {
-                    #[cfg(debug_assertions)]
-                    {
-                        println!("Surface KHR extension has not been loaded, have you forgotten to specify surface support at instance creation? You have to call manually call vkDestroySurfaceKHR before destroy the Instance.");
-                        assert_eq!(true, false)
+            Some(instance_mutex) => {
+                match instance_mutex.lock() {
+                    Ok(instance) => {
+                        match instance.get_surface_khr_extension() {
+                            Some(surface_khr_ext) => unsafe {
+                                surface_khr_ext
+                                    .destroy_surface(self.surface, instance.get_alloc_callbacks());
+                            },
+                            None => {
+                                #[cfg(debug_assertions)]
+                                {
+                                    println!("Surface KHR extension has not been loaded, have you forgotten to specify surface support at instance creation? You have to call manually call vkDestroySurfaceKHR before destroy the Instance.");
+                                    assert_eq!(true, false)
+                                }
+                            }
+                        }
+                    },
+                    Err(err) => {
+                        #[cfg(debug_assertions)]
+                        {
+                            println!("Error acquiring Instance mutex: {}", err);
+                            assert_eq!(true, false)
+                        }
                     }
                 }
+                
             },
             None => {
                 #[cfg(debug_assertions)]
@@ -38,16 +52,16 @@ impl Drop for Surface {
 }
 
 impl Surface {
-    pub fn new(instance: Weak<Instance>, surface: ash::vk::SurfaceKHR) -> VulkanResult<Arc<Self>> {
+    pub fn new(instance: Weak<Mutex<Instance>>, surface: ash::vk::SurfaceKHR) -> VulkanResult<Arc<Mutex<Self>>> {
         Self::from_raw(instance, ash::vk::Handle::as_raw(surface) as u64)
     }
 
-    pub fn from_raw(instance: Weak<Instance>, raw_surface_khr: u64) -> VulkanResult<Arc<Self>> {
+    pub fn from_raw(instance: Weak<Mutex<Instance>>, raw_surface_khr: u64) -> VulkanResult<Arc<Mutex<Self>>> {
         match instance.upgrade() {
-            Some(_) => Ok(Arc::new(Self {
+            Some(_) => Ok(Arc::new(Mutex::new(Self {
                 instance: instance,
                 surface: ash::vk::Handle::from_raw(raw_surface_khr),
-            })),
+            }))),
             None => {
                 #[cfg(debug_assertions)]
                 {

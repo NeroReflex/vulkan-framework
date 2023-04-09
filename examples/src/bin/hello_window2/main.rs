@@ -37,7 +37,7 @@ fn main() {
 
     let raw_surface_khr = window
         .vulkan_create_surface(
-            ash::vk::Handle::as_raw(instance.native_handle().handle().clone())
+            ash::vk::Handle::as_raw(instance.lock().unwrap().native_handle().handle().clone())
                 as sdl2::video::VkInstance,
         )
         .unwrap();

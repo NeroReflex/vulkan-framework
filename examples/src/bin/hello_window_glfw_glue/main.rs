@@ -58,7 +58,7 @@ fn main() {
                 ) {
                     println!("Vulkan instance created");
 
-                    match window.create_surface(instance.clone()) {
+                    match window.create_surface(Arc::downgrade(&instance)) {
                         Ok(surface) => {
                             println!("Vulkan rendering surface created successfully");
 

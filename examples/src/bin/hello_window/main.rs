@@ -58,9 +58,11 @@ fn main() {
                 ) {
                     println!("Vulkan instance created");
 
+                    let instance_lock = instance.lock().unwrap();
+
                     match window
                         .vulkan_create_surface(ash::vk::Handle::as_raw(
-                            instance.native_handle().handle().clone(),
+                            instance_lock.native_handle().handle().clone(),
                         ) as sdl2::video::VkInstance)
                     {
                         Ok(surface_handle) => {
@@ -84,6 +86,9 @@ fn main() {
 
                                     println!("Surface registered");
 
+                                    // creating a new device requires a MutexGuard, so we must first destroy the one we already have
+                                    drop(instance_lock);
+                                    
                                     if let Ok(_device) = Device::new(
                                         Arc::downgrade(&instance),
                                         required_queues.as_slice().as_ref(),

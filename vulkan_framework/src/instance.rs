@@ -4,7 +4,7 @@ use crate::result::VkError;
 
 use std::os::raw::c_char;
 use std::string::String;
-use std::sync::{Arc, Weak};
+use std::sync::{Arc, Weak, Mutex};
 use std::vec::Vec;
 
 pub enum InstanceAPIVersion {
@@ -15,7 +15,7 @@ pub enum InstanceAPIVersion {
 }
 
 pub(crate) trait InstanceOwned {
-    fn get_parent_instance(&self) -> Weak<Instance>;
+    fn get_parent_instance(&self) -> Weak<Mutex<Instance>>;
 }
 
 pub(crate) struct InstanceData {
@@ -103,7 +103,7 @@ impl Instance {
         app_name: &String,
         api_version: &InstanceAPIVersion,
         enable_debugging: bool,
-    ) -> Result<Arc<Instance>, VkError> {
+    ) -> Result<Arc<Mutex<Instance>>, VkError> {
         let mut app_bytes = app_name.to_owned().into_bytes();
         app_bytes.push(b"\0"[0]);
 
@@ -217,7 +217,7 @@ impl Instance {
                         false => Option::None,
                     };
 
-                    return Ok(Arc::new(Instance {
+                    return Ok(Arc::new(Mutex::new(Instance {
                         data: data,
                         entry: entry,
                         instance: instance,
@@ -225,7 +225,7 @@ impl Instance {
                             surface_khr_ext: surface_ext,
                             debug_ext_ext: debug_ext,
                         },
-                    }));
+                    })));
                 }
 
                 return Err(VkError {});
