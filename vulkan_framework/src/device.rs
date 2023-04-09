@@ -11,7 +11,7 @@ use std::vec::Vec;
 use std::sync::{Arc, Weak, Mutex};
 
 pub(crate) trait DeviceOwned {
-    fn get_parent_device(&self) -> Weak<crate::device::Device>;
+    fn get_parent_device(&self) -> Weak<Mutex<crate::device::Device>>;
 }
 
 struct DeviceExtensions {
