@@ -12,7 +12,6 @@ fn main() {
         &app_name,
         &api_version,
         false,
-        true,
     ) {
         println!("Vulkan instance created");
     } else {

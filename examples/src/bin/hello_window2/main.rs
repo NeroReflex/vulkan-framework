@@ -29,8 +29,7 @@ fn main() {
         &engine_name,
         &app_name,
         &api_version,
-        true,
-        true,
+        true
     ) {
         Ok(a) => a,
         Err(_) => return (),

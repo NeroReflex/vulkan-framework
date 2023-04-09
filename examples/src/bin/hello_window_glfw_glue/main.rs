@@ -12,16 +12,6 @@ fn main() {
 
     let device_extensions: Vec<String> = vec![String::from("VK_KHR_swapchain")];
     let device_layers: Vec<String> = vec![];
-    let mut required_queues: Vec<vulkan_framework::queue_family::ConcreteQueueFamilyDescriptor> = vec![
-        /*vulkan_framework::queue_family::ConcreteQueueFamilyDescriptor::new(
-            [
-                vulkan_framework::queue_family::QueueFamilySupportedOperationType::Transfer,
-                vulkan_framework::queue_family::QueueFamilySupportedOperationType::Compute,
-            ]
-            .as_slice(),
-            [1.0f32].as_slice(),
-        ),*/
-    ];
 
     // initialize sdl2 context
     vulkan_framework_sdl2_glue::init();
@@ -69,7 +59,7 @@ fn main() {
                         Ok(surface) => {
                             println!("Vulkan rendering surface created successfully");
 
-                            required_queues.push(
+                            let required_queues: Vec<vulkan_framework::queue_family::ConcreteQueueFamilyDescriptor> = vec![
                                 vulkan_framework::queue_family::ConcreteQueueFamilyDescriptor::new(
                                     [
                                         vulkan_framework::queue_family::QueueFamilySupportedOperationType::Graphics,
@@ -78,7 +68,7 @@ fn main() {
                                         ].as_slice(),
                                     [1.0f32].as_slice(),
                                 )
-                            );
+                            ];
 
                             if let Ok(_device) = vulkan_framework::device::Device::new(
                                 Arc::downgrade(&instance),

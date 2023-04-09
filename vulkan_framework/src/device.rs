@@ -506,7 +506,12 @@ impl Device {
                                             match instance.get_debug_ext_extension() {
                                                 Some(ext) => {
                                                     // TODO: set device name
-                                                    todo!();
+                                                    let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::builder()
+                                                        .object_type(ash::vk::ObjectType::DEVICE)
+                                                        .object_handle(ash::vk::Handle::as_raw(device.handle()))
+                                                        .build();
+
+                                                    let _ = ext.set_debug_utils_object_name(device.handle(), &dbg_info);
                                                 }
                                                 None => {}
                                             }
