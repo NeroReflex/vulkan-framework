@@ -3,12 +3,12 @@ use ash;
 use crate::instance::Instance;
 use crate::prelude::*;
 
-pub struct Surface<'surface> {
-    instance: &'surface Instance<'surface>,
+pub struct Surface<'ctx, 'instance> {
+    instance: &'instance Instance<'ctx>,
     surface: ash::vk::SurfaceKHR,
 }
 
-impl<'surface> Drop for Surface<'surface> {
+impl<'ctx, 'instance> Drop for Surface<'ctx, 'instance> {
     fn drop(&mut self) {
         match self.instance.get_surface_khr_extension() {
             Some(surface_khr_ext) => unsafe {
@@ -25,12 +25,12 @@ impl<'surface> Drop for Surface<'surface> {
     }
 }
 
-impl<'surface> Surface<'surface> {
-    pub fn new(instance: &'surface Instance, surface: ash::vk::SurfaceKHR) -> VulkanResult<Self> {
+impl<'ctx, 'instance> Surface<'ctx, 'instance> {
+    pub fn new(instance: &'instance Instance<'ctx>, surface: ash::vk::SurfaceKHR) -> VulkanResult<Self> {
         Self::from_raw(instance, ash::vk::Handle::as_raw(surface) as u64)
     }
 
-    pub fn from_raw(instance: &'surface Instance, raw_surface_khr: u64) -> VulkanResult<Self> {
+    pub fn from_raw(instance: &'instance Instance<'ctx>, raw_surface_khr: u64) -> VulkanResult<Self> {
         Ok(Self {
             instance: instance,
             surface: ash::vk::Handle::from_raw(raw_surface_khr),

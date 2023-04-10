@@ -8,8 +8,8 @@ use std::os::raw::c_char;
 use std::sync::Mutex;
 use std::vec::Vec;
 
-pub(crate) trait DeviceOwned<'device> {
-    fn get_parent_device(&self) -> &'device crate::device::Device;
+pub(crate) trait DeviceOwned<'instance> {
+    fn get_parent_device(&self) -> &'instance crate::device::Device;
 }
 
 struct DeviceExtensions {
@@ -26,28 +26,28 @@ struct DeviceData {
     validation_layers: bool,
 }
 
-pub struct Device<'device> {
+pub struct Device<'ctx, 'instance> {
     _name_bytes: Vec<u8>,
     data: Box<DeviceData>,
-    instance: &'device crate::instance::Instance<'device>,
+    instance: &'instance crate::instance::Instance<'ctx>,
     extensions: DeviceExtensions,
     device: ash::Device,
 }
 
-impl<'device> InstanceOwned<'device> for Device<'device> {
-    fn get_parent_instance(&self) -> &'device Instance {
+impl<'ctx, 'instance> InstanceOwned<'instance> for Device<'ctx, 'instance> {
+    fn get_parent_instance(&self) -> &Instance<'ctx> {
         self.instance
     }
 }
 
-impl<'device> Drop for Device<'device> {
+impl<'ctx, 'instance> Drop for Device<'ctx, 'instance> {
     fn drop(&mut self) {
         let alloc_callbacks = self.instance.get_alloc_callbacks();
         unsafe { self.device.destroy_device(alloc_callbacks) }
     }
 }
 
-impl<'device> Device<'device> {
+impl<'ctx, 'instance> Device<'ctx, 'instance> {
     pub fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.device.handle())
     }
@@ -72,15 +72,18 @@ impl<'device> Device<'device> {
      *
      * @return Some(score) iif all requested operations are supported for the given queue family, None otherwise.
      */
-    fn corresponds<'qd>(
-        operations: &[QueueFamilySupportedOperationType<'qd>],
+    fn corresponds<'surface>(
+        operations: &[QueueFamilySupportedOperationType<'ctx, 'instance, 'surface>],
         _instance: &ash::Instance,
         device: &ash::vk::PhysicalDevice,
         surface_extension: Option<&ash::extensions::khr::Surface>,
         queue_family: &ash::vk::QueueFamilyProperties,
         family_index: u32,
         max_queues: u32,
-    ) -> Option<u16> {
+    ) -> Option<u16>
+    where
+        'surface: 'instance
+    {
         if max_queues < queue_family.queue_count {
             return None;
         }
@@ -203,15 +206,15 @@ impl<'device> Device<'device> {
      * @param device_extensions a list of device extensions to be enabled
      * @param device_layers a list of device layers to be enabled
      */
-    pub fn new<'qd>(
-        instance: &'device Instance<'device>,
-        queue_descriptors: Vec<ConcreteQueueFamilyDescriptor<'qd>>,
+    pub fn new<'surface>(
+        instance: &'instance Instance<'ctx>,
+        queue_descriptors: Vec<ConcreteQueueFamilyDescriptor<'ctx, 'instance, 'surface>>,
         device_extensions: &[String],
         device_layers: &[String],
         debug_name: Option<&str>,
     ) -> Result<Self, VkError>
     where
-        'qd: 'device
+        'surface: 'instance
     {
         // queue cannot be capable of nothing...
         if queue_descriptors.is_empty() {

@@ -1,32 +1,32 @@
 use crate::{
     queue_family::*,
-    result::VkError, device::DeviceOwned, instance::InstanceOwned,
+    result::VkError, device::DeviceOwned,
 };
 
-pub struct Queue<'queue> {
-    queue_family: &'queue QueueFamily<'queue>,
+pub struct Queue<'ctx, 'instance, 'device, 'queue_family> {
+    queue_family: &'queue_family QueueFamily<'ctx, 'instance, 'device>,
     priority: f32,
     queue: ash::vk::Queue,
 }
 
-impl<'queue> QueueFamilyOwned<'queue> for Queue<'queue> {
-    fn get_parent_queue_family(&self) -> &'queue QueueFamily<'queue> {
+impl<'ctx, 'instance, 'device, 'queue_family> QueueFamilyOwned<'ctx, 'instance, 'device> for Queue<'ctx, 'instance, 'device, 'queue_family> {
+    fn get_parent_queue_family(&self) -> &'queue_family QueueFamily<'ctx, 'instance, 'device> {
         self.queue_family
     }
 }
 
-impl<'queue> Drop for Queue<'queue> {
+impl<'ctx, 'instance, 'device, 'queue_family> Drop for Queue<'ctx, 'instance, 'device, 'queue_family> {
     fn drop(&mut self) {
         // Nothing to be done here, seems like queues are not to be deleted... A real shame!
     }
 }
 
-impl<'queue> Queue<'queue> {
+impl<'ctx, 'instance, 'device, 'queue_family> Queue<'ctx, 'instance, 'device, 'queue_family> {
     pub fn get_priority(&self) -> f32 {
         self.priority
     }
     
-    pub fn new(queue_family: &'queue QueueFamily<'queue>) -> Result<Self, VkError> {
+    pub fn new(queue_family: &'queue_family QueueFamily<'ctx, 'instance, 'device>) -> Result<Self, VkError> {
         match queue_family.move_out_queue() {
             Some((queue_index, priority)) => {
                 let queue = unsafe {

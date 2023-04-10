@@ -12,8 +12,8 @@ pub enum InstanceAPIVersion {
     Version1_3,
 }
 
-pub(crate) trait InstanceOwned<'instance> {
-    fn get_parent_instance(&self) -> &'instance Instance;
+pub(crate) trait InstanceOwned<'ctx> {
+    fn get_parent_instance(&self) -> &'ctx Instance;
 }
 
 pub(crate) struct InstanceData {
@@ -30,15 +30,15 @@ pub struct InstanceExtensions {
     debug_ext_ext: Option<ash::extensions::ext::DebugUtils>,
 }
 
-pub struct Instance<'instance> {
-    marker: PhantomData<&'instance ()>,
+pub struct Instance<'ctx> {
+    marker: PhantomData<&'ctx ()>,
     data: Box<InstanceData>,
     entry: ash::Entry,
     instance: ash::Instance,
     extensions: InstanceExtensions,
 }
 
-impl<'instance> Drop for Instance<'instance> {
+impl<'ctx> Drop for Instance<'ctx> {
     fn drop(&mut self) {
         let alloc_callbacks = self.get_alloc_callbacks();
         //println!("> Dropping {}", self.name);
@@ -48,7 +48,7 @@ impl<'instance> Drop for Instance<'instance> {
     }
 }
 
-impl<'instance> Instance<'instance> {
+impl<'ctx> Instance<'ctx> {
     pub(crate) fn get_debug_ext_extension(&self) -> Option<&ash::extensions::ext::DebugUtils> {
         match self.extensions.debug_ext_ext.as_ref() {
             Some(debug_ext_ext) => Some(debug_ext_ext),

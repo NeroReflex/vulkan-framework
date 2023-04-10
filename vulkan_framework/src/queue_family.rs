@@ -8,22 +8,22 @@ use crate::{
 };
 
 #[derive(/*Copy,*/ Clone)]
-pub enum QueueFamilySupportedOperationType<'a> {
+pub enum QueueFamilySupportedOperationType<'ctx, 'instance, 'surface> {
     Compute,
     Graphics,
     Transfer,
-    Present(&'a crate::surface::Surface<'a>),
+    Present(&'surface crate::surface::Surface<'ctx, 'instance>),
 }
 
 #[derive(Clone)]
-pub struct ConcreteQueueFamilyDescriptor<'a> {
-    supported_operations: Vec<QueueFamilySupportedOperationType<'a>>,
+pub struct ConcreteQueueFamilyDescriptor<'ctx, 'instance, 'surface> {
+    supported_operations: Vec<QueueFamilySupportedOperationType<'ctx, 'instance, 'surface>>,
     queue_priorities: Vec<f32>,
 }
 
-impl<'a> ConcreteQueueFamilyDescriptor<'a> {
+impl<'ctx, 'instance, 'surface> ConcreteQueueFamilyDescriptor<'ctx, 'instance, 'surface> {
     pub fn new(
-        supported_operations: &[QueueFamilySupportedOperationType<'a>],
+        supported_operations: &[QueueFamilySupportedOperationType<'ctx, 'instance, 'surface>],
         queue_priorities: &[f32],
     ) -> Self {
         Self {
@@ -40,40 +40,40 @@ impl<'a> ConcreteQueueFamilyDescriptor<'a> {
         self.queue_priorities.as_slice()
     }
 
-    pub fn get_supported_operations(&self) -> &[QueueFamilySupportedOperationType<'a>] {
+    pub fn get_supported_operations(&self) -> &[QueueFamilySupportedOperationType<'ctx, 'instance, 'surface>] {
         self.supported_operations.as_slice()
     }
 }
 
-pub struct QueueFamily<'qf> {
-    device: &'qf Device<'qf>,
+pub struct QueueFamily<'ctx, 'instance, 'device> {
+    device: &'device Device<'ctx, 'instance>,
     descriptor: Vec<f32>,
     created_queues: Mutex<u64>,
     family_index: u32,
 }
 
-pub(crate) trait QueueFamilyOwned<'qf> {
-    fn get_parent_queue_family(&self) -> &'qf QueueFamily<'qf>;
+pub(crate) trait QueueFamilyOwned<'ctx, 'instance, 'device> {
+    fn get_parent_queue_family(&self) -> &QueueFamily<'ctx, 'instance, 'device>;
 }
 
-impl<'qf> DeviceOwned<'qf> for QueueFamily<'qf> {
-    fn get_parent_device(&self) -> &'qf Device {
+impl<'ctx, 'instance, 'device> DeviceOwned<'instance> for QueueFamily<'ctx, 'instance, 'device> {
+    fn get_parent_device(&self) -> &'device Device<'ctx, 'instance> {
         self.device.clone()
     }
 }
 
-impl<'qf> Drop for QueueFamily<'qf> {
+impl<'ctx, 'instance, 'device> Drop for QueueFamily<'ctx, 'instance, 'device> {
     fn drop(&mut self) {
         // Nothing to be done here
     }
 }
 
-impl<'qf> QueueFamily<'qf> {
+impl<'ctx, 'instance, 'device> QueueFamily<'ctx, 'instance, 'device> {
     pub(crate) fn get_family_index(&self) -> u32 {
         self.family_index
     }
 
-    pub fn new(device: &'qf Device<'qf>, index_of_required_queue: usize) -> Result<QueueFamily<'qf>, VkError>
+    pub fn new(device: &'device Device<'ctx, 'instance>, index_of_required_queue: usize) -> Result<Self, VkError>
     {
         match device.move_out_queue_family(index_of_required_queue) {
             Some((queue_family, description)) => Ok(Self {
