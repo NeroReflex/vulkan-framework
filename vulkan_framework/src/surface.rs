@@ -4,7 +4,7 @@ use crate::instance::Instance;
 use crate::prelude::*;
 
 pub struct Surface<'surface> {
-    instance: &'surface Instance,
+    instance: &'surface Instance<'surface>,
     surface: ash::vk::SurfaceKHR,
 }
 

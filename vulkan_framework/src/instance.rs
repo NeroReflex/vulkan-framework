@@ -1,5 +1,6 @@
 use crate::result::VkError;
 
+use std::marker::PhantomData;
 use std::os::raw::c_char;
 use std::string::String;
 use std::vec::Vec;
@@ -29,14 +30,15 @@ pub struct InstanceExtensions {
     debug_ext_ext: Option<ash::extensions::ext::DebugUtils>,
 }
 
-pub struct Instance /*<'instance>*/ {
+pub struct Instance<'instance> {
+    marker: PhantomData<&'instance ()>,
     data: Box<InstanceData>,
     entry: ash::Entry,
     instance: ash::Instance,
     extensions: InstanceExtensions,
 }
 
-impl Drop for Instance /*<'instance>*/ {
+impl<'instance> Drop for Instance<'instance> {
     fn drop(&mut self) {
         let alloc_callbacks = self.get_alloc_callbacks();
         //println!("> Dropping {}", self.name);
@@ -46,7 +48,7 @@ impl Drop for Instance /*<'instance>*/ {
     }
 }
 
-impl Instance /*<'instance>*/ {
+impl<'instance> Instance<'instance> {
     pub(crate) fn get_debug_ext_extension(&self) -> Option<&ash::extensions::ext::DebugUtils> {
         match self.extensions.debug_ext_ext.as_ref() {
             Some(debug_ext_ext) => Some(debug_ext_ext),
@@ -215,6 +217,7 @@ impl Instance /*<'instance>*/ {
                     };
 
                     return Ok(Self {
+                        marker: PhantomData::default(),
                         data: data,
                         entry: entry,
                         instance: instance,

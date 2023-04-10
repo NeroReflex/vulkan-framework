@@ -29,7 +29,7 @@ struct DeviceData<'device> {
 pub struct Device<'device> {
     _name_bytes: Vec<u8>,
     data: Box<DeviceData<'device>>,
-    instance: &'device crate::instance::Instance,
+    instance: &'device crate::instance::Instance<'device>,
     extensions: DeviceExtensions,
     device: ash::Device,
 }
