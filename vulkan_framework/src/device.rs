@@ -16,11 +16,11 @@ struct DeviceExtensions {
     swapchain_khr_ext: Option<ash::extensions::khr::Swapchain>,
 }
 
-struct DeviceData<'device> {
+struct DeviceData {
     selected_physical_device: ash::vk::PhysicalDevice,
     selected_device_features: ash::vk::PhysicalDeviceFeatures,
     selected_queues: Vec<ash::vk::DeviceQueueCreateInfo>,
-    required_family_collection: Mutex<Vec<Option<(u32, ConcreteQueueFamilyDescriptor<'device>)>>>,
+    required_family_collection: Mutex<Vec<Option<(u32, Vec<f32>)>>>,
     enabled_extensions: Vec<Vec<c_char>>,
     enabled_layers: Vec<Vec<c_char>>,
     validation_layers: bool,
@@ -28,7 +28,7 @@ struct DeviceData<'device> {
 
 pub struct Device<'device> {
     _name_bytes: Vec<u8>,
-    data: Box<DeviceData<'device>>,
+    data: Box<DeviceData>,
     instance: &'device crate::instance::Instance<'device>,
     extensions: DeviceExtensions,
     device: ash::Device,
@@ -297,7 +297,7 @@ impl<'device> Device<'device> {
                         let mut selected_queues: Vec<ash::vk::DeviceQueueCreateInfo> = vec![];
                         let mut required_family_collection: Vec<Option<(
                             u32,
-                            ConcreteQueueFamilyDescriptor,
+                            Vec<f32>,
                         )>> = vec![];
 
                         let mut available_queue_families: Vec<(
@@ -366,7 +366,7 @@ impl<'device> Device<'device> {
                                         Option::Some(
                                             (
                                                 family_index as u32,
-                                                current_requested_queue_family_descriptor.clone()
+                                                current_requested_queue_family_descriptor.get_queue_priorities().to_vec()
                                             )
                                         )
                                     );
@@ -395,7 +395,7 @@ impl<'device> Device<'device> {
                             selected_physical_device: phy_device.clone(),
                             selected_device_features: phy_device_features,
                             selected_queues: selected_queues,
-                            required_family_collection: Mutex::new(required_family_collection.clone()),
+                            required_family_collection: Mutex::new(required_family_collection),
                             enabled_extensions: enabled_extensions,
                             enabled_layers: enabled_layers,
                             validation_layers: instance.is_debugging_enabled(),
@@ -542,10 +542,10 @@ impl<'device> Device<'device> {
     pub(crate) fn move_out_queue_family(
         &self,
         index: usize,
-    ) -> Option<(u32, ConcreteQueueFamilyDescriptor)> {
+    ) -> Option<(u32, Vec<f32>)> {
         match self.data.required_family_collection.lock() {
             Ok(mut collection) => {
-                match collection.len() <= index {
+                match collection.len() > index {
                     true => {
                         match collection[index].to_owned() {
                             Some(cose) => {

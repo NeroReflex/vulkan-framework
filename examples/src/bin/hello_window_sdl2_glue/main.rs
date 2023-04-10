@@ -64,7 +64,7 @@ fn main() {
                                     QueueFamilySupportedOperationType::Graphics,
                                     QueueFamilySupportedOperationType::Transfer,
                                     QueueFamilySupportedOperationType::Present(&surface),
-                                ],
+                                ].as_ref(),
                                 [1.0f32].as_slice(),
                             )];
 

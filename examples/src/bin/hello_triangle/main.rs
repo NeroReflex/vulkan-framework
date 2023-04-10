@@ -1,6 +1,9 @@
-use vulkan_framework::device::*;
-use vulkan_framework::instance::*;
-use vulkan_framework::queue_family::*;
+use vulkan_framework::{
+    queue::*,
+    device::*,
+    instance::*,
+    queue_family::*,
+};
 
 fn main() {
     let mut instance_extensions = vec![String::from("VK_EXT_debug_utils")];
@@ -71,34 +74,48 @@ fn main() {
                                             QueueFamilySupportedOperationType::Graphics,
                                             QueueFamilySupportedOperationType::Transfer,
                                             QueueFamilySupportedOperationType::Present(&sfc),
-                                        ],
+                                        ].as_ref(),
                                         [1.0f32].as_slice(),
                                     )];
 
                                     println!("Surface registered");
 
-                                    match Device::new(
-                                        &instance,
-                                        required_queues, /* .as_slice()*/
-                                        device_extensions.as_slice().as_ref(),
-                                        device_layers.as_slice().as_ref(),
-                                        Some("Opened Device"),
-                                    ) {
-                                        Ok(dev) => {
-                                            println!("Device opened successfully");
+                                    {
+                                        let device_result = Device::new(
+                                            &instance,
+                                            required_queues, /* .as_slice()*/
+                                            device_extensions.as_slice().as_ref(),
+                                            device_layers.as_slice().as_ref(),
+                                            Some("Opened Device"),
+                                        );
 
-                                            /*match QueueFamily::new(&dev, 0) {
-                                                Ok(queue_family) => {
+                                        match device_result.as_ref() {
+                                            Ok(dev) => {
+                                                println!("Device opened successfully");
 
-                                                },
-                                                Err(err) => {
+                                                match QueueFamily::new(dev, 0) {
+                                                    Ok(queue_family) => {
+                                                        println!("Base queue family obtained successfully from Device");
 
+                                                        match Queue::new(&queue_family) {
+                                                            Ok(queue) => {
+                                                                println!("Queue created successfully");
+                                                            },
+                                                            Err(_err) => {
+                                                                println!("Error opening a queue from the given QueueFamily");
+                                                            }
+                                                        }
+
+                                                    },
+                                                    Err(_err) => {
+                                                        println!("Error opening the base queue family");
+                                                    }
                                                 }
-                                            }*/
-                                        },
-                                        Err(err) => {
-                                            println!("Error opening a suitable device");
-                                        }
+                                            },
+                                            Err(_err) => {
+                                                println!("Error opening a suitable device");
+                                            }
+                                        };
                                     }
                                 }
                                 Err(_err) => {

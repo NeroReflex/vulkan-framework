@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use std::{sync::Mutex, ops::Deref};
 
 use ash::vk::Queue;
 
@@ -23,7 +23,7 @@ pub struct ConcreteQueueFamilyDescriptor<'a> {
 
 impl<'a> ConcreteQueueFamilyDescriptor<'a> {
     pub fn new(
-        supported_operations: Vec<QueueFamilySupportedOperationType<'a>>,
+        supported_operations: &[QueueFamilySupportedOperationType<'a>],
         queue_priorities: &[f32],
     ) -> Self {
         Self {
@@ -47,7 +47,7 @@ impl<'a> ConcreteQueueFamilyDescriptor<'a> {
 
 pub struct QueueFamily<'qf> {
     device: &'qf Device<'qf>,
-    descriptor: ConcreteQueueFamilyDescriptor<'qf>,
+    descriptor: Vec<f32>,
     created_queues: Mutex<u64>,
     family_index: u32,
 }
@@ -69,6 +69,10 @@ impl<'qf> Drop for QueueFamily<'qf> {
 }
 
 impl<'qf> QueueFamily<'qf> {
+    pub(crate) fn get_family_index(&self) -> u32 {
+        self.family_index
+    }
+
     pub fn new(device: &'qf Device<'qf>, index_of_required_queue: usize) -> Result<QueueFamily<'qf>, VkError>
     {
         match device.move_out_queue_family(index_of_required_queue) {
@@ -86,6 +90,39 @@ impl<'qf> QueueFamily<'qf> {
                 }
 
                 Err(VkError {})
+            }
+        }
+    }
+
+    pub(crate) fn move_out_queue(&self) -> Option<(u32, f32)> {
+        match self.created_queues.lock() {
+            Ok(created_queues) => {
+                let created_queues_num = *(created_queues.deref());
+                match created_queues_num < self.descriptor.len() as u64 {
+                    true => {
+                        let priority: f32 = self.descriptor[created_queues_num as usize];
+
+                        Some((created_queues_num as u32, priority))
+                    },
+                    false => {
+                        #[cfg(debug_assertions)]
+                        {
+                            println!("From this QueueFamily the number of created Queue(s) is {} out of a maximum supported number of {} has already been created.", created_queues_num, self.descriptor.len());
+                            assert_eq!(true, false)
+                        }
+
+                        Option::None
+                    }
+                }
+            },
+            Err(err) => {
+                #[cfg(debug_assertions)]
+                {
+                    println!("Error acquiring internal mutex: {}", err);
+                    assert_eq!(true, false)
+                }
+
+                Option::None
             }
         }
     }
