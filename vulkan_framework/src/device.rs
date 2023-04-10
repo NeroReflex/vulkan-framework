@@ -8,8 +8,8 @@ use std::os::raw::c_char;
 use std::sync::Mutex;
 use std::vec::Vec;
 
-pub(crate) trait DeviceOwned<'instance> {
-    fn get_parent_device(&self) -> &'instance crate::device::Device;
+pub(crate) trait DeviceOwned<'ctx, 'instance> {
+    fn get_parent_device(&self) -> &crate::device::Device<'ctx, 'instance>;
 }
 
 struct DeviceExtensions {
@@ -26,7 +26,10 @@ struct DeviceData {
     validation_layers: bool,
 }
 
-pub struct Device<'ctx, 'instance> {
+pub struct Device<'ctx, 'instance>
+where
+    'ctx: 'instance
+{
     _name_bytes: Vec<u8>,
     data: Box<DeviceData>,
     instance: &'instance crate::instance::Instance<'ctx>,
@@ -34,20 +37,29 @@ pub struct Device<'ctx, 'instance> {
     device: ash::Device,
 }
 
-impl<'ctx, 'instance> InstanceOwned<'instance> for Device<'ctx, 'instance> {
-    fn get_parent_instance(&self) -> &Instance<'ctx> {
+impl<'ctx, 'instance> InstanceOwned<'ctx> for Device<'ctx, 'instance>
+where
+    'ctx: 'instance
+{
+    fn get_parent_instance(&self) -> &'instance Instance<'ctx> {
         self.instance
     }
 }
 
-impl<'ctx, 'instance> Drop for Device<'ctx, 'instance> {
+impl<'ctx, 'instance> Drop for Device<'ctx, 'instance>
+where
+    'ctx: 'instance
+{
     fn drop(&mut self) {
         let alloc_callbacks = self.instance.get_alloc_callbacks();
         unsafe { self.device.destroy_device(alloc_callbacks) }
     }
 }
 
-impl<'ctx, 'instance> Device<'ctx, 'instance> {
+impl<'ctx, 'instance> Device<'ctx, 'instance>
+where
+    'ctx: 'instance
+{
     pub fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.device.handle())
     }
@@ -82,7 +94,7 @@ impl<'ctx, 'instance> Device<'ctx, 'instance> {
         max_queues: u32,
     ) -> Option<u16>
     where
-        'surface: 'instance
+        'instance: 'surface
     {
         if max_queues < queue_family.queue_count {
             return None;
@@ -214,7 +226,7 @@ impl<'ctx, 'instance> Device<'ctx, 'instance> {
         debug_name: Option<&str>,
     ) -> Result<Self, VkError>
     where
-        'surface: 'instance
+        'instance: 'surface
     {
         // queue cannot be capable of nothing...
         if queue_descriptors.is_empty() {

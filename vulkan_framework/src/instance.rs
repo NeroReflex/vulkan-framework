@@ -13,7 +13,7 @@ pub enum InstanceAPIVersion {
 }
 
 pub(crate) trait InstanceOwned<'ctx> {
-    fn get_parent_instance(&self) -> &'ctx Instance;
+    fn get_parent_instance(&self) -> &Instance;
 }
 
 pub(crate) struct InstanceData {

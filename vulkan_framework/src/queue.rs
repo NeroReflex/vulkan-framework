@@ -3,25 +3,45 @@ use crate::{
     result::VkError, device::DeviceOwned,
 };
 
-pub struct Queue<'ctx, 'instance, 'device, 'queue_family> {
+pub struct Queue<'ctx, 'instance, 'device, 'queue_family>
+where
+    'ctx: 'instance,
+    'instance: 'device,
+    'device: 'queue_family
+{
     queue_family: &'queue_family QueueFamily<'ctx, 'instance, 'device>,
     priority: f32,
     queue: ash::vk::Queue,
 }
 
-impl<'ctx, 'instance, 'device, 'queue_family> QueueFamilyOwned<'ctx, 'instance, 'device> for Queue<'ctx, 'instance, 'device, 'queue_family> {
+impl<'ctx, 'instance, 'device, 'queue_family> QueueFamilyOwned<'ctx, 'instance, 'device> for Queue<'ctx, 'instance, 'device, 'queue_family>
+where
+    'ctx: 'instance,
+    'instance: 'device,
+    'device: 'queue_family
+{
     fn get_parent_queue_family(&self) -> &'queue_family QueueFamily<'ctx, 'instance, 'device> {
         self.queue_family
     }
 }
 
-impl<'ctx, 'instance, 'device, 'queue_family> Drop for Queue<'ctx, 'instance, 'device, 'queue_family> {
+impl<'ctx, 'instance, 'device, 'queue_family> Drop for Queue<'ctx, 'instance, 'device, 'queue_family>
+where
+    'ctx: 'instance,
+    'instance: 'device,
+    'device: 'queue_family
+{
     fn drop(&mut self) {
         // Nothing to be done here, seems like queues are not to be deleted... A real shame!
     }
 }
 
-impl<'ctx, 'instance, 'device, 'queue_family> Queue<'ctx, 'instance, 'device, 'queue_family> {
+impl<'ctx, 'instance, 'device, 'queue_family> Queue<'ctx, 'instance, 'device, 'queue_family>
+where
+    'ctx: 'instance,
+    'instance: 'device,
+    'device: 'queue_family
+{
     pub fn get_priority(&self) -> f32 {
         self.priority
     }

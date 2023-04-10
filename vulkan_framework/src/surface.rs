@@ -1,11 +1,17 @@
 use ash;
 
-use crate::instance::Instance;
+use crate::instance::{Instance, InstanceOwned};
 use crate::prelude::*;
 
 pub struct Surface<'ctx, 'instance> {
     instance: &'instance Instance<'ctx>,
     surface: ash::vk::SurfaceKHR,
+}
+
+impl<'ctx, 'instance> InstanceOwned<'ctx> for Surface<'ctx, 'instance> {
+    fn get_parent_instance(&self) -> &'instance Instance<'ctx> {
+        self.instance
+    }
 }
 
 impl<'ctx, 'instance> Drop for Surface<'ctx, 'instance> {
