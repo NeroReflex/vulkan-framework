@@ -1,3 +1,5 @@
+use std::sync::Mutex;
+
 use ash::vk::Queue;
 
 use crate::{
@@ -46,8 +48,12 @@ impl<'a> ConcreteQueueFamilyDescriptor<'a> {
 pub struct QueueFamily<'qf> {
     device: &'qf Device<'qf>,
     supported_queues: u64,
-    created_queues: u64,
+    created_queues: Mutex<u64>,
     family_index: u32,
+}
+
+pub(crate) trait QueueFamilyOwned<'qf> {
+    fn get_parent_queue_family(&self) -> &'qf QueueFamily<'qf>;
 }
 
 impl<'qf> DeviceOwned<'qf> for QueueFamily<'qf> {
@@ -68,7 +74,7 @@ impl<'qf> QueueFamily<'qf> {
             Some((queue_family, description)) => Ok(Self {
                 device: device,
                 supported_queues: description.max_queues() as u64,
-                created_queues: 0,
+                created_queues: Mutex::new(0),
                 family_index: queue_family.clone(),
             }),
             None => {
