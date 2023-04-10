@@ -70,7 +70,7 @@ fn main() {
 
                             if let Ok(_device) = Device::new(
                                 &instance,
-                                required_queues.as_slice(),
+                                required_queues,
                                 device_extensions.as_slice().as_ref(),
                                 device_layers.as_slice().as_ref(),
                                 Some("Opened Device"),
@@ -78,7 +78,7 @@ fn main() {
                                 println!("Device opened successfully");
                             } else {
                                 println!("Error opening a suitable device");
-                            };
+                            }
                         }
                         Err(err) => {
                             println!("Error creating vulkan rendering surface: {}", err);

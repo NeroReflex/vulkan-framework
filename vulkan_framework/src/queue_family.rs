@@ -40,14 +40,14 @@ impl<'a> ConcreteQueueFamilyDescriptor<'a> {
         self.queue_priorities.as_slice()
     }
 
-    pub fn get_supported_operations(&self) -> &[QueueFamilySupportedOperationType] {
-        self.supported_operations.as_slice().as_ref()
+    pub fn get_supported_operations(&self) -> &[QueueFamilySupportedOperationType<'a>] {
+        self.supported_operations.as_slice()
     }
 }
 
 pub struct QueueFamily<'qf> {
     device: &'qf Device<'qf>,
-    supported_queues: u64,
+    descriptor: ConcreteQueueFamilyDescriptor<'qf>,
     created_queues: Mutex<u64>,
     family_index: u32,
 }
@@ -69,13 +69,16 @@ impl<'qf> Drop for QueueFamily<'qf> {
 }
 
 impl<'qf> QueueFamily<'qf> {
-    pub fn new(device: &'qf Device<'qf>, index_of_required_queue: usize) -> Result<Self, VkError> {
+    pub fn new<'device>(device: &'device Device<'qf>, index_of_required_queue: usize) -> Result<QueueFamily<'device>, VkError>
+    where
+        'device: 'qf
+    {
         match device.move_out_queue_family(index_of_required_queue) {
             Some((queue_family, description)) => Ok(Self {
-                device: device,
-                supported_queues: description.max_queues() as u64,
+                device: device.clone(),
+                descriptor: description,
                 created_queues: Mutex::new(0),
-                family_index: queue_family.clone(),
+                family_index: queue_family,
             }),
             None => {
                 #[cfg(debug_assertions)]

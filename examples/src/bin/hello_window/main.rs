@@ -66,7 +66,7 @@ fn main() {
                             ) {
                                 Ok(sfc) => {
                                     //let supported_ops = ;
-                                    let required_queues = [ConcreteQueueFamilyDescriptor::new(
+                                    let required_queues = vec![ConcreteQueueFamilyDescriptor::new(
                                         vec![
                                             QueueFamilySupportedOperationType::Graphics,
                                             QueueFamilySupportedOperationType::Transfer,
@@ -79,7 +79,7 @@ fn main() {
 
                                     if let Ok(_device) = Device::new(
                                         &instance,
-                                        &required_queues, /* .as_slice()*/
+                                        required_queues, /* .as_slice()*/
                                         device_extensions.as_slice().as_ref(),
                                         device_layers.as_slice().as_ref(),
                                         Some("Opened Device"),
@@ -89,7 +89,6 @@ fn main() {
                                         println!("Error opening a suitable device");
                                     }
 
-                                    drop(required_queues);
                                 }
                                 Err(_err) => {
                                     println!("Error registering the given surface");

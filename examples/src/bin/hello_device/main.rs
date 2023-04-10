@@ -19,7 +19,7 @@ fn main() {
     ) {
         println!("Vulkan instance created");
 
-        let required_queues = [
+        let required_queues = vec![
             vulkan_framework::queue_family::ConcreteQueueFamilyDescriptor::new(
                 vec![vulkan_framework::queue_family::QueueFamilySupportedOperationType::Compute],
                 [1.0f32].as_slice(),
@@ -28,7 +28,7 @@ fn main() {
 
         if let Ok(_device) = Device::new(
             &instance,
-            required_queues.as_slice(),
+            required_queues,
             device_extensions.as_slice().as_ref(),
             device_layers.as_slice().as_ref(),
             Some("Opened Device"),
@@ -37,8 +37,6 @@ fn main() {
         } else {
             println!("Error opening a suitable device");
         }
-
-        drop(required_queues);
     } else {
         println!("Error creating vulkan instance");
     }

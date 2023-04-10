@@ -72,8 +72,8 @@ impl<'device> Device<'device> {
      *
      * @return Some(score) iif all requested operations are supported for the given queue family, None otherwise.
      */
-    fn corresponds(
-        operations: &[QueueFamilySupportedOperationType<'device>],
+    fn corresponds<'qd>(
+        operations: &[QueueFamilySupportedOperationType<'qd>],
         _instance: &ash::Instance,
         device: &ash::vk::PhysicalDevice,
         surface_extension: Option<&ash::extensions::khr::Surface>,
@@ -198,18 +198,21 @@ impl<'device> Device<'device> {
      * Supported extensions are:
      *   - VK_KHR_swapchain
      *
-     * @param instance_weak_ptr a weak reference to the vulkan instance, will be upgraded to an Arc, will be stored inside the resulting Device (if any) (framework)
-     * @param queue_descriptors a slice that specified queue family minimal capabilities
+     * @param instance a reference to the vulkan instance, will be stored inside the resulting Device (if any)
+     * @param queue_descriptors a slice that specifies queue family minimal capabilities and maximum numer of queues that can be instantiated 
      * @param device_extensions a list of device extensions to be enabled
      * @param device_layers a list of device layers to be enabled
      */
-    pub fn new(
-        instance: &'device Instance,
-        queue_descriptors: &'device [ConcreteQueueFamilyDescriptor<'device>],
+    pub fn new<'qd>(
+        instance: &'device Instance<'device>,
+        queue_descriptors: Vec<ConcreteQueueFamilyDescriptor<'qd>>,
         device_extensions: &[String],
         device_layers: &[String],
         debug_name: Option<&str>,
-    ) -> Result<Self, VkError> {
+    ) -> Result<Self, VkError>
+    where
+        'qd: 'device
+    {
         // queue cannot be capable of nothing...
         if queue_descriptors.is_empty() {
             return Err(VkError {});
@@ -392,7 +395,7 @@ impl<'device> Device<'device> {
                             selected_physical_device: phy_device.clone(),
                             selected_device_features: phy_device_features,
                             selected_queues: selected_queues,
-                            required_family_collection: Mutex::new(required_family_collection),
+                            required_family_collection: Mutex::new(required_family_collection.clone()),
                             enabled_extensions: enabled_extensions,
                             enabled_layers: enabled_layers,
                             validation_layers: instance.is_debugging_enabled(),
