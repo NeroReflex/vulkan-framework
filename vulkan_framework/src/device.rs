@@ -1,3 +1,4 @@
+use crate::memory_heap::ConcreteMemoryHeapDescriptor;
 use crate::{instance::*, queue_family::*};
 
 use ash;
@@ -20,7 +21,8 @@ struct DeviceData {
     selected_physical_device: ash::vk::PhysicalDevice,
     selected_device_features: ash::vk::PhysicalDeviceFeatures,
     selected_queues: Vec<ash::vk::DeviceQueueCreateInfo>,
-    required_family_collection: Mutex<Vec<Option<(u32, Vec<f32>)>>>,
+    required_family_collection: Mutex<Vec<Option<(u32, Vec<f32>)>>>, // TODO: this should be a ConcreteQueueFamilyDescriptor... 
+    required_heap_collection: Mutex<Vec<Option<(u32, ConcreteMemoryHeapDescriptor)>>>,
     enabled_extensions: Vec<Vec<c_char>>,
     enabled_layers: Vec<Vec<c_char>>,
     validation_layers: bool,
@@ -221,6 +223,7 @@ where
     pub fn new<'surface>(
         instance: &'instance Instance<'ctx>,
         queue_descriptors: Vec<ConcreteQueueFamilyDescriptor<'ctx, 'instance, 'surface>>,
+        memory_heap_descriptors: &[ConcreteMemoryHeapDescriptor],
         device_extensions: &[String],
         device_layers: &[String],
         debug_name: Option<&str>,
@@ -599,6 +602,52 @@ where
                 Option::None
             }
         }
-        
+    }
+
+    pub(crate) fn move_out_heap(
+        &self,
+        index: usize
+    ) -> Option<(u32, ConcreteMemoryHeapDescriptor)> {
+        match self.data.required_heap_collection.lock() {
+            Ok(heap_collection_lock) => {
+                match heap_collection_lock.len() > index {
+                    true => {
+                        match heap_collection_lock[index].to_owned() {
+                            Some(result) => {
+                                heap_collection_lock[index] = None;
+                                Some(result)
+                            },
+                            None => {
+                                #[cfg(debug_assertions)]
+                                {
+                                    println!("The memory heap with index {} has already been created once and there can only be one MemoryHeap for requested heap memory properties.", index);
+                                    assert_eq!(true, false)
+                                }
+
+                                Option::None
+                            }
+                        }
+                    },
+                    false => {
+                        #[cfg(debug_assertions)]
+                        {
+                            println!("A memory heap with index {} does not exists, at device creation time only {} heaps were requested.", index, heap_collection_lock.len());
+                            assert_eq!(true, false)
+                        }
+
+                        Option::None
+                    }
+                }
+            },
+            Err(err) => {
+                #[cfg(debug_assertions)]
+                {
+                    println!("Error acquiring internal mutex: {}", err);
+                    assert_eq!(true, false)
+                }
+
+                Option::None
+            }
+        }
     }
 }

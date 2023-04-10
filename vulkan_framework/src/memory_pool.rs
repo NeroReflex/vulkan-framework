@@ -6,30 +6,6 @@ use crate::{
     memory_heap::{ MemoryHeapOwned, MemoryHeap }
 };
 
-pub struct MemoryHostVisibility {
-    host_coherence: bool, // false <= impossible if latter is false
-    host_cached: bool, //false
-}
-
-pub enum MemoryHostCoherence {
-    Uncached, // host coherence is implemented via memory being uncached, as stated by vulkan specification: "uncached memory is always host coherent"
-
-}
-
-/**
- * If DeviceOnly(None) is specified a memory heap with both VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
- * and VK_MEMORY_PROPERTY_PROTECTED_BIT is selected.
- * 
- * If NotNecessarilyDeviceLocal is specified a memory heap with at least VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
- * is selected, if NotNecessarilyDeviceLocal(None) is selected a heap that is NOT host-coherent will be selected,
- * otherwise if Some(Uncached) is selected than a memory heap with VK_MEMORY_PROPERTY_HOST_CACHED_BIT unset.
- */
-pub enum MemoryType {
-    //HostVisible({}),
-    DeviceOnly(Option<MemoryHostVisibility>),
-    NotNecessarilyDeviceLocal(Option<MemoryHostCoherence>)
-}
-
 pub struct MemoryPool<'ctx, 'instance, 'device, 'memory_heap, Allocator>
 where
     Allocator: MemoryAllocator,
