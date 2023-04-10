@@ -7,3 +7,4 @@ pub mod surface;
 pub mod queue;
 pub mod memory_allocator;
 pub mod memory_pool;
+pub mod memory_heap;

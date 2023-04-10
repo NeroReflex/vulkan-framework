@@ -3,6 +3,8 @@ use vulkan_framework::{
     device::*,
     instance::*,
     queue_family::*,
+    memory_heap::*,
+    memory_allocator::*, memory_pool::MemoryPool,
 };
 
 fn main() {
@@ -97,9 +99,21 @@ fn main() {
                                                     Ok(queue_family) => {
                                                         println!("Base queue family obtained successfully from Device");
 
-                                                        match Queue::new(&queue_family) {
+                                                        match Queue::new(&queue_family, Some("best queua evah")) {
                                                             Ok(queue) => {
                                                                 println!("Queue created successfully");
+
+                                                                match MemoryHeap::new(dev) {
+                                                                    Ok(memory_heap) => {
+                                                                        println!("Memory heap created! <3");
+
+                                                                        //MemoryPool::new(&memory_heap, allocator)
+                                                                    },
+                                                                    Err(_err) => {
+                                                                        println!("Error creating the memory heap :(");
+                                                                    }
+                                                                }
+
                                                             },
                                                             Err(_err) => {
                                                                 println!("Error opening a queue from the given QueueFamily");
