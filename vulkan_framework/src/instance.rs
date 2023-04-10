@@ -1,10 +1,8 @@
-use ash::prelude::VkResult;
-
 use crate::result::VkError;
 
+use std::marker::PhantomData;
 use std::os::raw::c_char;
 use std::string::String;
-use std::sync::{Arc, Weak, Mutex};
 use std::vec::Vec;
 
 pub enum InstanceAPIVersion {
@@ -14,8 +12,8 @@ pub enum InstanceAPIVersion {
     Version1_3,
 }
 
-pub(crate) trait InstanceOwned {
-    fn get_parent_instance(&self) -> Weak<Mutex<Instance>>;
+pub(crate) trait InstanceOwned<'ctx> {
+    fn get_parent_instance(&self) -> &Instance;
 }
 
 pub(crate) struct InstanceData {
@@ -32,14 +30,15 @@ pub struct InstanceExtensions {
     debug_ext_ext: Option<ash::extensions::ext::DebugUtils>,
 }
 
-pub struct Instance {
+pub struct Instance<'ctx> {
+    marker: PhantomData<&'ctx ()>,
     data: Box<InstanceData>,
     entry: ash::Entry,
     instance: ash::Instance,
     extensions: InstanceExtensions,
 }
 
-impl Drop for Instance {
+impl<'ctx> Drop for Instance<'ctx> {
     fn drop(&mut self) {
         let alloc_callbacks = self.get_alloc_callbacks();
         //println!("> Dropping {}", self.name);
@@ -49,7 +48,7 @@ impl Drop for Instance {
     }
 }
 
-impl Instance {
+impl<'ctx> Instance<'ctx> {
     pub(crate) fn get_debug_ext_extension(&self) -> Option<&ash::extensions::ext::DebugUtils> {
         match self.extensions.debug_ext_ext.as_ref() {
             Some(debug_ext_ext) => Some(debug_ext_ext),
@@ -71,16 +70,16 @@ impl Instance {
         }
     }
 
-    pub fn native_handle(&self) -> &ash::Instance {
+    pub fn native_handle(&self) -> u64 {
+        ash::vk::Handle::as_raw(self.instance.handle())
+    }
+
+    pub(crate) fn ash_handle(&self) -> &ash::Instance {
         &self.instance
     }
 
     pub fn is_debugging_enabled(&self) -> bool {
         self.data.validation_layers
-    }
-
-    pub fn as_raw(&self) -> usize {
-        ash::vk::Handle::as_raw(self.instance.handle()) as usize
     }
 
     /**
@@ -103,7 +102,7 @@ impl Instance {
         app_name: &String,
         api_version: &InstanceAPIVersion,
         enable_debugging: bool,
-    ) -> Result<Arc<Mutex<Instance>>, VkError> {
+    ) -> Result<Self, VkError> {
         let mut app_bytes = app_name.to_owned().into_bytes();
         app_bytes.push(b"\0"[0]);
 
@@ -217,7 +216,8 @@ impl Instance {
                         false => Option::None,
                     };
 
-                    return Ok(Arc::new(Mutex::new(Instance {
+                    return Ok(Self {
+                        marker: PhantomData::default(),
                         data: data,
                         entry: entry,
                         instance: instance,
@@ -225,7 +225,7 @@ impl Instance {
                             surface_khr_ext: surface_ext,
                             debug_ext_ext: debug_ext,
                         },
-                    })));
+                    });
                 }
 
                 return Err(VkError {});

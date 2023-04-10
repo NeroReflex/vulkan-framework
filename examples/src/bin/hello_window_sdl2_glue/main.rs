@@ -1,7 +1,5 @@
-use std::sync::Arc;
-
-use vulkan_framework::instance::*;
 use vulkan_framework::device::*;
+use vulkan_framework::instance::*;
 use vulkan_framework::queue_family::*;
 use vulkan_framework_sdl2_glue;
 
@@ -57,27 +55,25 @@ fn main() {
                 ) {
                     println!("Vulkan instance created");
 
-                    match window.create_surface(Arc::downgrade(&instance)) {
+                    match window.create_surface(&instance) {
                         Ok(surface) => {
                             println!("Vulkan rendering surface created successfully");
 
-                            let required_queues: Vec<ConcreteQueueFamilyDescriptor> = vec![
-                                ConcreteQueueFamilyDescriptor::new(
-                                    [
-                                        QueueFamilySupportedOperationType::Graphics,
-                                        QueueFamilySupportedOperationType::Transfer,
-                                        QueueFamilySupportedOperationType::Present(Arc::downgrade(&surface))
-                                        ].as_slice(),
-                                    [1.0f32].as_slice(),
-                                )
-                            ];
+                            let required_queues = vec![ConcreteQueueFamilyDescriptor::new(
+                                vec![
+                                    QueueFamilySupportedOperationType::Graphics,
+                                    QueueFamilySupportedOperationType::Transfer,
+                                    QueueFamilySupportedOperationType::Present(&surface),
+                                ].as_ref(),
+                                [1.0f32].as_slice(),
+                            )];
 
                             if let Ok(_device) = Device::new(
-                                Arc::downgrade(&instance),
-                                required_queues.as_slice().as_ref(),
+                                &instance,
+                                required_queues,
                                 device_extensions.as_slice().as_ref(),
                                 device_layers.as_slice().as_ref(),
-                                Some("Opened Device")
+                                Some("Opened Device"),
                             ) {
                                 println!("Device opened successfully");
                             } else {

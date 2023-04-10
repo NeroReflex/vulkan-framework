@@ -1,10 +1,6 @@
-use std::sync::Arc;
-
-use ash;
-
-use vulkan_framework::queue_family::*;
 use vulkan_framework::device::*;
 use vulkan_framework::instance::*;
+use vulkan_framework::queue_family::*;
 
 fn main() {
     let mut instance_extensions = vec![String::from("VK_EXT_debug_utils")];
@@ -58,48 +54,41 @@ fn main() {
                 ) {
                     println!("Vulkan instance created");
 
-                    let instance_lock = instance.lock().unwrap();
-
                     match window
-                        .vulkan_create_surface(ash::vk::Handle::as_raw(
-                            instance_lock.native_handle().handle().clone(),
-                        ) as sdl2::video::VkInstance)
+                        .vulkan_create_surface(instance.native_handle() as sdl2::video::VkInstance)
                     {
                         Ok(surface_handle) => {
                             println!("Vulkan rendering surface created successfully");
 
                             match vulkan_framework::surface::Surface::from_raw(
-                                Arc::downgrade(&instance),
+                                &instance,
                                 surface_handle,
                             ) {
                                 Ok(sfc) => {
-                                    let required_queues: Vec<ConcreteQueueFamilyDescriptor> = vec![
-                                        ConcreteQueueFamilyDescriptor::new(
-                                            [
-                                                QueueFamilySupportedOperationType::Graphics,
-                                                QueueFamilySupportedOperationType::Transfer,
-                                                QueueFamilySupportedOperationType::Present(Arc::downgrade(&sfc))
-                                                ].as_slice(),
-                                            [1.0f32].as_slice(),
-                                        )
-                                    ];
+                                    //let supported_ops = ;
+                                    let required_queues = vec![ConcreteQueueFamilyDescriptor::new(
+                                        vec![
+                                            QueueFamilySupportedOperationType::Graphics,
+                                            QueueFamilySupportedOperationType::Transfer,
+                                            QueueFamilySupportedOperationType::Present(&sfc),
+                                        ].as_ref(),
+                                        [1.0f32].as_slice(),
+                                    )];
 
                                     println!("Surface registered");
 
-                                    // creating a new device requires a MutexGuard, so we must first destroy the one we already have
-                                    drop(instance_lock);
-                                    
                                     if let Ok(_device) = Device::new(
-                                        Arc::downgrade(&instance),
-                                        required_queues.as_slice().as_ref(),
+                                        &instance,
+                                        required_queues, /* .as_slice()*/
                                         device_extensions.as_slice().as_ref(),
                                         device_layers.as_slice().as_ref(),
-                                        Some("Opened Device")
+                                        Some("Opened Device"),
                                     ) {
                                         println!("Device opened successfully");
                                     } else {
                                         println!("Error opening a suitable device");
                                     }
+
                                 }
                                 Err(_err) => {
                                     println!("Error registering the given surface");

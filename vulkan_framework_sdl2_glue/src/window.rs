@@ -2,9 +2,6 @@ use std::ffi::c_char;
 use std::ffi::c_int;
 use std::ffi::c_uint;
 use std::ffi::CStr;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::Weak;
 
 use crate::prelude::*;
 
@@ -80,57 +77,30 @@ impl Window {
      *
      * This function can only be called once per window.
      */
-    pub fn create_surface(
-        &mut self,
-        instance_weak_ptr: Weak<Mutex<vulkan_framework::instance::Instance>>,
-    ) -> Result<Arc<Mutex<vulkan_framework::surface::Surface>>, SDL2Error> {
-        match instance_weak_ptr.upgrade() {
-            Option::Some(instance_mutex) => {
-                match instance_mutex.lock() {
-                    Ok(instance) => {
-                        match self.surface {
-                            Option::Some(_) => Err(SDL2Error::new(std::ptr::null())),
-                            Option::None => unsafe {
-                                let mut surface: VkSurfaceKHR = 0;
-                
-                                let surface_creation_result =
-                                    SDL_Vulkan_CreateSurface(self.window, instance.as_raw(), &mut surface);
-                                match surface_creation_result {
-                                    SDL_bool::SDL_TRUE => match vulkan_framework::surface::Surface::from_raw(
-                                        instance_weak_ptr,
-                                        surface,
-                                    ) {
-                                        Ok(sfc) => Ok(sfc),
-                                        Err(_err) => Err(SDL2Error::new(std::ptr::null())),
-                                    },
-                                    SDL_bool::SDL_FALSE => Err(SDL2Error::new(std::ptr::null())),
-                                }
-                            },
-                        }
-                    },
-                    Err(err) => {
-                        #[cfg(debug_assertions)]
-                        {
-                            println!("Error acquiring Instance mutex: {}", err);
-                            assert_eq!(true, false)
-                        }
+    pub fn create_surface<'a>(
+        &'a mut self,
+        instance: &'a vulkan_framework::instance::Instance,
+    ) -> Result<vulkan_framework::surface::Surface, SDL2Error> {
+        match self.surface {
+            Option::Some(_) => Err(SDL2Error::new(std::ptr::null())),
+            Option::None => unsafe {
+                let mut surface: VkSurfaceKHR = 0;
 
-                        return Err(SDL2Error::new(std::ptr::null()));
+                match SDL_Vulkan_CreateSurface(
+                    self.window,
+                    instance.native_handle() as VkInstance,
+                    &mut surface,
+                ) {
+                    SDL_bool::SDL_TRUE => {
+                        match vulkan_framework::surface::Surface::from_raw(instance, surface) {
+                            Ok(sfc) => Ok(sfc),
+                            Err(_err) => Err(SDL2Error::new(std::ptr::null())),
+                        }
                     }
+                    SDL_bool::SDL_FALSE => Err(SDL2Error::new(std::ptr::null())),
                 }
             },
-            Option::None => {
-                #[cfg(debug_assertions)]
-                {
-                    println!("Instance has already been deleted, if you had validation layers enabled you would have known.");
-                    assert_eq!(true, false)
-                }
-                
-                return Err(SDL2Error::new(std::ptr::null()));
-            }
         }
-
-        
     }
 
     pub fn get_vulkan_instance_extensions(&mut self) -> Result<Vec<String>, SDL2Error> {
