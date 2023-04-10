@@ -69,9 +69,7 @@ impl<'qf> Drop for QueueFamily<'qf> {
 }
 
 impl<'qf> QueueFamily<'qf> {
-    pub fn new<'device>(device: &'device Device<'qf>, index_of_required_queue: usize) -> Result<QueueFamily<'device>, VkError>
-    where
-        'device: 'qf
+    pub fn new(device: &'qf Device<'qf>, index_of_required_queue: usize) -> Result<QueueFamily<'qf>, VkError>
     {
         match device.move_out_queue_family(index_of_required_queue) {
             Some((queue_family, description)) => Ok(Self {
