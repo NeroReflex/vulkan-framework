@@ -1,7 +1,5 @@
-use std::sync::Arc;
-
-use vulkan_framework::instance::*;
 use vulkan_framework::device::*;
+use vulkan_framework::instance::*;
 
 fn main() {
     let instance_extensions = Vec::<String>::new();
@@ -11,35 +9,36 @@ fn main() {
 
     let device_extensions: Vec<String> = vec![];
     let device_layers: Vec<String> = vec![];
-    
 
     if let Ok(instance) = Instance::new(
         instance_extensions.as_slice(),
         &engine_name,
         &app_name,
         &api_version,
-        false
+        false,
     ) {
         println!("Vulkan instance created");
 
-        let required_queues: Vec<vulkan_framework::queue_family::ConcreteQueueFamilyDescriptor> = vec![
+        let required_queues = [
             vulkan_framework::queue_family::ConcreteQueueFamilyDescriptor::new(
-                [vulkan_framework::queue_family::QueueFamilySupportedOperationType::Compute].as_slice(),
+                vec![vulkan_framework::queue_family::QueueFamilySupportedOperationType::Compute],
                 [1.0f32].as_slice(),
             ),
         ];
 
         if let Ok(_device) = Device::new(
-            Arc::downgrade(&instance),
-            required_queues.as_slice().as_ref(),
+            &instance,
+            required_queues.as_slice(),
             device_extensions.as_slice().as_ref(),
             device_layers.as_slice().as_ref(),
-            Some("Opened Device")
+            Some("Opened Device"),
         ) {
             println!("Device opened successfully");
         } else {
             println!("Error opening a suitable device");
         }
+
+        drop(required_queues);
     } else {
         println!("Error creating vulkan instance");
     }

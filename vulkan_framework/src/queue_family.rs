@@ -1,26 +1,29 @@
-use std::sync::{Arc, Weak, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 
 use ash::vk::Queue;
 
-use crate::{device::{Device, DeviceOwned}, result::VkError};
+use crate::{
+    device::{Device, DeviceOwned},
+    result::VkError,
+};
 
 #[derive(/*Copy,*/ Clone)]
-pub enum QueueFamilySupportedOperationType {
+pub enum QueueFamilySupportedOperationType<'a> {
     Compute,
     Graphics,
     Transfer,
-    Present(Weak<Mutex<crate::surface::Surface>>),
+    Present(&'a crate::surface::Surface<'a>),
 }
 
 #[derive(Clone)]
-pub struct ConcreteQueueFamilyDescriptor {
-    supported_operations: Vec<QueueFamilySupportedOperationType>,
+pub struct ConcreteQueueFamilyDescriptor<'a> {
+    supported_operations: Vec<QueueFamilySupportedOperationType<'a>>,
     queue_priorities: Vec<f32>,
 }
 
-impl ConcreteQueueFamilyDescriptor {
+impl<'a> ConcreteQueueFamilyDescriptor<'a> {
     pub fn new(
-        supported_operations: &[QueueFamilySupportedOperationType],
+        supported_operations: Vec<QueueFamilySupportedOperationType<'a>>,
         queue_priorities: &[f32],
     ) -> Self {
         Self {
@@ -42,50 +45,30 @@ impl ConcreteQueueFamilyDescriptor {
     }
 }
 
-pub struct QueueFamily {
-    device: Weak<Mutex<Device>>,
+pub struct QueueFamily<'qf> {
+    device: &'qf Device<'qf>,
     supported_queues: u64,
     created_queues: u64,
     family_index: u32,
 }
 
-impl crate::device::DeviceOwned for QueueFamily {
-    fn get_parent_device(&self) -> Weak<Mutex<crate::device::Device>> {
+impl<'qf> DeviceOwned<'qf> for QueueFamily<'qf> {
+    fn get_parent_device(&self) -> &'qf Device {
         self.device.clone()
     }
 }
 
-impl Drop for QueueFamily {
+impl<'qf> Drop for QueueFamily<'qf> {
     fn drop(&mut self) {
-        match self.get_parent_device().upgrade() {
-            Some(device_mutex) => {
-                match device_mutex.lock() {
-                    Ok(_device) => {
-                        // Nothing to be done here
-                    },
-                    Err(err) => {
-                        #[cfg(debug_assertions)]
-                        {
-                            println!("Cannot acquire Device mutex: {}.", err);
-                            assert_eq!(true, false)
-                        }
-                    }
-                }
-                
-            }
-            None => {
-                #[cfg(debug_assertions)]
-                {
-                    println!("Parent Device has already been deleted.");
-                    assert_eq!(true, false)
-                }
-            }
-        }
+        // Nothing to be done here
     }
 }
 
-impl QueueFamily {
-    pub fn new(device_weak_ptr: Weak<Mutex<Device>>, index_of_required_queue: usize) -> Result<Arc<Mutex<Self>>, VkError> {
+impl<'qf> QueueFamily<'qf> {
+    pub fn new(
+        device_weak_ptr: Weak<Mutex<Device>>,
+        index_of_required_queue: usize,
+    ) -> Result<Self, VkError> {
         todo!()
     }
 }

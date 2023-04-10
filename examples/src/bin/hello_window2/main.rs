@@ -1,6 +1,3 @@
-use std::sync::Arc;
-
-use ash;
 use vulkan_framework;
 
 fn main() {
@@ -29,7 +26,7 @@ fn main() {
         &engine_name,
         &app_name,
         &api_version,
-        true
+        true,
     ) {
         Ok(a) => a,
         Err(_) => return (),
@@ -37,11 +34,10 @@ fn main() {
 
     let raw_surface_khr = window
         .vulkan_create_surface(
-            ash::vk::Handle::as_raw(instance.lock().unwrap().native_handle().handle().clone())
-                as sdl2::video::VkInstance,
+            instance.native_handle()as sdl2::video::VkInstance
         )
         .unwrap();
 
-    let surface =
-        vulkan_framework::surface::Surface::from_raw(Arc::downgrade(&instance), raw_surface_khr);
+    let _surface =
+        vulkan_framework::surface::Surface::from_raw(&instance, raw_surface_khr);
 }
