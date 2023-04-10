@@ -3,16 +3,16 @@ where
     AllocatorType: MemoryAllocator
 {
     allocator: &'allocator AllocatorType,
-    required_size: usize,
-    required_alignment: usize,
-    resulting_address: usize,
+    required_size: u64,
+    required_alignment: u64,
+    resulting_address: u64,
 }
 
 impl<'allocator, AllocatorType> MemoryAllocation<'allocator, AllocatorType>
 where
     AllocatorType: 'allocator + MemoryAllocator
 {
-    pub fn new(allocator: &'allocator AllocatorType, size: usize, alignment: usize, result: usize) -> Self {
+    pub fn new(allocator: &'allocator AllocatorType, size: u64, alignment: u64, result: u64) -> Self {
         Self {
             allocator,
             required_size: size,
@@ -25,12 +25,17 @@ where
 pub trait MemoryAllocator {
 
     /**
+     * Get the amount of memory managed by the current memory allocator.
+     */
+    fn total_size(&self) -> u64;
+
+    /**
      * Allocates memory and tracks allocation in the current memory allocator.
      * 
      * @param size the memory required size (in bytes) to allocate
      * @param alignment the memory required alignment (in bytes)
      */
-    fn alloc(size: usize, alignment: usize) -> Option<MemoryAllocation<'static, Self>> where Self: Sized;
+    fn alloc(&self, size: u64, alignment: u64) -> Option<MemoryAllocation<'static, Self>> where Self: Sized;
 
-    fn dealloc(ptr: MemoryAllocation<'static, Self>) where Self: Sized;
+    fn dealloc(&self, ptr: MemoryAllocation<'static, Self>) where Self: Sized;
 }
