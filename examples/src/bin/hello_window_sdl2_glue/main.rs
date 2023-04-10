@@ -59,15 +59,14 @@ fn main() {
                         Ok(surface) => {
                             println!("Vulkan rendering surface created successfully");
 
-                            let required_queues =
-                                vec![ConcreteQueueFamilyDescriptor::new(
-                                    vec![
-                                        QueueFamilySupportedOperationType::Graphics,
-                                        QueueFamilySupportedOperationType::Transfer,
-                                        QueueFamilySupportedOperationType::Present(&surface),
-                                    ],
-                                    [1.0f32].as_slice(),
-                                )];
+                            let required_queues = vec![ConcreteQueueFamilyDescriptor::new(
+                                vec![
+                                    QueueFamilySupportedOperationType::Graphics,
+                                    QueueFamilySupportedOperationType::Transfer,
+                                    QueueFamilySupportedOperationType::Present(&surface),
+                                ],
+                                [1.0f32].as_slice(),
+                            )];
 
                             if let Ok(_device) = Device::new(
                                 &instance,

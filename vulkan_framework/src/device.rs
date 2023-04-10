@@ -1,13 +1,11 @@
-use crate::{
-    instance::*,
-    queue_family::*
-};
+use crate::{instance::*, queue_family::*};
 
 use ash;
 
 use crate::result::VkError;
 
 use std::os::raw::c_char;
+use std::sync::Mutex;
 use std::vec::Vec;
 
 pub(crate) trait DeviceOwned<'device> {
@@ -22,13 +20,14 @@ struct DeviceData<'device> {
     selected_physical_device: ash::vk::PhysicalDevice,
     selected_device_features: ash::vk::PhysicalDeviceFeatures,
     selected_queues: Vec<ash::vk::DeviceQueueCreateInfo>,
-    required_family_collection: Vec<(u32, ConcreteQueueFamilyDescriptor<'device>)>,
+    required_family_collection: Mutex<Vec<Option<(u32, ConcreteQueueFamilyDescriptor<'device>)>>>,
     enabled_extensions: Vec<Vec<c_char>>,
     enabled_layers: Vec<Vec<c_char>>,
     validation_layers: bool,
 }
 
 pub struct Device<'device> {
+    _name_bytes: Vec<u8>,
     data: Box<DeviceData<'device>>,
     instance: &'device crate::instance::Instance,
     extensions: DeviceExtensions,
@@ -209,14 +208,13 @@ impl<'device> Device<'device> {
         queue_descriptors: &'device [ConcreteQueueFamilyDescriptor<'device>],
         device_extensions: &[String],
         device_layers: &[String],
-        debug_name: Option<&str>
+        debug_name: Option<&str>,
     ) -> Result<Self, VkError> {
         // queue cannot be capable of nothing...
         if queue_descriptors.is_empty() {
             return Err(VkError {});
         }
 
-                
         unsafe {
             match instance.ash_handle().enumerate_physical_devices() {
                 Err(_err) => {
@@ -290,26 +288,21 @@ impl<'device> Device<'device> {
                         // get queues properties (used to check if all requested queues are available on this device)
                         let queue_family_properties = instance
                             .ash_handle()
-                            .get_physical_device_queue_family_properties(
-                                phy_device.to_owned(),
-                            );
+                            .get_physical_device_queue_family_properties(phy_device.to_owned());
 
                         // Check if all requested queues are supported
-                        let mut selected_queues: Vec<ash::vk::DeviceQueueCreateInfo> =
-                            vec![];
-                        let mut required_family_collection: Vec<(
+                        let mut selected_queues: Vec<ash::vk::DeviceQueueCreateInfo> = vec![];
+                        let mut required_family_collection: Vec<Option<(
                             u32,
                             ConcreteQueueFamilyDescriptor,
-                        )> = vec![];
+                        )>> = vec![];
 
                         let mut available_queue_families: Vec<(
                             usize,
                             &ash::vk::QueueFamilyProperties,
                         )> = queue_family_properties.iter().enumerate().collect();
 
-                        for current_requested_queue_family_descriptor in
-                            queue_descriptors.iter()
-                        {
+                        for current_requested_queue_family_descriptor in queue_descriptors.iter() {
                             // this is the currently selected queue family (queue_family, score)
                             let mut selected_queue_family: Option<(usize, u16)> = None;
 
@@ -326,8 +319,7 @@ impl<'device> Device<'device> {
                                     instance.get_surface_khr_extension(),
                                     current_descriptor,
                                     family_index as u32,
-                                    current_requested_queue_family_descriptor.max_queues()
-                                        as u32,
+                                    current_requested_queue_family_descriptor.max_queues() as u32,
                                 ) {
                                     Some(score) => {
                                         // Found a suitable queue family.
@@ -340,8 +332,7 @@ impl<'device> Device<'device> {
                                                 }
                                             }
                                             None => {
-                                                selected_queue_family =
-                                                    Some((family_index, score))
+                                                selected_queue_family = Some((family_index, score))
                                             }
                                         }
 
@@ -358,21 +349,24 @@ impl<'device> Device<'device> {
                                 Some((family_index, _)) => {
                                     let mut queue_create_info =
                                         ash::vk::DeviceQueueCreateInfo::default();
-                                    queue_create_info.queue_family_index =
-                                        family_index as u32;
+                                    queue_create_info.queue_family_index = family_index as u32;
                                     queue_create_info.queue_count =
-                                        current_requested_queue_family_descriptor
-                                            .max_queues() as u32;
+                                        current_requested_queue_family_descriptor.max_queues()
+                                            as u32;
                                     queue_create_info.p_queue_priorities =
                                         current_requested_queue_family_descriptor
                                             .get_queue_priorities()
                                             .as_ptr();
 
                                     selected_queues.push(queue_create_info);
-                                    required_family_collection.push((
-                                        family_index as u32,
-                                        current_requested_queue_family_descriptor.clone(),
-                                    ));
+                                    required_family_collection.push(
+                                        Option::Some(
+                                            (
+                                                family_index as u32,
+                                                current_requested_queue_family_descriptor.clone()
+                                            )
+                                        )
+                                    );
 
                                     available_queue_families = available_queue_families.iter().map(|(queue_family_index, queue_family_properties)| -> Option<(usize, &ash::vk::QueueFamilyProperties)> {
                                         if *queue_family_index != family_index {
@@ -398,7 +392,7 @@ impl<'device> Device<'device> {
                             selected_physical_device: phy_device.clone(),
                             selected_device_features: phy_device_features,
                             selected_queues: selected_queues,
-                            required_family_collection: required_family_collection,
+                            required_family_collection: Mutex::new(required_family_collection),
                             enabled_extensions: enabled_extensions,
                             enabled_layers: enabled_layers,
                             validation_layers: instance.is_debugging_enabled(),
@@ -408,17 +402,14 @@ impl<'device> Device<'device> {
                             Some(currently_selected_device) => {
                                 if best_physical_device_score < current_score as i128 {
                                     best_physical_device_score = current_score as i128;
-                                    selected_physical_device =
-                                        Some(currently_selected_device_data);
+                                    selected_physical_device = Some(currently_selected_device_data);
                                 } else {
-                                    selected_physical_device =
-                                        Some(currently_selected_device);
+                                    selected_physical_device = Some(currently_selected_device);
                                 }
                             }
                             None => {
                                 best_physical_device_score = current_score as i128;
-                                selected_physical_device =
-                                    Some(currently_selected_device_data);
+                                selected_physical_device = Some(currently_selected_device_data);
                             }
                         }
                     }
@@ -436,8 +427,7 @@ impl<'device> Device<'device> {
                                 .map(|str| str.as_ptr())
                                 .collect::<Vec<*const c_char>>();
 
-                            let mut device_create_info =
-                                ash::vk::DeviceCreateInfo::default();
+                            let mut device_create_info = ash::vk::DeviceCreateInfo::default();
 
                             device_create_info.queue_create_info_count =
                                 selected_device.selected_queues.len() as u32;
@@ -447,8 +437,7 @@ impl<'device> Device<'device> {
                             device_create_info.p_enabled_features =
                                 &selected_device.selected_device_features;
 
-                            device_create_info.enabled_layer_count =
-                                layers_ptr.len() as u32;
+                            device_create_info.enabled_layer_count = layers_ptr.len() as u32;
                             device_create_info.pp_enabled_layer_names =
                                 layers_ptr.as_slice().as_ptr();
 
@@ -464,31 +453,34 @@ impl<'device> Device<'device> {
                             ) {
                                 Ok(device) => {
                                     // open requested swapchain extensions (or implied ones)
-                                    let swapchain_ext: Option<
-                                        ash::extensions::khr::Swapchain,
-                                    > = match device_extensions.iter().any(|ext| {
-                                        *ext == String::from(
-                                            ash::extensions::khr::Swapchain::name()
-                                                .to_str()
-                                                .unwrap_or(""),
-                                        )
-                                    }) {
-                                        true => Option::Some(
-                                            ash::extensions::khr::Swapchain::new(
-                                                instance.ash_handle(),
-                                                &device,
-                                            ),
-                                        ),
-                                        false => Option::None,
-                                    };
+                                    let swapchain_ext: Option<ash::extensions::khr::Swapchain> =
+                                        match device_extensions.iter().any(|ext| {
+                                            *ext == String::from(
+                                                ash::extensions::khr::Swapchain::name()
+                                                    .to_str()
+                                                    .unwrap_or(""),
+                                            )
+                                        }) {
+                                            true => {
+                                                Option::Some(ash::extensions::khr::Swapchain::new(
+                                                    instance.ash_handle(),
+                                                    &device,
+                                                ))
+                                            }
+                                            false => Option::None,
+                                        };
 
-                                    
+                                    let mut obj_name_bytes = vec![  ];
+
                                     match instance.get_debug_ext_extension() {
                                         Some(ext) => {
                                             match debug_name {
                                                 Some(name) => {
-                                                    let mut obj_name_bytes = name.as_bytes().iter().map(|a| *a).collect::<Vec<u8>>();
-                                                    obj_name_bytes.push(0x00u8);
+                                                    for name_ch in name .as_bytes().iter() {
+                                                        obj_name_bytes.push(*name_ch);
+                                                    }
+                                                    obj_name_bytes.push(0x00);
+
                                                     let object_name = std::ffi::CStr::from_bytes_with_nul_unchecked(obj_name_bytes.as_slice());
                                                     // set device name for debugging
                                                     let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::builder()
@@ -497,7 +489,10 @@ impl<'device> Device<'device> {
                                                         .object_name(object_name)
                                                         .build();
 
-                                                    match ext.set_debug_utils_object_name(device.handle(), &dbg_info) {
+                                                    match ext.set_debug_utils_object_name(
+                                                        device.handle(),
+                                                        &dbg_info,
+                                                    ) {
                                                         Ok(_) => {
                                                             #[cfg(debug_assertions)]
                                                             {
@@ -512,15 +507,15 @@ impl<'device> Device<'device> {
                                                             }
                                                         }
                                                     }
-                                                },
+                                                }
                                                 None => {}
                                             };
-                                            
                                         }
                                         None => {}
                                     }
 
                                     Ok(Self {
+                                        _name_bytes: obj_name_bytes,
                                         data: Box::new(selected_device),
                                         device: device,
                                         extensions: DeviceExtensions {
@@ -541,15 +536,51 @@ impl<'device> Device<'device> {
         }
     }
 
-    pub(crate) fn get_required_family_collection(
-        & self,
+    pub(crate) fn move_out_queue_family(
+        &self,
         index: usize,
     ) -> Option<(u32, ConcreteQueueFamilyDescriptor)> {
-        let total_len = self.data.required_family_collection.len();
+        match self.data.required_family_collection.lock() {
+            Ok(mut collection) => {
+                match collection.len() <= index {
+                    true => {
+                        match collection[index].to_owned() {
+                            Some(cose) => {
+                                collection[index] = None;
+                                Some(cose)
+                            },
+                            None => {
+                                #[cfg(debug_assertions)]
+                                {
+                                    println!("The queue family with index {} has already been created once and there can only be one QueueFamily for requested queue capabilies.", index);
+                                    assert_eq!(true, false)
+                                }
 
-        match total_len <= index {
-            true => Option::Some(self.data.required_family_collection[index].clone()),
-            false => Option::None,
+                                Option::None
+                            }
+                        }
+                    },
+                    false => {
+                        #[cfg(debug_assertions)]
+                        {
+                            println!("A queue family with index {} does not exists, at device creation time only {} queue families were requested.", index, collection.len());
+                            assert_eq!(true, false)
+                        }
+
+                        Option::None
+                    },
+                }
+            },
+            Err(err) => {
+                #[cfg(debug_assertions)]
+                {
+                    println!("Error acquiring internal mutex: {}", err);
+                    assert_eq!(true, false)
+                }
+
+                Option::None
+            }
         }
+        
     }
 }

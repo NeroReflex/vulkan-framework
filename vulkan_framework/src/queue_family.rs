@@ -1,5 +1,3 @@
-use std::sync::{Arc, Mutex, Weak};
-
 use ash::vk::Queue;
 
 use crate::{
@@ -65,22 +63,22 @@ impl<'qf> Drop for QueueFamily<'qf> {
 }
 
 impl<'qf> QueueFamily<'qf> {
-    pub fn new(
-        device: &'qf Device,
-        index_of_required_queue: usize,
-    ) -> Result<Self, VkError> {
-        match device.get_required_family_collection(index_of_required_queue) {
-            Some((queue_family, description)) => {
-                Ok(
-                    Self {
-                    device: device,
-                    supported_queues: description.max_queues() as u64,
-                    created_queues: 0,
-                    family_index: queue_family.clone(),
-                })
-            },
+    pub fn new(device: &'qf Device<'qf>, index_of_required_queue: usize) -> Result<Self, VkError> {
+        match device.move_out_queue_family(index_of_required_queue) {
+            Some((queue_family, description)) => Ok(Self {
+                device: device,
+                supported_queues: description.max_queues() as u64,
+                created_queues: 0,
+                family_index: queue_family.clone(),
+            }),
             None => {
-                todo!()
+                #[cfg(debug_assertions)]
+                {
+                    println!("Something bad happened while moving out the queue family from the provided Device");
+                    assert_eq!(true, false)
+                }
+
+                Err(VkError {})
             }
         }
     }

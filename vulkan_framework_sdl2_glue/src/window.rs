@@ -86,12 +86,13 @@ impl Window {
             Option::None => unsafe {
                 let mut surface: VkSurfaceKHR = 0;
 
-                match SDL_Vulkan_CreateSurface(self.window, instance.native_handle() as VkInstance, &mut surface) {
+                match SDL_Vulkan_CreateSurface(
+                    self.window,
+                    instance.native_handle() as VkInstance,
+                    &mut surface,
+                ) {
                     SDL_bool::SDL_TRUE => {
-                        match vulkan_framework::surface::Surface::from_raw(
-                            instance,
-                            surface,
-                        ) {
+                        match vulkan_framework::surface::Surface::from_raw(instance, surface) {
                             Ok(sfc) => Ok(sfc),
                             Err(_err) => Err(SDL2Error::new(std::ptr::null())),
                         }

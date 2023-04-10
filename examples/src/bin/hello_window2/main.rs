@@ -33,11 +33,8 @@ fn main() {
     };
 
     let raw_surface_khr = window
-        .vulkan_create_surface(
-            instance.native_handle()as sdl2::video::VkInstance
-        )
+        .vulkan_create_surface(instance.native_handle() as sdl2::video::VkInstance)
         .unwrap();
 
-    let _surface =
-        vulkan_framework::surface::Surface::from_raw(&instance, raw_surface_khr);
+    let _surface = vulkan_framework::surface::Surface::from_raw(&instance, raw_surface_khr);
 }

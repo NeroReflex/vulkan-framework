@@ -68,18 +68,18 @@ fn main() {
                                     //let supported_ops = ;
                                     let required_queues = [ConcreteQueueFamilyDescriptor::new(
                                         vec![
-                                                QueueFamilySupportedOperationType::Graphics,
-                                                QueueFamilySupportedOperationType::Transfer,
-                                                QueueFamilySupportedOperationType::Present(&sfc),
-                                            ],
-                                            [1.0f32].as_slice(),
-                                        )];
+                                            QueueFamilySupportedOperationType::Graphics,
+                                            QueueFamilySupportedOperationType::Transfer,
+                                            QueueFamilySupportedOperationType::Present(&sfc),
+                                        ],
+                                        [1.0f32].as_slice(),
+                                    )];
 
                                     println!("Surface registered");
 
                                     if let Ok(_device) = Device::new(
                                         &instance,
-                                        &required_queues /* .as_slice()*/,
+                                        &required_queues, /* .as_slice()*/
                                         device_extensions.as_slice().as_ref(),
                                         device_layers.as_slice().as_ref(),
                                         Some("Opened Device"),

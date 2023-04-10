@@ -12,8 +12,7 @@ impl<'surface> Drop for Surface<'surface> {
     fn drop(&mut self) {
         match self.instance.get_surface_khr_extension() {
             Some(surface_khr_ext) => unsafe {
-                surface_khr_ext
-                    .destroy_surface(self.surface, self.instance.get_alloc_callbacks());
+                surface_khr_ext.destroy_surface(self.surface, self.instance.get_alloc_callbacks());
             },
             None => {
                 #[cfg(debug_assertions)]
@@ -27,18 +26,15 @@ impl<'surface> Drop for Surface<'surface> {
 }
 
 impl<'surface> Surface<'surface> {
-    pub fn new(
-        instance: &'surface Instance,
-        surface: ash::vk::SurfaceKHR,
-    ) -> VulkanResult<Self> {
+    pub fn new(instance: &'surface Instance, surface: ash::vk::SurfaceKHR) -> VulkanResult<Self> {
         Self::from_raw(instance, ash::vk::Handle::as_raw(surface) as u64)
     }
 
     pub fn from_raw(instance: &'surface Instance, raw_surface_khr: u64) -> VulkanResult<Self> {
         Ok(Self {
-                instance: instance,
-                surface: ash::vk::Handle::from_raw(raw_surface_khr),
-            })
+            instance: instance,
+            surface: ash::vk::Handle::from_raw(raw_surface_khr),
+        })
     }
 
     pub fn native_handle(&self) -> u64 {
