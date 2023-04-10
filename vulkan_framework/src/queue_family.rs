@@ -32,8 +32,8 @@ impl<'a> ConcreteQueueFamilyDescriptor<'a> {
         }
     }
 
-    pub fn max_queues(&self) -> u32 {
-        self.queue_priorities.len() as u32
+    pub fn max_queues(&self) -> usize {
+        self.queue_priorities.len()
     }
 
     pub fn get_queue_priorities(&self) -> &[f32] {
@@ -66,9 +66,22 @@ impl<'qf> Drop for QueueFamily<'qf> {
 
 impl<'qf> QueueFamily<'qf> {
     pub fn new(
-        device_weak_ptr: Weak<Mutex<Device>>,
+        device: &'qf Device,
         index_of_required_queue: usize,
     ) -> Result<Self, VkError> {
-        todo!()
+        match device.get_required_family_collection(index_of_required_queue) {
+            Some((queue_family, description)) => {
+                Ok(
+                    Self {
+                    device: device,
+                    supported_queues: description.max_queues() as u64,
+                    created_queues: 0,
+                    family_index: queue_family.clone(),
+                })
+            },
+            None => {
+                todo!()
+            }
+        }
     }
 }

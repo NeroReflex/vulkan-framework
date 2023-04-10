@@ -362,7 +362,7 @@ impl<'device> Device<'device> {
                                         family_index as u32;
                                     queue_create_info.queue_count =
                                         current_requested_queue_family_descriptor
-                                            .max_queues();
+                                            .max_queues() as u32;
                                     queue_create_info.p_queue_priorities =
                                         current_requested_queue_family_descriptor
                                             .get_queue_priorities()
@@ -538,6 +538,18 @@ impl<'device> Device<'device> {
                     }
                 }
             }
+        }
+    }
+
+    pub(crate) fn get_required_family_collection(
+        & self,
+        index: usize,
+    ) -> Option<(u32, ConcreteQueueFamilyDescriptor)> {
+        let total_len = self.data.required_family_collection.len();
+
+        match total_len <= index {
+            true => Option::Some(self.data.required_family_collection[index].clone()),
+            false => Option::None,
         }
     }
 }

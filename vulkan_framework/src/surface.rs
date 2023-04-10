@@ -1,7 +1,5 @@
 use ash;
 
-use std::sync::{Arc, Mutex, Weak};
-
 use crate::instance::Instance;
 use crate::prelude::*;
 
