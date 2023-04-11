@@ -50,19 +50,21 @@ pub trait MemoryAllocator {
      * @param size the memory required size (in bytes) to allocate
      * @param alignment the memory required alignment (in bytes)
      */
-    fn alloc<'alloc_result>(&self, size: u64, alignment: u64) -> Option<MemoryAllocation<'alloc_result, Self>>
+    fn alloc<'alloc_result>(
+        &self,
+        size: u64,
+        alignment: u64,
+    ) -> Option<MemoryAllocation<'alloc_result, Self>>
     where
         Self: Sized;
 
-    fn dealloc<'a>(&self/*, ptr: &'a MemoryAllocation<'static, Self>*/)
+    fn dealloc<'a>(&self /*, ptr: &'a MemoryAllocation<'static, Self>*/)
     where
         Self: Sized;
 }
 
-
 pub struct StackAllocator {
     total_size: u64,
-
 }
 
 impl StackAllocator {
@@ -76,15 +78,20 @@ impl MemoryAllocator for StackAllocator {
         self.total_size
     }
 
-    fn alloc<'alloc_result>(&self, size: u64, alignment: u64) -> Option<MemoryAllocation<'alloc_result, Self>>
+    fn alloc<'alloc_result>(
+        &self,
+        size: u64,
+        alignment: u64,
+    ) -> Option<MemoryAllocation<'alloc_result, Self>>
     where
-        Self: Sized {
-            None
-        }
+        Self: Sized,
+    {
+        None
+    }
 
-    fn dealloc<'a>(&self/*, ptr: &'a MemoryAllocation<'static, Self>*/)
+    fn dealloc<'a>(&self /*, ptr: &'a MemoryAllocation<'static, Self>*/)
     where
-        Self: Sized {
-
-        }
+        Self: Sized,
+    {
+    }
 }

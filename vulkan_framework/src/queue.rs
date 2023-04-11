@@ -1,55 +1,40 @@
-use crate::{device::DeviceOwned, instance::InstanceOwned, queue_family::*, result::VkError};
+use crate::{
+    device::DeviceOwned,
+    instance::InstanceOwned,
+    prelude::{VulkanError, VulkanResult},
+    queue_family::*,
+};
 
-pub struct Queue<'ctx, 'instance, 'device, 'queue_family>
-where
-    'ctx: 'instance,
-    'instance: 'device,
-    'device: 'queue_family,
-{
+use std::sync::Arc;
+
+pub struct Queue {
     _name_bytes: Vec<u8>,
-    queue_family: &'queue_family QueueFamily<'ctx, 'instance, 'device>,
+    queue_family: Arc<QueueFamily>,
     priority: f32,
     queue: ash::vk::Queue,
 }
 
-impl<'ctx, 'instance, 'device, 'queue_family> QueueFamilyOwned<'ctx, 'instance, 'device>
-    for Queue<'ctx, 'instance, 'device, 'queue_family>
-where
-    'ctx: 'instance,
-    'instance: 'device,
-    'device: 'queue_family,
-{
-    fn get_parent_queue_family(&self) -> &'queue_family QueueFamily<'ctx, 'instance, 'device> {
-        self.queue_family
+impl QueueFamilyOwned for Queue {
+    fn get_parent_queue_family(&self) -> Arc<QueueFamily> {
+        self.queue_family.clone()
     }
 }
 
-impl<'ctx, 'instance, 'device, 'queue_family> Drop
-    for Queue<'ctx, 'instance, 'device, 'queue_family>
-where
-    'ctx: 'instance,
-    'instance: 'device,
-    'device: 'queue_family,
-{
+impl Drop for Queue {
     fn drop(&mut self) {
         // Nothing to be done here, seems like queues are not to be deleted... A real shame!
     }
 }
 
-impl<'ctx, 'instance, 'device, 'queue_family> Queue<'ctx, 'instance, 'device, 'queue_family>
-where
-    'ctx: 'instance,
-    'instance: 'device,
-    'device: 'queue_family,
-{
+impl Queue {
     pub fn get_priority(&self) -> f32 {
         self.priority
     }
 
     pub fn new(
-        queue_family: &'queue_family QueueFamily<'ctx, 'instance, 'device>,
+        queue_family: Arc<QueueFamily>,
         debug_name: Option<&str>,
-    ) -> Result<Self, VkError> {
+    ) -> VulkanResult<Arc<Self>> {
         match queue_family.move_out_queue() {
             Some((queue_index, priority)) => {
                 let queue = unsafe {
@@ -110,12 +95,12 @@ where
                     None => {}
                 }
 
-                Ok(Self {
+                Ok(Arc::new(Self {
                     _name_bytes: obj_name_bytes,
                     queue_family: queue_family,
                     priority: priority,
                     queue: queue,
-                })
+                }))
             }
             None => {
                 #[cfg(debug_assertions)]
@@ -124,7 +109,7 @@ where
                     assert_eq!(true, false)
                 }
 
-                Err(VkError {})
+                Err(VulkanError::Unspecified)
             }
         }
     }

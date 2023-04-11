@@ -10,6 +10,8 @@ use vulkan_framework;
 //use sdl2_sys::SDL_WindowFlags::*;
 use sdl2_sys::*;
 
+use std::sync::Arc;
+
 pub struct Window {
     window: *mut SDL_Window,
     surface: Option<VkSurfaceKHR>,
@@ -77,10 +79,10 @@ impl Window {
      *
      * This function can only be called once per window.
      */
-    pub fn create_surface<'a>(
-        &'a mut self,
-        instance: &'a vulkan_framework::instance::Instance,
-    ) -> Result<vulkan_framework::surface::Surface, SDL2Error> {
+    pub fn create_surface(
+        &mut self,
+        instance: Arc<vulkan_framework::instance::Instance>,
+    ) -> Result<Arc<vulkan_framework::surface::Surface>, SDL2Error> {
         match self.surface {
             Option::Some(_) => Err(SDL2Error::new(std::ptr::null())),
             Option::None => unsafe {

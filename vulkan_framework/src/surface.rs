@@ -3,18 +3,20 @@ use ash;
 use crate::instance::{Instance, InstanceOwned};
 use crate::prelude::*;
 
-pub struct Surface<'ctx, 'instance> {
-    instance: &'instance Instance<'ctx>,
+use std::sync::Arc;
+
+pub struct Surface {
+    instance: Arc<Instance>,
     surface: ash::vk::SurfaceKHR,
 }
 
-impl<'ctx, 'instance> InstanceOwned<'ctx> for Surface<'ctx, 'instance> {
-    fn get_parent_instance(&self) -> &'instance Instance<'ctx> {
-        self.instance
+impl InstanceOwned for Surface {
+    fn get_parent_instance(&self) -> Arc<Instance> {
+        self.instance.clone()
     }
 }
 
-impl<'ctx, 'instance> Drop for Surface<'ctx, 'instance> {
+impl Drop for Surface {
     fn drop(&mut self) {
         match self.instance.get_surface_khr_extension() {
             Some(surface_khr_ext) => unsafe {
@@ -31,22 +33,16 @@ impl<'ctx, 'instance> Drop for Surface<'ctx, 'instance> {
     }
 }
 
-impl<'ctx, 'instance> Surface<'ctx, 'instance> {
-    pub fn new(
-        instance: &'instance Instance<'ctx>,
-        surface: ash::vk::SurfaceKHR,
-    ) -> VulkanResult<Self> {
+impl Surface {
+    pub fn new(instance: Arc<Instance>, surface: ash::vk::SurfaceKHR) -> VulkanResult<Arc<Self>> {
         Self::from_raw(instance, ash::vk::Handle::as_raw(surface) as u64)
     }
 
-    pub fn from_raw(
-        instance: &'instance Instance<'ctx>,
-        raw_surface_khr: u64,
-    ) -> VulkanResult<Self> {
-        Ok(Self {
+    pub fn from_raw(instance: Arc<Instance>, raw_surface_khr: u64) -> VulkanResult<Arc<Self>> {
+        Ok(Arc::new(Self {
             instance: instance,
             surface: ash::vk::Handle::from_raw(raw_surface_khr),
-        })
+        }))
     }
 
     pub fn native_handle(&self) -> u64 {

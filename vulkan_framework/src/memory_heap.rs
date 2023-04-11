@@ -1,12 +1,12 @@
 use crate::{
     device::{Device, DeviceOwned},
-    result::VkError,
+    prelude::{VulkanError, VulkanResult},
 };
 
+use std::sync::Arc;
+
 #[derive(Clone)]
-pub enum MemoryHostVisibility {
-    
-}
+pub enum MemoryHostVisibility {}
 
 #[derive(Clone)]
 pub enum MemoryHostCoherence {
@@ -46,71 +46,46 @@ impl ConcreteMemoryHeapDescriptor {
     pub fn new(memory_type: MemoryType, memory_minimum_size: u64) -> Self {
         Self {
             memory_type,
-            memory_minimum_size
+            memory_minimum_size,
         }
     }
 }
 
-pub struct MemoryHeap<'ctx, 'instance, 'device>
-where
-    'ctx: 'instance,
-    'instance: 'device,
-{
-    device: &'device Device<'ctx, 'instance>,
+pub struct MemoryHeap {
+    device: Arc<Device>,
     descriptor: ConcreteMemoryHeapDescriptor,
     //created_queues: Mutex<u64>,
     heap_index: u32,
 }
 
-pub(crate) trait MemoryHeapOwned<'ctx, 'instance, 'device>
-where
-    'ctx: 'instance,
-    'instance: 'device,
-{
-    fn get_parent_memory_heap(&self) -> &MemoryHeap<'ctx, 'instance, 'device>;
+pub(crate) trait MemoryHeapOwned {
+    fn get_parent_memory_heap(&self) -> Arc<MemoryHeap>;
 }
 
-impl<'ctx, 'instance, 'device> DeviceOwned<'ctx, 'instance> for MemoryHeap<'ctx, 'instance, 'device>
-where
-    'ctx: 'instance,
-    'instance: 'device,
-{
-    fn get_parent_device(&self) -> &'device Device<'ctx, 'instance> {
+impl DeviceOwned for MemoryHeap {
+    fn get_parent_device(&self) -> Arc<Device> {
         self.device.clone()
     }
 }
 
-impl<'ctx, 'instance, 'device> Drop for MemoryHeap<'ctx, 'instance, 'device>
-where
-    'ctx: 'instance,
-    'instance: 'device,
-{
+impl Drop for MemoryHeap {
     fn drop(&mut self) {
         // Nothing to be done here
     }
 }
 
-impl<'ctx, 'instance, 'device> MemoryHeap<'ctx, 'instance, 'device>
-where
-    'ctx: 'instance,
-    'instance: 'device,
-{
+impl MemoryHeap {
     pub(crate) fn heap_index(&self) -> u32 {
         self.heap_index
     }
 
-    pub fn new(
-        device: &'device Device<'ctx, 'instance>,
-        index_of_required_heap: usize,
-    ) -> Result<Self, VkError> {
+    pub fn new(device: Arc<Device>, index_of_required_heap: usize) -> VulkanResult<Arc<Self>> {
         match device.move_out_heap(index_of_required_heap) {
-            Some((heap_index, descriptor)) => {
-                Ok(Self {
-                    device,
-                    descriptor,
-                    heap_index,
-                })
-            },
+            Some((heap_index, descriptor)) => Ok(Arc::new(Self {
+                device,
+                descriptor,
+                heap_index,
+            })),
             None => {
                 #[cfg(debug_assertions)]
                 {
@@ -118,7 +93,7 @@ where
                     assert_eq!(true, false)
                 }
 
-                Err(VkError {})
+                Err(VulkanError::Unspecified)
             }
         }
     }

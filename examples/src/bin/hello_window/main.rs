@@ -46,11 +46,13 @@ fn main() {
                 }
 
                 if let Ok(instance) = Instance::new(
+                    [
+                        String::from("VK_LAYER_KHRONOS_validation")
+                    ].as_slice(),
                     instance_extensions.as_slice(),
                     &engine_name,
                     &app_name,
                     &api_version,
-                    true,
                 ) {
                     println!("Vulkan instance created");
 
@@ -61,26 +63,23 @@ fn main() {
                             println!("Vulkan rendering surface created successfully");
 
                             match vulkan_framework::surface::Surface::from_raw(
-                                &instance,
+                                instance.clone(),
                                 surface_handle,
                             ) {
                                 Ok(sfc) => {
-                                    //let supported_ops = ;
-                                    let required_queues = vec![ConcreteQueueFamilyDescriptor::new(
-                                        vec![
-                                            QueueFamilySupportedOperationType::Graphics,
-                                            QueueFamilySupportedOperationType::Transfer,
-                                            QueueFamilySupportedOperationType::Present(&sfc),
-                                        ]
-                                        .as_ref(),
-                                        [1.0f32].as_slice(),
-                                    )];
-
                                     println!("Surface registered");
 
                                     if let Ok(_device) = Device::new(
-                                        &instance,
-                                        required_queues, /* .as_slice()*/
+                                        instance.clone(),
+                                        [ConcreteQueueFamilyDescriptor::new(
+                                            vec![
+                                                QueueFamilySupportedOperationType::Graphics,
+                                                QueueFamilySupportedOperationType::Transfer,
+                                                QueueFamilySupportedOperationType::Present(sfc.clone()),
+                                            ]
+                                            .as_ref(),
+                                            [1.0f32].as_slice(),
+                                        )].as_slice(),
                                         [].as_ref(),
                                         device_extensions.as_slice().as_ref(),
                                         device_layers.as_slice().as_ref(),

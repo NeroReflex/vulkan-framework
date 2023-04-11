@@ -47,11 +47,13 @@ fn main() {
                 }
 
                 if let Ok(instance) = Instance::new(
+                    [
+                        String::from("VK_LAYER_KHRONOS_validation")
+                    ].as_slice(),
                     instance_extensions.as_slice(),
                     &engine_name,
                     &app_name,
                     &api_version,
-                    true,
                 ) {
                     println!("Vulkan instance created");
 
@@ -62,7 +64,7 @@ fn main() {
                             println!("Vulkan rendering surface created successfully");
 
                             match vulkan_framework::surface::Surface::from_raw(
-                                &instance,
+                                instance.clone(),
                                 surface_handle,
                             ) {
                                 Ok(sfc) => {
@@ -71,7 +73,7 @@ fn main() {
                                         vec![
                                             QueueFamilySupportedOperationType::Graphics,
                                             QueueFamilySupportedOperationType::Transfer,
-                                            QueueFamilySupportedOperationType::Present(&sfc),
+                                            QueueFamilySupportedOperationType::Present(sfc.clone()),
                                         ]
                                         .as_ref(),
                                         [1.0f32].as_slice(),
@@ -81,29 +83,37 @@ fn main() {
 
                                     {
                                         let device_result = Device::new(
-                                            &instance,
-                                            required_queues, /* .as_slice()*/
+                                            instance.clone(),
                                             [
-                                                ConcreteMemoryHeapDescriptor::new(
-                                                    MemoryType::DeviceLocal(None),
-                                                    1024 * 1024 * 1024 * 2 // 2GB of memory!
+                                                ConcreteQueueFamilyDescriptor::new(
+                                                    vec![
+                                                        QueueFamilySupportedOperationType::Graphics,
+                                                        QueueFamilySupportedOperationType::Transfer,
+                                                        QueueFamilySupportedOperationType::Present(sfc.clone()),
+                                                    ]
+                                                    .as_ref(),
+                                                    [1.0f32].as_slice(),
                                                 )
-                                            ].as_ref(),
+                                            ].as_slice(),
+                                            [ConcreteMemoryHeapDescriptor::new(
+                                                MemoryType::DeviceLocal(None),
+                                                1024 * 1024 * 1024 * 2, // 2GB of memory!
+                                            )].as_ref(),
                                             device_extensions.as_slice().as_ref(),
                                             device_layers.as_slice().as_ref(),
                                             Some("Opened Device"),
                                         );
 
-                                        match device_result.as_ref() {
+                                        match device_result {
                                             Ok(dev) => {
                                                 println!("Device opened successfully");
 
-                                                match QueueFamily::new(dev, 0) {
+                                                match QueueFamily::new(dev.clone(), 0) {
                                                     Ok(queue_family) => {
                                                         println!("Base queue family obtained successfully from Device");
 
                                                         match Queue::new(
-                                                            &queue_family,
+                                                            queue_family.clone(),
                                                             Some("best queua evah"),
                                                         ) {
                                                             Ok(queue) => {
@@ -111,14 +121,22 @@ fn main() {
                                                                     "Queue created successfully"
                                                                 );
 
-                                                                match MemoryHeap::new(dev, 0) {
+                                                                match MemoryHeap::new(
+                                                                    dev.clone(),
+                                                                    0,
+                                                                ) {
                                                                     Ok(memory_heap) => {
                                                                         println!("Memory heap created! <3");
 
-                                                                        match MemoryPool::new(&memory_heap, StackAllocator::new(1024 * 1024 * 1024 * 2)) {
-                                                                            Ok(mem_pool) => {
-
-                                                                            },
+                                                                        match MemoryPool::new(
+                                                                            memory_heap.clone(),
+                                                                            StackAllocator::new(
+                                                                                1024 * 1024
+                                                                                    * 1024
+                                                                                    * 2,
+                                                                            ),
+                                                                        ) {
+                                                                            Ok(mem_pool) => {}
                                                                             Err(_err) => {
                                                                                 println!("Error creating the memory pool");
                                                                             }

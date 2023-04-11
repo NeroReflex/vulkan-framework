@@ -1,4 +1,4 @@
-use vulkan_framework;
+use vulkan_framework::{self, instance::Instance};
 
 fn main() {
     let mut instance_extensions = Vec::<String>::new();
@@ -21,12 +21,14 @@ fn main() {
         instance_extensions.push(String::from(required_instance_extension_name));
     }
 
-    let instance = match vulkan_framework::instance::Instance::new(
+    let instance = match Instance::new(
+        [
+            String::from("VK_LAYER_KHRONOS_validation")
+        ].as_slice(),
         instance_extensions.as_slice(),
         &engine_name,
         &app_name,
         &api_version,
-        true,
     ) {
         Ok(a) => a,
         Err(_) => return (),
@@ -36,5 +38,5 @@ fn main() {
         .vulkan_create_surface(instance.native_handle() as sdl2::video::VkInstance)
         .unwrap();
 
-    let _surface = vulkan_framework::surface::Surface::from_raw(&instance, raw_surface_khr);
+    let _surface = vulkan_framework::surface::Surface::from_raw(instance, raw_surface_khr);
 }

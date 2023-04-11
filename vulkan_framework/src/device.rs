@@ -1,16 +1,18 @@
 use crate::memory_heap::{ConcreteMemoryHeapDescriptor, MemoryType};
+use crate::prelude::{VulkanError, VulkanResult};
 use crate::{instance::*, queue_family::*};
 
 use ash;
-
-use crate::result::VkError;
+use ash::vk::MemoryHeap;
 
 use std::os::raw::c_char;
 use std::sync::Mutex;
 use std::vec::Vec;
 
-pub(crate) trait DeviceOwned<'ctx, 'instance> {
-    fn get_parent_device(&self) -> &crate::device::Device<'ctx, 'instance>;
+use std::sync::Arc;
+
+pub(crate) trait DeviceOwned {
+    fn get_parent_device(&self) -> Arc<Device>;
 }
 
 struct DeviceExtensions {
@@ -21,47 +23,35 @@ struct DeviceData {
     selected_physical_device: ash::vk::PhysicalDevice,
     selected_device_features: ash::vk::PhysicalDeviceFeatures,
     selected_queues: Vec<ash::vk::DeviceQueueCreateInfo>,
-    required_family_collection: Mutex<Vec<Option<(u32, Vec<f32>)>>>, // TODO: this should be a ConcreteQueueFamilyDescriptor...
-    required_heap_collection: Mutex<Vec<Option<(u32, ConcreteMemoryHeapDescriptor)>>>,
+    required_family_collection: Vec<Option<(u32, ConcreteQueueFamilyDescriptor)>>,
+    required_heap_collection: Vec<Option<(u32, ConcreteMemoryHeapDescriptor)>>,
     enabled_extensions: Vec<Vec<c_char>>,
     enabled_layers: Vec<Vec<c_char>>,
-    validation_layers: bool,
 }
 
-pub struct Device<'ctx, 'instance>
-where
-    'ctx: 'instance,
-{
-    _name_bytes: Vec<u8>,
-    data: Box<DeviceData>,
-    instance: &'instance crate::instance::Instance<'ctx>,
+pub struct Device {
+    //_name_bytes: Vec<u8>,
+    required_family_collection: Mutex<Vec<Option<(u32, ConcreteQueueFamilyDescriptor)>>>,
+    required_heap_collection: Mutex<Vec<Option<(u32, ConcreteMemoryHeapDescriptor)>>>,
+    instance: Arc<Instance>,
     extensions: DeviceExtensions,
     device: ash::Device,
 }
 
-impl<'ctx, 'instance> InstanceOwned<'ctx> for Device<'ctx, 'instance>
-where
-    'ctx: 'instance,
-{
-    fn get_parent_instance(&self) -> &'instance Instance<'ctx> {
-        self.instance
+impl InstanceOwned for Device {
+    fn get_parent_instance(&self) -> Arc<Instance> {
+        self.instance.clone()
     }
 }
 
-impl<'ctx, 'instance> Drop for Device<'ctx, 'instance>
-where
-    'ctx: 'instance,
-{
+impl Drop for Device {
     fn drop(&mut self) {
         let alloc_callbacks = self.instance.get_alloc_callbacks();
         unsafe { self.device.destroy_device(alloc_callbacks) }
     }
 }
 
-impl<'ctx, 'instance> Device<'ctx, 'instance>
-where
-    'ctx: 'instance,
-{
+impl Device {
     pub fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.device.handle())
     }
@@ -71,13 +61,10 @@ where
     }
 
     pub fn are_validation_layers_enabled(&self) -> bool {
-        self.data.validation_layers
+        true//self.data.validation_layers
     }
 
-    fn heap_corresponds(
-        descriptor: &ConcreteMemoryHeapDescriptor
-        
-    ) -> Option<u64> {
+    fn heap_corresponds(descriptor: &ConcreteMemoryHeapDescriptor) -> Option<u64> {
         Option::None
     }
 
@@ -93,18 +80,15 @@ where
      *
      * @return Some(score) iif all requested operations are supported for the given queue family, None otherwise.
      */
-    fn corresponds<'surface>(
-        operations: &[QueueFamilySupportedOperationType<'ctx, 'instance, 'surface>],
+    fn corresponds(
+        operations: &[QueueFamilySupportedOperationType],
         _instance: &ash::Instance,
         device: &ash::vk::PhysicalDevice,
         surface_extension: Option<&ash::extensions::khr::Surface>,
         queue_family: &ash::vk::QueueFamilyProperties,
         family_index: u32,
         max_queues: u32,
-    ) -> Option<u16>
-    where
-        'instance: 'surface,
-    {
+    ) -> Option<u16> {
         if max_queues < queue_family.queue_count {
             return None;
         }
@@ -227,33 +211,30 @@ where
      * @param device_extensions a list of device extensions to be enabled
      * @param device_layers a list of device layers to be enabled
      */
-    pub fn new<'surface>(
-        instance: &'instance Instance<'ctx>,
-        queue_descriptors: Vec<ConcreteQueueFamilyDescriptor<'ctx, 'instance, 'surface>>,
+    pub fn new(
+        instance: Arc<Instance>,
+        queue_descriptors: &[ConcreteQueueFamilyDescriptor],
         memory_heap_descriptors: &[ConcreteMemoryHeapDescriptor],
         device_extensions: &[String],
         device_layers: &[String],
         debug_name: Option<&str>,
-    ) -> Result<Self, VkError>
-    where
-        'instance: 'surface,
-    {
+    ) -> VulkanResult<Arc<Self>> {
         // queue cannot be capable of nothing...
         if queue_descriptors.is_empty() {
-            return Err(VkError {});
+            return Err(VulkanError::Unspecified);
         }
 
         unsafe {
             match instance.ash_handle().enumerate_physical_devices() {
                 Err(_err) => {
-                    return Err(VkError {});
+                    return Err(VulkanError::Unspecified);
                 }
                 Ok(physical_devices) => {
                     let mut best_physical_device_score: i128 = -1;
                     let mut selected_physical_device: Option<DeviceData> = None;
 
                     if physical_devices.is_empty() {
-                        return Err(VkError {});
+                        return Err(VulkanError::Unspecified);
                     }
 
                     'suitable_device_search: for phy_device in physical_devices.iter() {
@@ -324,7 +305,7 @@ where
 
                         // Check if all requested queues are supported
                         let mut selected_queues: Vec<ash::vk::DeviceQueueCreateInfo> = vec![];
-                        let mut required_family_collection: Vec<Option<(u32, Vec<f32>)>> = vec![];
+                        let mut required_family_collection = vec![];
 
                         let mut available_queue_families: Vec<(
                             usize,
@@ -390,9 +371,7 @@ where
                                     selected_queues.push(queue_create_info);
                                     required_family_collection.push(Option::Some((
                                         family_index as u32,
-                                        current_requested_queue_family_descriptor
-                                            .get_queue_priorities()
-                                            .to_vec(),
+                                        current_requested_queue_family_descriptor.clone(),
                                     )));
 
                                     available_queue_families = available_queue_families.iter().map(|(queue_family_index, queue_family_properties)| -> Option<(usize, &ash::vk::QueueFamilyProperties)> {
@@ -409,36 +388,52 @@ where
                             }
                         }
 
-                        let mut required_memory_heap_descriptors: Vec<Option<(u32, ConcreteMemoryHeapDescriptor)>> = vec![];
-                        for current_requested_memory_heap_descriptor in memory_heap_descriptors.iter() {
+                        let mut required_memory_heap_descriptors: Vec<
+                            Option<(u32, ConcreteMemoryHeapDescriptor)>,
+                        > = vec![];
+                        for current_requested_memory_heap_descriptor in
+                            memory_heap_descriptors.iter()
+                        {
                             // associate a heap index to a concrete descriptor
-                            let requested_size = current_requested_memory_heap_descriptor.memory_minimum_size();
-                            
-                            'suitable_heap_search: for heap_descriptor in device_memory_properties.memory_types.iter() {
+                            let requested_size =
+                                current_requested_memory_heap_descriptor.memory_minimum_size();
+
+                            'suitable_heap_search: for heap_descriptor in
+                                device_memory_properties.memory_types.iter()
+                            {
                                 // discard heaps that are too small
-                                let available_size = device_memory_properties.memory_heaps[heap_descriptor.heap_index as usize].size;
+                                let available_size = device_memory_properties.memory_heaps
+                                    [heap_descriptor.heap_index as usize]
+                                    .size;
                                 if requested_size > available_size {
-                                    continue 'suitable_heap_search
+                                    continue 'suitable_heap_search;
                                 }
 
                                 match current_requested_memory_heap_descriptor.memory_type() {
                                     MemoryType::DeviceLocal(host_visibility) => {
                                         // if I want device-local memory just ignore heaps that are not device-local
-                                        if !heap_descriptor.property_flags.contains(ash::vk::MemoryPropertyFlags::DEVICE_LOCAL) {
-                                            continue 'suitable_heap_search
+                                        if !heap_descriptor
+                                            .property_flags
+                                            .contains(ash::vk::MemoryPropertyFlags::DEVICE_LOCAL)
+                                        {
+                                            continue 'suitable_heap_search;
                                         }
 
                                         match host_visibility {
                                             Some(visibility_model) => {
                                                 // a visibility model is specified, exclude heaps that are not suitable as not memory-mappable
-                                                if !heap_descriptor.property_flags.contains(ash::vk::MemoryPropertyFlags::HOST_VISIBLE) {
-                                                    continue 'suitable_heap_search
+                                                if !heap_descriptor.property_flags.contains(
+                                                    ash::vk::MemoryPropertyFlags::HOST_VISIBLE,
+                                                ) {
+                                                    continue 'suitable_heap_search;
                                                 }
-                                            },
+                                            }
                                             None => {
                                                 // a visibility model is NOT specified, the user wants memory that is not memory-mappable, so protected memory <3
-                                                if heap_descriptor.property_flags.contains(ash::vk::MemoryPropertyFlags::HOST_VISIBLE) {
-                                                    continue 'suitable_heap_search
+                                                if heap_descriptor.property_flags.contains(
+                                                    ash::vk::MemoryPropertyFlags::HOST_VISIBLE,
+                                                ) {
+                                                    continue 'suitable_heap_search;
                                                 }
                                                 /*
                                                 // Only avaialble on Vulkan 1.1
@@ -452,28 +447,33 @@ where
                                         // we do here a dirty trick: if we are here then the current memory type is on a compatible heap,
                                         // we will allocate a maximum size of current_requested_memory_heap_descriptor.memory_minimum_size(),
                                         // therefore we eill remove that amount from the avaialable...
-                                        device_memory_properties.memory_heaps[heap_descriptor.heap_index as usize].size -= current_requested_memory_heap_descriptor.memory_minimum_size();
-                                    },
+                                        device_memory_properties.memory_heaps
+                                            [heap_descriptor.heap_index as usize]
+                                            .size -= current_requested_memory_heap_descriptor
+                                            .memory_minimum_size();
+                                    }
                                     MemoryType::HostLocal(coherence_model) => {
                                         // if I want host-local memory just ignore heaps that are not host-local
-                                        if heap_descriptor.property_flags.contains(ash::vk::MemoryPropertyFlags::DEVICE_LOCAL) {
-                                            continue 'suitable_heap_search
+                                        if heap_descriptor
+                                            .property_flags
+                                            .contains(ash::vk::MemoryPropertyFlags::DEVICE_LOCAL)
+                                        {
+                                            continue 'suitable_heap_search;
                                         }
-
-
                                     }
                                 }
 
                                 // If I'm here the previous search has find that the current heap is suitable...
-                                required_memory_heap_descriptors.push(Some((heap_descriptor.heap_index, current_requested_memory_heap_descriptor.clone())));
-                                break 'suitable_heap_search
+                                required_memory_heap_descriptors.push(Some((
+                                    heap_descriptor.heap_index,
+                                    current_requested_memory_heap_descriptor.clone(),
+                                )));
+                                break 'suitable_heap_search;
                             }
-
-                            
                         }
 
                         if memory_heap_descriptors.len() != required_memory_heap_descriptors.len() {
-                            continue 'suitable_device_search
+                            continue 'suitable_device_search;
                         }
                         /*
                         if (deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU) { // Exclude inadequate devices
@@ -485,11 +485,10 @@ where
                             selected_physical_device: phy_device.clone(),
                             selected_device_features: phy_device_features,
                             selected_queues: selected_queues,
-                            required_family_collection: Mutex::new(required_family_collection),
-                            required_heap_collection: Mutex::new(required_memory_heap_descriptors),
+                            required_family_collection: required_family_collection,
+                            required_heap_collection: required_memory_heap_descriptors,
                             enabled_extensions: enabled_extensions,
                             enabled_layers: enabled_layers,
-                            validation_layers: instance.is_debugging_enabled(),
                         };
 
                         match selected_physical_device {
@@ -608,21 +607,22 @@ where
                                         None => {}
                                     }
 
-                                    Ok(Self {
-                                        _name_bytes: obj_name_bytes,
-                                        data: Box::new(selected_device),
+                                    Ok(Arc::new(Self {
+                                        //_name_bytes: obj_name_bytes,
+                                        required_family_collection: Mutex::new(selected_device.required_family_collection),
+                                        required_heap_collection: Mutex::new(selected_device.required_heap_collection),
                                         device: device,
                                         extensions: DeviceExtensions {
                                             swapchain_khr_ext: swapchain_ext,
                                         },
                                         instance: instance,
-                                    })
+                                    }))
                                 }
-                                Err(_err) => Err(VkError {}),
+                                Err(_err) => Err(VulkanError::Unspecified),
                             };
                         }
                         None => {
-                            return Err(VkError {});
+                            return Err(VulkanError::Unspecified);
                         }
                     }
                 }
@@ -630,8 +630,8 @@ where
         }
     }
 
-    pub(crate) fn move_out_queue_family(&self, index: usize) -> Option<(u32, Vec<f32>)> {
-        match self.data.required_family_collection.lock() {
+    pub(crate) fn move_out_queue_family(&self, index: usize) -> Option<(u32, ConcreteQueueFamilyDescriptor)> {
+        match self.required_family_collection.lock() {
             Ok(mut collection) => match collection.len() > index {
                 true => match collection[index].to_owned() {
                     Some(cose) => {
@@ -674,7 +674,7 @@ where
         &self,
         index: usize,
     ) -> Option<(u32, ConcreteMemoryHeapDescriptor)> {
-        match self.data.required_heap_collection.lock() {
+        match self.required_heap_collection.lock() {
             Ok(mut heap_collection_lock) => match heap_collection_lock.len() > index {
                 true => match heap_collection_lock[index].to_owned() {
                     Some(result) => {

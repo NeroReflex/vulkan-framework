@@ -3,53 +3,39 @@ use crate::{
     instance::InstanceOwned,
     memory_allocator::*,
     memory_heap::{MemoryHeap, MemoryHeapOwned},
-    result::VkError,
+    prelude::{VulkanError, VulkanResult},
 };
 
-pub struct MemoryPool<'ctx, 'instance, 'device, 'memory_heap, Allocator>
+use std::sync::Arc;
+
+pub struct MemoryPool<Allocator>
 where
     Allocator: MemoryAllocator,
-    'ctx: 'instance,
-    'instance: 'device,
-    'memory_heap: 'device,
 {
-    memory_heap: &'memory_heap MemoryHeap<'ctx, 'instance, 'device>,
+    memory_heap: Arc<MemoryHeap>,
     allocator: Allocator,
     memory: ash::vk::DeviceMemory,
 }
 
-impl<'ctx, 'instance, 'device, 'memory_heap, Allocator> MemoryHeapOwned<'ctx, 'instance, 'device>
-    for MemoryPool<'ctx, 'instance, 'device, 'memory_heap, Allocator>
+impl<Allocator> MemoryHeapOwned for MemoryPool<Allocator>
 where
     Allocator: MemoryAllocator,
-    'ctx: 'instance,
-    'instance: 'device,
-    'memory_heap: 'device,
 {
-    fn get_parent_memory_heap(&self) -> &crate::memory_heap::MemoryHeap<'ctx, 'instance, 'device> {
-        self.memory_heap
+    fn get_parent_memory_heap(&self) -> Arc<crate::memory_heap::MemoryHeap> {
+        self.memory_heap.clone()
     }
 }
 
-trait MemoryPoolBacked<'ctx, 'instance, 'device, 'memory_heap, Allocator>
+trait MemoryPoolBacked<Allocator>
 where
     Allocator: MemoryAllocator,
-    'ctx: 'instance,
-    'instance: 'device,
-    'memory_heap: 'device,
 {
-    fn get_backing_memory_pool(
-        &self,
-    ) -> &MemoryPool<'ctx, 'instance, 'device, 'memory_heap, Allocator>;
+    fn get_backing_memory_pool(&self) -> Arc<MemoryPool<Allocator>>;
 }
 
-impl<'ctx, 'instance, 'device, 'memory_heap, Allocator> Drop
-    for MemoryPool<'ctx, 'instance, 'device, 'memory_heap, Allocator>
+impl<Allocator> Drop for MemoryPool<Allocator>
 where
     Allocator: MemoryAllocator,
-    'ctx: 'instance,
-    'instance: 'device,
-    'memory_heap: 'device,
 {
     fn drop(&mut self) {
         let memory_heap = self.get_parent_memory_heap();
@@ -63,18 +49,11 @@ where
     }
 }
 
-impl<'ctx, 'instance, 'device, 'memory_heap, Allocator>
-    MemoryPool<'ctx, 'instance, 'device, 'memory_heap, Allocator>
+impl<Allocator> MemoryPool<Allocator>
 where
     Allocator: MemoryAllocator,
-    'ctx: 'instance,
-    'instance: 'device,
-    'memory_heap: 'device,
 {
-    pub fn new(
-        memory_heap: &'memory_heap MemoryHeap<'ctx, 'instance, 'device>,
-        allocator: Allocator,
-    ) -> Result<Self, VkError> {
+    pub fn new(memory_heap: Arc<MemoryHeap>, allocator: Allocator) -> VulkanResult<Arc<Self>> {
         let create_info = ash::vk::MemoryAllocateInfo::builder()
             .allocation_size(allocator.total_size())
             .memory_type_index(memory_heap.heap_index())
@@ -87,11 +66,11 @@ where
                 &create_info,
                 device.get_parent_instance().get_alloc_callbacks(),
             ) {
-                Ok(memory) => Ok(Self {
+                Ok(memory) => Ok(Arc::new(Self {
                     memory_heap,
                     allocator,
                     memory,
-                }),
+                })),
                 Err(err) => {
                     #[cfg(debug_assertions)]
                     {
@@ -99,7 +78,7 @@ where
                         assert_eq!(true, false)
                     }
 
-                    Err(VkError {})
+                    Err(VulkanError::Unspecified)
                 }
             }
         }
