@@ -71,7 +71,8 @@ fn main() {
                                             QueueFamilySupportedOperationType::Graphics,
                                             QueueFamilySupportedOperationType::Transfer,
                                             QueueFamilySupportedOperationType::Present(&sfc),
-                                        ].as_ref(),
+                                        ]
+                                        .as_ref(),
                                         [1.0f32].as_slice(),
                                     )];
 
@@ -80,6 +81,7 @@ fn main() {
                                     if let Ok(_device) = Device::new(
                                         &instance,
                                         required_queues, /* .as_slice()*/
+                                        [].as_ref(),
                                         device_extensions.as_slice().as_ref(),
                                         device_layers.as_slice().as_ref(),
                                         Some("Opened Device"),
@@ -88,7 +90,6 @@ fn main() {
                                     } else {
                                         println!("Error opening a suitable device");
                                     }
-
                                 }
                                 Err(_err) => {
                                     println!("Error registering the given surface");

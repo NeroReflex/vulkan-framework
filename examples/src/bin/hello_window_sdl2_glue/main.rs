@@ -64,13 +64,15 @@ fn main() {
                                     QueueFamilySupportedOperationType::Graphics,
                                     QueueFamilySupportedOperationType::Transfer,
                                     QueueFamilySupportedOperationType::Present(&surface),
-                                ].as_ref(),
+                                ]
+                                .as_ref(),
                                 [1.0f32].as_slice(),
                             )];
 
                             if let Ok(_device) = Device::new(
                                 &instance,
                                 required_queues,
+                                [].as_ref(),
                                 device_extensions.as_slice().as_ref(),
                                 device_layers.as_slice().as_ref(),
                                 Some("Opened Device"),

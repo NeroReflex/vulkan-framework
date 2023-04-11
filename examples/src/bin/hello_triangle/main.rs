@@ -1,10 +1,6 @@
 use vulkan_framework::{
-    queue::*,
-    device::*,
-    instance::*,
+    device::*, instance::*, memory_allocator::*, memory_heap::*, memory_pool::MemoryPool, queue::*,
     queue_family::*,
-    memory_heap::*,
-    memory_allocator::*, memory_pool::MemoryPool,
 };
 
 fn main() {
@@ -76,7 +72,8 @@ fn main() {
                                             QueueFamilySupportedOperationType::Graphics,
                                             QueueFamilySupportedOperationType::Transfer,
                                             QueueFamilySupportedOperationType::Present(&sfc),
-                                        ].as_ref(),
+                                        ]
+                                        .as_ref(),
                                         [1.0f32].as_slice(),
                                     )];
 
@@ -86,6 +83,12 @@ fn main() {
                                         let device_result = Device::new(
                                             &instance,
                                             required_queues, /* .as_slice()*/
+                                            [
+                                                ConcreteMemoryHeapDescriptor::new(
+                                                    MemoryType::DeviceLocal(None),
+                                                    1024 * 1024 * 1024 * 2 // 2GB of memory!
+                                                )
+                                            ].as_ref(),
                                             device_extensions.as_slice().as_ref(),
                                             device_layers.as_slice().as_ref(),
                                             Some("Opened Device"),
@@ -99,33 +102,45 @@ fn main() {
                                                     Ok(queue_family) => {
                                                         println!("Base queue family obtained successfully from Device");
 
-                                                        match Queue::new(&queue_family, Some("best queua evah")) {
+                                                        match Queue::new(
+                                                            &queue_family,
+                                                            Some("best queua evah"),
+                                                        ) {
                                                             Ok(queue) => {
-                                                                println!("Queue created successfully");
+                                                                println!(
+                                                                    "Queue created successfully"
+                                                                );
 
-                                                                match MemoryHeap::new(dev) {
+                                                                match MemoryHeap::new(dev, 0) {
                                                                     Ok(memory_heap) => {
                                                                         println!("Memory heap created! <3");
 
-                                                                        //MemoryPool::new(&memory_heap, allocator)
-                                                                    },
+                                                                        match MemoryPool::new(&memory_heap, StackAllocator::new(1024 * 1024 * 1024 * 2)) {
+                                                                            Ok(mem_pool) => {
+
+                                                                            },
+                                                                            Err(_err) => {
+                                                                                println!("Error creating the memory pool");
+                                                                            }
+                                                                        }
+                                                                    }
                                                                     Err(_err) => {
                                                                         println!("Error creating the memory heap :(");
                                                                     }
                                                                 }
-
-                                                            },
+                                                            }
                                                             Err(_err) => {
                                                                 println!("Error opening a queue from the given QueueFamily");
                                                             }
                                                         }
-
-                                                    },
+                                                    }
                                                     Err(_err) => {
-                                                        println!("Error opening the base queue family");
+                                                        println!(
+                                                            "Error opening the base queue family"
+                                                        );
                                                     }
                                                 }
-                                            },
+                                            }
                                             Err(_err) => {
                                                 println!("Error opening a suitable device");
                                             }

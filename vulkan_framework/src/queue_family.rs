@@ -1,4 +1,4 @@
-use std::{sync::Mutex, ops::Deref};
+use std::{ops::Deref, sync::Mutex};
 
 use ash::vk::Queue;
 
@@ -11,7 +11,7 @@ use crate::{
 pub enum QueueFamilySupportedOperationType<'ctx, 'instance, 'surface>
 where
     'ctx: 'instance,
-    'instance: 'surface
+    'instance: 'surface,
 {
     Compute,
     Graphics,
@@ -23,7 +23,7 @@ where
 pub struct ConcreteQueueFamilyDescriptor<'ctx, 'instance, 'surface>
 where
     'ctx: 'instance,
-    'instance: 'surface
+    'instance: 'surface,
 {
     supported_operations: Vec<QueueFamilySupportedOperationType<'ctx, 'instance, 'surface>>,
     queue_priorities: Vec<f32>,
@@ -32,7 +32,7 @@ where
 impl<'ctx, 'instance, 'surface> ConcreteQueueFamilyDescriptor<'ctx, 'instance, 'surface>
 where
     'ctx: 'instance,
-    'instance: 'surface
+    'instance: 'surface,
 {
     pub fn new(
         supported_operations: &[QueueFamilySupportedOperationType<'ctx, 'instance, 'surface>],
@@ -52,7 +52,9 @@ where
         self.queue_priorities.as_slice()
     }
 
-    pub fn get_supported_operations(&self) -> &[QueueFamilySupportedOperationType<'ctx, 'instance, 'surface>] {
+    pub fn get_supported_operations(
+        &self,
+    ) -> &[QueueFamilySupportedOperationType<'ctx, 'instance, 'surface>] {
         self.supported_operations.as_slice()
     }
 }
@@ -60,7 +62,7 @@ where
 pub struct QueueFamily<'ctx, 'instance, 'device>
 where
     'ctx: 'instance,
-    'instance: 'device
+    'instance: 'device,
 {
     device: &'device Device<'ctx, 'instance>,
     descriptor: Vec<f32>,
@@ -71,15 +73,16 @@ where
 pub(crate) trait QueueFamilyOwned<'ctx, 'instance, 'device>
 where
     'ctx: 'instance,
-    'instance: 'device
+    'instance: 'device,
 {
     fn get_parent_queue_family(&self) -> &QueueFamily<'ctx, 'instance, 'device>;
 }
 
-impl<'ctx, 'instance, 'device> DeviceOwned<'ctx, 'instance> for QueueFamily<'ctx, 'instance, 'device>
+impl<'ctx, 'instance, 'device> DeviceOwned<'ctx, 'instance>
+    for QueueFamily<'ctx, 'instance, 'device>
 where
     'ctx: 'instance,
-    'instance: 'device
+    'instance: 'device,
 {
     fn get_parent_device(&self) -> &'device Device<'ctx, 'instance> {
         self.device.clone()
@@ -89,7 +92,7 @@ where
 impl<'ctx, 'instance, 'device> Drop for QueueFamily<'ctx, 'instance, 'device>
 where
     'ctx: 'instance,
-    'instance: 'device
+    'instance: 'device,
 {
     fn drop(&mut self) {
         // Nothing to be done here
@@ -99,14 +102,16 @@ where
 impl<'ctx, 'instance, 'device> QueueFamily<'ctx, 'instance, 'device>
 where
     'ctx: 'instance,
-    'instance: 'device
+    'instance: 'device,
 {
     pub(crate) fn get_family_index(&self) -> u32 {
         self.family_index
     }
 
-    pub fn new(device: &'device Device<'ctx, 'instance>, index_of_required_queue: usize) -> Result<Self, VkError>
-    {
+    pub fn new(
+        device: &'device Device<'ctx, 'instance>,
+        index_of_required_queue: usize,
+    ) -> Result<Self, VkError> {
         match device.move_out_queue_family(index_of_required_queue) {
             Some((queue_family, description)) => Ok(Self {
                 device: device.clone(),
@@ -135,7 +140,7 @@ where
                         let priority: f32 = self.descriptor[created_queues_num as usize];
 
                         Some((created_queues_num as u32, priority))
-                    },
+                    }
                     false => {
                         #[cfg(debug_assertions)]
                         {
@@ -146,7 +151,7 @@ where
                         Option::None
                     }
                 }
-            },
+            }
             Err(err) => {
                 #[cfg(debug_assertions)]
                 {

@@ -1,8 +1,4 @@
-use vulkan_framework::{
-    queue_family::*,
-    device::*,
-    instance::*
-};
+use vulkan_framework::{device::*, instance::*, queue_family::*};
 
 fn main() {
     let instance_extensions = Vec::<String>::new();
@@ -22,16 +18,15 @@ fn main() {
     ) {
         println!("Vulkan instance created");
 
-        let required_queues = vec![
-            ConcreteQueueFamilyDescriptor::new(
-                vec![QueueFamilySupportedOperationType::Compute].as_ref(),
-                [1.0f32].as_slice(),
-            ),
-        ];
+        let required_queues = vec![ConcreteQueueFamilyDescriptor::new(
+            vec![QueueFamilySupportedOperationType::Compute].as_ref(),
+            [1.0f32].as_slice(),
+        )];
 
         if let Ok(_device) = Device::new(
             &instance,
             required_queues,
+            [].as_ref(),
             device_extensions.as_slice().as_ref(),
             device_layers.as_slice().as_ref(),
             Some("Opened Device"),

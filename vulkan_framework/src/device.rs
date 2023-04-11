@@ -1,4 +1,4 @@
-use crate::memory_heap::ConcreteMemoryHeapDescriptor;
+use crate::memory_heap::{ConcreteMemoryHeapDescriptor, MemoryType};
 use crate::{instance::*, queue_family::*};
 
 use ash;
@@ -21,7 +21,7 @@ struct DeviceData {
     selected_physical_device: ash::vk::PhysicalDevice,
     selected_device_features: ash::vk::PhysicalDeviceFeatures,
     selected_queues: Vec<ash::vk::DeviceQueueCreateInfo>,
-    required_family_collection: Mutex<Vec<Option<(u32, Vec<f32>)>>>, // TODO: this should be a ConcreteQueueFamilyDescriptor... 
+    required_family_collection: Mutex<Vec<Option<(u32, Vec<f32>)>>>, // TODO: this should be a ConcreteQueueFamilyDescriptor...
     required_heap_collection: Mutex<Vec<Option<(u32, ConcreteMemoryHeapDescriptor)>>>,
     enabled_extensions: Vec<Vec<c_char>>,
     enabled_layers: Vec<Vec<c_char>>,
@@ -30,7 +30,7 @@ struct DeviceData {
 
 pub struct Device<'ctx, 'instance>
 where
-    'ctx: 'instance
+    'ctx: 'instance,
 {
     _name_bytes: Vec<u8>,
     data: Box<DeviceData>,
@@ -41,7 +41,7 @@ where
 
 impl<'ctx, 'instance> InstanceOwned<'ctx> for Device<'ctx, 'instance>
 where
-    'ctx: 'instance
+    'ctx: 'instance,
 {
     fn get_parent_instance(&self) -> &'instance Instance<'ctx> {
         self.instance
@@ -50,7 +50,7 @@ where
 
 impl<'ctx, 'instance> Drop for Device<'ctx, 'instance>
 where
-    'ctx: 'instance
+    'ctx: 'instance,
 {
     fn drop(&mut self) {
         let alloc_callbacks = self.instance.get_alloc_callbacks();
@@ -60,7 +60,7 @@ where
 
 impl<'ctx, 'instance> Device<'ctx, 'instance>
 where
-    'ctx: 'instance
+    'ctx: 'instance,
 {
     pub fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.device.handle())
@@ -72,6 +72,13 @@ where
 
     pub fn are_validation_layers_enabled(&self) -> bool {
         self.data.validation_layers
+    }
+
+    fn heap_corresponds(
+        descriptor: &ConcreteMemoryHeapDescriptor
+        
+    ) -> Option<u64> {
+        Option::None
     }
 
     /**
@@ -96,7 +103,7 @@ where
         max_queues: u32,
     ) -> Option<u16>
     where
-        'instance: 'surface
+        'instance: 'surface,
     {
         if max_queues < queue_family.queue_count {
             return None;
@@ -216,7 +223,7 @@ where
      *   - VK_KHR_swapchain
      *
      * @param instance a reference to the vulkan instance, will be stored inside the resulting Device (if any)
-     * @param queue_descriptors a slice that specifies queue family minimal capabilities and maximum numer of queues that can be instantiated 
+     * @param queue_descriptors a slice that specifies queue family minimal capabilities and maximum numer of queues that can be instantiated
      * @param device_extensions a list of device extensions to be enabled
      * @param device_layers a list of device layers to be enabled
      */
@@ -229,7 +236,7 @@ where
         debug_name: Option<&str>,
     ) -> Result<Self, VkError>
     where
-        'instance: 'surface
+        'instance: 'surface,
     {
         // queue cannot be capable of nothing...
         if queue_descriptors.is_empty() {
@@ -311,12 +318,13 @@ where
                             .ash_handle()
                             .get_physical_device_queue_family_properties(phy_device.to_owned());
 
+                        let mut device_memory_properties = instance
+                            .ash_handle()
+                            .get_physical_device_memory_properties(phy_device.to_owned());
+
                         // Check if all requested queues are supported
                         let mut selected_queues: Vec<ash::vk::DeviceQueueCreateInfo> = vec![];
-                        let mut required_family_collection: Vec<Option<(
-                            u32,
-                            Vec<f32>,
-                        )>> = vec![];
+                        let mut required_family_collection: Vec<Option<(u32, Vec<f32>)>> = vec![];
 
                         let mut available_queue_families: Vec<(
                             usize,
@@ -380,14 +388,12 @@ where
                                             .as_ptr();
 
                                     selected_queues.push(queue_create_info);
-                                    required_family_collection.push(
-                                        Option::Some(
-                                            (
-                                                family_index as u32,
-                                                current_requested_queue_family_descriptor.get_queue_priorities().to_vec()
-                                            )
-                                        )
-                                    );
+                                    required_family_collection.push(Option::Some((
+                                        family_index as u32,
+                                        current_requested_queue_family_descriptor
+                                            .get_queue_priorities()
+                                            .to_vec(),
+                                    )));
 
                                     available_queue_families = available_queue_families.iter().map(|(queue_family_index, queue_family_properties)| -> Option<(usize, &ash::vk::QueueFamilyProperties)> {
                                         if *queue_family_index != family_index {
@@ -403,6 +409,72 @@ where
                             }
                         }
 
+                        let mut required_memory_heap_descriptors: Vec<Option<(u32, ConcreteMemoryHeapDescriptor)>> = vec![];
+                        for current_requested_memory_heap_descriptor in memory_heap_descriptors.iter() {
+                            // associate a heap index to a concrete descriptor
+                            let requested_size = current_requested_memory_heap_descriptor.memory_minimum_size();
+                            
+                            'suitable_heap_search: for heap_descriptor in device_memory_properties.memory_types.iter() {
+                                // discard heaps that are too small
+                                let available_size = device_memory_properties.memory_heaps[heap_descriptor.heap_index as usize].size;
+                                if requested_size > available_size {
+                                    continue 'suitable_heap_search
+                                }
+
+                                match current_requested_memory_heap_descriptor.memory_type() {
+                                    MemoryType::DeviceLocal(host_visibility) => {
+                                        // if I want device-local memory just ignore heaps that are not device-local
+                                        if !heap_descriptor.property_flags.contains(ash::vk::MemoryPropertyFlags::DEVICE_LOCAL) {
+                                            continue 'suitable_heap_search
+                                        }
+
+                                        match host_visibility {
+                                            Some(visibility_model) => {
+                                                // a visibility model is specified, exclude heaps that are not suitable as not memory-mappable
+                                                if !heap_descriptor.property_flags.contains(ash::vk::MemoryPropertyFlags::HOST_VISIBLE) {
+                                                    continue 'suitable_heap_search
+                                                }
+                                            },
+                                            None => {
+                                                // a visibility model is NOT specified, the user wants memory that is not memory-mappable, so protected memory <3
+                                                if heap_descriptor.property_flags.contains(ash::vk::MemoryPropertyFlags::HOST_VISIBLE) {
+                                                    continue 'suitable_heap_search
+                                                }
+                                                /*
+                                                // Only avaialble on Vulkan 1.1
+                                                if !heap_descriptor.property_flags.contains(ash::vk::MemoryPropertyFlags::PROTECTED) {
+                                                    continue 'suitable_heap_search
+                                                }
+                                                */
+                                            }
+                                        }
+
+                                        // we do here a dirty trick: if we are here then the current memory type is on a compatible heap,
+                                        // we will allocate a maximum size of current_requested_memory_heap_descriptor.memory_minimum_size(),
+                                        // therefore we eill remove that amount from the avaialable...
+                                        device_memory_properties.memory_heaps[heap_descriptor.heap_index as usize].size -= current_requested_memory_heap_descriptor.memory_minimum_size();
+                                    },
+                                    MemoryType::HostLocal(coherence_model) => {
+                                        // if I want host-local memory just ignore heaps that are not host-local
+                                        if heap_descriptor.property_flags.contains(ash::vk::MemoryPropertyFlags::DEVICE_LOCAL) {
+                                            continue 'suitable_heap_search
+                                        }
+
+
+                                    }
+                                }
+
+                                // If I'm here the previous search has find that the current heap is suitable...
+                                required_memory_heap_descriptors.push(Some((heap_descriptor.heap_index, current_requested_memory_heap_descriptor.clone())));
+                                break 'suitable_heap_search
+                            }
+
+                            
+                        }
+
+                        if memory_heap_descriptors.len() != required_memory_heap_descriptors.len() {
+                            continue 'suitable_device_search
+                        }
                         /*
                         if (deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU) { // Exclude inadequate devices
                             currentScore = 0;
@@ -414,6 +486,7 @@ where
                             selected_device_features: phy_device_features,
                             selected_queues: selected_queues,
                             required_family_collection: Mutex::new(required_family_collection),
+                            required_heap_collection: Mutex::new(required_memory_heap_descriptors),
                             enabled_extensions: enabled_extensions,
                             enabled_layers: enabled_layers,
                             validation_layers: instance.is_debugging_enabled(),
@@ -491,13 +564,13 @@ where
                                             false => Option::None,
                                         };
 
-                                    let mut obj_name_bytes = vec![  ];
+                                    let mut obj_name_bytes = vec![];
 
                                     match instance.get_debug_ext_extension() {
                                         Some(ext) => {
                                             match debug_name {
                                                 Some(name) => {
-                                                    for name_ch in name .as_bytes().iter() {
+                                                    for name_ch in name.as_bytes().iter() {
                                                         obj_name_bytes.push(*name_ch);
                                                     }
                                                     obj_name_bytes.push(0x00);
@@ -557,39 +630,32 @@ where
         }
     }
 
-    pub(crate) fn move_out_queue_family(
-        &self,
-        index: usize,
-    ) -> Option<(u32, Vec<f32>)> {
+    pub(crate) fn move_out_queue_family(&self, index: usize) -> Option<(u32, Vec<f32>)> {
         match self.data.required_family_collection.lock() {
-            Ok(mut collection) => {
-                match collection.len() > index {
-                    true => {
-                        match collection[index].to_owned() {
-                            Some(cose) => {
-                                collection[index] = None;
-                                Some(cose)
-                            },
-                            None => {
-                                #[cfg(debug_assertions)]
-                                {
-                                    println!("The queue family with index {} has already been created once and there can only be one QueueFamily for requested queue capabilies.", index);
-                                    assert_eq!(true, false)
-                                }
-
-                                Option::None
-                            }
-                        }
-                    },
-                    false => {
+            Ok(mut collection) => match collection.len() > index {
+                true => match collection[index].to_owned() {
+                    Some(cose) => {
+                        collection[index] = None;
+                        Some(cose)
+                    }
+                    None => {
                         #[cfg(debug_assertions)]
                         {
-                            println!("A queue family with index {} does not exists, at device creation time only {} queue families were requested.", index, collection.len());
+                            println!("The queue family with index {} has already been created once and there can only be one QueueFamily for requested queue capabilies.", index);
                             assert_eq!(true, false)
                         }
 
                         Option::None
-                    },
+                    }
+                },
+                false => {
+                    #[cfg(debug_assertions)]
+                    {
+                        println!("A queue family with index {} does not exists, at device creation time only {} queue families were requested.", index, collection.len());
+                        assert_eq!(true, false)
+                    }
+
+                    Option::None
                 }
             },
             Err(err) => {
@@ -606,37 +672,33 @@ where
 
     pub(crate) fn move_out_heap(
         &self,
-        index: usize
+        index: usize,
     ) -> Option<(u32, ConcreteMemoryHeapDescriptor)> {
         match self.data.required_heap_collection.lock() {
-            Ok(heap_collection_lock) => {
-                match heap_collection_lock.len() > index {
-                    true => {
-                        match heap_collection_lock[index].to_owned() {
-                            Some(result) => {
-                                heap_collection_lock[index] = None;
-                                Some(result)
-                            },
-                            None => {
-                                #[cfg(debug_assertions)]
-                                {
-                                    println!("The memory heap with index {} has already been created once and there can only be one MemoryHeap for requested heap memory properties.", index);
-                                    assert_eq!(true, false)
-                                }
-
-                                Option::None
-                            }
-                        }
-                    },
-                    false => {
+            Ok(mut heap_collection_lock) => match heap_collection_lock.len() > index {
+                true => match heap_collection_lock[index].to_owned() {
+                    Some(result) => {
+                        heap_collection_lock[index] = None;
+                        Some(result)
+                    }
+                    None => {
                         #[cfg(debug_assertions)]
                         {
-                            println!("A memory heap with index {} does not exists, at device creation time only {} heaps were requested.", index, heap_collection_lock.len());
+                            println!("The memory heap with index {} has already been created once and there can only be one MemoryHeap for requested heap memory properties.", index);
                             assert_eq!(true, false)
                         }
 
                         Option::None
                     }
+                },
+                false => {
+                    #[cfg(debug_assertions)]
+                    {
+                        println!("A memory heap with index {} does not exists, at device creation time only {} heaps were requested.", index, heap_collection_lock.len());
+                        assert_eq!(true, false)
+                    }
+
+                    Option::None
                 }
             },
             Err(err) => {

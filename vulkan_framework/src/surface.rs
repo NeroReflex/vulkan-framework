@@ -32,11 +32,17 @@ impl<'ctx, 'instance> Drop for Surface<'ctx, 'instance> {
 }
 
 impl<'ctx, 'instance> Surface<'ctx, 'instance> {
-    pub fn new(instance: &'instance Instance<'ctx>, surface: ash::vk::SurfaceKHR) -> VulkanResult<Self> {
+    pub fn new(
+        instance: &'instance Instance<'ctx>,
+        surface: ash::vk::SurfaceKHR,
+    ) -> VulkanResult<Self> {
         Self::from_raw(instance, ash::vk::Handle::as_raw(surface) as u64)
     }
 
-    pub fn from_raw(instance: &'instance Instance<'ctx>, raw_surface_khr: u64) -> VulkanResult<Self> {
+    pub fn from_raw(
+        instance: &'instance Instance<'ctx>,
+        raw_surface_khr: u64,
+    ) -> VulkanResult<Self> {
         Ok(Self {
             instance: instance,
             surface: ash::vk::Handle::from_raw(raw_surface_khr),
