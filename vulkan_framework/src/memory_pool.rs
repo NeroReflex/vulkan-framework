@@ -60,7 +60,7 @@ where
     pub fn new(memory_heap: Arc<MemoryHeap>, allocator: Allocator) -> VulkanResult<Arc<Self>> {
         let create_info = ash::vk::MemoryAllocateInfo::builder()
             .allocation_size(allocator.total_size())
-            .memory_type_index(memory_heap.heap_index())
+            .memory_type_index(memory_heap.type_index())
             .build();
 
         let device = memory_heap.get_parent_device();

@@ -55,6 +55,7 @@ pub struct MemoryHeap {
     device: Arc<Device>,
     descriptor: ConcreteMemoryHeapDescriptor,
     heap_index: u32,
+    heap_type_index: u32
 }
 
 pub(crate) trait MemoryHeapOwned {
@@ -82,16 +83,21 @@ impl MemoryHeap {
         self.descriptor.memory_minimum_size
     }
 
+    pub(crate) fn type_index(&self) -> u32 {
+        self.heap_type_index
+    }
+
     pub(crate) fn heap_index(&self) -> u32 {
         self.heap_index
     }
 
     pub fn new(device: Arc<Device>, index_of_required_heap: usize) -> VulkanResult<Arc<Self>> {
         match device.move_out_heap(index_of_required_heap) {
-            Some((heap_index, descriptor)) => Ok(Arc::new(Self {
+            Some((heap_index, heap_type_index, descriptor)) => Ok(Arc::new(Self {
                 device,
                 descriptor,
                 heap_index,
+                heap_type_index,
             })),
             None => {
                 #[cfg(debug_assertions)]

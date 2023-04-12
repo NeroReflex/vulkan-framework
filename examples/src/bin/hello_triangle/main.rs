@@ -172,7 +172,7 @@ fn main() {
                                                                                 }
                                                                             };
 
-                                                                        let image = match Image::new(default_allocator, ConcreteImageDescriptor::new(ImageDimensions::Image2D {extent: Image2DDimensions::new(100, 100)}, None, 1, 1)) {
+                                                                        let image = match Image::new(default_allocator, ConcreteImageDescriptor::new(ImageDimensions::Image2D {extent: Image2DDimensions::new(100, 100)}, None, 1, 1, vulkan_framework::image::ImageFormat::r32g32b32a32_sfloat)) {
                                                                             Ok(img) => {
                                                                                 println!("Image created");
                                                                                 img

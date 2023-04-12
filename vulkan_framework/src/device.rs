@@ -24,7 +24,7 @@ struct DeviceData {
     selected_device_features: ash::vk::PhysicalDeviceFeatures,
     selected_queues: Vec<ash::vk::DeviceQueueCreateInfo>,
     required_family_collection: Vec<Option<(u32, ConcreteQueueFamilyDescriptor)>>,
-    required_heap_collection: Vec<Option<(u32, ConcreteMemoryHeapDescriptor)>>,
+    required_heap_collection: Vec<Option<(u32, u32, ConcreteMemoryHeapDescriptor)>>,
     enabled_extensions: Vec<Vec<c_char>>,
     enabled_layers: Vec<Vec<c_char>>,
 }
@@ -32,7 +32,7 @@ struct DeviceData {
 pub struct Device {
     //_name_bytes: Vec<u8>,
     required_family_collection: Mutex<Vec<Option<(u32, ConcreteQueueFamilyDescriptor)>>>,
-    required_heap_collection: Mutex<Vec<Option<(u32, ConcreteMemoryHeapDescriptor)>>>,
+    required_heap_collection: Mutex<Vec<Option<(u32, u32, ConcreteMemoryHeapDescriptor)>>>,
     instance: Arc<Instance>,
     extensions: DeviceExtensions,
     device: ash::Device,
@@ -80,15 +80,18 @@ impl Device {
      *
      * @return Some(score) iif all requested operations are supported for the given queue family, None otherwise.
      */
-    fn corresponds(
-        operations: &[QueueFamilySupportedOperationType],
+    fn corresponds<'a, I>(
+        operations: I,
         _instance: &ash::Instance,
         device: &ash::vk::PhysicalDevice,
         surface_extension: Option<&ash::extensions::khr::Surface>,
         queue_family: &ash::vk::QueueFamilyProperties,
         family_index: u32,
         max_queues: u32,
-    ) -> Option<u16> {
+    ) -> Option<u16>
+    where
+        I: Iterator<Item = &'a QueueFamilySupportedOperationType>
+    {
         if max_queues < queue_family.queue_count {
             return None;
         }
@@ -323,7 +326,7 @@ impl Device {
                             {
                                 match Self::corresponds(
                                     current_requested_queue_family_descriptor
-                                        .get_supported_operations(),
+                                        .get_supported_operations().iter(),
                                     instance.ash_handle(),
                                     phy_device,
                                     instance.get_surface_khr_extension(),
@@ -389,7 +392,7 @@ impl Device {
                         }
 
                         let mut required_memory_heap_descriptors: Vec<
-                            Option<(u32, ConcreteMemoryHeapDescriptor)>,
+                            Option<(u32, u32, ConcreteMemoryHeapDescriptor)>,
                         > = vec![];
                         for current_requested_memory_heap_descriptor in
                             memory_heap_descriptors.iter()
@@ -398,8 +401,8 @@ impl Device {
                             let requested_size =
                                 current_requested_memory_heap_descriptor.memory_minimum_size();
 
-                            'suitable_heap_search: for heap_descriptor in
-                                device_memory_properties.memory_types.iter()
+                            'suitable_heap_search: for (memory_type_index, heap_descriptor) in
+                                device_memory_properties.memory_types.iter().enumerate()
                             {
                                 // discard heaps that are too small
                                 let available_size = device_memory_properties.memory_heaps
@@ -437,6 +440,7 @@ impl Device {
                                                 }
 
                                                 // Only avaialble on Vulkan 1.1
+                                                /*
                                                 if (instance.instance_vulkan_version()
                                                     != InstanceAPIVersion::Version1_0)
                                                     && (!heap_descriptor.property_flags.contains(
@@ -445,6 +449,7 @@ impl Device {
                                                 {
                                                     continue 'suitable_heap_search;
                                                 }
+                                                */
                                             }
                                         }
 
@@ -470,6 +475,7 @@ impl Device {
                                 // If I'm here the previous search has find that the current heap is suitable...
                                 required_memory_heap_descriptors.push(Some((
                                     heap_descriptor.heap_index,
+                                    memory_type_index as u32,
                                     current_requested_memory_heap_descriptor.clone(),
                                 )));
                                 break 'suitable_heap_search;
@@ -684,7 +690,7 @@ impl Device {
     pub(crate) fn move_out_heap(
         &self,
         index: usize,
-    ) -> Option<(u32, ConcreteMemoryHeapDescriptor)> {
+    ) -> Option<(u32, u32, ConcreteMemoryHeapDescriptor)> {
         match self.required_heap_collection.lock() {
             Ok(mut heap_collection_lock) => match heap_collection_lock.len() > index {
                 true => match heap_collection_lock[index].to_owned() {
