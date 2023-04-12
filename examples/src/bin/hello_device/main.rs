@@ -9,12 +9,8 @@ fn main() {
     let device_layers: Vec<String> = vec![];
 
     if let Ok(instance) = Instance::new(
-        [
-            String::from("VK_LAYER_KHRONOS_validation")
-        ].as_slice(),
-        [
-            String::from("VK_EXT_debug_utils")
-        ].as_slice(),
+        [String::from("VK_LAYER_KHRONOS_validation")].as_slice(),
+        [String::from("VK_EXT_debug_utils")].as_slice(),
         &engine_name,
         &app_name,
         &api_version,
@@ -26,7 +22,8 @@ fn main() {
             [ConcreteQueueFamilyDescriptor::new(
                 vec![QueueFamilySupportedOperationType::Compute].as_ref(),
                 [1.0f32].as_slice(),
-            )].as_slice(),
+            )]
+            .as_slice(),
             [].as_ref(),
             device_extensions.as_slice().as_ref(),
             device_layers.as_slice().as_ref(),

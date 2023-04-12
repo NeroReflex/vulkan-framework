@@ -53,6 +53,10 @@ impl<Allocator> MemoryPool<Allocator>
 where
     Allocator: MemoryAllocator + Send + Sync,
 {
+    pub(crate) fn native_handle(&self) -> ash::vk::DeviceMemory {
+        self.memory.clone()
+    }
+
     pub fn new(memory_heap: Arc<MemoryHeap>, allocator: Allocator) -> VulkanResult<Arc<Self>> {
         let create_info = ash::vk::MemoryAllocateInfo::builder()
             .allocation_size(allocator.total_size())
@@ -84,11 +88,24 @@ where
         }
     }
 
-    pub(crate) fn alloc(&self) -> Option<AllocationResult> {
-        todo!()
+    pub(crate) fn alloc(
+        &self,
+        memory_requirements: ash::vk::MemoryRequirements,
+    ) -> Option<AllocationResult> {
+        // check if this pool satisfy memory requirements...
+        if
+        /*(memory_requirements.memory_type_bits & todo!()) == memory_requirements.memory_type_bits*/
+        true {
+            // ...and if it does try to allocate the required memory
+            self.allocator
+                .alloc(memory_requirements.size, memory_requirements.alignment)
+        } else {
+            // ...if it does not inform the user that the allocation has simply failed
+            None
+        }
     }
 
     pub(crate) fn dealloc(&self, mem: &mut AllocationResult) {
-        self.dealloc(mem)
+        self.allocator.dealloc(mem)
     }
 }

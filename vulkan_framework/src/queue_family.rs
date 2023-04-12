@@ -102,7 +102,8 @@ impl QueueFamily {
                 let total_number_of_queues = self.descriptor.queue_priorities.len();
                 match created_queues_num < total_number_of_queues as u64 {
                     true => {
-                        let priority: f32 = self.descriptor.queue_priorities[created_queues_num as usize];
+                        let priority: f32 =
+                            self.descriptor.queue_priorities[created_queues_num as usize];
 
                         Some((created_queues_num as u32, priority))
                     }

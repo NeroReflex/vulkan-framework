@@ -1,4 +1,5 @@
 pub mod device;
+pub mod image;
 pub mod instance;
 pub mod memory_allocator;
 pub mod memory_heap;
@@ -7,4 +8,3 @@ pub mod prelude;
 pub mod queue;
 pub mod queue_family;
 pub mod surface;
-pub mod image;

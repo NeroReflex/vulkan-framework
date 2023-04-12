@@ -1,5 +1,11 @@
 use vulkan_framework::{
-    device::*, instance::*, memory_allocator::*, memory_heap::*, memory_pool::MemoryPool, queue::*,
+    device::*,
+    image::{ConcreteImageDescriptor, Image, Image2DDimensions, ImageDimensions},
+    instance::*,
+    memory_allocator::*,
+    memory_heap::*,
+    memory_pool::MemoryPool,
+    queue::*,
     queue_family::*,
 };
 
@@ -47,9 +53,7 @@ fn main() {
                 }
 
                 if let Ok(instance) = Instance::new(
-                    [
-                        String::from("VK_LAYER_KHRONOS_validation")
-                    ].as_slice(),
+                    [String::from("VK_LAYER_KHRONOS_validation")].as_slice(),
                     instance_extensions.as_slice(),
                     &engine_name,
                     &app_name,
@@ -84,21 +88,23 @@ fn main() {
                                     {
                                         let device_result = Device::new(
                                             instance.clone(),
-                                            [
-                                                ConcreteQueueFamilyDescriptor::new(
-                                                    vec![
-                                                        QueueFamilySupportedOperationType::Graphics,
-                                                        QueueFamilySupportedOperationType::Transfer,
-                                                        QueueFamilySupportedOperationType::Present(sfc.clone()),
-                                                    ]
-                                                    .as_ref(),
-                                                    [1.0f32].as_slice(),
-                                                )
-                                            ].as_slice(),
+                                            [ConcreteQueueFamilyDescriptor::new(
+                                                vec![
+                                                    QueueFamilySupportedOperationType::Graphics,
+                                                    QueueFamilySupportedOperationType::Transfer,
+                                                    QueueFamilySupportedOperationType::Present(
+                                                        sfc.clone(),
+                                                    ),
+                                                ]
+                                                .as_ref(),
+                                                [1.0f32].as_slice(),
+                                            )]
+                                            .as_slice(),
                                             [ConcreteMemoryHeapDescriptor::new(
                                                 MemoryType::DeviceLocal(None),
                                                 1024 * 1024 * 1024 * 2, // 2GB of memory!
-                                            )].as_ref(),
+                                            )]
+                                            .as_ref(),
                                             device_extensions.as_slice().as_ref(),
                                             device_layers.as_slice().as_ref(),
                                             Some("Opened Device"),
@@ -128,39 +134,54 @@ fn main() {
                                                                     Ok(memory_heap) => {
                                                                         println!("Memory heap created! <3");
 
-                                                                        let stack_allocator = match MemoryPool::new(
-                                                                            memory_heap.clone(),
-                                                                            StackAllocator::new(
-                                                                                1024 * 1024 * 1024 * 1,
-                                                                            ),
-                                                                        ) {
-                                                                            Ok(mem_pool) => {
-                                                                                println!("Stack allocator created");
-                                                                                mem_pool
-                                                                            }
+                                                                        let stack_allocator =
+                                                                            match MemoryPool::new(
+                                                                                memory_heap.clone(),
+                                                                                StackAllocator::new(
+                                                                                    1024 * 1024
+                                                                                        * 1024
+                                                                                        * 1,
+                                                                                ),
+                                                                            ) {
+                                                                                Ok(mem_pool) => {
+                                                                                    println!("Stack allocator created");
+                                                                                    mem_pool
+                                                                                }
+                                                                                Err(_err) => {
+                                                                                    println!("Error creating the memory pool");
+                                                                                    return ();
+                                                                                }
+                                                                            };
+
+                                                                        let default_allocator =
+                                                                            match MemoryPool::new(
+                                                                                memory_heap.clone(),
+                                                                                StackAllocator::new(
+                                                                                    1024 * 1024
+                                                                                        * 1024
+                                                                                        * 1,
+                                                                                ),
+                                                                            ) {
+                                                                                Ok(mem_pool) => {
+                                                                                    println!("Default allocator created");
+                                                                                    mem_pool
+                                                                                }
+                                                                                Err(_err) => {
+                                                                                    println!("Error creating the memory pool");
+                                                                                    return ();
+                                                                                }
+                                                                            };
+
+                                                                        let image = match Image::new(default_allocator, ConcreteImageDescriptor::new(ImageDimensions::Image2D {extent: Image2DDimensions::new(100, 100)}, None, 1, 1)) {
+                                                                            Ok(img) => {
+                                                                                println!("Image created");
+                                                                                img
+                                                                            },
                                                                             Err(_err) => {
-                                                                                println!("Error creating the memory pool");
+                                                                                println!("Error creating image...");
                                                                                 return ()
                                                                             }
                                                                         };
-
-                                                                        let default_allocator = match MemoryPool::new(
-                                                                            memory_heap.clone(),
-                                                                            StackAllocator::new(
-                                                                                1024 * 1024 * 1024 * 1,
-                                                                            ),
-                                                                        ) {
-                                                                            Ok(mem_pool) => {
-                                                                                println!("Default allocator created");
-                                                                                mem_pool
-                                                                            }
-                                                                            Err(_err) => {
-                                                                                println!("Error creating the memory pool");
-                                                                                return ()
-                                                                            }
-                                                                        };
-
-
                                                                     }
                                                                     Err(_err) => {
                                                                         println!("Error creating the memory heap :(");

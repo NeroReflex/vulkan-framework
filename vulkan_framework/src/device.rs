@@ -61,7 +61,7 @@ impl Device {
     }
 
     pub fn are_validation_layers_enabled(&self) -> bool {
-        true//self.data.validation_layers
+        true //self.data.validation_layers
     }
 
     fn heap_corresponds(descriptor: &ConcreteMemoryHeapDescriptor) -> Option<u64> {
@@ -435,12 +435,16 @@ impl Device {
                                                 ) {
                                                     continue 'suitable_heap_search;
                                                 }
-                                                /*
+
                                                 // Only avaialble on Vulkan 1.1
-                                                if !heap_descriptor.property_flags.contains(ash::vk::MemoryPropertyFlags::PROTECTED) {
-                                                    continue 'suitable_heap_search
+                                                if (instance.instance_vulkan_version()
+                                                    != InstanceAPIVersion::Version1_0)
+                                                    && (!heap_descriptor.property_flags.contains(
+                                                        ash::vk::MemoryPropertyFlags::PROTECTED,
+                                                    ))
+                                                {
+                                                    continue 'suitable_heap_search;
                                                 }
-                                                */
                                             }
                                         }
 
@@ -609,8 +613,12 @@ impl Device {
 
                                     Ok(Arc::new(Self {
                                         //_name_bytes: obj_name_bytes,
-                                        required_family_collection: Mutex::new(selected_device.required_family_collection),
-                                        required_heap_collection: Mutex::new(selected_device.required_heap_collection),
+                                        required_family_collection: Mutex::new(
+                                            selected_device.required_family_collection,
+                                        ),
+                                        required_heap_collection: Mutex::new(
+                                            selected_device.required_heap_collection,
+                                        ),
                                         device: device,
                                         extensions: DeviceExtensions {
                                             swapchain_khr_ext: swapchain_ext,
@@ -630,7 +638,10 @@ impl Device {
         }
     }
 
-    pub(crate) fn move_out_queue_family(&self, index: usize) -> Option<(u32, ConcreteQueueFamilyDescriptor)> {
+    pub(crate) fn move_out_queue_family(
+        &self,
+        index: usize,
+    ) -> Option<(u32, ConcreteQueueFamilyDescriptor)> {
         match self.required_family_collection.lock() {
             Ok(mut collection) => match collection.len() > index {
                 true => match collection[index].to_owned() {

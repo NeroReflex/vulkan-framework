@@ -6,6 +6,7 @@ use std::vec::Vec;
 
 use std::sync::Arc;
 
+#[derive(Clone, PartialEq)]
 pub enum InstanceAPIVersion {
     Version1_0,
     Version1_1,
@@ -34,6 +35,7 @@ pub struct Instance {
     entry: ash::Entry,
     instance: ash::Instance,
     extensions: InstanceExtensions,
+    version: InstanceAPIVersion,
 }
 
 impl Drop for Instance {
@@ -45,6 +47,10 @@ impl Drop for Instance {
 }
 
 impl Instance {
+    pub fn instance_vulkan_version(&self) -> InstanceAPIVersion {
+        self.version.clone()
+    }
+
     pub(crate) fn get_debug_ext_extension(&self) -> Option<&ash::extensions::ext::DebugUtils> {
         match self.extensions.debug_ext_ext.as_ref() {
             Some(debug_ext_ext) => Some(debug_ext_ext),
@@ -61,7 +67,7 @@ impl Instance {
 
     pub fn get_alloc_callbacks(&self) -> Option<&ash::vk::AllocationCallbacks> {
         // TODO: implement in such a way that Instance remains Send + Sync
-        
+
         /*match self.data.alloc_callbacks.as_ref() {
             Some(callbacks) => Some(callbacks),
             None => None,
@@ -226,6 +232,7 @@ impl Instance {
                             surface_khr_ext: surface_ext,
                             debug_ext_ext: debug_ext,
                         },
+                        version: api_version.clone(),
                     }));
                 }
 
