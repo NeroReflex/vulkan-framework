@@ -7,3 +7,4 @@ pub mod prelude;
 pub mod queue;
 pub mod queue_family;
 pub mod surface;
+pub mod image;

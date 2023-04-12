@@ -128,19 +128,39 @@ fn main() {
                                                                     Ok(memory_heap) => {
                                                                         println!("Memory heap created! <3");
 
-                                                                        match MemoryPool::new(
+                                                                        let stack_allocator = match MemoryPool::new(
                                                                             memory_heap.clone(),
                                                                             StackAllocator::new(
-                                                                                1024 * 1024
-                                                                                    * 1024
-                                                                                    * 2,
+                                                                                1024 * 1024 * 1024 * 1,
                                                                             ),
                                                                         ) {
-                                                                            Ok(mem_pool) => {}
+                                                                            Ok(mem_pool) => {
+                                                                                println!("Stack allocator created");
+                                                                                mem_pool
+                                                                            }
                                                                             Err(_err) => {
                                                                                 println!("Error creating the memory pool");
+                                                                                return ()
                                                                             }
-                                                                        }
+                                                                        };
+
+                                                                        let default_allocator = match MemoryPool::new(
+                                                                            memory_heap.clone(),
+                                                                            StackAllocator::new(
+                                                                                1024 * 1024 * 1024 * 1,
+                                                                            ),
+                                                                        ) {
+                                                                            Ok(mem_pool) => {
+                                                                                println!("Default allocator created");
+                                                                                mem_pool
+                                                                            }
+                                                                            Err(_err) => {
+                                                                                println!("Error creating the memory pool");
+                                                                                return ()
+                                                                            }
+                                                                        };
+
+
                                                                     }
                                                                     Err(_err) => {
                                                                         println!("Error creating the memory heap :(");

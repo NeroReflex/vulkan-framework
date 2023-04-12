@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 pub struct MemoryPool<Allocator>
 where
-    Allocator: MemoryAllocator,
+    Allocator: MemoryAllocator + Send + Sync,
 {
     memory_heap: Arc<MemoryHeap>,
     allocator: Allocator,
@@ -19,23 +19,23 @@ where
 
 impl<Allocator> MemoryHeapOwned for MemoryPool<Allocator>
 where
-    Allocator: MemoryAllocator,
+    Allocator: MemoryAllocator + Send + Sync,
 {
     fn get_parent_memory_heap(&self) -> Arc<crate::memory_heap::MemoryHeap> {
         self.memory_heap.clone()
     }
 }
 
-trait MemoryPoolBacked<Allocator>
+pub trait MemoryPoolBacked<Allocator>
 where
-    Allocator: MemoryAllocator,
+    Allocator: MemoryAllocator + Send + Sync,
 {
     fn get_backing_memory_pool(&self) -> Arc<MemoryPool<Allocator>>;
 }
 
 impl<Allocator> Drop for MemoryPool<Allocator>
 where
-    Allocator: MemoryAllocator,
+    Allocator: MemoryAllocator + Send + Sync,
 {
     fn drop(&mut self) {
         let memory_heap = self.get_parent_memory_heap();
@@ -51,7 +51,7 @@ where
 
 impl<Allocator> MemoryPool<Allocator>
 where
-    Allocator: MemoryAllocator,
+    Allocator: MemoryAllocator + Send + Sync,
 {
     pub fn new(memory_heap: Arc<MemoryHeap>, allocator: Allocator) -> VulkanResult<Arc<Self>> {
         let create_info = ash::vk::MemoryAllocateInfo::builder()
@@ -82,5 +82,13 @@ where
                 }
             }
         }
+    }
+
+    pub(crate) fn alloc(&self) -> Option<AllocationResult> {
+        todo!()
+    }
+
+    pub(crate) fn dealloc(&self, mem: &mut AllocationResult) {
+        self.dealloc(mem)
     }
 }

@@ -54,7 +54,6 @@ impl ConcreteMemoryHeapDescriptor {
 pub struct MemoryHeap {
     device: Arc<Device>,
     descriptor: ConcreteMemoryHeapDescriptor,
-    //created_queues: Mutex<u64>,
     heap_index: u32,
 }
 
@@ -75,6 +74,14 @@ impl Drop for MemoryHeap {
 }
 
 impl MemoryHeap {
+    pub fn memory_type(&self) -> MemoryType {
+        self.descriptor.memory_type.clone()
+    }
+
+    pub fn total_size(&self) -> u64 {
+        self.descriptor.memory_minimum_size
+    }
+
     pub(crate) fn heap_index(&self) -> u32 {
         self.heap_index
     }
