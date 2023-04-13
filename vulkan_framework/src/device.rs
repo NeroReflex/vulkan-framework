@@ -629,12 +629,6 @@ impl Device {
                             */
                         }
                     }
-
-                    // we do here a dirty trick: if we are here then the current memory type is on a compatible heap,
-                    // we will allocate a maximum size of current_requested_memory_heap_descriptor.memory_minimum_size(),
-                    // therefore we eill remove that amount from the avaialable...
-                    device_memory_properties.memory_heaps[heap_descriptor.heap_index as usize]
-                        .size -= current_requested_memory_heap_descriptor.memory_minimum_size();
                 }
                 MemoryType::HostLocal(coherence_model) => {
                     // if I want host-local memory just ignore heaps that are not host-local

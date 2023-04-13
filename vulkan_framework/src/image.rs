@@ -327,8 +327,10 @@ pub struct ConcreteImageDescriptor {
 
 impl ConcreteImageDescriptor {
     pub(crate) fn ash_format(&self) -> ash::vk::Format {
-        let num = unsafe { std::mem::transmute_copy::<ImageFormat, i32>(&self.img_format) };
-        ash::vk::Format::from_raw(num)
+        ash::vk::Format::from_raw(match &self.img_format {
+            ImageFormat::Other(fmt) => *fmt,
+            fmt => unsafe { std::mem::transmute_copy::<ImageFormat, u32>(fmt) },
+        } as i32)
     }
 
     pub(crate) fn ash_image_type(&self) -> ImageType {
@@ -455,6 +457,7 @@ where
         memory_pool: Arc<MemoryPool<Allocator>>,
         descriptor: ConcreteImageDescriptor,
     ) -> VulkanResult<Arc<Self>> {
+
         if descriptor.img_layers == 0 {
             return Err(VulkanError::Unspecified);
         }
