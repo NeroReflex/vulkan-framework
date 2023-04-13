@@ -24,7 +24,6 @@ struct DeviceData {
     selected_device_features: ash::vk::PhysicalDeviceFeatures,
     selected_queues: Vec<ash::vk::DeviceQueueCreateInfo>,
     required_family_collection: Vec<Option<(u32, ConcreteQueueFamilyDescriptor)>>,
-    required_heap_collection: Vec<Option<(u32, u32, ConcreteMemoryHeapDescriptor)>>,
     enabled_extensions: Vec<Vec<c_char>>,
     enabled_layers: Vec<Vec<c_char>>,
 }
@@ -32,11 +31,10 @@ struct DeviceData {
 pub struct Device {
     //_name_bytes: Vec<u8>,
     required_family_collection: Mutex<Vec<Option<(u32, ConcreteQueueFamilyDescriptor)>>>,
-    required_heap_collection: Mutex<Vec<Option<(u32, u32, ConcreteMemoryHeapDescriptor)>>>,
     instance: Arc<Instance>,
     extensions: DeviceExtensions,
     device: ash::Device,
-    physical_device: ash::vk::PhysicalDevice
+    physical_device: ash::vk::PhysicalDevice,
 }
 
 impl InstanceOwned for Device {
@@ -91,7 +89,7 @@ impl Device {
         max_queues: u32,
     ) -> Option<u16>
     where
-        I: Iterator<Item = &'a QueueFamilySupportedOperationType>
+        I: Iterator<Item = &'a QueueFamilySupportedOperationType>,
     {
         if max_queues < queue_family.queue_count {
             return None;
@@ -218,7 +216,6 @@ impl Device {
     pub fn new(
         instance: Arc<Instance>,
         queue_descriptors: &[ConcreteQueueFamilyDescriptor],
-        memory_heap_descriptors: &[ConcreteMemoryHeapDescriptor],
         device_extensions: &[String],
         device_layers: &[String],
         debug_name: Option<&str>,
@@ -313,7 +310,8 @@ impl Device {
                             {
                                 match Self::corresponds(
                                     current_requested_queue_family_descriptor
-                                        .get_supported_operations().iter(),
+                                        .get_supported_operations()
+                                        .iter(),
                                     instance.ash_handle(),
                                     phy_device,
                                     instance.get_surface_khr_extension(),
@@ -378,112 +376,11 @@ impl Device {
                             }
                         }
 
-                        let mut required_memory_heap_descriptors: Vec<
-                            Option<(u32, u32, ConcreteMemoryHeapDescriptor)>,
-                        > = vec![];
-                        for current_requested_memory_heap_descriptor in
-                            memory_heap_descriptors.iter()
-                        {
-                            // associate a heap index to a concrete descriptor
-                            let requested_size =
-                                current_requested_memory_heap_descriptor.memory_minimum_size();
-
-                            'suitable_heap_search: for (memory_type_index, heap_descriptor) in
-                                device_memory_properties.memory_types.iter().enumerate()
-                            {
-                                // discard heaps that are too small
-                                let available_size = device_memory_properties.memory_heaps
-                                    [heap_descriptor.heap_index as usize]
-                                    .size;
-                                if requested_size > available_size {
-                                    continue 'suitable_heap_search;
-                                }
-
-                                match current_requested_memory_heap_descriptor.memory_type() {
-                                    MemoryType::DeviceLocal(host_visibility) => {
-                                        // if I want device-local memory just ignore heaps that are not device-local
-                                        if !heap_descriptor
-                                            .property_flags
-                                            .contains(ash::vk::MemoryPropertyFlags::DEVICE_LOCAL)
-                                        {
-                                            continue 'suitable_heap_search;
-                                        }
-
-                                        match host_visibility {
-                                            Some(visibility_model) => {
-                                                // a visibility model is specified, exclude heaps that are not suitable as not memory-mappable
-                                                if !heap_descriptor.property_flags.contains(
-                                                    ash::vk::MemoryPropertyFlags::HOST_VISIBLE,
-                                                ) {
-                                                    continue 'suitable_heap_search;
-                                                }
-                                            }
-                                            None => {
-                                                // a visibility model is NOT specified, the user wants memory that is not memory-mappable, so protected memory <3
-                                                if heap_descriptor.property_flags.contains(
-                                                    ash::vk::MemoryPropertyFlags::HOST_VISIBLE,
-                                                ) {
-                                                    continue 'suitable_heap_search;
-                                                }
-
-                                                // Only avaialble on Vulkan 1.1
-                                                /*
-                                                if (instance.instance_vulkan_version()
-                                                    != InstanceAPIVersion::Version1_0)
-                                                    && (!heap_descriptor.property_flags.contains(
-                                                        ash::vk::MemoryPropertyFlags::PROTECTED,
-                                                    ))
-                                                {
-                                                    continue 'suitable_heap_search;
-                                                }
-                                                */
-                                            }
-                                        }
-
-                                        // we do here a dirty trick: if we are here then the current memory type is on a compatible heap,
-                                        // we will allocate a maximum size of current_requested_memory_heap_descriptor.memory_minimum_size(),
-                                        // therefore we eill remove that amount from the avaialable...
-                                        device_memory_properties.memory_heaps
-                                            [heap_descriptor.heap_index as usize]
-                                            .size -= current_requested_memory_heap_descriptor
-                                            .memory_minimum_size();
-                                    }
-                                    MemoryType::HostLocal(coherence_model) => {
-                                        // if I want host-local memory just ignore heaps that are not host-local
-                                        if heap_descriptor
-                                            .property_flags
-                                            .contains(ash::vk::MemoryPropertyFlags::DEVICE_LOCAL)
-                                        {
-                                            continue 'suitable_heap_search;
-                                        }
-                                    }
-                                }
-
-                                // If I'm here the previous search has find that the current heap is suitable...
-                                required_memory_heap_descriptors.push(Some((
-                                    heap_descriptor.heap_index,
-                                    memory_type_index as u32,
-                                    current_requested_memory_heap_descriptor.clone(),
-                                )));
-                                break 'suitable_heap_search;
-                            }
-                        }
-
-                        if memory_heap_descriptors.len() != required_memory_heap_descriptors.len() {
-                            continue 'suitable_device_search;
-                        }
-                        /*
-                        if (deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU) { // Exclude inadequate devices
-                            currentScore = 0;
-                        }
-                        */
-
                         let currently_selected_device_data = DeviceData {
                             selected_physical_device: phy_device.clone(),
                             selected_device_features: phy_device_features,
                             selected_queues: selected_queues,
                             required_family_collection: required_family_collection,
-                            required_heap_collection: required_memory_heap_descriptors,
                             enabled_extensions: enabled_extensions,
                             enabled_layers: enabled_layers,
                         };
@@ -609,15 +506,12 @@ impl Device {
                                         required_family_collection: Mutex::new(
                                             selected_device.required_family_collection,
                                         ),
-                                        required_heap_collection: Mutex::new(
-                                            selected_device.required_heap_collection,
-                                        ),
                                         device: device,
                                         extensions: DeviceExtensions {
                                             swapchain_khr_ext: swapchain_ext,
                                         },
                                         instance: instance,
-                                        physical_device: selected_device.selected_physical_device
+                                        physical_device: selected_device.selected_physical_device,
                                     }))
                                 }
                                 Err(_err) => Err(VulkanError::Unspecified),
@@ -675,46 +569,91 @@ impl Device {
         }
     }
 
-    pub(crate) fn move_out_heap(
+    pub(crate) fn search_adequate_heap(
         &self,
-        index: usize,
-    ) -> Option<(u32, u32, ConcreteMemoryHeapDescriptor)> {
-        match self.required_heap_collection.lock() {
-            Ok(mut heap_collection_lock) => match heap_collection_lock.len() > index {
-                true => match heap_collection_lock[index].to_owned() {
-                    Some(result) => {
-                        heap_collection_lock[index] = None;
-                        Some(result)
-                    }
-                    None => {
-                        #[cfg(debug_assertions)]
-                        {
-                            println!("The memory heap with index {} has already been created once and there can only be one MemoryHeap for requested heap memory properties.", index);
-                            assert_eq!(true, false)
-                        }
+        current_requested_memory_heap_descriptor: &ConcreteMemoryHeapDescriptor,
+    ) -> Option<(u32, u32)> {
+        let mut device_memory_properties = unsafe {
+            self.get_parent_instance()
+                .ash_handle()
+                .get_physical_device_memory_properties(self.physical_device.to_owned())
+        };
 
-                        Option::None
-                    }
-                },
-                false => {
-                    #[cfg(debug_assertions)]
-                    {
-                        println!("A memory heap with index {} does not exists, at device creation time only {} heaps were requested.", index, heap_collection_lock.len());
-                        assert_eq!(true, false)
-                    }
+        let requested_size = current_requested_memory_heap_descriptor.memory_minimum_size();
 
-                    Option::None
-                }
-            },
-            Err(err) => {
-                #[cfg(debug_assertions)]
-                {
-                    println!("Error acquiring internal mutex: {}", err);
-                    assert_eq!(true, false)
-                }
-
-                Option::None
+        'suitable_heap_search: for (memory_type_index, heap_descriptor) in
+            device_memory_properties.memory_types.iter().enumerate()
+        {
+            // discard heaps that are too small
+            let available_size =
+                device_memory_properties.memory_heaps[heap_descriptor.heap_index as usize].size;
+            if requested_size > available_size {
+                continue 'suitable_heap_search;
             }
+
+            match current_requested_memory_heap_descriptor.memory_type() {
+                MemoryType::DeviceLocal(host_visibility) => {
+                    // if I want device-local memory just ignore heaps that are not device-local
+                    if !heap_descriptor
+                        .property_flags
+                        .contains(ash::vk::MemoryPropertyFlags::DEVICE_LOCAL)
+                    {
+                        continue 'suitable_heap_search;
+                    }
+
+                    match host_visibility {
+                        Some(visibility_model) => {
+                            // a visibility model is specified, exclude heaps that are not suitable as not memory-mappable
+                            if !heap_descriptor
+                                .property_flags
+                                .contains(ash::vk::MemoryPropertyFlags::HOST_VISIBLE)
+                            {
+                                continue 'suitable_heap_search;
+                            }
+                        }
+                        None => {
+                            // a visibility model is NOT specified, the user wants memory that is not memory-mappable, so protected memory <3
+                            if heap_descriptor
+                                .property_flags
+                                .contains(ash::vk::MemoryPropertyFlags::HOST_VISIBLE)
+                            {
+                                continue 'suitable_heap_search;
+                            }
+
+                            // Only avaialble on Vulkan 1.1
+                            /*
+                            if (instance.instance_vulkan_version()
+                                != InstanceAPIVersion::Version1_0)
+                                && (!heap_descriptor.property_flags.contains(
+                                    ash::vk::MemoryPropertyFlags::PROTECTED,
+                                ))
+                            {
+                                continue 'suitable_heap_search;
+                            }
+                            */
+                        }
+                    }
+
+                    // we do here a dirty trick: if we are here then the current memory type is on a compatible heap,
+                    // we will allocate a maximum size of current_requested_memory_heap_descriptor.memory_minimum_size(),
+                    // therefore we eill remove that amount from the avaialable...
+                    device_memory_properties.memory_heaps[heap_descriptor.heap_index as usize]
+                        .size -= current_requested_memory_heap_descriptor.memory_minimum_size();
+                }
+                MemoryType::HostLocal(coherence_model) => {
+                    // if I want host-local memory just ignore heaps that are not host-local
+                    if heap_descriptor
+                        .property_flags
+                        .contains(ash::vk::MemoryPropertyFlags::DEVICE_LOCAL)
+                    {
+                        continue 'suitable_heap_search;
+                    }
+                }
+            }
+
+            // If I'm here the previous search has find that the current heap is suitable...
+            return Some((heap_descriptor.heap_index, memory_type_index as u32));
         }
+        None
     }
 }

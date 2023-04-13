@@ -81,7 +81,6 @@ fn main() {
                                             [1.0f32].as_slice(),
                                         )]
                                         .as_slice(),
-                                        [].as_ref(),
                                         device_extensions.as_slice().as_ref(),
                                         device_layers.as_slice().as_ref(),
                                         Some("Opened Device"),

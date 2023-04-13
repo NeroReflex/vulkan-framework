@@ -55,7 +55,7 @@ pub struct MemoryHeap {
     device: Arc<Device>,
     descriptor: ConcreteMemoryHeapDescriptor,
     heap_index: u32,
-    heap_type_index: u32
+    heap_type_index: u32,
 }
 
 pub(crate) trait MemoryHeapOwned {
@@ -91,9 +91,12 @@ impl MemoryHeap {
         self.heap_index
     }
 
-    pub fn new(device: Arc<Device>, index_of_required_heap: usize) -> VulkanResult<Arc<Self>> {
-        match device.move_out_heap(index_of_required_heap) {
-            Some((heap_index, heap_type_index, descriptor)) => Ok(Arc::new(Self {
+    pub fn new(
+        device: Arc<Device>,
+        descriptor: ConcreteMemoryHeapDescriptor,
+    ) -> VulkanResult<Arc<Self>> {
+        match device.search_adequate_heap(&descriptor) {
+            Some((heap_index, heap_type_index)) => Ok(Arc::new(Self {
                 device,
                 descriptor,
                 heap_index,
@@ -102,8 +105,7 @@ impl MemoryHeap {
             None => {
                 #[cfg(debug_assertions)]
                 {
-                    println!("Something bad happened while moving out the memory heap from the provided Device");
-                    assert_eq!(true, false)
+                    println!("A suitable memory heap was not found on the specified Device");
                 }
 
                 Err(VulkanError::Unspecified)

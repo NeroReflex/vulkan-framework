@@ -1,4 +1,4 @@
-use ash::vk::{Extent3D, SampleCountFlags, ImageType, ImageLayout, ImageUsageFlags};
+use ash::vk::{Extent3D, ImageLayout, ImageType, ImageUsageFlags, SampleCountFlags};
 
 use crate::{
     device::{Device, DeviceOwned},
@@ -117,13 +117,11 @@ pub enum ImageMultisampling {
 }
 
 #[derive(Clone)]
-pub enum ImageUsage {
-
-}
+pub enum ImageUsage {}
 
 /**
  * Specify the image format for an image.
- * 
+ *
  * Common image formats has a name for convenience,
  * but it is always possible to specify Other(VkFormat).
  */
@@ -315,7 +313,7 @@ pub enum ImageFormat {
     astc_12x10_srgb_block = 182,
     astc_12x12_unorm_block = 183,
     astc_12x12_srgb_block = 184,
-    Other(u32)
+    Other(u32),
 }
 
 #[derive(Clone)]
@@ -380,14 +378,14 @@ impl ConcreteImageDescriptor {
         img_multisampling: Option<ImageMultisampling>,
         img_layers: u32,
         img_mip_levels: u32,
-        img_format: ImageFormat
+        img_format: ImageFormat,
     ) -> Self {
         Self {
             img_dimensions,
             img_multisampling,
             img_layers,
             img_mip_levels,
-            img_format
+            img_format,
         }
     }
 }
@@ -444,26 +442,25 @@ where
 {
     /**
      * Create a new Image from the provided memory pool.
-     * 
+     *
      * The creation process is expected to fail if the memory pool does not allow allocation for such resource,
      * either because the allocation fails (for example due to lack of memory) or because such image
      * has memory requirements that cannot be met.
-     * 
+     *
      * The resulting image has the initial layout of VK_IMAGE_LAYOUT_UNDEFINED.
-     * 
-     * 
+     *
+     *
      */
     pub fn new(
         memory_pool: Arc<MemoryPool<Allocator>>,
         descriptor: ConcreteImageDescriptor,
     ) -> VulkanResult<Arc<Self>> {
-
         if descriptor.img_layers == 0 {
-            return Err(VulkanError::Unspecified)
+            return Err(VulkanError::Unspecified);
         }
 
         if descriptor.img_mip_levels == 0 {
-            return Err(VulkanError::Unspecified)
+            return Err(VulkanError::Unspecified);
         }
 
         let create_info = ash::vk::ImageCreateInfo::builder()
@@ -549,12 +546,16 @@ where
     Allocator: MemoryAllocator + Send + Sync,
 {
     fn drop(&mut self) {
-        let device = self.memory_pool.get_parent_memory_heap().get_parent_device();
+        let device = self
+            .memory_pool
+            .get_parent_memory_heap()
+            .get_parent_device();
 
         unsafe {
-            device
-                .ash_handle()
-                .destroy_image(self.image, device.get_parent_instance().get_alloc_callbacks());
+            device.ash_handle().destroy_image(
+                self.image,
+                device.get_parent_instance().get_alloc_callbacks(),
+            );
         }
 
         self.memory_pool

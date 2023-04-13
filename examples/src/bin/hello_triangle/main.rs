@@ -100,11 +100,6 @@ fn main() {
                                                 [1.0f32].as_slice(),
                                             )]
                                             .as_slice(),
-                                            [ConcreteMemoryHeapDescriptor::new(
-                                                MemoryType::DeviceLocal(None),
-                                                1024 * 1024 * 1024 * 2, // 2GB of memory!
-                                            )]
-                                            .as_ref(),
                                             device_extensions.as_slice().as_ref(),
                                             device_layers.as_slice().as_ref(),
                                             Some("Opened Device"),
@@ -129,7 +124,10 @@ fn main() {
 
                                                                 match MemoryHeap::new(
                                                                     dev.clone(),
-                                                                    0,
+                                                                    ConcreteMemoryHeapDescriptor::new(
+                                                                        MemoryType::DeviceLocal(None),
+                                                                        1024 * 1024 * 1024 * 2, // 2GB of memory!
+                                                                    ),
                                                                 ) {
                                                                     Ok(memory_heap) => {
                                                                         println!("Memory heap created! <3");
