@@ -286,10 +286,6 @@ impl Device {
                             .ash_handle()
                             .get_physical_device_queue_family_properties(phy_device.to_owned());
 
-                        let mut device_memory_properties = instance
-                            .ash_handle()
-                            .get_physical_device_memory_properties(phy_device.to_owned());
-
                         // Check if all requested queues are supported
                         let mut selected_queues: Vec<ash::vk::DeviceQueueCreateInfo> = vec![];
                         let mut required_family_collection = vec![];
