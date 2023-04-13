@@ -194,7 +194,8 @@ fn main() {
                                                                                 1,
                                                                                 vulkan_framework::image::ImageFormat::r32g32b32a32_sfloat
                                                                             ),
-                                                                            None
+                                                                            None,
+                                                                            Some("Test Image")
                                                                         ) {
                                                                             Ok(img) => {
                                                                                 println!("Image created");
