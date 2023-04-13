@@ -474,8 +474,12 @@ where
             .array_layers(descriptor.img_layers)
             .initial_layout(ImageLayout::UNDEFINED)
             .format(descriptor.ash_format())
-            .usage(ImageUsageFlags::INPUT_ATTACHMENT)
+            .usage(0)
             .build();
+
+        // TODO: fix usage flags!!!
+        // TODO: fix sharing model!!!
+        todo!();
 
         let device = memory_pool.get_parent_memory_heap().get_parent_device();
 
