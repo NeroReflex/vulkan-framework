@@ -58,7 +58,7 @@ pub struct MemoryHeap {
     heap_type_index: u32,
 }
 
-pub(crate) trait MemoryHeapOwned {
+pub trait MemoryHeapOwned {
     fn get_parent_memory_heap(&self) -> Arc<MemoryHeap>;
 }
 

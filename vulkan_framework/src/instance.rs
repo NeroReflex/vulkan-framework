@@ -14,7 +14,7 @@ pub enum InstanceAPIVersion {
     Version1_3,
 }
 
-pub(crate) trait InstanceOwned {
+pub trait InstanceOwned {
     fn get_parent_instance(&self) -> Arc<Instance>;
 }
 

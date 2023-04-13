@@ -3,7 +3,6 @@ use crate::prelude::{VulkanError, VulkanResult};
 use crate::{instance::*, queue_family::*};
 
 use ash;
-use ash::vk::MemoryHeap;
 
 use std::os::raw::c_char;
 use std::sync::Mutex;
@@ -11,7 +10,7 @@ use std::vec::Vec;
 
 use std::sync::Arc;
 
-pub(crate) trait DeviceOwned {
+pub trait DeviceOwned {
     fn get_parent_device(&self) -> Arc<Device>;
 }
 
@@ -59,12 +58,19 @@ impl Device {
         &self.device
     }
 
-    pub fn are_validation_layers_enabled(&self) -> bool {
-        true //self.data.validation_layers
-    }
+    pub fn wait_idle(&self) -> VulkanResult<()> {
+        match unsafe { self.device.device_wait_idle() } {
+            Ok(_) => Ok(()),
+            Err(err) => {
+                #[cfg(debug_assertions)]
+                {
+                    println!("Error waiting for device to be idle: {}", err);
+                    assert_eq!(true, false)
+                }
 
-    fn heap_corresponds(descriptor: &ConcreteMemoryHeapDescriptor) -> Option<u64> {
-        Option::None
+                Err(VulkanError::Unspecified)
+            }
+        }
     }
 
     /**

@@ -200,6 +200,7 @@ pub enum ImageUsage {
  * Common image formats has a name for convenience,
  * but it is always possible to specify Other(VkFormat).
  */
+#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, PartialEq)]
 #[repr(i32)]
 pub enum ImageFormat {
@@ -522,7 +523,7 @@ impl ConcreteImageDescriptor {
     }
 }
 
-pub trait ImageTrait {
+pub trait ImageTrait : DeviceOwned {
     fn native_handle(&self) -> u64;
 
     fn dimensions(&self) -> ImageDimensions;

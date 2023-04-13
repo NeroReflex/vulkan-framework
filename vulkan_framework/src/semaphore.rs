@@ -1,7 +1,3 @@
-use std::{ops::Deref, sync::Mutex};
-
-use ash::vk::Queue;
-
 use std::sync::Arc;
 
 use crate::{
@@ -36,6 +32,44 @@ impl Semaphore {
     pub fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.semaphore.clone())
     }
+
+    /**
+     * This function accepts fences that have been created from the same device.
+     */
+    /*pub fn wait_for_fences(semaphores: &[Self], device_timeout_ns: u64) -> VulkanResult<()> {
+        let mut device_native_handle: Option<Arc<Device>> = None;
+        let mut native_fences = Vec::<ash::vk::Semaphore>::new();
+        for semaphore in semaphores {
+            match &device_native_handle {
+                Some(old_device) => {
+                    if semaphore.native_handle() != old_device.native_handle() {
+                        return Err(VulkanError::Unspecified)
+                    }
+                },
+                None => {
+                    device_native_handle = Some(semaphore.device.clone())
+                }
+            }
+
+            native_fences.push(semaphore.semaphore)
+        }
+
+        match device_native_handle {
+            Some(device) => {
+                let wait_result = unsafe {
+                    device.ash_handle().wait_semaphores(native_fences.as_ref(), device_timeout_ns)
+                };
+
+                return match wait_result {
+                    Ok(_) => { Ok(()) },
+                    Err(err) => {
+                        Err(VulkanError::Unspecified)
+                    }
+                }
+            },
+            None => {Err(VulkanError::Unspecified)}
+        }
+    }*/
 
     pub fn new(
         device: Arc<Device>,
