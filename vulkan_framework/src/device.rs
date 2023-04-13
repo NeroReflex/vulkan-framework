@@ -252,7 +252,7 @@ impl Device {
                             })
                             .collect::<Vec<Vec<c_char>>>();
 
-                        let mut enabled_layers = device_layers
+                        let enabled_layers = device_layers
                             .iter()
                             .map(|ext_name| {
                                 let mut ext_bytes = ext_name.to_owned().into_bytes();
