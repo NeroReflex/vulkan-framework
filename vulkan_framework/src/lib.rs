@@ -1,5 +1,7 @@
 pub mod device;
+pub mod fence;
 pub mod image;
+pub mod image_view;
 pub mod instance;
 pub mod memory_allocator;
 pub mod memory_heap;
@@ -7,6 +9,5 @@ pub mod memory_pool;
 pub mod prelude;
 pub mod queue;
 pub mod queue_family;
-pub mod surface;
-pub mod fence;
 pub mod semaphore;
+pub mod surface;

@@ -75,17 +75,6 @@ fn main() {
                                 surface_handle,
                             ) {
                                 Ok(sfc) => {
-                                    //let supported_ops = ;
-                                    let required_queues = vec![ConcreteQueueFamilyDescriptor::new(
-                                        vec![
-                                            QueueFamilySupportedOperationType::Graphics,
-                                            QueueFamilySupportedOperationType::Transfer,
-                                            QueueFamilySupportedOperationType::Present(sfc.clone()),
-                                        ]
-                                        .as_ref(),
-                                        [1.0f32].as_slice(),
-                                    )];
-
                                     println!("Surface registered");
 
                                     {
@@ -135,7 +124,7 @@ fn main() {
                                                                     Ok(memory_heap) => {
                                                                         println!("Memory heap created! <3");
 
-                                                                        let stack_allocator =
+                                                                        let _stack_allocator =
                                                                             match MemoryPool::new(
                                                                                 memory_heap.clone(),
                                                                                 StackAllocator::new(

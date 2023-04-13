@@ -27,6 +27,10 @@ impl Drop for Queue {
 }
 
 impl Queue {
+    pub fn native_handle(&self) -> u64 {
+        ash::vk::Handle::as_raw(self.queue.clone())
+    }
+
     pub fn get_priority(&self) -> f32 {
         self.priority
     }

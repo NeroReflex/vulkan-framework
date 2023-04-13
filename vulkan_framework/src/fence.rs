@@ -6,18 +6,22 @@ use std::sync::Arc;
 
 use crate::{
     device::{Device, DeviceOwned},
-    prelude::{VulkanError, VulkanResult}, instance::InstanceOwned,
+    instance::InstanceOwned,
+    prelude::{VulkanError, VulkanResult},
 };
 
 pub struct Fence {
     device: Arc<Device>,
-    fence: ash::vk::Fence
+    fence: ash::vk::Fence,
 }
 
 impl Drop for Fence {
     fn drop(&mut self) {
         unsafe {
-            self.device.ash_handle().destroy_fence(self.fence.clone(), self.device.get_parent_instance().get_alloc_callbacks())
+            self.device.ash_handle().destroy_fence(
+                self.fence.clone(),
+                self.device.get_parent_instance().get_alloc_callbacks(),
+            )
         }
     }
 }
@@ -29,15 +33,28 @@ impl DeviceOwned for Fence {
 }
 
 impl Fence {
-    pub fn new(device: Arc<Device>, starts_in_signaled_state: bool, debug_name: Option<&str>,) -> VulkanResult<Arc<Self>> {
+    pub fn native_handle(&self) -> u64 {
+        ash::vk::Handle::as_raw(self.fence.clone())
+    }
+
+    pub fn new(
+        device: Arc<Device>,
+        starts_in_signaled_state: bool,
+        debug_name: Option<&str>,
+    ) -> VulkanResult<Arc<Self>> {
         let create_info = ash::vk::FenceCreateInfo::builder()
             .flags(match starts_in_signaled_state {
-                true => { ash::vk::FenceCreateFlags::SIGNALED },
-                false => { ash::vk::FenceCreateFlags::from_raw( 0x00u32 )}
+                true => ash::vk::FenceCreateFlags::SIGNALED,
+                false => ash::vk::FenceCreateFlags::from_raw(0x00u32),
             })
             .build();
 
-        match unsafe { device.ash_handle().create_fence(&create_info, device.get_parent_instance().get_alloc_callbacks()) }{
+        match unsafe {
+            device.ash_handle().create_fence(
+                &create_info,
+                device.get_parent_instance().get_alloc_callbacks(),
+            )
+        } {
             Ok(fence) => {
                 let mut obj_name_bytes = vec![];
                 match device.get_parent_instance().get_debug_ext_extension() {
@@ -86,11 +103,8 @@ impl Fence {
                     None => {}
                 }
 
-                Ok(Arc::new(Self {
-                    device,
-                    fence
-                }))
-            },
+                Ok(Arc::new(Self { device, fence }))
+            }
             Err(err) => {
                 #[cfg(debug_assertions)]
                 {
@@ -100,6 +114,5 @@ impl Fence {
                 Err(VulkanError::Unspecified)
             }
         }
-
     }
 }

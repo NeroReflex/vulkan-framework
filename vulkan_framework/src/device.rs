@@ -272,7 +272,7 @@ impl Device {
                             .ash_handle()
                             .get_physical_device_properties(phy_device.to_owned());
 
-                        let msbytes = match phy_device_properties.device_type.as_raw() {
+                        let msbytes = match phy_device_properties.device_type {
                             DISCRETE_GPU => 0xC000000000000000u64,
                             INTEGRATED_GPU => 0x8000000000000000u64,
                             VK_PHYSICAL_DEVICE_TYPE_CPU => 0x4000000000000000u64,

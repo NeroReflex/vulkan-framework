@@ -6,18 +6,22 @@ use std::sync::Arc;
 
 use crate::{
     device::{Device, DeviceOwned},
-    prelude::{VulkanError, VulkanResult}, instance::InstanceOwned,
+    instance::InstanceOwned,
+    prelude::{VulkanError, VulkanResult},
 };
 
 pub struct Semaphore {
     device: Arc<Device>,
-    semaphore: ash::vk::Semaphore
+    semaphore: ash::vk::Semaphore,
 }
 
 impl Drop for Semaphore {
     fn drop(&mut self) {
         unsafe {
-            self.device.ash_handle().destroy_semaphore(self.semaphore.clone(), self.device.get_parent_instance().get_alloc_callbacks())
+            self.device.ash_handle().destroy_semaphore(
+                self.semaphore.clone(),
+                self.device.get_parent_instance().get_alloc_callbacks(),
+            )
         }
     }
 }
@@ -29,12 +33,25 @@ impl DeviceOwned for Semaphore {
 }
 
 impl Semaphore {
-    pub fn new(device: Arc<Device>, starts_in_signaled_state: bool, debug_name: Option<&str>,) -> VulkanResult<Arc<Self>> {
+    pub fn native_handle(&self) -> u64 {
+        ash::vk::Handle::as_raw(self.semaphore.clone())
+    }
+
+    pub fn new(
+        device: Arc<Device>,
+        starts_in_signaled_state: bool,
+        debug_name: Option<&str>,
+    ) -> VulkanResult<Arc<Self>> {
         let create_info = ash::vk::SemaphoreCreateInfo::builder()
             .flags(ash::vk::SemaphoreCreateFlags::empty()) // At  the time of writing reserved for future use
             .build();
 
-        match unsafe { device.ash_handle().create_semaphore(&create_info, device.get_parent_instance().get_alloc_callbacks()) } {
+        match unsafe {
+            device.ash_handle().create_semaphore(
+                &create_info,
+                device.get_parent_instance().get_alloc_callbacks(),
+            )
+        } {
             Ok(semaphore) => {
                 let mut obj_name_bytes = vec![];
                 match device.get_parent_instance().get_debug_ext_extension() {
@@ -82,12 +99,9 @@ impl Semaphore {
                     }
                     None => {}
                 }
-                
-                Ok(Arc::new(Self {
-                    device,
-                    semaphore
-                }))
-            },
+
+                Ok(Arc::new(Self { device, semaphore }))
+            }
             Err(err) => {
                 #[cfg(debug_assertions)]
                 {
@@ -97,6 +111,5 @@ impl Semaphore {
                 Err(VulkanError::Unspecified)
             }
         }
-
     }
 }
