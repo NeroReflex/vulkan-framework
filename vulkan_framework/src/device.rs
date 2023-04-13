@@ -36,6 +36,7 @@ pub struct Device {
     instance: Arc<Instance>,
     extensions: DeviceExtensions,
     device: ash::Device,
+    physical_device: ash::vk::PhysicalDevice
 }
 
 impl InstanceOwned for Device {
@@ -266,20 +267,6 @@ impl Device {
                                     .collect::<Vec<c_char>>()
                             })
                             .collect::<Vec<Vec<c_char>>>();
-
-                        /*
-                        Previous implementations of Vulkan made a distinction between instance and device specific validation layers, but this is no longer the case.
-                        That means that the enabledLayerCount and ppEnabledLayerNames fields of VkDeviceCreateInfo are ignored by up-to-date implementations.
-                        However, it is still a good idea to set them anyway to be compatible with older implementations:
-                        */
-                        if instance.is_debugging_enabled() {
-                            enabled_layers.push(
-                                b"VK_LAYER_KHRONOS_validation\0"
-                                    .iter()
-                                    .map(|c| *c as c_char)
-                                    .collect::<Vec<c_char>>(),
-                            );
-                        }
 
                         let phy_device_features = instance
                             .ash_handle()
@@ -630,6 +617,7 @@ impl Device {
                                             swapchain_khr_ext: swapchain_ext,
                                         },
                                         instance: instance,
+                                        physical_device: selected_device.selected_physical_device
                                     }))
                                 }
                                 Err(_err) => Err(VulkanError::Unspecified),

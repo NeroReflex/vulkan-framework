@@ -84,10 +84,6 @@ impl Instance {
         &self.instance
     }
 
-    pub fn is_debugging_enabled(&self) -> bool {
-        true //self.data.validation_layers
-    }
-
     /**
      * Creates a new vulkan instance with required instance layers and extensions.
      *
