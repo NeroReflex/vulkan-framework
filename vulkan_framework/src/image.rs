@@ -1,4 +1,4 @@
-use ash::vk::{Extent3D, ImageLayout, ImageType, ImageUsageFlags, SampleCountFlags};
+use ash::vk::{Extent3D, ImageLayout, ImageType, ImageUsageFlags, SampleCountFlags, SharingMode};
 
 use crate::{
     device::{Device, DeviceOwned},
@@ -7,6 +7,7 @@ use crate::{
     memory_heap::MemoryHeapOwned,
     memory_pool::{MemoryPool, MemoryPoolBacked},
     prelude::{VulkanError, VulkanResult},
+    queue_family::QueueFamily,
 };
 
 use std::sync::Arc;
@@ -116,8 +117,82 @@ pub enum ImageMultisampling {
     SamplesPerPixel64,
 }
 
+/**
+ *
+ */
 #[derive(Clone)]
-pub enum ImageUsage {}
+pub struct ImageUsageSpecifier {
+    transfer_src: bool,
+    transfer_dst: bool,
+    sampled: bool,
+    storage: bool,
+    color_attachment: bool,
+    depth_stencil_attachment: bool,
+    transient_attachment: bool,
+    input_attachment: bool,
+}
+
+impl ImageUsageSpecifier {
+    pub fn transfer_src(&self) -> bool {
+        self.transfer_src
+    }
+    
+    pub fn transfer_dst(&self) -> bool {
+        self.transfer_dst
+    }
+
+    pub fn sampled(&self) -> bool {
+        self.sampled
+    }
+
+    pub fn storage(&self) -> bool {
+        self.storage
+    }
+
+    pub fn color_attachment(&self) -> bool {
+        self.color_attachment
+    }
+
+    pub fn depth_stencil_attachment(&self) -> bool {
+        self.depth_stencil_attachment
+    }
+
+    pub fn transient_attachment(&self) -> bool {
+        self.transient_attachment
+    }
+
+    pub fn input_attachment(&self) -> bool {
+        self.input_attachment
+    }
+
+    pub fn new(
+        transfer_src: bool,
+        transfer_dst: bool,
+        sampled: bool,
+        storage: bool,
+        color_attachment: bool,
+        depth_stencil_attachment: bool,
+        transient_attachment: bool,
+        input_attachment: bool,
+    ) -> Self {
+        Self {
+            transfer_src,
+            transfer_dst,
+            sampled,
+            storage,
+            color_attachment,
+            depth_stencil_attachment,
+            transient_attachment,
+            input_attachment,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub enum ImageUsage {
+    Managed(ImageUsageSpecifier),
+    Unmanaged(u32),
+}
 
 /**
  * Specify the image format for an image.
@@ -319,6 +394,7 @@ pub enum ImageFormat {
 #[derive(Clone)]
 pub struct ConcreteImageDescriptor {
     img_dimensions: ImageDimensions,
+    img_usage: ImageUsage,
     img_multisampling: Option<ImageMultisampling>,
     img_layers: u32,
     img_mip_levels: u32,
@@ -326,6 +402,65 @@ pub struct ConcreteImageDescriptor {
 }
 
 impl ConcreteImageDescriptor {
+    pub(crate) fn ash_usage(&self) -> ash::vk::ImageUsageFlags {
+        match &self.img_usage {
+            ImageUsage::Managed(flags) => {
+                let raw_flags =
+                    (
+                        match flags.transfer_src() {
+                            true => { ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::TRANSFER_SRC) as u32 },
+                            false => { 0x00000000u32 }
+                        }
+                    ) |
+                    (
+                        match flags.transfer_dst() {
+                            true => { ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::TRANSFER_DST) as u32 },
+                            false => { 0x00000000u32 }
+                        }
+                    ) |
+                    (
+                        match flags.sampled() {
+                            true => { ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::SAMPLED) as u32 },
+                            false => { 0x00000000u32 }
+                        }
+                    ) |
+                    (
+                        match flags.storage() {
+                            true => { ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::STORAGE) as u32 },
+                            false => { 0x00000000u32 }
+                        }
+                    ) |
+                    (
+                        match flags.color_attachment() {
+                            true => { ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::COLOR_ATTACHMENT) as u32 },
+                            false => { 0x00000000u32 }
+                        }
+                    ) |
+                    (
+                        match flags.depth_stencil_attachment() {
+                            true => { ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT) as u32 },
+                            false => { 0x00000000u32 }
+                        }
+                    ) |
+                    (
+                        match flags.transient_attachment() {
+                            true => { ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::TRANSIENT_ATTACHMENT) as u32 },
+                            false => { 0x00000000u32 }
+                        }
+                    ) |
+                    (
+                        match flags.input_attachment() {
+                            true => { ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::INPUT_ATTACHMENT) as u32 },
+                            false => { 0x00000000u32 }
+                        }
+                    );
+                
+                    ash::vk::ImageUsageFlags::from_raw(raw_flags)
+            }
+            ImageUsage::Unmanaged(raw_flags) => ash::vk::ImageUsageFlags::from_raw(*raw_flags),
+        }
+    }
+
     pub(crate) fn ash_format(&self) -> ash::vk::Format {
         ash::vk::Format::from_raw(match &self.img_format {
             ImageFormat::Other(fmt) => *fmt,
@@ -377,6 +512,7 @@ impl ConcreteImageDescriptor {
 
     pub fn new(
         img_dimensions: ImageDimensions,
+        img_usage: ImageUsage,
         img_multisampling: Option<ImageMultisampling>,
         img_layers: u32,
         img_mip_levels: u32,
@@ -384,6 +520,7 @@ impl ConcreteImageDescriptor {
     ) -> Self {
         Self {
             img_dimensions,
+            img_usage,
             img_multisampling,
             img_layers,
             img_mip_levels,
@@ -456,14 +593,26 @@ where
     pub fn new(
         memory_pool: Arc<MemoryPool<Allocator>>,
         descriptor: ConcreteImageDescriptor,
+        sharing: Option<&[std::sync::Weak<QueueFamily>]>,
     ) -> VulkanResult<Arc<Self>> {
-
         if descriptor.img_layers == 0 {
             return Err(VulkanError::Unspecified);
         }
 
         if descriptor.img_mip_levels == 0 {
             return Err(VulkanError::Unspecified);
+        }
+
+        let mut queue_family_indices = Vec::<u32>::new();
+        if let Some(weak_queue_family_iter) = sharing {
+            for allowed_queue_family in weak_queue_family_iter {
+                if let Some(queue_family) = allowed_queue_family.upgrade() {
+                    let family_index = queue_family.get_family_index();
+                    if !queue_family_indices.contains(&family_index) {
+                        queue_family_indices.push(family_index);
+                    }
+                }
+            }
         }
 
         let create_info = ash::vk::ImageCreateInfo::builder()
@@ -474,12 +623,13 @@ where
             .array_layers(descriptor.img_layers)
             .initial_layout(ImageLayout::UNDEFINED)
             .format(descriptor.ash_format())
-            .usage(0)
+            .usage(descriptor.ash_usage())
+            .sharing_mode(match queue_family_indices.len() <= 1 {
+                true => SharingMode::EXCLUSIVE,
+                false => SharingMode::CONCURRENT,
+            })
+            .queue_family_indices(queue_family_indices.as_ref())
             .build();
-
-        // TODO: fix usage flags!!!
-        // TODO: fix sharing model!!!
-        todo!();
 
         let device = memory_pool.get_parent_memory_heap().get_parent_device();
 

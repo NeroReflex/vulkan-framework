@@ -1,6 +1,9 @@
 use vulkan_framework::{
     device::*,
-    image::{ConcreteImageDescriptor, Image, Image2DDimensions, ImageDimensions},
+    image::{
+        ConcreteImageDescriptor, Image, Image2DDimensions, ImageDimensions, ImageUsage,
+        ImageUsageSpecifier,
+    },
     instance::*,
     memory_allocator::*,
     memory_heap::*,
@@ -170,7 +173,29 @@ fn main() {
                                                                                 }
                                                                             };
 
-                                                                        let image = match Image::new(default_allocator, ConcreteImageDescriptor::new(ImageDimensions::Image2D {extent: Image2DDimensions::new(100, 100)}, None, 1, 1, vulkan_framework::image::ImageFormat::r32g32b32a32_sfloat)) {
+                                                                        let image = match Image::new(
+                                                                            default_allocator,
+                                                                            ConcreteImageDescriptor::new(
+                                                                                ImageDimensions::Image2D {extent: Image2DDimensions::new(100, 100)},
+                                                                                ImageUsage::Managed(
+                                                                                    ImageUsageSpecifier::new(
+                                                                                        true,
+                                                                                        false,
+                                                                                        true,
+                                                                                        false,
+                                                                                        true,
+                                                                                        false,
+                                                                                        false,
+                                                                                        true
+                                                                                    )
+                                                                                ),
+                                                                                None,
+                                                                                1,
+                                                                                1,
+                                                                                vulkan_framework::image::ImageFormat::r32g32b32a32_sfloat
+                                                                            ),
+                                                                            None
+                                                                        ) {
                                                                             Ok(img) => {
                                                                                 println!("Image created");
                                                                                 img
