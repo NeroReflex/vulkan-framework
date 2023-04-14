@@ -1,4 +1,4 @@
-use ash::vk::{Extent3D, ImageLayout, ImageType, ImageUsageFlags, SampleCountFlags, SharingMode};
+use ash::vk::{Extent3D, ImageLayout, ImageType, ImageUsageFlags, SampleCountFlags, SharingMode, ImageAspectFlags};
 
 use crate::{
     device::{Device, DeviceOwned},
@@ -83,7 +83,11 @@ impl ImageView {
         let device = image.get_parent_device();
 
         let srr = ash::vk::ImageSubresourceRange {
-
+            aspect_mask: ImageAspectFlags::,
+            base_mip_level: subrange_base_mip_level,
+            level_count: subrange_level_count,
+            base_array_layer: subrange_base_array_layer,
+            layer_count: subrange_layer_count
         };
 
         let create_info = ash::vk::ImageViewCreateInfo::builder()
