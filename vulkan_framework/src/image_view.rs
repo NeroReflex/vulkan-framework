@@ -1,4 +1,4 @@
-use ash::vk::{Extent3D, ImageLayout, ImageType, ImageUsageFlags, SampleCountFlags, SharingMode, ImageAspectFlags};
+use ash::vk::{Extent3D, ImageLayout, ImageType, ImageUsageFlags, SampleCountFlags, SharingMode, ImageAspectFlags, Handle};
 
 use crate::{
     device::{Device, DeviceOwned},
@@ -83,7 +83,7 @@ impl ImageView {
         let device = image.get_parent_device();
 
         let srr = ash::vk::ImageSubresourceRange {
-            aspect_mask: ImageAspectFlags::,
+            aspect_mask: ImageAspectFlags::COLOR, // TODO: FIXME!
             base_mip_level: subrange_base_mip_level,
             level_count: subrange_level_count,
             base_array_layer: subrange_base_array_layer,
@@ -91,6 +91,7 @@ impl ImageView {
         };
 
         let create_info = ash::vk::ImageViewCreateInfo::builder()
+            .image(ash::vk::Image::from_raw(image.native_handle()))
             .subresource_range(srr)
             .build();
 

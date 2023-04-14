@@ -583,6 +583,14 @@ impl<Allocator> Image<Allocator>
 where
     Allocator: MemoryAllocator + Send + Sync,
 {
+    pub(crate) fn ash_native(&self) -> ash::vk::Image {
+        self.image.clone()
+    }
+
+    pub fn native_handle(&self) -> u64 {
+        ash::vk::Handle::as_raw(self.image.clone())
+    }
+
     /**
      * Create a new Image from the provided memory pool.
      *
