@@ -35,12 +35,12 @@ impl Drop for Surface {
 
 impl Surface {
     pub fn new(instance: Arc<Instance>, surface: ash::vk::SurfaceKHR) -> VulkanResult<Arc<Self>> {
-        Self::from_raw(instance, ash::vk::Handle::as_raw(surface) as u64)
+        Self::from_raw(instance, ash::vk::Handle::as_raw(surface))
     }
 
     pub fn from_raw(instance: Arc<Instance>, raw_surface_khr: u64) -> VulkanResult<Arc<Self>> {
         Ok(Arc::new(Self {
-            instance: instance,
+            instance,
             surface: ash::vk::Handle::from_raw(raw_surface_khr),
         }))
     }

@@ -15,7 +15,7 @@ impl Drop for Fence {
     fn drop(&mut self) {
         unsafe {
             self.device.ash_handle().destroy_fence(
-                self.fence.clone(),
+                self.fence,
                 self.device.get_parent_instance().get_alloc_callbacks(),
             )
         }
@@ -35,7 +35,7 @@ pub enum FenceWaitFor {
 
 impl Fence {
     pub fn native_handle(&self) -> u64 {
-        ash::vk::Handle::as_raw(self.fence.clone())
+        ash::vk::Handle::as_raw(self.fence)
     }
 
     /**
@@ -74,10 +74,10 @@ impl Fence {
                     )
                 };
 
-                return match wait_result {
+                match wait_result {
                     Ok(_) => Ok(()),
-                    Err(err) => Err(VulkanError::Unspecified),
-                };
+                    Err(_err) => Err(VulkanError::Unspecified),
+                }
             }
             None => Err(VulkanError::Unspecified),
         }
@@ -119,7 +119,7 @@ impl Fence {
                                     // set device name for debugging
                                     let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::builder()
                                         .object_type(ash::vk::ObjectType::FENCE)
-                                        .object_handle(ash::vk::Handle::as_raw(fence.clone()))
+                                        .object_handle(ash::vk::Handle::as_raw(fence))
                                         .object_name(object_name)
                                         .build();
 

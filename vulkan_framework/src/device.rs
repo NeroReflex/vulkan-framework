@@ -234,7 +234,7 @@ impl Device {
         unsafe {
             match instance.ash_handle().enumerate_physical_devices() {
                 Err(_err) => {
-                    return Err(VulkanError::Unspecified);
+                    Err(VulkanError::Unspecified)
                 }
                 Ok(physical_devices) => {
                     let mut best_physical_device_score: i128 = -1;
@@ -279,13 +279,13 @@ impl Device {
                             .get_physical_device_properties(phy_device.to_owned());
 
                         let msbytes = match phy_device_properties.device_type {
-                            DISCRETE_GPU => 0xC000000000000000u64,
-                            INTEGRATED_GPU => 0x8000000000000000u64,
-                            VK_PHYSICAL_DEVICE_TYPE_CPU => 0x4000000000000000u64,
+                            _DISCRETE_GPU => 0xC000000000000000u64,
+                            _INTEGRATED_GPU => 0x8000000000000000u64,
+                            _VK_PHYSICAL_DEVICE_TYPE_CPU => 0x4000000000000000u64,
                             _ => 0x0000000000000000u64,
                         };
 
-                        let current_score = msbytes | 0 as u64;
+                        let current_score = msbytes;
 
                         // get queues properties (used to check if all requested queues are available on this device)
                         let queue_family_properties = instance
@@ -364,13 +364,13 @@ impl Device {
                                         current_requested_queue_family_descriptor.clone(),
                                     )));
 
-                                    available_queue_families = available_queue_families.iter().map(|(queue_family_index, queue_family_properties)| -> Option<(usize, &ash::vk::QueueFamilyProperties)> {
+                                    available_queue_families = available_queue_families.iter().filter_map(|(queue_family_index, queue_family_properties)| -> Option<(usize, &ash::vk::QueueFamilyProperties)> {
                                         if *queue_family_index != family_index {
                                             return Some((*queue_family_index, queue_family_properties))
                                         }
 
                                         None
-                                    }).into_iter().flatten().collect();
+                                    }).collect();
                                 }
                                 None => {
                                     continue 'suitable_device_search;
@@ -379,12 +379,12 @@ impl Device {
                         }
 
                         let currently_selected_device_data = DeviceData {
-                            selected_physical_device: phy_device.clone(),
+                            selected_physical_device: *phy_device,
                             selected_device_features: phy_device_features,
-                            selected_queues: selected_queues,
-                            required_family_collection: required_family_collection,
-                            enabled_extensions: enabled_extensions,
-                            enabled_layers: enabled_layers,
+                            selected_queues,
+                            required_family_collection,
+                            enabled_extensions,
+                            enabled_layers,
                         };
 
                         match selected_physical_device {
@@ -508,11 +508,11 @@ impl Device {
                                         required_family_collection: Mutex::new(
                                             selected_device.required_family_collection,
                                         ),
-                                        device: device,
+                                        device,
                                         extensions: DeviceExtensions {
                                             swapchain_khr_ext: swapchain_ext,
                                         },
-                                        instance: instance,
+                                        instance,
                                         physical_device: selected_device.selected_physical_device,
                                     }))
                                 }
@@ -520,7 +520,7 @@ impl Device {
                             };
                         }
                         None => {
-                            return Err(VulkanError::Unspecified);
+                            Err(VulkanError::Unspecified)
                         }
                     }
                 }
@@ -575,7 +575,7 @@ impl Device {
         &self,
         current_requested_memory_heap_descriptor: &ConcreteMemoryHeapDescriptor,
     ) -> Option<(u32, u32)> {
-        let mut device_memory_properties = unsafe {
+        let device_memory_properties = unsafe {
             self.get_parent_instance()
                 .ash_handle()
                 .get_physical_device_memory_properties(self.physical_device.to_owned())
@@ -604,7 +604,7 @@ impl Device {
                     }
 
                     match host_visibility {
-                        Some(visibility_model) => {
+                        Some(_visibility_model) => {
                             // a visibility model is specified, exclude heaps that are not suitable as not memory-mappable
                             if !heap_descriptor
                                 .property_flags
@@ -636,7 +636,7 @@ impl Device {
                         }
                     }
                 }
-                MemoryType::HostLocal(coherence_model) => {
+                MemoryType::HostLocal(_coherence_model) => {
                     // if I want host-local memory just ignore heaps that are not host-local
                     if heap_descriptor
                         .property_flags

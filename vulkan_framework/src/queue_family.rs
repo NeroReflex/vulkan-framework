@@ -1,6 +1,6 @@
 use std::{ops::Deref, sync::Mutex};
 
-use ash::vk::Queue;
+
 
 use std::sync::Arc;
 
@@ -29,8 +29,8 @@ impl ConcreteQueueFamilyDescriptor {
         queue_priorities: &[f32],
     ) -> Self {
         Self {
-            supported_operations: supported_operations.iter().map(|el| el.clone()).collect(),
-            queue_priorities: queue_priorities.iter().map(|a| a.clone()).collect(),
+            supported_operations: supported_operations.to_vec(),
+            queue_priorities: queue_priorities.to_vec(),
         }
     }
 
@@ -79,7 +79,7 @@ impl QueueFamily {
         match device.move_out_queue_family(index_of_required_queue) {
             Some((queue_family, descriptor)) => Ok(Arc::new(Self {
                 device: device.clone(),
-                descriptor: descriptor,
+                descriptor,
                 created_queues: Mutex::new(0),
                 family_index: queue_family,
             })),

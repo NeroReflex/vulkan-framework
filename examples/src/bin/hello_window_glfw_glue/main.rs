@@ -2,7 +2,7 @@ use vulkan_framework::device::*;
 use vulkan_framework::instance::*;
 use vulkan_framework::queue_family::*;
 
-use vulkan_framework_glfw_glue;
+
 
 fn main() {
     let mut instance_extensions = vec![String::from("VK_EXT_debug_utils")];
@@ -61,19 +61,19 @@ fn main() {
                             println!("Vulkan rendering surface created successfully");
 
                             if let Ok(_device) = Device::new(
-                                instance.clone(),
+                                instance,
                                 [ConcreteQueueFamilyDescriptor::new(
                                     vec![
                                         QueueFamilySupportedOperationType::Graphics,
                                         QueueFamilySupportedOperationType::Transfer,
-                                        QueueFamilySupportedOperationType::Present(surface.clone()),
+                                        QueueFamilySupportedOperationType::Present(surface),
                                     ]
                                     .as_ref(),
                                     [1.0f32].as_slice(),
                                 )]
                                 .as_slice(),
-                                device_extensions.as_slice().as_ref(),
-                                device_layers.as_slice().as_ref(),
+                                device_extensions.as_slice(),
+                                device_layers.as_slice(),
                                 Some("Opened Device"),
                             ) {
                                 println!("Device opened successfully");

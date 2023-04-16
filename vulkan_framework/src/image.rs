@@ -1,4 +1,4 @@
-use ash::vk::{Extent3D, ImageLayout, ImageType, ImageUsageFlags, SampleCountFlags, SharingMode};
+use ash::vk::{Extent3D, ImageLayout, ImageType, SampleCountFlags, SharingMode};
 
 use crate::{
     device::{Device, DeviceOwned},
@@ -478,42 +478,38 @@ impl ConcreteImageDescriptor {
                     (match flags.transfer_src() {
                         true => {
                             ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::TRANSFER_SRC)
-                                as u32
                         }
                         false => 0x00000000u32,
                     }) | (match flags.transfer_dst() {
                         true => {
                             ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::TRANSFER_DST)
-                                as u32
                         }
                         false => 0x00000000u32,
                     }) | (match flags.sampled() {
-                        true => ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::SAMPLED)
-                            as u32,
+                        true => ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::SAMPLED),
                         false => 0x00000000u32,
                     }) | (match flags.storage() {
-                        true => ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::STORAGE)
-                            as u32,
+                        true => ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::STORAGE),
                         false => 0x00000000u32,
                     }) | (match flags.color_attachment() {
                         true => ash::vk::ImageUsageFlags::as_raw(
                             ash::vk::ImageUsageFlags::COLOR_ATTACHMENT,
-                        ) as u32,
+                        ),
                         false => 0x00000000u32,
                     }) | (match flags.depth_stencil_attachment() {
                         true => ash::vk::ImageUsageFlags::as_raw(
                             ash::vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
-                        ) as u32,
+                        ),
                         false => 0x00000000u32,
                     }) | (match flags.transient_attachment() {
                         true => ash::vk::ImageUsageFlags::as_raw(
                             ash::vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
-                        ) as u32,
+                        ),
                         false => 0x00000000u32,
                     }) | (match flags.input_attachment() {
                         true => ash::vk::ImageUsageFlags::as_raw(
                             ash::vk::ImageUsageFlags::INPUT_ATTACHMENT,
-                        ) as u32,
+                        ),
                         false => 0x00000000u32,
                     });
 
@@ -632,11 +628,11 @@ where
     Allocator: MemoryAllocator + Send + Sync,
 {
     fn native_handle(&self) -> u64 {
-        ash::vk::Handle::as_raw(self.image.clone())
+        ash::vk::Handle::as_raw(self.image)
     }
 
     fn format(&self) -> ImageFormat {
-        self.descriptor.img_format.clone()
+        self.descriptor.img_format
     }
 
     fn dimensions(&self) -> ImageDimensions {
@@ -657,7 +653,7 @@ where
     Allocator: MemoryAllocator + Send + Sync,
 {
     pub(crate) fn ash_native(&self) -> ash::vk::Image {
-        self.image.clone()
+        self.image
     }
 
     pub(crate) fn ash_format(&self) -> ash::vk::Format {
@@ -665,7 +661,7 @@ where
     }
 
     pub fn native_handle(&self) -> u64 {
-        ash::vk::Handle::as_raw(self.image.clone())
+        ash::vk::Handle::as_raw(self.image)
     }
 
     /**
@@ -759,7 +755,7 @@ where
                             // set device name for debugging
                             let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::builder()
                                 .object_type(ash::vk::ObjectType::IMAGE)
-                                .object_handle(ash::vk::Handle::as_raw(image.clone()))
+                                .object_handle(ash::vk::Handle::as_raw(image))
                                 .object_name(object_name)
                                 .build();
 
@@ -790,12 +786,12 @@ where
         }
 
         unsafe {
-            let requirements = if (device.get_parent_instance().instance_vulkan_version()
-                == InstanceAPIVersion::Version1_0)
+            let requirements = if device.get_parent_instance().instance_vulkan_version()
+                == InstanceAPIVersion::Version1_0
             {
                 device
                     .ash_handle()
-                    .get_image_memory_requirements(image.clone())
+                    .get_image_memory_requirements(image)
             } else {
                 let requirements_info = ash::vk::ImageMemoryRequirementsInfo2::builder()
                     .image(image)
@@ -813,7 +809,7 @@ where
             match memory_pool.alloc(requirements) {
                 Some(reserved_memory_from_pool) => {
                     match device.ash_handle().bind_image_memory(
-                        image.clone(),
+                        image,
                         memory_pool.native_handle(),
                         reserved_memory_from_pool.offset_in_pool(),
                     ) {
@@ -836,7 +832,7 @@ where
                                 device.get_parent_instance().get_alloc_callbacks(),
                             );
 
-                            return Err(VulkanError::Unspecified);
+                            Err(VulkanError::Unspecified)
                         }
                     }
                 }
@@ -846,7 +842,7 @@ where
                         .ash_handle()
                         .destroy_image(image, device.get_parent_instance().get_alloc_callbacks());
 
-                    return Err(VulkanError::Unspecified);
+                    Err(VulkanError::Unspecified)
                 }
             }
         }

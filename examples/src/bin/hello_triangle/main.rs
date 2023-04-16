@@ -85,15 +85,15 @@ fn main() {
                                                     QueueFamilySupportedOperationType::Graphics,
                                                     QueueFamilySupportedOperationType::Transfer,
                                                     QueueFamilySupportedOperationType::Present(
-                                                        sfc.clone(),
+                                                        sfc,
                                                     ),
                                                 ]
                                                 .as_ref(),
                                                 [1.0f32].as_slice(),
                                             )]
                                             .as_slice(),
-                                            device_extensions.as_slice().as_ref(),
-                                            device_layers.as_slice().as_ref(),
+                                            device_extensions.as_slice(),
+                                            device_layers.as_slice(),
                                             Some("Opened Device"),
                                         );
 
@@ -106,16 +106,16 @@ fn main() {
                                                         println!("Base queue family obtained successfully from Device");
 
                                                         match Queue::new(
-                                                            queue_family.clone(),
+                                                            queue_family,
                                                             Some("best queua evah"),
                                                         ) {
-                                                            Ok(queue) => {
+                                                            Ok(_queue) => {
                                                                 println!(
                                                                     "Queue created successfully"
                                                                 );
 
                                                                 match MemoryHeap::new(
-                                                                    dev.clone(),
+                                                                    dev,
                                                                     ConcreteMemoryHeapDescriptor::new(
                                                                         MemoryType::DeviceLocal(None),
                                                                         1024 * 1024 * 1024 * 2, // 2GB of memory!
@@ -129,8 +129,7 @@ fn main() {
                                                                                 memory_heap.clone(),
                                                                                 StackAllocator::new(
                                                                                     1024 * 1024
-                                                                                        * 1024
-                                                                                        * 1,
+                                                                                        * 1024,
                                                                                 ),
                                                                             ) {
                                                                                 Ok(mem_pool) => {
@@ -139,17 +138,16 @@ fn main() {
                                                                                 }
                                                                                 Err(_err) => {
                                                                                     println!("Error creating the memory pool");
-                                                                                    return ();
+                                                                                    return ;
                                                                                 }
                                                                             };
 
                                                                         let default_allocator =
                                                                             match MemoryPool::new(
-                                                                                memory_heap.clone(),
+                                                                                memory_heap,
                                                                                 StackAllocator::new(
                                                                                     1024 * 1024
-                                                                                        * 1024
-                                                                                        * 1,
+                                                                                        * 1024,
                                                                                 ),
                                                                             ) {
                                                                                 Ok(mem_pool) => {
@@ -158,11 +156,11 @@ fn main() {
                                                                                 }
                                                                                 Err(_err) => {
                                                                                     println!("Error creating the memory pool");
-                                                                                    return ();
+                                                                                    return ;
                                                                                 }
                                                                             };
 
-                                                                        let image = match Image::new(
+                                                                        let _image = match Image::new(
                                                                             default_allocator,
                                                                             ConcreteImageDescriptor::new(
                                                                                 ImageDimensions::Image2D {extent: Image2DDimensions::new(100, 100)},
@@ -193,7 +191,7 @@ fn main() {
                                                                             },
                                                                             Err(_err) => {
                                                                                 println!("Error creating image...");
-                                                                                return ()
+                                                                                return 
                                                                             }
                                                                         };
                                                                     }

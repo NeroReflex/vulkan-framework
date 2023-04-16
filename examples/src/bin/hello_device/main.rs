@@ -18,14 +18,14 @@ fn main() {
         println!("Vulkan instance created");
 
         if let Ok(_device) = Device::new(
-            instance.clone(),
+            instance,
             [ConcreteQueueFamilyDescriptor::new(
                 vec![QueueFamilySupportedOperationType::Compute].as_ref(),
                 [1.0f32].as_slice(),
             )]
             .as_slice(),
-            device_extensions.as_slice().as_ref(),
-            device_layers.as_slice().as_ref(),
+            device_extensions.as_slice(),
+            device_layers.as_slice(),
             Some("Opened Device"),
         ) {
             println!("Device opened successfully");

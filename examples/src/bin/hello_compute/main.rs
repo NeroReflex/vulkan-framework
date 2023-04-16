@@ -36,7 +36,7 @@ fn main() {
         println!("Vulkan instance created");
 
         if let Ok(device) = Device::new(
-            instance.clone(),
+            instance,
             [ConcreteQueueFamilyDescriptor::new(
                 vec![
                     QueueFamilySupportedOperationType::Compute,
@@ -46,8 +46,8 @@ fn main() {
                 [1.0f32].as_slice(),
             )]
             .as_slice(),
-            device_extensions.as_slice().as_ref(),
-            device_layers.as_slice().as_ref(),
+            device_extensions.as_slice(),
+            device_layers.as_slice(),
             Some("Opened Device"),
         ) {
             println!("Device opened successfully");
@@ -56,12 +56,12 @@ fn main() {
                 Ok(queue_family) => {
                     println!("Base queue family obtained successfully from Device");
 
-                    match Queue::new(queue_family.clone(), Some("best queua evah")) {
-                        Ok(queue) => {
+                    match Queue::new(queue_family, Some("best queua evah")) {
+                        Ok(_queue) => {
                             println!("Queue created successfully");
 
                             match MemoryHeap::new(
-                                device.clone(),
+                                device,
                                 ConcreteMemoryHeapDescriptor::new(
                                     MemoryType::DeviceLocal(None),
                                     1024 * 1024 * 512,
@@ -71,8 +71,8 @@ fn main() {
                                     println!("Memory heap created! <3");
 
                                     let stack_allocator = match MemoryPool::new(
-                                        memory_heap.clone(),
-                                        StackAllocator::new(1024 * 1024 * 1024 * 1),
+                                        memory_heap,
+                                        StackAllocator::new(1024 * 1024 * 1024),
                                     ) {
                                         Ok(mem_pool) => {
                                             println!("Stack allocator created");
@@ -80,7 +80,7 @@ fn main() {
                                         }
                                         Err(_err) => {
                                             println!("Error creating the memory pool");
-                                            return ();
+                                            return ;
                                         }
                                     };
 
@@ -115,11 +115,11 @@ fn main() {
                                                     },
                                                     Err(_err) => {
                                                         println!("Error creating image...");
-                                                        return ()
+                                                        return 
                                                     }
                                                 };
 
-                                    let image_view = match ImageView::new(
+                                    let _image_view = match ImageView::new(
                                         image,
                                         ImageViewType::Image2D,
                                         None,
@@ -133,7 +133,7 @@ fn main() {
                                         Ok(image_view) => image_view,
                                         Err(_err) => {
                                             println!("Error creating image view...");
-                                            return ();
+                                            return ;
                                         }
                                     };
                                 }

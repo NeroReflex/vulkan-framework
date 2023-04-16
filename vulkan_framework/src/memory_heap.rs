@@ -40,7 +40,7 @@ impl ConcreteMemoryHeapDescriptor {
     }
 
     pub fn memory_minimum_size(&self) -> u64 {
-        self.memory_minimum_size.clone()
+        self.memory_minimum_size
     }
 
     pub fn new(memory_type: MemoryType, memory_minimum_size: u64) -> Self {

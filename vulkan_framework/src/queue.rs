@@ -28,7 +28,7 @@ impl Drop for Queue {
 
 impl Queue {
     pub fn native_handle(&self) -> u64 {
-        ash::vk::Handle::as_raw(self.queue.clone())
+        ash::vk::Handle::as_raw(self.queue)
     }
 
     pub fn get_priority(&self) -> f32 {
@@ -69,7 +69,7 @@ impl Queue {
                                     // set device name for debugging
                                     let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::builder()
                                         .object_type(ash::vk::ObjectType::QUEUE)
-                                        .object_handle(ash::vk::Handle::as_raw(queue.clone()))
+                                        .object_handle(ash::vk::Handle::as_raw(queue))
                                         .object_name(object_name)
                                         .build();
 
@@ -101,9 +101,9 @@ impl Queue {
 
                 Ok(Arc::new(Self {
                     _name_bytes: obj_name_bytes,
-                    queue_family: queue_family,
-                    priority: priority,
-                    queue: queue,
+                    queue_family,
+                    priority,
+                    queue,
                 }))
             }
             None => {

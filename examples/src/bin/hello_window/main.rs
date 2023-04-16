@@ -74,15 +74,15 @@ fn main() {
                                                 QueueFamilySupportedOperationType::Graphics,
                                                 QueueFamilySupportedOperationType::Transfer,
                                                 QueueFamilySupportedOperationType::Present(
-                                                    sfc.clone(),
+                                                    sfc,
                                                 ),
                                             ]
                                             .as_ref(),
                                             [1.0f32].as_slice(),
                                         )]
                                         .as_slice(),
-                                        device_extensions.as_slice().as_ref(),
-                                        device_layers.as_slice().as_ref(),
+                                        device_extensions.as_slice(),
+                                        device_layers.as_slice(),
                                         Some("Opened Device"),
                                     ) {
                                         println!("Device opened successfully");

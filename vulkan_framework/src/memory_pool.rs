@@ -1,5 +1,5 @@
 use crate::{
-    device::{Device, DeviceOwned},
+    device::{DeviceOwned},
     instance::InstanceOwned,
     memory_allocator::*,
     memory_heap::{MemoryHeap, MemoryHeapOwned},
@@ -54,7 +54,7 @@ where
     Allocator: MemoryAllocator + Send + Sync,
 {
     pub(crate) fn native_handle(&self) -> ash::vk::DeviceMemory {
-        self.memory.clone()
+        self.memory
     }
 
     pub fn new(memory_heap: Arc<MemoryHeap>, allocator: Allocator) -> VulkanResult<Arc<Self>> {

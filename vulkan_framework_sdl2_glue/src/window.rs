@@ -69,7 +69,7 @@ impl Window {
         }
 
         Ok(Self {
-            window: window,
+            window,
             surface: Option::<VkSurfaceKHR>::None,
         })
     }

@@ -235,7 +235,7 @@ impl Instance {
                 return Err(VulkanError::Unspecified);
             }
 
-            return Err(VulkanError::Unspecified);
+            Err(VulkanError::Unspecified)
         }
     }
 }

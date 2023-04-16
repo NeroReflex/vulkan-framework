@@ -1,21 +1,17 @@
 use ash::vk::{
-    Extent3D, Handle, ImageAspectFlags, ImageLayout, ImageType, ImageUsageFlags, SampleCountFlags,
-    SharingMode,
+    Handle, ImageAspectFlags,
 };
 
 use crate::{
-    device::{Device, DeviceOwned},
+    device::{DeviceOwned},
     image::*,
-    instance::{InstanceAPIVersion, InstanceOwned},
-    memory_allocator::{AllocationResult, MemoryAllocator},
-    memory_heap::MemoryHeapOwned,
-    memory_pool::{MemoryPool, MemoryPoolBacked},
+    instance::{InstanceOwned},
     prelude::{VulkanError, VulkanResult},
-    queue_family::QueueFamily,
 };
 
-use std::{fmt::Error, sync::Arc};
+use std::{sync::Arc};
 
+#[derive(Copy, Clone)]
 pub enum ImageViewType {
     Image1D,
     Image2D,
@@ -41,6 +37,7 @@ impl ImageViewType {
 }
 
 #[allow(non_camel_case_types)]
+#[derive(Copy, Clone)]
 pub enum ImageViewColorMapping {
     rgba_rgba,
     bgra_rgba,
@@ -57,6 +54,7 @@ pub struct ImageView {
     subrange_layer_count: u32,
 }
 
+#[derive(Copy, Clone)]
 pub struct RecognisedImageAspect {
     color: bool,
     depth: bool,
@@ -104,6 +102,7 @@ impl RecognisedImageAspect {
     }
 }
 
+#[derive(Copy, Clone)]
 pub enum ImageViewAspect {
     Recognised(RecognisedImageAspect),
     Other(u32),
@@ -155,7 +154,7 @@ impl Drop for ImageView {
 
         unsafe {
             device.ash_handle().destroy_image_view(
-                self.image_view.clone(),
+                self.image_view,
                 device.get_parent_instance().get_alloc_callbacks(),
             )
         }
@@ -163,8 +162,32 @@ impl Drop for ImageView {
 }
 
 impl ImageView {
+    pub fn view_type(&self) -> ImageViewType {
+        self.view_type
+    }
+
+    pub fn color_mapping(&self) -> ImageViewColorMapping {
+        self.color_mapping
+    }
+
+    pub fn subrange_base_mip_level(&self) -> u32 {
+        self.subrange_base_mip_level
+    }
+
+    pub fn subrange_level_count(&self) -> u32 {
+        self.subrange_level_count
+    }
+
+    pub fn subrange_base_array_layer(&self) -> u32 {
+        self.subrange_base_array_layer
+    }
+    
+    pub fn subrange_layer_count(&self) -> u32 {
+        self.subrange_layer_count
+    }
+
     pub fn native_handle(&self) -> u64 {
-        ash::vk::Handle::as_raw(self.image_view.clone())
+        ash::vk::Handle::as_raw(self.image_view)
     }
 
     /**

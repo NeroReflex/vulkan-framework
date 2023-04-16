@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Mutex};
 
 pub struct AllocationResult {
     requested_size: u64,
@@ -10,7 +10,7 @@ pub struct AllocationResult {
 
 impl AllocationResult {
     pub fn offset_in_pool(&self) -> u64 {
-        self.resulting_address.clone()
+        self.resulting_address
     }
 
     pub fn new(

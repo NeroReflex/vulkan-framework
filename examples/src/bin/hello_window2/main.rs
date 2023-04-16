@@ -29,7 +29,7 @@ fn main() {
         &api_version,
     ) {
         Ok(a) => a,
-        Err(_) => return (),
+        Err(_) => return ,
     };
 
     let raw_surface_khr = window

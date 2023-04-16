@@ -15,7 +15,7 @@ impl Drop for Semaphore {
     fn drop(&mut self) {
         unsafe {
             self.device.ash_handle().destroy_semaphore(
-                self.semaphore.clone(),
+                self.semaphore,
                 self.device.get_parent_instance().get_alloc_callbacks(),
             )
         }
@@ -30,7 +30,7 @@ impl DeviceOwned for Semaphore {
 
 impl Semaphore {
     pub fn native_handle(&self) -> u64 {
-        ash::vk::Handle::as_raw(self.semaphore.clone())
+        ash::vk::Handle::as_raw(self.semaphore)
     }
 
     /**
@@ -73,7 +73,7 @@ impl Semaphore {
 
     pub fn new(
         device: Arc<Device>,
-        starts_in_signaled_state: bool,
+        _starts_in_signaled_state: bool,
         debug_name: Option<&str>,
     ) -> VulkanResult<Arc<Self>> {
         let create_info = ash::vk::SemaphoreCreateInfo::builder()
@@ -104,7 +104,7 @@ impl Semaphore {
                                     // set device name for debugging
                                     let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::builder()
                                         .object_type(ash::vk::ObjectType::SEMAPHORE)
-                                        .object_handle(ash::vk::Handle::as_raw(semaphore.clone()))
+                                        .object_handle(ash::vk::Handle::as_raw(semaphore))
                                         .object_name(object_name)
                                         .build();
 
