@@ -392,6 +392,69 @@ pub enum ImageFormat {
     Other(u32),
 }
 
+impl ImageFormat {
+    pub(crate) fn ash_format(&self) -> ash::vk::Format {
+        ash::vk::Format::from_raw(match self {
+            ImageFormat::Other(fmt) => *fmt,
+            fmt => unsafe { std::mem::transmute_copy::<ImageFormat, u32>(fmt) },
+        } as i32)
+    }
+}
+
+#[derive(Clone)]
+pub struct ImageFlagsCollection {
+    mutable_format: bool,
+    cube_compatible: bool,
+}
+
+impl ImageFlagsCollection {
+    pub(crate) fn ash_flags(&self) -> ash::vk::ImageCreateFlags {
+        (match self.mutable_format {
+            true => ash::vk::ImageCreateFlags::MUTABLE_FORMAT,
+            false => ash::vk::ImageCreateFlags::from_raw(0),
+        }) | (match self.cube_compatible {
+            true => ash::vk::ImageCreateFlags::CUBE_COMPATIBLE,
+            false => ash::vk::ImageCreateFlags::from_raw(0),
+        })
+    }
+
+    pub fn new(mutable_format: bool, cube_compatible: bool) -> Self {
+        Self {
+            mutable_format,
+            cube_compatible,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub enum ImageFlags {
+    Recognised(ImageFlagsCollection),
+    Other(u32),
+    Empty,
+}
+
+impl ImageFlags {
+    pub(crate) fn ash_flags(&self) -> ash::vk::ImageCreateFlags {
+        match self {
+            Self::Other(raw) => ash::vk::ImageCreateFlags::from_raw(*raw),
+            Self::Recognised(r) => r.ash_flags(),
+            Self::Empty => ash::vk::ImageCreateFlags::from_raw(0),
+        }
+    }
+
+    pub fn empty() -> Self {
+        Self::Empty
+    }
+
+    pub fn from(flags: ImageFlagsCollection) -> Self {
+        Self::Recognised(flags)
+    }
+
+    pub fn from_raw(flags: u32) -> Self {
+        Self::Other(flags)
+    }
+}
+
 #[derive(Clone)]
 pub struct ConcreteImageDescriptor {
     img_dimensions: ImageDimensions,
@@ -400,9 +463,14 @@ pub struct ConcreteImageDescriptor {
     img_layers: u32,
     img_mip_levels: u32,
     img_format: ImageFormat,
+    img_flags: ImageFlags,
 }
 
 impl ConcreteImageDescriptor {
+    pub(crate) fn ash_flags(&self) -> ash::vk::ImageCreateFlags {
+        self.img_flags.ash_flags()
+    }
+
     pub(crate) fn ash_usage(&self) -> ash::vk::ImageUsageFlags {
         match &self.img_usage {
             ImageUsage::Managed(flags) => {
@@ -456,10 +524,7 @@ impl ConcreteImageDescriptor {
     }
 
     pub(crate) fn ash_format(&self) -> ash::vk::Format {
-        ash::vk::Format::from_raw(match &self.img_format {
-            ImageFormat::Other(fmt) => *fmt,
-            fmt => unsafe { std::mem::transmute_copy::<ImageFormat, u32>(fmt) },
-        } as i32)
+        self.img_format.ash_format()
     }
 
     pub(crate) fn ash_image_type(&self) -> ImageType {
@@ -511,6 +576,7 @@ impl ConcreteImageDescriptor {
         img_layers: u32,
         img_mip_levels: u32,
         img_format: ImageFormat,
+        img_flags: ImageFlags,
     ) -> Self {
         Self {
             img_dimensions,
@@ -519,12 +585,15 @@ impl ConcreteImageDescriptor {
             img_layers,
             img_mip_levels,
             img_format,
+            img_flags,
         }
     }
 }
 
-pub trait ImageTrait : DeviceOwned {
+pub trait ImageTrait: DeviceOwned {
     fn native_handle(&self) -> u64;
+
+    fn format(&self) -> ImageFormat;
 
     fn dimensions(&self) -> ImageDimensions;
 
@@ -566,6 +635,10 @@ where
         ash::vk::Handle::as_raw(self.image.clone())
     }
 
+    fn format(&self) -> ImageFormat {
+        self.descriptor.img_format.clone()
+    }
+
     fn dimensions(&self) -> ImageDimensions {
         self.descriptor.img_dimensions.clone()
     }
@@ -585,6 +658,10 @@ where
 {
     pub(crate) fn ash_native(&self) -> ash::vk::Image {
         self.image.clone()
+    }
+
+    pub(crate) fn ash_format(&self) -> ash::vk::Format {
+        self.descriptor.ash_format()
     }
 
     pub fn native_handle(&self) -> u64 {
@@ -629,6 +706,7 @@ where
         }
 
         let create_info = ash::vk::ImageCreateInfo::builder()
+            .flags(descriptor.ash_flags())
             .image_type(descriptor.ash_image_type())
             .extent(descriptor.ash_extent_3d())
             .samples(descriptor.ash_sample_count())

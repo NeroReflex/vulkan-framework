@@ -1,7 +1,7 @@
 use vulkan_framework::{
     device::*,
     image::{
-        ConcreteImageDescriptor, Image, Image2DDimensions, ImageDimensions, ImageUsage,
+        ConcreteImageDescriptor, Image, Image2DDimensions, ImageDimensions, ImageFlags, ImageUsage,
         ImageUsageSpecifier,
     },
     instance::*,
@@ -181,7 +181,8 @@ fn main() {
                                                                                 None,
                                                                                 1,
                                                                                 1,
-                                                                                vulkan_framework::image::ImageFormat::r32g32b32a32_sfloat
+                                                                                vulkan_framework::image::ImageFormat::r32g32b32a32_sfloat,
+                                                                                ImageFlags::empty()
                                                                             ),
                                                                             None,
                                                                             Some("Test Image")

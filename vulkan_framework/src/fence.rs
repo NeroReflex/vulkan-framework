@@ -1,7 +1,3 @@
-use std::{ops::Deref, sync::Mutex, collections::HashMap};
-
-use ash::vk::{Queue, Handle};
-
 use std::sync::Arc;
 
 use crate::{
@@ -45,19 +41,21 @@ impl Fence {
     /**
      * This function accepts fences that have been created from the same device.
      */
-    pub fn wait_for_fences(fences: &[Self], wait_target: FenceWaitFor, device_timeout_ns: u64) -> VulkanResult<()> {
+    pub fn wait_for_fences(
+        fences: &[Self],
+        wait_target: FenceWaitFor,
+        device_timeout_ns: u64,
+    ) -> VulkanResult<()> {
         let mut device_native_handle: Option<Arc<Device>> = None;
         let mut native_fences = Vec::<ash::vk::Fence>::new();
         for fence in fences {
             match &device_native_handle {
                 Some(old_device) => {
                     if fence.native_handle() != old_device.native_handle() {
-                        return Err(VulkanError::Unspecified)
+                        return Err(VulkanError::Unspecified);
                     }
-                },
-                None => {
-                    device_native_handle = Some(fence.device.clone())
                 }
+                None => device_native_handle = Some(fence.device.clone()),
             }
 
             native_fences.push(fence.fence)
@@ -66,20 +64,22 @@ impl Fence {
         match device_native_handle {
             Some(device) => {
                 let wait_result = unsafe {
-                    device.ash_handle().wait_for_fences(native_fences.as_ref(), match wait_target {
-                        FenceWaitFor::All => true,
-                        FenceWaitFor::One => false
-                    }, device_timeout_ns)
+                    device.ash_handle().wait_for_fences(
+                        native_fences.as_ref(),
+                        match wait_target {
+                            FenceWaitFor::All => true,
+                            FenceWaitFor::One => false,
+                        },
+                        device_timeout_ns,
+                    )
                 };
 
                 return match wait_result {
-                    Ok(_) => { Ok(()) },
-                    Err(err) => {
-                        Err(VulkanError::Unspecified)
-                    }
-                }
-            },
-            None => {Err(VulkanError::Unspecified)}
+                    Ok(_) => Ok(()),
+                    Err(err) => Err(VulkanError::Unspecified),
+                };
+            }
+            None => Err(VulkanError::Unspecified),
         }
     }
 
