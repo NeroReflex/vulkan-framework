@@ -739,6 +739,7 @@ where
                 false => SharingMode::CONCURRENT,
             })
             .queue_family_indices(queue_family_indices.as_ref())
+            .tiling(descriptor.ash_tiling())
             .build();
 
         let device = memory_pool.get_parent_memory_heap().get_parent_device();
