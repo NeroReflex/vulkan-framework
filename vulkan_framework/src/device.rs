@@ -233,9 +233,7 @@ impl Device {
 
         unsafe {
             match instance.ash_handle().enumerate_physical_devices() {
-                Err(_err) => {
-                    Err(VulkanError::Unspecified)
-                }
+                Err(_err) => Err(VulkanError::Unspecified),
                 Ok(physical_devices) => {
                     let mut best_physical_device_score: i128 = -1;
                     let mut selected_physical_device: Option<DeviceData> = None;
@@ -519,9 +517,7 @@ impl Device {
                                 Err(_err) => Err(VulkanError::Unspecified),
                             };
                         }
-                        None => {
-                            Err(VulkanError::Unspecified)
-                        }
+                        None => Err(VulkanError::Unspecified),
                     }
                 }
             }

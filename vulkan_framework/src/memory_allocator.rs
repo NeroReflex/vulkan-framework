@@ -1,4 +1,4 @@
-use std::sync::{Mutex};
+use std::sync::Mutex;
 
 pub struct AllocationResult {
     requested_size: u64,

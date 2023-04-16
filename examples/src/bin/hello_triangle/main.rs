@@ -1,8 +1,8 @@
 use vulkan_framework::{
     device::*,
     image::{
-        ConcreteImageDescriptor, Image, Image2DDimensions, ImageDimensions, ImageFlags, ImageUsage,
-        ImageUsageSpecifier,
+        ConcreteImageDescriptor, Image, Image2DDimensions, ImageDimensions, ImageFlags,
+        ImageTiling, ImageUsage, ImageUsageSpecifier,
     },
     instance::*,
     memory_allocator::*,
@@ -84,9 +84,7 @@ fn main() {
                                                 vec![
                                                     QueueFamilySupportedOperationType::Graphics,
                                                     QueueFamilySupportedOperationType::Transfer,
-                                                    QueueFamilySupportedOperationType::Present(
-                                                        sfc,
-                                                    ),
+                                                    QueueFamilySupportedOperationType::Present(sfc),
                                                 ]
                                                 .as_ref(),
                                                 [1.0f32].as_slice(),
@@ -180,7 +178,8 @@ fn main() {
                                                                                 1,
                                                                                 1,
                                                                                 vulkan_framework::image::ImageFormat::r32g32b32a32_sfloat,
-                                                                                ImageFlags::empty()
+                                                                                ImageFlags::empty(),
+                                                                                ImageTiling::Linear
                                                                             ),
                                                                             None,
                                                                             Some("Test Image")
@@ -191,7 +190,7 @@ fn main() {
                                                                             },
                                                                             Err(_err) => {
                                                                                 println!("Error creating image...");
-                                                                                return 
+                                                                                return
                                                                             }
                                                                         };
                                                                     }

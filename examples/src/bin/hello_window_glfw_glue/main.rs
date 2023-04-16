@@ -2,8 +2,6 @@ use vulkan_framework::device::*;
 use vulkan_framework::instance::*;
 use vulkan_framework::queue_family::*;
 
-
-
 fn main() {
     let mut instance_extensions = vec![String::from("VK_EXT_debug_utils")];
 

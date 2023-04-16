@@ -1,5 +1,5 @@
 use crate::{
-    device::{DeviceOwned},
+    device::DeviceOwned,
     instance::InstanceOwned,
     memory_allocator::*,
     memory_heap::{MemoryHeap, MemoryHeapOwned},

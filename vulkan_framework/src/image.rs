@@ -456,6 +456,23 @@ impl ImageFlags {
 }
 
 #[derive(Clone)]
+pub enum ImageTiling {
+    Optimal,
+    Linear,
+    Other(i32),
+}
+
+impl ImageTiling {
+    pub(crate) fn ash_tiling(&self) -> ash::vk::ImageTiling {
+        match self {
+            Self::Optimal => ash::vk::ImageTiling::OPTIMAL,
+            Self::Linear => ash::vk::ImageTiling::LINEAR,
+            Self::Other(raw) => ash::vk::ImageTiling::from_raw(*raw),
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct ConcreteImageDescriptor {
     img_dimensions: ImageDimensions,
     img_usage: ImageUsage,
@@ -464,9 +481,14 @@ pub struct ConcreteImageDescriptor {
     img_mip_levels: u32,
     img_format: ImageFormat,
     img_flags: ImageFlags,
+    img_tiling: ImageTiling,
 }
 
 impl ConcreteImageDescriptor {
+    pub(crate) fn ash_tiling(&self) -> ash::vk::ImageTiling {
+        self.img_tiling.ash_tiling()
+    }
+
     pub(crate) fn ash_flags(&self) -> ash::vk::ImageCreateFlags {
         self.img_flags.ash_flags()
     }
@@ -474,44 +496,43 @@ impl ConcreteImageDescriptor {
     pub(crate) fn ash_usage(&self) -> ash::vk::ImageUsageFlags {
         match &self.img_usage {
             ImageUsage::Managed(flags) => {
-                let raw_flags =
-                    (match flags.transfer_src() {
-                        true => {
-                            ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::TRANSFER_SRC)
-                        }
-                        false => 0x00000000u32,
-                    }) | (match flags.transfer_dst() {
-                        true => {
-                            ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::TRANSFER_DST)
-                        }
-                        false => 0x00000000u32,
-                    }) | (match flags.sampled() {
-                        true => ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::SAMPLED),
-                        false => 0x00000000u32,
-                    }) | (match flags.storage() {
-                        true => ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::STORAGE),
-                        false => 0x00000000u32,
-                    }) | (match flags.color_attachment() {
-                        true => ash::vk::ImageUsageFlags::as_raw(
-                            ash::vk::ImageUsageFlags::COLOR_ATTACHMENT,
-                        ),
-                        false => 0x00000000u32,
-                    }) | (match flags.depth_stencil_attachment() {
-                        true => ash::vk::ImageUsageFlags::as_raw(
-                            ash::vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
-                        ),
-                        false => 0x00000000u32,
-                    }) | (match flags.transient_attachment() {
-                        true => ash::vk::ImageUsageFlags::as_raw(
-                            ash::vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
-                        ),
-                        false => 0x00000000u32,
-                    }) | (match flags.input_attachment() {
-                        true => ash::vk::ImageUsageFlags::as_raw(
-                            ash::vk::ImageUsageFlags::INPUT_ATTACHMENT,
-                        ),
-                        false => 0x00000000u32,
-                    });
+                let raw_flags = (match flags.transfer_src() {
+                    true => {
+                        ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::TRANSFER_SRC)
+                    }
+                    false => 0x00000000u32,
+                }) | (match flags.transfer_dst() {
+                    true => {
+                        ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::TRANSFER_DST)
+                    }
+                    false => 0x00000000u32,
+                }) | (match flags.sampled() {
+                    true => ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::SAMPLED),
+                    false => 0x00000000u32,
+                }) | (match flags.storage() {
+                    true => ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::STORAGE),
+                    false => 0x00000000u32,
+                }) | (match flags.color_attachment() {
+                    true => {
+                        ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::COLOR_ATTACHMENT)
+                    }
+                    false => 0x00000000u32,
+                }) | (match flags.depth_stencil_attachment() {
+                    true => ash::vk::ImageUsageFlags::as_raw(
+                        ash::vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+                    ),
+                    false => 0x00000000u32,
+                }) | (match flags.transient_attachment() {
+                    true => ash::vk::ImageUsageFlags::as_raw(
+                        ash::vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
+                    ),
+                    false => 0x00000000u32,
+                }) | (match flags.input_attachment() {
+                    true => {
+                        ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::INPUT_ATTACHMENT)
+                    }
+                    false => 0x00000000u32,
+                });
 
                 ash::vk::ImageUsageFlags::from_raw(raw_flags)
             }
@@ -573,6 +594,7 @@ impl ConcreteImageDescriptor {
         img_mip_levels: u32,
         img_format: ImageFormat,
         img_flags: ImageFlags,
+        img_tiling: ImageTiling,
     ) -> Self {
         Self {
             img_dimensions,
@@ -582,6 +604,7 @@ impl ConcreteImageDescriptor {
             img_mip_levels,
             img_format,
             img_flags,
+            img_tiling,
         }
     }
 }
@@ -789,9 +812,7 @@ where
             let requirements = if device.get_parent_instance().instance_vulkan_version()
                 == InstanceAPIVersion::Version1_0
             {
-                device
-                    .ash_handle()
-                    .get_image_memory_requirements(image)
+                device.ash_handle().get_image_memory_requirements(image)
             } else {
                 let requirements_info = ash::vk::ImageMemoryRequirementsInfo2::builder()
                     .image(image)

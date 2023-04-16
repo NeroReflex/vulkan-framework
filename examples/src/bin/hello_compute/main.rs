@@ -4,6 +4,7 @@ use vulkan_framework::image::Image;
 use vulkan_framework::image::Image2DDimensions;
 use vulkan_framework::image::ImageDimensions;
 use vulkan_framework::image::ImageFlags;
+use vulkan_framework::image::ImageTiling;
 use vulkan_framework::image::ImageUsage;
 use vulkan_framework::image::ImageUsageSpecifier;
 use vulkan_framework::image_view::ImageView;
@@ -80,7 +81,7 @@ fn main() {
                                         }
                                         Err(_err) => {
                                             println!("Error creating the memory pool");
-                                            return ;
+                                            return;
                                         }
                                     };
 
@@ -104,7 +105,8 @@ fn main() {
                                                         1,
                                                         1,
                                                         vulkan_framework::image::ImageFormat::r32g32b32a32_sfloat,
-                                                        ImageFlags::empty()
+                                                        ImageFlags::empty(),
+                                                        ImageTiling::Optimal
                                                     ),
                                                     None,
                                                     Some("Test Image")
@@ -115,7 +117,7 @@ fn main() {
                                                     },
                                                     Err(_err) => {
                                                         println!("Error creating image...");
-                                                        return 
+                                                        return
                                                     }
                                                 };
 
@@ -133,7 +135,7 @@ fn main() {
                                         Ok(image_view) => image_view,
                                         Err(_err) => {
                                             println!("Error creating image view...");
-                                            return ;
+                                            return;
                                         }
                                     };
                                 }

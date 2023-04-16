@@ -1,15 +1,13 @@
-use ash::vk::{
-    Handle, ImageAspectFlags,
-};
+use ash::vk::{Handle, ImageAspectFlags};
 
 use crate::{
-    device::{DeviceOwned},
+    device::DeviceOwned,
     image::*,
-    instance::{InstanceOwned},
+    instance::InstanceOwned,
     prelude::{VulkanError, VulkanResult},
 };
 
-use std::{sync::Arc};
+use std::sync::Arc;
 
 #[derive(Copy, Clone)]
 pub enum ImageViewType {
@@ -181,7 +179,7 @@ impl ImageView {
     pub fn subrange_base_array_layer(&self) -> u32 {
         self.subrange_base_array_layer
     }
-    
+
     pub fn subrange_layer_count(&self) -> u32 {
         self.subrange_layer_count
     }
