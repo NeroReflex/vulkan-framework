@@ -10,6 +10,8 @@ This project is designed to run everywhere vulkan 1.0.0 with no extensions is su
 
 To achieve this goal only rust's standard library and ash is used, everything else that might be needed (as the sdl2 glue) __MUST__ be manually imported by the developer.
 
+Moreover eveything that depends on an extension is optional and is not "flattened" as it is in the vulkan documentation, insted it is very explicit when you are using a Vulkan extension!
+
 ## Memory Management
 The framework makes it very clear what resources needs memory, and the user of the library is responsible for memory management for those resources.
 
@@ -20,3 +22,8 @@ resources without that handle, so you simply cannot forget to allocate memory fo
 All that is needed is to specify the memory allocator algorithm and what type of memory heap should it manage, but writing a memory allocator is a daunting task,
 so the framework will come equipped with a few default implementations!
 
+As for Sparse memory binding that is planned to be supported in a future release.
+
+## Raytracing
+In spite of aiming to basic vulkan 1.0 compatibility, for this framework extensions *VK_KHR_ray_tracing_pipeline* and *VK_KHR_ray_query* are first-class citizens
+and support for ray-tracing pipeline is a focal point.

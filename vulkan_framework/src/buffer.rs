@@ -12,6 +12,9 @@ use crate::{
 
 use std::sync::Arc;
 
+/**
+ * Provided by VK_KHR_acceleration_structure
+ */
 #[derive(Clone)]
 pub struct BufferUsageAccelerationKHR {
     acceleration_structure_storage: bool,
@@ -31,6 +34,7 @@ impl BufferUsageAccelerationKHR {
 }
 
 /*
+ * Provided by VK_KHR_ray_tracing_pipeline 
  */
 #[derive(Clone)]
 pub struct BufferUsageRayTracingPipelineKHR {

@@ -13,3 +13,8 @@ pub mod queue;
 pub mod queue_family;
 pub mod semaphore;
 pub mod surface;
+pub mod descriptor_set;
+pub mod shader_layout_binding;
+pub mod descriptor_set_layout;
+pub mod shader_trait;
+pub mod compute_shader;
