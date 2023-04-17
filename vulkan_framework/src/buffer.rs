@@ -165,6 +165,9 @@ where
                 device.get_parent_instance().get_alloc_callbacks(),
             )
         }
+
+        self.memory_pool
+            .dealloc(&mut self.reserved_memory_from_pool)
     }
 }
 
@@ -217,6 +220,8 @@ where
                 }
             }
         }
+
+        assert!(descriptor.ash_size() > 0);
 
         let create_info = ash::vk::BufferCreateInfo::builder()
             .size(descriptor.ash_size())

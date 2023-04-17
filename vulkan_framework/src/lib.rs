@@ -12,3 +12,4 @@ pub mod queue;
 pub mod queue_family;
 pub mod semaphore;
 pub mod surface;
+pub mod descriptor_pool;
