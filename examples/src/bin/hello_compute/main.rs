@@ -131,6 +131,7 @@ fn main() {
                                         None,
                                         None,
                                         None,
+                                        Some("ImageView"),
                                     ) {
                                         Ok(image_view) => image_view,
                                         Err(_err) => {

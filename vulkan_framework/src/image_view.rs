@@ -206,6 +206,7 @@ impl ImageView {
         maybe_specified_subrange_level_count: Option<u32>,
         maybe_specified_subrange_base_array_layer: Option<u32>,
         maybe_specified_subrange_layer_count: Option<u32>,
+        debug_name: Option<&str>,
     ) -> VulkanResult<Arc<Self>> {
         // by default do not swizzle colors
         let color_mapping =
@@ -244,16 +245,65 @@ impl ImageView {
                 device.get_parent_instance().get_alloc_callbacks(),
             )
         } {
-            Ok(image_view) => Ok(Arc::new(Self {
-                image,
-                image_view,
-                view_type,
-                color_mapping,
-                subrange_base_mip_level,
-                subrange_level_count,
-                subrange_base_array_layer,
-                subrange_layer_count,
-            })),
+            Ok(image_view) => {
+                let mut obj_name_bytes = vec![];
+                match device.get_parent_instance().get_debug_ext_extension() {
+                    Some(ext) => {
+                        match debug_name {
+                            Some(name) => {
+                                for name_ch in name.as_bytes().iter() {
+                                    obj_name_bytes.push(*name_ch);
+                                }
+                                obj_name_bytes.push(0x00);
+
+                                unsafe {
+                                    let object_name = std::ffi::CStr::from_bytes_with_nul_unchecked(
+                                        obj_name_bytes.as_slice(),
+                                    );
+                                    // set device name for debugging
+                                    let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::builder()
+                                        .object_type(ash::vk::ObjectType::IMAGE_VIEW)
+                                        .object_handle(ash::vk::Handle::as_raw(image_view))
+                                        .object_name(object_name)
+                                        .build();
+
+                                    match ext.set_debug_utils_object_name(
+                                        device.ash_handle().handle(),
+                                        &dbg_info,
+                                    ) {
+                                        Ok(_) => {
+                                            #[cfg(debug_assertions)]
+                                            {
+                                                println!("Queue Debug object name changed");
+                                            }
+                                        }
+                                        Err(err) => {
+                                            #[cfg(debug_assertions)]
+                                            {
+                                                println!("Error setting the Debug name for the newly created Queue, will use handle. Error: {}", err);
+                                                assert_eq!(true, false);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            None => {}
+                        };
+                    }
+                    None => {}
+                }
+
+                Ok(Arc::new(Self {
+                    image,
+                    image_view,
+                    view_type,
+                    color_mapping,
+                    subrange_base_mip_level,
+                    subrange_level_count,
+                    subrange_base_array_layer,
+                    subrange_layer_count,
+                }))
+            }
             Err(err) => {
                 #[cfg(debug_assertions)]
                 {
