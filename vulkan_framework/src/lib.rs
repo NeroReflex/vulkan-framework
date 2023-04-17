@@ -1,4 +1,5 @@
 pub mod buffer;
+pub mod descriptor_pool;
 pub mod device;
 pub mod fence;
 pub mod image;
@@ -12,4 +13,3 @@ pub mod queue;
 pub mod queue_family;
 pub mod semaphore;
 pub mod surface;
-pub mod descriptor_pool;

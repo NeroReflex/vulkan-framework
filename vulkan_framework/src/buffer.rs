@@ -22,11 +22,10 @@ impl BufferUsageAccelerationKHR {
     pub(crate) fn ash_usage(&self) -> ash::vk::BufferUsageFlags {
         (match self.acceleration_structure_storage {
             true => ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR,
-            false => ash::vk::BufferUsageFlags::from_raw(0)
-        }) |
-        (match self.acceleration_structure_build_input_read_only {
+            false => ash::vk::BufferUsageFlags::from_raw(0),
+        }) | (match self.acceleration_structure_build_input_read_only {
             true => ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR,
-            false => ash::vk::BufferUsageFlags::from_raw(0)
+            false => ash::vk::BufferUsageFlags::from_raw(0),
         })
     }
 }
@@ -35,14 +34,14 @@ impl BufferUsageAccelerationKHR {
  */
 #[derive(Clone)]
 pub struct BufferUsageRayTracingPipelineKHR {
-    shader_binding_table: bool
+    shader_binding_table: bool,
 }
 
 impl BufferUsageRayTracingPipelineKHR {
     pub(crate) fn ash_usage(&self) -> ash::vk::BufferUsageFlags {
         match self.shader_binding_table {
             true => ash::vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR,
-            false => ash::vk::BufferUsageFlags::from_raw(0)
+            false => ash::vk::BufferUsageFlags::from_raw(0),
         }
     }
 }
@@ -66,42 +65,33 @@ impl BufferUsageSpecifier {
     pub(crate) fn ash_usage(&self) -> ash::vk::BufferUsageFlags {
         (match self.transfer_src {
             true => ash::vk::BufferUsageFlags::TRANSFER_SRC,
-            false => ash::vk::BufferUsageFlags::from_raw(0)
-        }) |
-        (match self.transfer_dst {
+            false => ash::vk::BufferUsageFlags::from_raw(0),
+        }) | (match self.transfer_dst {
             true => ash::vk::BufferUsageFlags::TRANSFER_DST,
-            false => ash::vk::BufferUsageFlags::from_raw(0)
-        }) |
-        (match self.uniform_texel_buffer {
+            false => ash::vk::BufferUsageFlags::from_raw(0),
+        }) | (match self.uniform_texel_buffer {
             true => ash::vk::BufferUsageFlags::UNIFORM_TEXEL_BUFFER,
-            false => ash::vk::BufferUsageFlags::from_raw(0)
-        }) |
-        (match self.storage_texel_buffer {
+            false => ash::vk::BufferUsageFlags::from_raw(0),
+        }) | (match self.storage_texel_buffer {
             true => ash::vk::BufferUsageFlags::STORAGE_TEXEL_BUFFER,
-            false => ash::vk::BufferUsageFlags::from_raw(0)
-        }) |
-        (match self.uniform_buffer {
+            false => ash::vk::BufferUsageFlags::from_raw(0),
+        }) | (match self.uniform_buffer {
             true => ash::vk::BufferUsageFlags::UNIFORM_BUFFER,
-            false => ash::vk::BufferUsageFlags::from_raw(0)
-        }) |
-        (match self.storage_buffer {
+            false => ash::vk::BufferUsageFlags::from_raw(0),
+        }) | (match self.storage_buffer {
             true => ash::vk::BufferUsageFlags::STORAGE_BUFFER,
-            false => ash::vk::BufferUsageFlags::from_raw(0)
-        }) |
-        (match self.index_buffer {
+            false => ash::vk::BufferUsageFlags::from_raw(0),
+        }) | (match self.index_buffer {
             true => ash::vk::BufferUsageFlags::INDEX_BUFFER,
-            false => ash::vk::BufferUsageFlags::from_raw(0)
-        }) |
-        (match self.vertex_buffer {
+            false => ash::vk::BufferUsageFlags::from_raw(0),
+        }) | (match self.vertex_buffer {
             true => ash::vk::BufferUsageFlags::VERTEX_BUFFER,
-            false => ash::vk::BufferUsageFlags::from_raw(0)
-        }) |
-        (match self.indirect_buffer {
+            false => ash::vk::BufferUsageFlags::from_raw(0),
+        }) | (match self.indirect_buffer {
             true => ash::vk::BufferUsageFlags::INDIRECT_BUFFER,
-            false => ash::vk::BufferUsageFlags::from_raw(0)
-        }) |
-        self.acceleration_structure.ash_usage() |
-        self.ray_tracing.ash_usage()
+            false => ash::vk::BufferUsageFlags::from_raw(0),
+        }) | self.acceleration_structure.ash_usage()
+            | self.ray_tracing.ash_usage()
     }
 
     pub fn new() -> Self {
@@ -119,7 +109,7 @@ impl BufferUsage {
     pub(crate) fn ash_usage(&self) -> ash::vk::BufferUsageFlags {
         match self {
             Self::Managed(spec) => spec.ash_usage(),
-            Self::Unmanaged(raw) => ash::vk::BufferUsageFlags::from_raw(*raw)
+            Self::Unmanaged(raw) => ash::vk::BufferUsageFlags::from_raw(*raw),
         }
     }
 }
@@ -127,7 +117,7 @@ impl BufferUsage {
 #[derive(Clone)]
 pub struct ConcreteBufferDescriptor {
     usage: BufferUsage,
-    size: ash::vk::DeviceSize
+    size: ash::vk::DeviceSize,
 }
 
 impl ConcreteBufferDescriptor {
@@ -287,7 +277,7 @@ where
                                 Err(err) => {
                                     #[cfg(debug_assertions)]
                                     {
-                                        println!("Error setting the Debug name for the newly created Queue, will use handle. Error: {}", err);
+                                        println!("Error setting the Debug name for the newly created Buffer, will use handle. Error: {}", err);
                                         assert_eq!(true, false);
                                     }
                                 }

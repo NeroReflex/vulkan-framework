@@ -796,7 +796,7 @@ where
                                 Err(err) => {
                                     #[cfg(debug_assertions)]
                                     {
-                                        println!("Error setting the Debug name for the newly created Queue, will use handle. Error: {}", err);
+                                        println!("Error setting the Debug name for the newly created Image, will use handle. Error: {}", err);
                                         assert_eq!(true, false);
                                     }
                                 }
