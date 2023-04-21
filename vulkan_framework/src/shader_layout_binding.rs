@@ -63,6 +63,7 @@ impl BindingDescriptorStageAccessRayTracingKHR {
 
 #[derive(Copy, Clone)]
 pub struct BindingDescriptorStageAccess {
+    compute: bool,
     vertex: bool,
     geometry: bool,
     fragment: bool,
@@ -70,6 +71,15 @@ pub struct BindingDescriptorStageAccess {
 }
 
 impl BindingDescriptorStageAccess {
+    pub fn is_accessible_by(&self, shader_type: &ShaderType) -> bool {
+        match shader_type {
+            ShaderType::Compute => self.compute,
+            ShaderType::Vertex => self.vertex,
+            ShaderType::Geometry => self.geometry,
+            ShaderType::Fragment => self.fragment,
+        }
+    } 
+
     pub(crate) fn ash_stage_access_mask(&self) -> ash::vk::ShaderStageFlags {
         (match self.vertex {
             true => ash::vk::ShaderStageFlags::VERTEX,
@@ -83,7 +93,7 @@ impl BindingDescriptorStageAccess {
             true => ash::vk::ShaderStageFlags::FRAGMENT,
             false => ash::vk::ShaderStageFlags::empty()
         }) |
-        (match self.fragment {
+        (match self.compute {
             true => ash::vk::ShaderStageFlags::COMPUTE,
             false => ash::vk::ShaderStageFlags::empty()
         }) |
@@ -100,6 +110,10 @@ pub struct BindingDescriptor {
 }
 
 impl BindingDescriptor {
+    pub fn shader_access(&self) -> BindingDescriptorStageAccess {
+        self.shader_access.clone()
+    }
+
     pub(crate) fn ash_handle(&self) -> ash::vk::DescriptorSetLayoutBinding {
         ash::vk::DescriptorSetLayoutBinding::builder()
             .binding(self.binding_point)
@@ -107,5 +121,7 @@ impl BindingDescriptor {
             .descriptor_count(self.binding_count)
             .descriptor_type(self.binding_type.ash_descriptor_type())
             .build()
+
+        
     }
 }

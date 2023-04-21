@@ -1,4 +1,4 @@
-use crate::shader_layout_binding::BindingDescriptor;
+use crate::{shader_layout_binding::BindingDescriptor, descriptor_set_layout::DescriptorSetLayoutDependant};
 
 #[derive(Copy, Clone)]
 pub enum ShaderType {
@@ -8,10 +8,12 @@ pub enum ShaderType {
     Fragment,
 }
 
-pub trait ShaderTrait {
-    fn shader_type() -> ShaderType;
+pub trait ShaderTrait : DescriptorSetLayoutDependant {
+    fn shader_type(&self) -> ShaderType;
 
-    fn native_handle() -> u64;
+    fn native_handle(&self) -> u64;
+}
 
-    fn binding_descriptors() -> Vec<BindingDescriptor>;
+pub(crate) trait PrivateShaderTrait : ShaderTrait {
+    fn ash_handle(&self) -> ash::vk::ShaderModule;
 }

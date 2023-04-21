@@ -33,10 +33,15 @@ impl DescriptorSetLayout {
         self.layout.clone()
     }
 
+    pub fn descriptors(&self) -> Vec<Arc<BindingDescriptor>> {
+        self.descriptors.clone()
+    }
+
     pub fn new(
         device: Arc<Device>,
         descriptors: &[Arc<BindingDescriptor>],
     ) -> VulkanResult<Arc<Self>> {
+        // a collection of VkDescriptorSetLayoutBinding
         let bindings: Vec<ash::vk::DescriptorSetLayoutBinding> = descriptors.iter().map(|d| d.ash_handle()).collect();
 
         let create_info = ash::vk::DescriptorSetLayoutCreateInfo::builder()
