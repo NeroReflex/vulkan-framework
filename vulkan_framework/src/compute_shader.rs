@@ -35,20 +35,24 @@ impl PrivateShaderTrait for ComputeShader {
 }
 
 impl ComputeShader {
-    pub fn new(
-        descriptor_set: Arc<crate::descriptor_set_layout::DescriptorSetLayout>,
-
+    pub fn new<'a>(
+        descriptor_set: Arc<DescriptorSetLayout>,
+        code: &'a [u32],
     ) -> VulkanResult<Arc<Self>> {
 
         // TODO: implement push constant(s)!
         todo!();
+
+
+        // Inoltre.... uno shader dovrebbe sapere solo di quali binding ha bisogno, quindi una collezione di BindingDescriptor
+        // sarà poi quando si mette insieme la pipeline che tali informazioni confluiranno su un DescriptorSetLayout (che rappresenta un VkDescriptorSetLayout)
 
         for descriptor_set_layout_binding in descriptor_set.descriptors().iter() {
             assert_eq!(descriptor_set_layout_binding.shader_access().is_accessible_by(&ShaderType::Compute), true);
         };
 
         let create_info = ash::vk::ShaderModuleCreateInfo::builder()
-            .code(&[]) // TODO: insert code here
+            .code(code)
             .build();
 
         let device = descriptor_set.get_parent_device();
