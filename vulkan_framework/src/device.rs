@@ -36,6 +36,16 @@ pub struct Device {
     physical_device: ash::vk::PhysicalDevice,
 }
 
+impl PartialEq for Device {
+    fn eq(&self, other: &Self) -> bool {
+        ash::vk::Handle::as_raw(self.device.handle()) == ash::vk::Handle::as_raw(other.device.handle())
+    }
+
+    fn ne(&self, other: &Self) -> bool {
+        !self.eq(other)
+    }
+}
+
 impl InstanceOwned for Device {
     fn get_parent_instance(&self) -> Arc<Instance> {
         self.instance.clone()

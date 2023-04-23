@@ -1,6 +1,6 @@
-use std::sync::Arc;
+use std::{sync::Arc};
 
-use crate::{device::{Device, DeviceOwned}, instance::InstanceOwned, prelude::{VulkanResult, VulkanError}, shader_layout_binding::BindingDescriptor};
+use crate::{device::{Device, DeviceOwned}, instance::InstanceOwned, prelude::{VulkanResult, VulkanError}, shader_layout_binding::BindingDescriptor, shader_trait::ShaderTrait};
 
 pub struct DescriptorSetLayout {
     device: Arc<Device>,
@@ -37,6 +37,38 @@ impl DescriptorSetLayout {
         self.descriptors.clone()
     }
 
+    pub fn from_shaders(
+        shaders: &[Arc<dyn ShaderTrait>]
+    ) -> VulkanResult<Arc<Self>> {
+        let mut bindings: Vec<Arc<BindingDescriptor>> = Vec::new();
+
+        let mut maybe_device: Option<Arc<Device>> = Option::None;
+        
+        for shader in shaders.iter() {
+            match &maybe_device {
+                Option::None => {
+                    maybe_device = Option::Some(shader.get_parent_device());
+                },
+                Option::Some(dev) => {
+                    if dev != &shader.get_parent_device() {
+                        return Err(VulkanError::Unspecified)
+                    }
+                }
+            }
+
+            let mut current_shader_collection = shader.get_parent_binding_descriptors();
+
+            bindings.append(&mut current_shader_collection);
+        }
+
+        let dev = match maybe_device {
+            Option::Some(device) => device,
+            Option::None => return Err(VulkanError::Unspecified)
+        };
+
+        Self::new(dev, bindings.as_slice())
+    }
+
     pub fn new(
         device: Arc<Device>,
         descriptors: &[Arc<BindingDescriptor>],
@@ -55,7 +87,7 @@ impl DescriptorSetLayout {
                         Self {
                             device,
                             layout,
-                            descriptors: descriptors.iter().map(|d| d.clone()).collect()
+                            descriptors: descriptors.iter().map(|arc| arc.clone()).collect()
                         }
                     )
                 )

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::shader_trait::ShaderType;
 
 #[derive(Copy, Clone)]
@@ -6,8 +8,8 @@ pub enum NativeBindingType {
     SampledImage,
     CombinedImageSampler,
     StorageImage,
-    UniformTexelStorage,
     UniformTexelBuffer,
+    StorageTexelBuffer,
     UniformBuffer,
     StorageBuffer,
     InputAttachment,
@@ -15,7 +17,17 @@ pub enum NativeBindingType {
 
 impl NativeBindingType {
     pub(crate) fn ash_descriptor_type(&self) -> ash::vk::DescriptorType {
-        todo!()
+        match self {
+            Self::Sampler => ash::vk::DescriptorType::SAMPLER,
+            Self::SampledImage => ash::vk::DescriptorType::SAMPLED_IMAGE,
+            Self::CombinedImageSampler => ash::vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+            Self::StorageImage => ash::vk::DescriptorType::STORAGE_IMAGE,
+            Self::UniformTexelBuffer => ash::vk::DescriptorType::UNIFORM_TEXEL_BUFFER,
+            Self::StorageTexelBuffer => ash::vk::DescriptorType::STORAGE_TEXEL_BUFFER,
+            Self::UniformBuffer => ash::vk::DescriptorType::UNIFORM_BUFFER,
+            Self::StorageBuffer => ash::vk::DescriptorType::STORAGE_BUFFER,
+            Self::InputAttachment => ash::vk::DescriptorType::INPUT_ATTACHMENT,
+        }
     }
 }
 
@@ -121,7 +133,9 @@ impl BindingDescriptor {
             .descriptor_count(self.binding_count)
             .descriptor_type(self.binding_type.ash_descriptor_type())
             .build()
-
-        
     }
+}
+
+pub trait BindingDescriptorDependant {
+    fn get_parent_binding_descriptors(&self) -> Vec<Arc<BindingDescriptor>>;
 }

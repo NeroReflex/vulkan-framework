@@ -1,20 +1,32 @@
 use std::sync::Arc;
 
-use crate::descriptor_set_layout::{DescriptorSetLayout, DescriptorSetLayoutDependant};
 use crate::device::{Device, DeviceOwned};
 use crate::instance::InstanceOwned;
 use crate::prelude::{VulkanResult, VulkanError};
 use crate::shader_trait::{PrivateShaderTrait, ShaderTrait, ShaderType};
-use crate::shader_layout_binding::BindingDescriptor;
+use crate::shader_layout_binding::{BindingDescriptor, BindingDescriptorDependant};
 
 pub struct ComputeShader {
-    descriptor_set: Arc<DescriptorSetLayout>,
+    device: Arc<Device>,
+    descriptor_bindings: Vec<Arc<BindingDescriptor>>,
     module: ash::vk::ShaderModule,
 }
 
-impl DescriptorSetLayoutDependant for ComputeShader {
-    fn get_parent_descriptor_set_layout(&self) -> Arc<DescriptorSetLayout> {
-        self.descriptor_set.clone()
+impl Drop for ComputeShader {
+    fn drop(&mut self) {
+        unsafe { self.device.ash_handle().destroy_shader_module(self.module, self.device.get_parent_instance().get_alloc_callbacks()) }
+    }
+}
+
+impl DeviceOwned for ComputeShader {
+    fn get_parent_device(&self) -> Arc<Device> {
+        self.device.clone()
+    }
+}
+
+impl BindingDescriptorDependant for ComputeShader {
+    fn get_parent_binding_descriptors(&self) -> Vec<Arc<BindingDescriptor>> {
+        self.descriptor_bindings.clone()
     }
 }
 
@@ -35,19 +47,15 @@ impl PrivateShaderTrait for ComputeShader {
 }
 
 impl ComputeShader {
-    pub fn new<'a>(
-        descriptor_set: Arc<DescriptorSetLayout>,
-        code: &'a [u32],
+    pub fn new<'a, 'b>(
+        device: Arc<Device>,
+        descriptor_bindings: &'a [Arc<BindingDescriptor>],
+        code: &'b [u32],
     ) -> VulkanResult<Arc<Self>> {
 
         // TODO: implement push constant(s)!
-        todo!();
 
-
-        // Inoltre.... uno shader dovrebbe sapere solo di quali binding ha bisogno, quindi una collezione di BindingDescriptor
-        // sarà poi quando si mette insieme la pipeline che tali informazioni confluiranno su un DescriptorSetLayout (che rappresenta un VkDescriptorSetLayout)
-
-        for descriptor_set_layout_binding in descriptor_set.descriptors().iter() {
+        for descriptor_set_layout_binding in descriptor_bindings.iter() {
             assert_eq!(descriptor_set_layout_binding.shader_access().is_accessible_by(&ShaderType::Compute), true);
         };
 
@@ -55,12 +63,11 @@ impl ComputeShader {
             .code(code)
             .build();
 
-        let device = descriptor_set.get_parent_device();
-
         match unsafe { device.ash_handle().create_shader_module(&create_info, device.get_parent_instance().get_alloc_callbacks()) } {
             Ok(module) => {
                 Ok(Arc::new(Self {
-                    descriptor_set,
+                    device,
+                    descriptor_bindings: descriptor_bindings.iter().map(|arc| arc.clone()).collect::<Vec<Arc<BindingDescriptor>>>(),
                     module
                 }))
             },
