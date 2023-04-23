@@ -30,7 +30,7 @@ impl DescriptorSetLayout {
     }
 
     pub(crate) fn ash_handle(&self) -> ash::vk::DescriptorSetLayout {
-        self.layout.clone()
+        self.layout
     }
 
     pub fn descriptors(&self) -> Vec<Arc<BindingDescriptor>> {
@@ -87,7 +87,7 @@ impl DescriptorSetLayout {
                         Self {
                             device,
                             layout,
-                            descriptors: descriptors.iter().map(|arc| arc.clone()).collect()
+                            descriptors: descriptors.to_vec()
                         }
                     )
                 )
@@ -99,7 +99,7 @@ impl DescriptorSetLayout {
                     assert_eq!(true, false)
                 }
 
-                return Err(VulkanError::Unspecified);
+                Err(VulkanError::Unspecified)
             }
         }
     }

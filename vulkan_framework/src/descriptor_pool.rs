@@ -1,4 +1,4 @@
-use std::{sync::{ Arc, Mutex }, ops::DerefMut};
+use std::{sync::{ Arc }};
 
 use crate::{
     device::{Device, DeviceOwned},
@@ -215,7 +215,7 @@ impl Drop for DescriptorPool {
 
 impl DescriptorPool {
     pub(crate) fn ash_handle(&self) -> ash::vk::DescriptorPool {
-        self.pool.clone()
+        self.pool
     }
 
     pub fn native_handle(&self) -> u64 {
@@ -304,7 +304,7 @@ impl DescriptorPool {
                     assert_eq!(true, false)
                 }
 
-                return Err(VulkanError::Unspecified);
+                Err(VulkanError::Unspecified)
             }
         }
     }

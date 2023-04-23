@@ -123,7 +123,7 @@ pub struct BindingDescriptor {
 
 impl BindingDescriptor {
     pub fn shader_access(&self) -> BindingDescriptorStageAccess {
-        self.shader_access.clone()
+        self.shader_access
     }
 
     pub(crate) fn ash_handle(&self) -> ash::vk::DescriptorSetLayoutBinding {

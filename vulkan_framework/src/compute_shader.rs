@@ -36,13 +36,13 @@ impl ShaderTrait for ComputeShader {
     }
 
     fn native_handle(&self) -> u64 {
-        ash::vk::Handle::as_raw(self.module.clone())
+        ash::vk::Handle::as_raw(self.module)
     }
 }
 
 impl PrivateShaderTrait for ComputeShader {
     fn ash_handle(&self) -> ash::vk::ShaderModule {
-        self.module.clone()
+        self.module
     }
 }
 
@@ -67,7 +67,7 @@ impl ComputeShader {
             Ok(module) => {
                 Ok(Arc::new(Self {
                     device,
-                    descriptor_bindings: descriptor_bindings.iter().map(|arc| arc.clone()).collect::<Vec<Arc<BindingDescriptor>>>(),
+                    descriptor_bindings: descriptor_bindings.to_vec(),
                     module
                 }))
             },
@@ -78,7 +78,7 @@ impl ComputeShader {
                     assert_eq!(true, false)
                 }
 
-                return Err(VulkanError::Unspecified);
+                Err(VulkanError::Unspecified)
             }
         }
     }

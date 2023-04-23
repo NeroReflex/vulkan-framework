@@ -155,7 +155,7 @@ where
             .get_parent_device();
         unsafe {
             device.ash_handle().destroy_buffer(
-                self.buffer.clone(),
+                self.buffer,
                 device.get_parent_instance().get_alloc_callbacks(),
             )
         }
