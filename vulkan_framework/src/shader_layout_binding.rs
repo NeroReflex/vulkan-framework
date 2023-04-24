@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::shader_trait::ShaderType;
+use crate::{shader_stage_access::ShaderStageAccess};
 
 #[derive(Copy, Clone)]
 pub enum NativeBindingType {
@@ -36,7 +36,7 @@ impl NativeBindingType {
  */
 #[derive(Copy, Clone)]
 pub enum AccelerationStructureBindingType {
-    AccelerationStructure
+    AccelerationStructure,
 }
 
 impl AccelerationStructureBindingType {
@@ -62,67 +62,18 @@ impl BindingType {
     }
 }
 
-#[derive(Copy, Clone)]
-pub struct BindingDescriptorStageAccessRayTracingKHR {
 
-}
-
-impl BindingDescriptorStageAccessRayTracingKHR {
-    pub(crate) fn ash_stage_access_mask(&self) -> ash::vk::ShaderStageFlags {
-        ash::vk::ShaderStageFlags::empty()
-    }
-}
-
-#[derive(Copy, Clone)]
-pub struct BindingDescriptorStageAccess {
-    compute: bool,
-    vertex: bool,
-    geometry: bool,
-    fragment: bool,
-    ray_tracing: BindingDescriptorStageAccessRayTracingKHR
-}
-
-impl BindingDescriptorStageAccess {
-    pub fn is_accessible_by(&self, shader_type: &ShaderType) -> bool {
-        match shader_type {
-            ShaderType::Compute => self.compute,
-            ShaderType::Vertex => self.vertex,
-            ShaderType::Geometry => self.geometry,
-            ShaderType::Fragment => self.fragment,
-        }
-    } 
-
-    pub(crate) fn ash_stage_access_mask(&self) -> ash::vk::ShaderStageFlags {
-        (match self.vertex {
-            true => ash::vk::ShaderStageFlags::VERTEX,
-            false => ash::vk::ShaderStageFlags::empty()
-        }) |
-        (match self.geometry {
-            true => ash::vk::ShaderStageFlags::GEOMETRY,
-            false => ash::vk::ShaderStageFlags::empty()
-        }) |
-        (match self.fragment {
-            true => ash::vk::ShaderStageFlags::FRAGMENT,
-            false => ash::vk::ShaderStageFlags::empty()
-        }) |
-        (match self.compute {
-            true => ash::vk::ShaderStageFlags::COMPUTE,
-            false => ash::vk::ShaderStageFlags::empty()
-        }) |
-        self.ray_tracing.ash_stage_access_mask()
-    }
-}
 
 #[derive(Copy, Clone)]
 pub struct BindingDescriptor {
-    shader_access: BindingDescriptorStageAccess,
+    shader_access: ShaderStageAccess,
     binding_type: BindingType,
     binding_point: u32,
     binding_count: u32,
 }
 
 impl BindingDescriptor {
-    pub fn shader_access(&self) -> BindingDescriptorStageAccess {
+    pub fn shader_access(&self) -> ShaderStageAccess {
         self.shader_access
     }
 

@@ -36,7 +36,7 @@ impl DescriptorSet {
     }
     
     pub(crate) fn ash_handle(&self) -> ash::vk::DescriptorSet {
-        self.descriptor_set
+        self.descriptor_set.clone()
     }
 
     pub fn new(
@@ -68,7 +68,7 @@ impl DescriptorSet {
                         assert_eq!(true, false)
                     }
 
-                    Err(VulkanError::Unspecified)
+                    return Err(VulkanError::Unspecified);
                 }
             }
     }

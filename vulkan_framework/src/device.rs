@@ -38,7 +38,8 @@ pub struct Device {
 
 impl PartialEq for Device {
     fn eq(&self, other: &Self) -> bool {
-        ash::vk::Handle::as_raw(self.device.handle()) == ash::vk::Handle::as_raw(other.device.handle())
+        ash::vk::Handle::as_raw(self.device.handle())
+            == ash::vk::Handle::as_raw(other.device.handle())
     }
 
     fn ne(&self, other: &Self) -> bool {

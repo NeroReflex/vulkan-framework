@@ -34,7 +34,7 @@ impl BufferUsageAccelerationKHR {
 }
 
 /*
- * Provided by VK_KHR_ray_tracing_pipeline 
+ * Provided by VK_KHR_ray_tracing_pipeline
  */
 #[derive(Clone)]
 pub struct BufferUsageRayTracingPipelineKHR {

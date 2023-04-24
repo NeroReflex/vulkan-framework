@@ -1,4 +1,4 @@
-use std::{sync::{ Arc }};
+use std::sync::Arc;
 
 use crate::{
     device::{Device, DeviceOwned},
@@ -13,21 +13,26 @@ pub struct DescriptorPoolSizesAcceletarionStructureKHR {
 impl DescriptorPoolSizesAcceletarionStructureKHR {
     pub(crate) fn ash_pool_sizes(&self) -> Vec<ash::vk::DescriptorPoolSize> {
         let mut pool_sizes = Vec::<ash::vk::DescriptorPoolSize>::new();
-        
+
         if self.acceleration_structure() > 0 {
-            pool_sizes.push(ash::vk::DescriptorPoolSize::builder().ty(ash::vk::DescriptorType::SAMPLER).descriptor_count(self.acceleration_structure()).build())
+            pool_sizes.push(
+                ash::vk::DescriptorPoolSize::builder()
+                    .ty(ash::vk::DescriptorType::SAMPLER)
+                    .descriptor_count(self.acceleration_structure())
+                    .build(),
+            )
         }
 
         pool_sizes
     }
-    
+
     pub fn acceleration_structure(&self) -> u32 {
         self.acceleration_structure
     }
-    
+
     pub fn new(acceleration_structure: u32) -> Self {
         Self {
-            acceleration_structure
+            acceleration_structure,
         }
     }
 }
@@ -42,47 +47,92 @@ pub struct DescriptorPoolSizesConcreteDescriptor {
     storage_buffer: u32,
     uniform_buffer: u32,
     input_attachment: u32,
-    acceleration_structure: DescriptorPoolSizesAcceletarionStructureKHR
+    acceleration_structure: DescriptorPoolSizesAcceletarionStructureKHR,
 }
 
 impl DescriptorPoolSizesConcreteDescriptor {
     pub(crate) fn ash_pool_sizes(&self) -> Vec<ash::vk::DescriptorPoolSize> {
         let mut pool_sizes = Vec::<ash::vk::DescriptorPoolSize>::new();
-        
+
         if self.sampler() > 0 {
-            pool_sizes.push(ash::vk::DescriptorPoolSize::builder().ty(ash::vk::DescriptorType::SAMPLER).descriptor_count(self.sampler()).build())
+            pool_sizes.push(
+                ash::vk::DescriptorPoolSize::builder()
+                    .ty(ash::vk::DescriptorType::SAMPLER)
+                    .descriptor_count(self.sampler())
+                    .build(),
+            )
         }
-        
+
         if self.combined_image_sampler() > 0 {
-            pool_sizes.push(ash::vk::DescriptorPoolSize::builder().ty(ash::vk::DescriptorType::COMBINED_IMAGE_SAMPLER).descriptor_count(self.combined_image_sampler()).build())
+            pool_sizes.push(
+                ash::vk::DescriptorPoolSize::builder()
+                    .ty(ash::vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                    .descriptor_count(self.combined_image_sampler())
+                    .build(),
+            )
         }
 
         if self.sampled_image() > 0 {
-            pool_sizes.push(ash::vk::DescriptorPoolSize::builder().ty(ash::vk::DescriptorType::SAMPLED_IMAGE).descriptor_count(self.sampled_image()).build())
+            pool_sizes.push(
+                ash::vk::DescriptorPoolSize::builder()
+                    .ty(ash::vk::DescriptorType::SAMPLED_IMAGE)
+                    .descriptor_count(self.sampled_image())
+                    .build(),
+            )
         }
 
         if self.storage_image() > 0 {
-            pool_sizes.push(ash::vk::DescriptorPoolSize::builder().ty(ash::vk::DescriptorType::STORAGE_IMAGE).descriptor_count(self.storage_image()).build())
+            pool_sizes.push(
+                ash::vk::DescriptorPoolSize::builder()
+                    .ty(ash::vk::DescriptorType::STORAGE_IMAGE)
+                    .descriptor_count(self.storage_image())
+                    .build(),
+            )
         }
 
         if self.uniform_texel_buffer() > 0 {
-            pool_sizes.push(ash::vk::DescriptorPoolSize::builder().ty(ash::vk::DescriptorType::UNIFORM_TEXEL_BUFFER).descriptor_count(self.uniform_texel_buffer()).build())
+            pool_sizes.push(
+                ash::vk::DescriptorPoolSize::builder()
+                    .ty(ash::vk::DescriptorType::UNIFORM_TEXEL_BUFFER)
+                    .descriptor_count(self.uniform_texel_buffer())
+                    .build(),
+            )
         }
 
         if self.storage_texel_buffer() > 0 {
-            pool_sizes.push(ash::vk::DescriptorPoolSize::builder().ty(ash::vk::DescriptorType::STORAGE_TEXEL_BUFFER).descriptor_count(self.storage_texel_buffer()).build())
+            pool_sizes.push(
+                ash::vk::DescriptorPoolSize::builder()
+                    .ty(ash::vk::DescriptorType::STORAGE_TEXEL_BUFFER)
+                    .descriptor_count(self.storage_texel_buffer())
+                    .build(),
+            )
         }
 
         if self.storage_buffer() > 0 {
-            pool_sizes.push(ash::vk::DescriptorPoolSize::builder().ty(ash::vk::DescriptorType::STORAGE_BUFFER).descriptor_count(self.storage_buffer()).build())
+            pool_sizes.push(
+                ash::vk::DescriptorPoolSize::builder()
+                    .ty(ash::vk::DescriptorType::STORAGE_BUFFER)
+                    .descriptor_count(self.storage_buffer())
+                    .build(),
+            )
         }
 
         if self.uniform_buffer() > 0 {
-            pool_sizes.push(ash::vk::DescriptorPoolSize::builder().ty(ash::vk::DescriptorType::UNIFORM_BUFFER).descriptor_count(self.uniform_buffer()).build())
+            pool_sizes.push(
+                ash::vk::DescriptorPoolSize::builder()
+                    .ty(ash::vk::DescriptorType::UNIFORM_BUFFER)
+                    .descriptor_count(self.uniform_buffer())
+                    .build(),
+            )
         }
 
         if self.input_attachment() > 0 {
-            pool_sizes.push(ash::vk::DescriptorPoolSize::builder().ty(ash::vk::DescriptorType::INPUT_ATTACHMENT).descriptor_count(self.input_attachment()).build())
+            pool_sizes.push(
+                ash::vk::DescriptorPoolSize::builder()
+                    .ty(ash::vk::DescriptorType::INPUT_ATTACHMENT)
+                    .descriptor_count(self.input_attachment())
+                    .build(),
+            )
         }
 
         pool_sizes.extend(self.acceleration_structure.ash_pool_sizes().iter().cloned());
@@ -100,7 +150,7 @@ impl DescriptorPoolSizesConcreteDescriptor {
         storage_buffer: u32,
         uniform_buffer: u32,
         input_attachment: u32,
-        acceleration_structure: Option<DescriptorPoolSizesAcceletarionStructureKHR>
+        acceleration_structure: Option<DescriptorPoolSizesAcceletarionStructureKHR>,
     ) -> Self {
         Self {
             sampler,
@@ -114,7 +164,7 @@ impl DescriptorPoolSizesConcreteDescriptor {
             input_attachment,
             acceleration_structure: match acceleration_structure {
                 Some(acc_s) => acc_s,
-                None => DescriptorPoolSizesAcceletarionStructureKHR::new(0)
+                None => DescriptorPoolSizesAcceletarionStructureKHR::new(0),
             },
         }
     }
@@ -164,7 +214,7 @@ pub struct DescriptorPoolConcreteDescriptor {
 impl DescriptorPoolConcreteDescriptor {
     pub fn max_sets(&self) -> u32 {
         self.max_sets
-    } 
+    }
 
     pub(crate) fn ash_pool_sizes(&self) -> Vec<ash::vk::DescriptorPoolSize> {
         self.pool_sizes.ash_pool_sizes()
@@ -174,10 +224,7 @@ impl DescriptorPoolConcreteDescriptor {
         ash::vk::DescriptorPoolCreateFlags::from_raw(0)
     }
 
-    pub fn new(
-        pool_sizes: DescriptorPoolSizesConcreteDescriptor,
-        max_sets: u32,
-    ) -> Self {
+    pub fn new(pool_sizes: DescriptorPoolSizesConcreteDescriptor, max_sets: u32) -> Self {
         Self {
             pool_sizes,
             max_sets,
