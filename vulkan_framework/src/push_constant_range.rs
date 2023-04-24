@@ -10,5 +10,4 @@ impl PushConstanRange {
     pub fn shader_access(&self) -> ShaderStageAccess {
         self.shader_access
     }
-
 }

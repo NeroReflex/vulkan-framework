@@ -1,11 +1,17 @@
-use std::{sync::Arc};
+use std::sync::Arc;
 
-use crate::{device::{Device, DeviceOwned}, instance::InstanceOwned, prelude::{VulkanResult, VulkanError}, shader_layout_binding::BindingDescriptor, shader_trait::ShaderTrait};
+use crate::{
+    device::{Device, DeviceOwned},
+    instance::InstanceOwned,
+    prelude::{VulkanError, VulkanResult},
+    shader_layout_binding::BindingDescriptor,
+    shader_trait::ShaderTrait,
+};
 
 pub struct DescriptorSetLayout {
     device: Arc<Device>,
     layout: ash::vk::DescriptorSetLayout,
-    descriptors: Vec<Arc<BindingDescriptor>>
+    descriptors: Vec<Arc<BindingDescriptor>>,
 }
 
 pub trait DescriptorSetLayoutDependant {
@@ -14,7 +20,16 @@ pub trait DescriptorSetLayoutDependant {
 
 impl Drop for DescriptorSetLayout {
     fn drop(&mut self) {
-        unsafe { self.get_parent_device().ash_handle().destroy_descriptor_set_layout(self.layout, self.get_parent_device().get_parent_instance().get_alloc_callbacks()) }
+        unsafe {
+            self.get_parent_device()
+                .ash_handle()
+                .destroy_descriptor_set_layout(
+                    self.layout,
+                    self.get_parent_device()
+                        .get_parent_instance()
+                        .get_alloc_callbacks(),
+                )
+        }
     }
 }
 
@@ -37,21 +52,19 @@ impl DescriptorSetLayout {
         self.descriptors.clone()
     }
 
-    pub fn from_shaders(
-        shaders: &[Arc<dyn ShaderTrait>]
-    ) -> VulkanResult<Arc<Self>> {
+    pub fn from_shaders(shaders: &[Arc<dyn ShaderTrait>]) -> VulkanResult<Arc<Self>> {
         let mut bindings: Vec<Arc<BindingDescriptor>> = Vec::new();
 
         let mut maybe_device: Option<Arc<Device>> = Option::None;
-        
+
         for shader in shaders.iter() {
             match &maybe_device {
                 Option::None => {
                     maybe_device = Option::Some(shader.get_parent_device());
-                },
+                }
                 Option::Some(dev) => {
                     if dev != &shader.get_parent_device() {
-                        return Err(VulkanError::Unspecified)
+                        return Err(VulkanError::Unspecified);
                     }
                 }
             }
@@ -63,7 +76,7 @@ impl DescriptorSetLayout {
 
         let dev = match maybe_device {
             Option::Some(device) => device,
-            Option::None => return Err(VulkanError::Unspecified)
+            Option::None => return Err(VulkanError::Unspecified),
         };
 
         Self::new(dev, bindings.as_slice())
@@ -74,24 +87,24 @@ impl DescriptorSetLayout {
         descriptors: &[Arc<BindingDescriptor>],
     ) -> VulkanResult<Arc<Self>> {
         // a collection of VkDescriptorSetLayoutBinding
-        let bindings: Vec<ash::vk::DescriptorSetLayoutBinding> = descriptors.iter().map(|d| d.ash_handle()).collect();
+        let bindings: Vec<ash::vk::DescriptorSetLayoutBinding> =
+            descriptors.iter().map(|d| d.ash_handle()).collect();
 
         let create_info = ash::vk::DescriptorSetLayoutCreateInfo::builder()
             .bindings(bindings.as_slice())
             .build();
 
-        match unsafe { device.ash_handle().create_descriptor_set_layout(&create_info, device.get_parent_instance().get_alloc_callbacks()) } {
-            Ok(layout) => {
-                Ok(
-                    Arc::new(
-                        Self {
-                            device,
-                            layout,
-                            descriptors: descriptors.to_vec()
-                        }
-                    )
-                )
-            },
+        match unsafe {
+            device.ash_handle().create_descriptor_set_layout(
+                &create_info,
+                device.get_parent_instance().get_alloc_callbacks(),
+            )
+        } {
+            Ok(layout) => Ok(Arc::new(Self {
+                device,
+                layout,
+                descriptors: descriptors.to_vec(),
+            })),
             Err(err) => {
                 #[cfg(debug_assertions)]
                 {

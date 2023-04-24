@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use crate::descriptor_set_layout::DescriptorSetLayout;
 
-use crate::device::{DeviceOwned, Device};
+use crate::device::{Device, DeviceOwned};
 use crate::instance::InstanceOwned;
-use crate::push_constant_range::PushConstanRange;
-use crate::{prelude::VulkanResult};
+
+use crate::prelude::VulkanResult;
 
 pub struct ComputePipeline {
     device: Arc<Device>,
@@ -21,7 +21,12 @@ impl DeviceOwned for ComputePipeline {
 
 impl Drop for ComputePipeline {
     fn drop(&mut self) {
-        unsafe { self.device.ash_handle().destroy_pipeline(self.pipeline, self.device.get_parent_instance().get_alloc_callbacks()) }
+        unsafe {
+            self.device.ash_handle().destroy_pipeline(
+                self.pipeline,
+                self.device.get_parent_instance().get_alloc_callbacks(),
+            )
+        }
     }
 }
 
@@ -33,11 +38,9 @@ impl Drop for ComputePipeline {
 
 impl ComputePipeline {
     pub fn new(
-        device: Arc<Device>,
-        descriptor_set_layouts: &[Arc<DescriptorSetLayout>]
+        _device: Arc<Device>,
+        _descriptor_set_layouts: &[Arc<DescriptorSetLayout>],
     ) -> VulkanResult<Arc<Self>> {
-
-
         todo!()
     }
 }

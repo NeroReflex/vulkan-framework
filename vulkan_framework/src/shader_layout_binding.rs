@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{shader_stage_access::ShaderStageAccess};
+use crate::shader_stage_access::ShaderStageAccess;
 
 #[derive(Copy, Clone)]
 pub enum NativeBindingType {
@@ -61,8 +61,6 @@ impl BindingType {
         }
     }
 }
-
-
 
 #[derive(Copy, Clone)]
 pub struct BindingDescriptor {
