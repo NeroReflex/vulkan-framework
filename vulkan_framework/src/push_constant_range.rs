@@ -7,6 +7,14 @@ pub struct PushConstanRange {
 }
 
 impl PushConstanRange {
+    pub(crate) fn ash_handle(&self) -> ash::vk::PushConstantRange {
+        ash::vk::PushConstantRange::builder()
+            .offset(self.offset)
+            .size(self.size)
+            .stage_flags(self.shader_access.ash_stage_access_mask())
+            .build()
+    } 
+
     pub fn shader_access(&self) -> ShaderStageAccess {
         self.shader_access
     }

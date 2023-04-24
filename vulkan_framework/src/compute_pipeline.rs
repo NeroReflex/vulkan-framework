@@ -1,16 +1,21 @@
 use std::sync::Arc;
 
-use crate::descriptor_set_layout::DescriptorSetLayout;
-
 use crate::device::{Device, DeviceOwned};
 use crate::instance::InstanceOwned;
 
-use crate::prelude::VulkanResult;
+use crate::pipeline_layout::{PipelineLayout, PipelineLayoutDependant};
+use crate::prelude::{VulkanResult, VulkanError};
 
 pub struct ComputePipeline {
     device: Arc<Device>,
-    descriptor_set_layouts: Vec<Arc<DescriptorSetLayout>>,
+    pipeline_layout: Arc<PipelineLayout>,
     pipeline: ash::vk::Pipeline,
+}
+
+impl PipelineLayoutDependant for ComputePipeline {
+    fn get_parent_pipeline_layout(&self) -> Arc<PipelineLayout> {
+        self.pipeline_layout.clone()
+    }
 }
 
 impl DeviceOwned for ComputePipeline {
@@ -38,9 +43,45 @@ impl Drop for ComputePipeline {
 
 impl ComputePipeline {
     pub fn new(
-        _device: Arc<Device>,
-        _descriptor_set_layouts: &[Arc<DescriptorSetLayout>],
+        pipeline_layout: Arc<PipelineLayout>,
     ) -> VulkanResult<Arc<Self>> {
-        todo!()
+        let device =  pipeline_layout.get_parent_device();
+
+        let create_info = [ash::vk::ComputePipelineCreateInfo::builder()
+            .layout(pipeline_layout.ash_handle())
+            .build()];
+
+        match unsafe { pipeline_layout.get_parent_device().ash_handle().create_compute_pipelines(ash::vk::Handle::from_raw(0), create_info.as_slice(), device.get_parent_instance().get_alloc_callbacks()) } {
+            Ok(pipelines) => {
+                if pipelines.len() != 1 {
+                    #[cfg(debug_assertions)]
+                    {
+                        println!("Error creating the compute pipeline: expected 1 pipeline to be created, instead {} were created.", pipelines.len());
+                        assert_eq!(true, false)
+                    }
+
+                    return Err(VulkanError::Unspecified)
+                }
+
+                Ok(
+                    Arc::new(
+                        Self {
+                            device,
+                            pipeline_layout,
+                            pipeline: pipelines[0]
+                        }
+                    )
+                )
+            },
+            Err((_, err)) => {
+                #[cfg(debug_assertions)]
+                {
+                    println!("Error creating the compute pipeline: {}", err);
+                    assert_eq!(true, false)
+                }
+
+                Err(VulkanError::Unspecified)
+            }
+        }
     }
 }

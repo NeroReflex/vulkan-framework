@@ -21,3 +21,4 @@ pub mod shader_layout_binding;
 pub mod shader_stage_access;
 pub mod shader_trait;
 pub mod surface;
+pub mod pipeline_layout;
