@@ -4,7 +4,7 @@ use crate::device::{Device, DeviceOwned};
 use crate::instance::InstanceOwned;
 
 use crate::pipeline_layout::{PipelineLayout, PipelineLayoutDependant};
-use crate::prelude::{VulkanResult, VulkanError};
+use crate::prelude::{VulkanError, VulkanResult};
 
 pub struct ComputePipeline {
     device: Arc<Device>,
@@ -42,16 +42,23 @@ impl Drop for ComputePipeline {
 }*/
 
 impl ComputePipeline {
-    pub fn new(
-        pipeline_layout: Arc<PipelineLayout>,
-    ) -> VulkanResult<Arc<Self>> {
-        let device =  pipeline_layout.get_parent_device();
+    pub fn new(pipeline_layout: Arc<PipelineLayout>) -> VulkanResult<Arc<Self>> {
+        let device = pipeline_layout.get_parent_device();
 
         let create_info = [ash::vk::ComputePipelineCreateInfo::builder()
             .layout(pipeline_layout.ash_handle())
             .build()];
 
-        match unsafe { pipeline_layout.get_parent_device().ash_handle().create_compute_pipelines(ash::vk::Handle::from_raw(0), create_info.as_slice(), device.get_parent_instance().get_alloc_callbacks()) } {
+        match unsafe {
+            pipeline_layout
+                .get_parent_device()
+                .ash_handle()
+                .create_compute_pipelines(
+                    ash::vk::Handle::from_raw(0),
+                    create_info.as_slice(),
+                    device.get_parent_instance().get_alloc_callbacks(),
+                )
+        } {
             Ok(pipelines) => {
                 if pipelines.len() != 1 {
                     #[cfg(debug_assertions)]
@@ -60,19 +67,15 @@ impl ComputePipeline {
                         assert_eq!(true, false)
                     }
 
-                    return Err(VulkanError::Unspecified)
+                    return Err(VulkanError::Unspecified);
                 }
 
-                Ok(
-                    Arc::new(
-                        Self {
-                            device,
-                            pipeline_layout,
-                            pipeline: pipelines[0]
-                        }
-                    )
-                )
-            },
+                Ok(Arc::new(Self {
+                    device,
+                    pipeline_layout,
+                    pipeline: pipelines[0],
+                }))
+            }
             Err((_, err)) => {
                 #[cfg(debug_assertions)]
                 {
