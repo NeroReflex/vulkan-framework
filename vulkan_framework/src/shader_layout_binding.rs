@@ -83,6 +83,22 @@ impl BindingDescriptor {
             .descriptor_type(self.binding_type.ash_descriptor_type())
             .build()
     }
+
+    pub fn new(
+        shader_access: ShaderStageAccess,
+        binding_type: BindingType,
+        binding_point: u32,
+        binding_count: u32,
+    ) -> Arc<Self> {
+        Arc::new(
+            Self {
+                shader_access,
+                binding_type,
+                binding_point,
+                binding_count,
+            }
+        )
+    }
 }
 
 pub trait BindingDescriptorDependant {

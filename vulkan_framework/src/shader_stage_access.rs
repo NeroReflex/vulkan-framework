@@ -19,6 +19,18 @@ pub struct ShaderStageAccess {
 }
 
 impl ShaderStageAccess {
+    pub fn compute() -> Self {
+        Self {
+            compute: true,
+            vertex: false,
+            geometry: false,
+            fragment: false,
+            ray_tracing: ShaderStageAccessRayTracingKHR {
+                
+            },
+        }
+    }
+
     pub fn is_accessible_by(&self, shader_type: &ShaderType) -> bool {
         match shader_type {
             ShaderType::Compute => self.compute,
