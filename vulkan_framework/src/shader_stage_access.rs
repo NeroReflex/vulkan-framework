@@ -25,9 +25,7 @@ impl ShaderStageAccess {
             vertex: false,
             geometry: false,
             fragment: false,
-            ray_tracing: ShaderStageAccessRayTracingKHR {
-                
-            },
+            ray_tracing: ShaderStageAccessRayTracingKHR {},
         }
     }
 

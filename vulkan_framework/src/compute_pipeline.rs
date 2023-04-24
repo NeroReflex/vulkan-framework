@@ -45,22 +45,27 @@ impl Drop for ComputePipeline {
 }*/
 
 impl ComputePipeline {
-    pub fn new(pipeline_layout: Arc<PipelineLayout>, shader: Arc<ComputeShader>, shader_entry_name: Option<String>) -> VulkanResult<Arc<Self>> {
+    pub fn new(
+        pipeline_layout: Arc<PipelineLayout>,
+        shader: Arc<ComputeShader>,
+        shader_entry_name: Option<String>,
+    ) -> VulkanResult<Arc<Self>> {
         let device = pipeline_layout.get_parent_device();
 
         let name: &CStr = match shader_entry_name {
             Option::Some(_n) => {
                 todo!()
-            },
+            }
             Option::None => {
-                unsafe { CStr::from_bytes_with_nul_unchecked(&[109u8, 97u8, 105u8, 110u8, 0u8]) } // main
+                unsafe { CStr::from_bytes_with_nul_unchecked(&[109u8, 97u8, 105u8, 110u8, 0u8]) }
+                // main
             }
         };
 
         let shader_stage_info = ash::vk::PipelineShaderStageCreateInfo::builder()
             .stage(ash::vk::ShaderStageFlags::COMPUTE)
             .module(shader.ash_handle())
-            .name(&name)
+            .name(name)
             .build();
 
         let create_info = [ash::vk::ComputePipelineCreateInfo::builder()

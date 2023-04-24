@@ -90,14 +90,12 @@ impl BindingDescriptor {
         binding_point: u32,
         binding_count: u32,
     ) -> Arc<Self> {
-        Arc::new(
-            Self {
-                shader_access,
-                binding_type,
-                binding_point,
-                binding_count,
-            }
-        )
+        Arc::new(Self {
+            shader_access,
+            binding_type,
+            binding_point,
+            binding_count,
+        })
     }
 }
 

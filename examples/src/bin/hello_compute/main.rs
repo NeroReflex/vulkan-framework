@@ -1,3 +1,4 @@
+use inline_spirv::*;
 use vulkan_framework::compute_pipeline::ComputePipeline;
 use vulkan_framework::compute_shader::ComputeShader;
 use vulkan_framework::descriptor_set_layout::DescriptorSetLayout;
@@ -26,7 +27,6 @@ use vulkan_framework::shader_layout_binding::BindingDescriptor;
 use vulkan_framework::shader_layout_binding::BindingType;
 use vulkan_framework::shader_layout_binding::NativeBindingType;
 use vulkan_framework::shader_stage_access::ShaderStageAccess;
-use inline_spirv::*;
 
 fn main() {
     let instance_extensions = vec![String::from("VK_EXT_debug_utils")];
@@ -154,12 +154,14 @@ fn main() {
                                         ShaderStageAccess::compute(),
                                         BindingType::Native(NativeBindingType::StorageImage),
                                         0,
-                                        1
+                                        1,
                                     );
 
-                                    let image_dimensions_shader_push_constant = PushConstanRange::new(0, 8, ShaderStageAccess::compute());
-                                    
-                                    let spv: &'static [u32] = inline_spirv!(r#"
+                                    let image_dimensions_shader_push_constant =
+                                        PushConstanRange::new(0, 8, ShaderStageAccess::compute());
+
+                                    let spv: &'static [u32] = inline_spirv!(
+                                        r#"
                                     #version 450 core
                                     layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
                                     
@@ -175,18 +177,20 @@ fn main() {
                                             imageStore(someImage, ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y), vec4(1.0, 1.0, 1.0, 1.0));
                                         }
                                     }
-                                    "#, comp);
+                                    "#,
+                                        comp
+                                    );
 
                                     let compute_shader = match ComputeShader::new(
                                         device.clone(),
                                         &[image_dimensions_shader_push_constant.clone()],
                                         &[resulting_image_shader_binding.clone()],
-                                        spv
+                                        spv,
                                     ) {
                                         Ok(res) => {
                                             println!("Shader module created");
                                             res
-                                        },
+                                        }
                                         Err(_err) => {
                                             println!("Error creating the compute shader...");
                                             return;
@@ -195,12 +199,12 @@ fn main() {
 
                                     let descriptor_set_layout = match DescriptorSetLayout::new(
                                         device.clone(),
-                                        &[resulting_image_shader_binding.clone()]
+                                        &[resulting_image_shader_binding],
                                     ) {
                                         Ok(res) => {
                                             println!("Descriptor set layout created");
                                             res
-                                        },
+                                        }
                                         Err(_err) => {
                                             println!("Error creating the descriptor set layout...");
                                             return;
@@ -208,31 +212,34 @@ fn main() {
                                     };
 
                                     let compute_pipeline_layout = match PipelineLayout::new(
-                                        device.clone(),
-                                        &[descriptor_set_layout.clone()],
-                                        &[image_dimensions_shader_push_constant.clone()]
+                                        device,
+                                        &[descriptor_set_layout],
+                                        &[image_dimensions_shader_push_constant],
                                     ) {
                                         Ok(res) => {
                                             println!("Pipeline layout created");
                                             res
-                                        },
+                                        }
                                         Err(_err) => {
                                             println!("Error creating the pipeline layout...");
                                             return;
                                         }
                                     };
 
-                                    let compute_pipeline = match ComputePipeline::new(compute_pipeline_layout, compute_shader, None) {
+                                    let _compute_pipeline = match ComputePipeline::new(
+                                        compute_pipeline_layout,
+                                        compute_shader,
+                                        None,
+                                    ) {
                                         Ok(res) => {
                                             println!("Compute pipeline created");
                                             res
-                                        },
+                                        }
                                         Err(_err) => {
                                             println!("Error creating the pipeline...");
                                             return;
                                         }
                                     };
-
                                 }
                                 Err(_err) => {
                                     println!("Error creating the memory heap :(");

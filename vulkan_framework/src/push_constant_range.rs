@@ -21,17 +21,11 @@ impl PushConstanRange {
         self.shader_access
     }
 
-    pub fn new(
-        offset: u32,
-        size: u32,
-        shader_access: ShaderStageAccess,
-    ) -> Arc<Self> {
-        Arc::new(
-            Self {
-                offset,
-                size,
-                shader_access,
-            }
-        )
+    pub fn new(offset: u32, size: u32, shader_access: ShaderStageAccess) -> Arc<Self> {
+        Arc::new(Self {
+            offset,
+            size,
+            shader_access,
+        })
     }
 }
