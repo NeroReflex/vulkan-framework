@@ -286,9 +286,9 @@ impl Device {
                             .get_physical_device_properties(phy_device.to_owned());
 
                         let msbytes = match phy_device_properties.device_type {
-                            _DISCRETE_GPU => 0xC000000000000000u64,
-                            _INTEGRATED_GPU => 0x8000000000000000u64,
-                            _VK_PHYSICAL_DEVICE_TYPE_CPU => 0x4000000000000000u64,
+                            ash::vk::PhysicalDeviceType::DISCRETE_GPU => 0xC000000000000000u64,
+                            ash::vk::PhysicalDeviceType::INTEGRATED_GPU => 0x8000000000000000u64,
+                            ash::vk::PhysicalDeviceType::CPU => 0x4000000000000000u64,
                             _ => 0x0000000000000000u64,
                         };
 

@@ -35,7 +35,7 @@ use vulkan_framework::shader_layout_binding::BindingType;
 use vulkan_framework::shader_layout_binding::NativeBindingType;
 use vulkan_framework::shader_stage_access::ShaderStageAccess;
 
-const COMPUTE_SPV: &'static [u32] = inline_spirv!(
+const COMPUTE_SPV: &[u32] = inline_spirv!(
     r#"
 #version 450 core
 layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
@@ -251,7 +251,7 @@ fn main() {
                                     };
 
                                     let command_pool = match CommandPool::new(
-                                        queue_family.clone(),
+                                        queue_family,
                                         Some("My command pool"),
                                     ) {
                                         Ok(res) => {
@@ -265,7 +265,7 @@ fn main() {
                                     };
 
                                     let descriptor_pool = match DescriptorPool::new(
-                                        device.clone(),
+                                        device,
                                         DescriptorPoolConcreteDescriptor::new(
                                             DescriptorPoolSizesConcreteDescriptor::new(
                                                 0, 0, 0, 1, 0, 0, 0, 0, 0, None,
@@ -285,8 +285,8 @@ fn main() {
                                     };
 
                                     let descriptor_set = match DescriptorSet::new(
-                                        descriptor_pool.clone(),
-                                        descriptor_set_layout.clone(),
+                                        descriptor_pool,
+                                        descriptor_set_layout,
                                     ) {
                                         Ok(res) => {
                                             println!("Descriptor Set created");
@@ -314,36 +314,42 @@ fn main() {
                                         }
                                     };
 
-                                    let command_buffer_submittable = match OneTimeSubmittablePrimaryCommandBuffer::new(
-                                        command_buffer.clone(),
-                                    ) {
-                                        Ok(res) => {
-                                            println!("Primary Command Buffer Submittable created");
-                                            res
-                                        }
-                                        Err(_err) => {
-                                            println!("Error creating the Primary Command Buffer Submittable...");
-                                            return;
-                                        }
-                                    };
-                                    
-                                    let mut recorder = match command_buffer_submittable.begin_commands() {
-                                        Ok(res) => {
-                                            println!("Primary Command Buffer recorder created");
-                                            res
-                                        },
-                                        Err(_err) => {
-                                            println!(
-                                                "Error creating the Command Buffer recorder..."
-                                            );
-                                            return;
-                                        }
-                                    };
+                                    let command_buffer_submittable =
+                                        match OneTimeSubmittablePrimaryCommandBuffer::new(
+                                            command_buffer,
+                                        ) {
+                                            Ok(res) => {
+                                                println!(
+                                                    "Primary Command Buffer Submittable created"
+                                                );
+                                                res
+                                            }
+                                            Err(_err) => {
+                                                println!("Error creating the Primary Command Buffer Submittable...");
+                                                return;
+                                            }
+                                        };
+
+                                    let mut recorder =
+                                        match command_buffer_submittable.begin_commands() {
+                                            Ok(res) => {
+                                                println!("Primary Command Buffer recorder created");
+                                                res
+                                            }
+                                            Err(_err) => {
+                                                println!(
+                                                    "Error creating the Command Buffer recorder..."
+                                                );
+                                                return;
+                                            }
+                                        };
 
                                     {
-                                        let descriptor_sets = vec![descriptor_set.clone()];
-                                        recorder.use_compute_pipeline(compute_pipeline.clone(), descriptor_sets.as_slice());
-                                        
+                                        let descriptor_sets = vec![descriptor_set];
+                                        recorder.use_compute_pipeline(
+                                            compute_pipeline,
+                                            descriptor_sets.as_slice(),
+                                        );
                                     }
 
                                     let _ = command_buffer_submittable.submit();

@@ -3,12 +3,18 @@ use std::sync::{
     Arc,
 };
 
-use crate::{queue_family::QueueFamilyOwned, compute_pipeline::ComputePipeline, device::Device, pipeline_layout::{PipelineLayout, PipelineLayoutDependant}, descriptor_set::DescriptorSet};
 use crate::{
     command_pool::{CommandPool, CommandPoolOwned},
     device::DeviceOwned,
     instance::InstanceOwned,
     prelude::{VulkanError, VulkanResult},
+};
+use crate::{
+    compute_pipeline::ComputePipeline,
+    descriptor_set::DescriptorSet,
+    device::Device,
+    pipeline_layout::{PipelineLayout, PipelineLayoutDependant},
+    queue_family::QueueFamilyOwned,
 };
 
 // TODO: it would be better for performance to use smallvec...
@@ -21,9 +27,9 @@ pub struct ResourcesInUseByGPU {
 impl ResourcesInUseByGPU {
     pub fn create() -> Self {
         Self {
-            layouts: vec!(),
-            compute_pipelines: vec!(),
-            descriptor_sets: vec!(),
+            layouts: vec![],
+            compute_pipelines: vec![],
+            descriptor_sets: vec![],
         }
     }
 }
@@ -32,7 +38,7 @@ pub struct CommandBufferRecorder<'a> {
     device: Arc<Device>, // this field is repeated to speed-up execution, otherwise a ton of Arc<>.clone() will be performed
     command_buffer: &'a dyn CommandBufferCrateTrait,
 
-    used_resources: ResourcesInUseByGPU
+    used_resources: ResourcesInUseByGPU,
 }
 
 impl<'a> CommandBufferRecorder<'a> {
@@ -47,10 +53,10 @@ impl<'a> CommandBufferRecorder<'a> {
     ) {
         unsafe {
             self.device.ash_handle().cmd_bind_pipeline(
-                self.command_buffer.ash_handle(), 
-                ash::vk::PipelineBindPoint::COMPUTE, 
-                compute_pipeline.ash_handle()
-            ) 
+                self.command_buffer.ash_handle(),
+                ash::vk::PipelineBindPoint::COMPUTE,
+                compute_pipeline.ash_handle(),
+            )
         }
 
         let mut sets = Vec::<ash::vk::DescriptorSet>::new();
@@ -69,13 +75,12 @@ impl<'a> CommandBufferRecorder<'a> {
                 compute_pipeline.get_parent_pipeline_layout().ash_handle(),
                 0,
                 sets.as_slice(),
-                dynamic_offsets.as_slice()
+                dynamic_offsets.as_slice(),
             )
         }
 
         self.used_resources.compute_pipelines.push(compute_pipeline)
     }
-
 }
 
 pub struct OneTimeSubmittablePrimaryCommandBuffer {
@@ -104,7 +109,6 @@ impl Drop for OneTimeSubmittablePrimaryCommandBuffer {
 
 impl OneTimeSubmittablePrimaryCommandBuffer {
     pub fn submit(&self) -> VulkanResult<()> {
-
         todo!()
     }
 
@@ -124,6 +128,8 @@ impl OneTimeSubmittablePrimaryCommandBuffer {
                 {
                     panic!("Error removing the command buffer recorder. In release mode this will lead to an unusable command buffer as it won't be able to record any more command.");
                 }
+
+                Err(VulkanError::Unspecified)
             }
         }
     }
@@ -147,18 +153,14 @@ impl OneTimeSubmittablePrimaryCommandBuffer {
         ) {
             Ok(_) => match unsafe {
                 device
-                            .ash_handle()
-                            .begin_command_buffer(self.command_buffer.ash_handle(), &begin_info)
+                    .ash_handle()
+                    .begin_command_buffer(self.command_buffer.ash_handle(), &begin_info)
             } {
-                Ok(()) => {
-                    Ok(
-                        CommandBufferRecorder {
-                            device,
-                            command_buffer: self.command_buffer.as_ref(),
-                            used_resources: ResourcesInUseByGPU::create(),
-                        }
-                    )
-                }
+                Ok(()) => Ok(CommandBufferRecorder {
+                    device,
+                    command_buffer: self.command_buffer.as_ref(),
+                    used_resources: ResourcesInUseByGPU::create(),
+                }),
                 Err(err) => {
                     #[cfg(debug_assertions)]
                     {
@@ -182,7 +184,10 @@ impl OneTimeSubmittablePrimaryCommandBuffer {
     pub fn end_commands<'a>(&self, recorder: CommandBufferRecorder<'a>) -> VulkanResult<()> {
         #[cfg(debug_assertions)]
         {
-            assert_eq!(recorder.command_buffer.native_handle(), self.command_buffer.native_handle())
+            assert_eq!(
+                recorder.command_buffer.native_handle(),
+                self.command_buffer.native_handle()
+            )
         }
 
         let device = self
