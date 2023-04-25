@@ -274,10 +274,11 @@ impl DescriptorPool {
         descriptor: DescriptorPoolConcreteDescriptor,
         debug_name: Option<&str>,
     ) -> VulkanResult<Arc<Self>> {
+        let pool_sizes = descriptor.ash_pool_sizes();
         let create_info = ash::vk::DescriptorPoolCreateInfo::builder()
             .flags(ash::vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET | descriptor.ash_flags())
             .max_sets(descriptor.max_sets)
-            .pool_sizes(descriptor.ash_pool_sizes().as_slice())
+            .pool_sizes(pool_sizes.as_slice())
             .build();
 
         match unsafe {
