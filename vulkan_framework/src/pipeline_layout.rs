@@ -105,9 +105,7 @@ impl PipelineLayout {
                                 Ok(_) => {
                                     #[cfg(debug_assertions)]
                                     {
-                                        println!(
-                                            "Pipeline Layout Debug object name changed"
-                                        );
+                                        println!("Pipeline Layout Debug object name changed");
                                     }
                                 }
                                 Err(err) => {
