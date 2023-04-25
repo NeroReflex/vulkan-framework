@@ -1,4 +1,6 @@
 pub mod buffer;
+pub mod command_buffer;
+pub mod command_pool;
 pub mod compute_pipeline;
 pub mod compute_shader;
 pub mod descriptor_pool;
@@ -22,5 +24,3 @@ pub mod shader_layout_binding;
 pub mod shader_stage_access;
 pub mod shader_trait;
 pub mod surface;
-pub mod command_pool;
-pub mod command_buffer;

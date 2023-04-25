@@ -1,41 +1,60 @@
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 
-use crate::{command_pool::{CommandPool, CommandPoolOwned, self}, prelude::{VulkanResult, VulkanError}, device::DeviceOwned, instance::InstanceOwned};
-use crate::{queue_family::{QueueFamilyOwned}};
+use crate::queue_family::QueueFamilyOwned;
+use crate::{
+    command_pool::{CommandPool, CommandPoolOwned},
+    device::DeviceOwned,
+    instance::InstanceOwned,
+    prelude::{VulkanError, VulkanResult},
+};
 
 pub struct OneTimeSubmittable<'a> {
-    command_buffer: &'a dyn CommandBufferCrateTrait
+    command_buffer: &'a dyn CommandBufferCrateTrait,
 }
 
 pub struct CommandBufferRecorder<'a> {
-    command_buffer: &'a dyn CommandBufferCrateTrait
+    command_buffer: &'a dyn CommandBufferCrateTrait,
 }
 
 impl<'a> Drop for CommandBufferRecorder<'a> {
     fn drop(&mut self) {
-        let device = self.command_buffer.get_parent_command_pool().get_parent_queue_family().get_parent_device();
+        let device = self
+            .command_buffer
+            .get_parent_command_pool()
+            .get_parent_queue_family()
+            .get_parent_device();
 
-        let _ = unsafe { device.ash_handle().end_command_buffer(self.command_buffer.ash_handle()) };
+        let _ = unsafe {
+            device
+                .ash_handle()
+                .end_command_buffer(self.command_buffer.ash_handle())
+        };
     }
 }
 
 impl<'a> CommandBufferRecorder<'a> {
-    pub(crate) fn from_command_buffer_unchecked(command_buffer: &'a dyn CommandBufferCrateTrait) -> Self {
-        Self {
-            command_buffer
-        }
+    pub(crate) fn from_command_buffer_unchecked(
+        command_buffer: &'a dyn CommandBufferCrateTrait,
+    ) -> Self {
+        Self { command_buffer }
     }
 }
 
-pub trait CommandBufferTrait : CommandPoolOwned {
+pub trait CommandBufferTrait: CommandPoolOwned {
     fn native_handle(&self) -> u64;
 
     fn register_commands(&self) -> VulkanResult<CommandBufferRecorder>;
 
-    fn end_commands<'a>(&self, recorder: CommandBufferRecorder<'a>) -> VulkanResult<Arc<OneTimeSubmittable>>;
+    fn end_commands<'a>(
+        &self,
+        recorder: CommandBufferRecorder<'a>,
+    ) -> VulkanResult<Arc<OneTimeSubmittable>>;
 }
 
-pub(crate) trait CommandBufferCrateTrait : CommandBufferTrait {
+pub(crate) trait CommandBufferCrateTrait: CommandBufferTrait {
     fn ash_handle(&self) -> ash::vk::CommandBuffer;
 }
 
@@ -63,19 +82,28 @@ impl CommandBufferTrait for PrimaryCommandBuffer {
     }
 
     fn register_commands(&self) -> VulkanResult<CommandBufferRecorder> {
-        let device = self.get_parent_command_pool().get_parent_queue_family().get_parent_device();
+        let device = self
+            .get_parent_command_pool()
+            .get_parent_queue_family()
+            .get_parent_device();
 
-        match self.recording_status.compare_exchange(false, true, Ordering::Acquire, Ordering::Acquire) {
+        match self.recording_status.compare_exchange(
+            false,
+            true,
+            Ordering::Acquire,
+            Ordering::Acquire,
+        ) {
             Ok(_) => {
-
                 let begin_info = ash::vk::CommandBufferBeginInfo::builder()
                     .flags(ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
                     .build();
 
-                match unsafe { device.ash_handle().begin_command_buffer(self.command_buffer, &begin_info) } {
-                    Ok(()) => {
-                        Ok(CommandBufferRecorder::from_command_buffer_unchecked(self))
-                    },
+                match unsafe {
+                    device
+                        .ash_handle()
+                        .begin_command_buffer(self.command_buffer, &begin_info)
+                } {
+                    Ok(()) => Ok(CommandBufferRecorder::from_command_buffer_unchecked(self)),
                     Err(err) => {
                         #[cfg(debug_assertions)]
                         {
@@ -86,7 +114,7 @@ impl CommandBufferTrait for PrimaryCommandBuffer {
                         Err(VulkanError::Unspecified)
                     }
                 }
-            },
+            }
             Err(_err) => {
                 #[cfg(debug_assertions)]
                 {
@@ -99,24 +127,33 @@ impl CommandBufferTrait for PrimaryCommandBuffer {
         }
     }
 
-    fn end_commands<'a>(&self, recorder: CommandBufferRecorder<'a>) -> VulkanResult<Arc<OneTimeSubmittable>> {
-        let device = self.get_parent_command_pool().get_parent_queue_family().get_parent_device();
+    fn end_commands<'a>(
+        &self,
+        _recorder: CommandBufferRecorder<'a>,
+    ) -> VulkanResult<Arc<OneTimeSubmittable>> {
+        let device = self
+            .get_parent_command_pool()
+            .get_parent_queue_family()
+            .get_parent_device();
 
-        match self.recording_status.compare_exchange(true, false, Ordering::Acquire, Ordering::Acquire) {
-            Ok(_) => {
-                match unsafe { device.ash_handle().end_command_buffer(self.ash_handle()) } {
-                    Ok(()) => {
-                        Ok(Arc::new(OneTimeSubmittable { command_buffer: self }))
-                    },
-                    Err(err) => {
-                        #[cfg(debug_assertions)]
-                        {
-                            println!("Error creating the command buffer recorder: the command buffer already is in recording state!");
-                            assert_eq!(true, false)
-                        }
-
-                        Err(VulkanError::Unspecified)
+        match self.recording_status.compare_exchange(
+            true,
+            false,
+            Ordering::Acquire,
+            Ordering::Acquire,
+        ) {
+            Ok(_) => match unsafe { device.ash_handle().end_command_buffer(self.ash_handle()) } {
+                Ok(()) => Ok(Arc::new(OneTimeSubmittable {
+                    command_buffer: self,
+                })),
+                Err(_err) => {
+                    #[cfg(debug_assertions)]
+                    {
+                        println!("Error creating the command buffer recorder: the command buffer already is in recording state!");
+                        assert_eq!(true, false)
                     }
+
+                    Err(VulkanError::Unspecified)
                 }
             },
             Err(_) => {
@@ -134,12 +171,15 @@ impl CommandBufferTrait for PrimaryCommandBuffer {
 
 impl CommandBufferCrateTrait for PrimaryCommandBuffer {
     fn ash_handle(&self) -> ash::vk::CommandBuffer {
-        self.command_buffer.clone()
+        self.command_buffer
     }
 }
 
 impl PrimaryCommandBuffer {
-    pub fn new(command_pool: Arc<CommandPool>, debug_name: Option<&str>) -> VulkanResult<Arc<Self>> {
+    pub fn new(
+        command_pool: Arc<CommandPool>,
+        debug_name: Option<&str>,
+    ) -> VulkanResult<Arc<Self>> {
         let device = command_pool.get_parent_queue_family().get_parent_device();
 
         let create_info = ash::vk::CommandBufferAllocateInfo::builder()
@@ -199,16 +239,12 @@ impl PrimaryCommandBuffer {
                     None => {}
                 }
 
-                Ok(
-                    Arc::new(
-                        Self {
-                            command_buffer,
-                            command_pool,
-                            recording_status: AtomicBool::new(false)
-                        }
-                    )
-                )
-            },
+                Ok(Arc::new(Self {
+                    command_buffer,
+                    command_pool,
+                    recording_status: AtomicBool::new(false),
+                }))
+            }
             Err(err) => {
                 #[cfg(debug_assertions)]
                 {

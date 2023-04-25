@@ -217,7 +217,7 @@ fn main() {
                                         device,
                                         &[descriptor_set_layout],
                                         &[image_dimensions_shader_push_constant],
-                                        Some("Layout of Example pipeline")
+                                        Some("Layout of Example pipeline"),
                                     ) {
                                         Ok(res) => {
                                             println!("Pipeline layout created");
@@ -229,11 +229,11 @@ fn main() {
                                         }
                                     };
 
-                                    let compute_pipeline = match ComputePipeline::new(
+                                    let _compute_pipeline = match ComputePipeline::new(
                                         compute_pipeline_layout,
                                         compute_shader,
                                         None,
-                                        Some("Example pipeline")
+                                        Some("Example pipeline"),
                                     ) {
                                         Ok(res) => {
                                             println!("Compute pipeline created");
@@ -245,7 +245,10 @@ fn main() {
                                         }
                                     };
 
-                                    let command_pool = match CommandPool::new(queue_family.clone(), Some("My command pool")) {
+                                    let command_pool = match CommandPool::new(
+                                        queue_family,
+                                        Some("My command pool"),
+                                    ) {
                                         Ok(res) => {
                                             println!("Command Pool created");
                                             res
@@ -256,18 +259,21 @@ fn main() {
                                         }
                                     };
 
-                                    let command_buffer = match PrimaryCommandBuffer::new(command_pool.clone(), Some("my command buffer <3")) {
+                                    let _command_buffer = match PrimaryCommandBuffer::new(
+                                        command_pool,
+                                        Some("my command buffer <3"),
+                                    ) {
                                         Ok(res) => {
                                             println!("Primary Command Buffer created");
                                             res
                                         }
                                         Err(_err) => {
-                                            println!("Error creating the Primary Command Buffer...");
+                                            println!(
+                                                "Error creating the Primary Command Buffer..."
+                                            );
                                             return;
                                         }
                                     };
-
-
                                 }
                                 Err(_err) => {
                                     println!("Error creating the memory heap :(");

@@ -107,7 +107,9 @@ impl PipelineLayout {
                                         Ok(_) => {
                                             #[cfg(debug_assertions)]
                                             {
-                                                println!("Pipeline Layout Debug object name changed");
+                                                println!(
+                                                    "Pipeline Layout Debug object name changed"
+                                                );
                                             }
                                         }
                                         Err(err) => {
@@ -125,14 +127,14 @@ impl PipelineLayout {
                     }
                     None => {}
                 }
-                
+
                 Ok(Arc::new(Self {
                     device,
                     pipeline_layout,
                     layout_bindings: binding_descriptors.to_vec(),
                     push_constant_ranges: constant_ranges.to_vec(),
                 }))
-            },
+            }
             Err(err) => {
                 #[cfg(debug_assertions)]
                 {
