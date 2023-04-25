@@ -1,4 +1,6 @@
 use inline_spirv::*;
+use vulkan_framework::command_buffer::PrimaryCommandBuffer;
+use vulkan_framework::command_pool::CommandPool;
 use vulkan_framework::compute_pipeline::ComputePipeline;
 use vulkan_framework::compute_shader::ComputeShader;
 use vulkan_framework::descriptor_set_layout::DescriptorSetLayout;
@@ -67,7 +69,7 @@ fn main() {
                 Ok(queue_family) => {
                     println!("Base queue family obtained successfully from Device");
 
-                    match Queue::new(queue_family, Some("best queua evah")) {
+                    match Queue::new(queue_family.clone(), Some("best queua evah")) {
                         Ok(_queue) => {
                             println!("Queue created successfully");
 
@@ -215,6 +217,7 @@ fn main() {
                                         device,
                                         &[descriptor_set_layout],
                                         &[image_dimensions_shader_push_constant],
+                                        Some("Layout of Example pipeline")
                                     ) {
                                         Ok(res) => {
                                             println!("Pipeline layout created");
@@ -226,10 +229,11 @@ fn main() {
                                         }
                                     };
 
-                                    let _compute_pipeline = match ComputePipeline::new(
+                                    let compute_pipeline = match ComputePipeline::new(
                                         compute_pipeline_layout,
                                         compute_shader,
                                         None,
+                                        Some("Example pipeline")
                                     ) {
                                         Ok(res) => {
                                             println!("Compute pipeline created");
@@ -240,6 +244,30 @@ fn main() {
                                             return;
                                         }
                                     };
+
+                                    let command_pool = match CommandPool::new(queue_family.clone(), Some("My command pool")) {
+                                        Ok(res) => {
+                                            println!("Command Pool created");
+                                            res
+                                        }
+                                        Err(_err) => {
+                                            println!("Error creating the Command Pool...");
+                                            return;
+                                        }
+                                    };
+
+                                    let command_buffer = match PrimaryCommandBuffer::new(command_pool.clone(), Some("my command buffer <3")) {
+                                        Ok(res) => {
+                                            println!("Primary Command Buffer created");
+                                            res
+                                        }
+                                        Err(_err) => {
+                                            println!("Error creating the Primary Command Buffer...");
+                                            return;
+                                        }
+                                    };
+
+
                                 }
                                 Err(_err) => {
                                     println!("Error creating the memory heap :(");

@@ -50,6 +50,7 @@ impl PipelineLayout {
         device: Arc<Device>,
         binding_descriptors: &[Arc<DescriptorSetLayout>],
         constant_ranges: &[Arc<PushConstanRange>],
+        debug_name: Option<&str>,
     ) -> VulkanResult<Arc<Self>> {
         let set_layouts = binding_descriptors
             .iter()
@@ -77,12 +78,61 @@ impl PipelineLayout {
                 device.get_parent_instance().get_alloc_callbacks(),
             )
         } {
-            Ok(pipeline_layout) => Ok(Arc::new(Self {
-                device,
-                pipeline_layout,
-                layout_bindings: binding_descriptors.to_vec(),
-                push_constant_ranges: constant_ranges.to_vec(),
-            })),
+            Ok(pipeline_layout) => {
+                let mut obj_name_bytes = vec![];
+                match device.get_parent_instance().get_debug_ext_extension() {
+                    Some(ext) => {
+                        match debug_name {
+                            Some(name) => {
+                                for name_ch in name.as_bytes().iter() {
+                                    obj_name_bytes.push(*name_ch);
+                                }
+                                obj_name_bytes.push(0x00);
+
+                                unsafe {
+                                    let object_name = std::ffi::CStr::from_bytes_with_nul_unchecked(
+                                        obj_name_bytes.as_slice(),
+                                    );
+                                    // set device name for debugging
+                                    let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::builder()
+                                        .object_type(ash::vk::ObjectType::PIPELINE_LAYOUT)
+                                        .object_handle(ash::vk::Handle::as_raw(pipeline_layout))
+                                        .object_name(object_name)
+                                        .build();
+
+                                    match ext.set_debug_utils_object_name(
+                                        device.ash_handle().handle(),
+                                        &dbg_info,
+                                    ) {
+                                        Ok(_) => {
+                                            #[cfg(debug_assertions)]
+                                            {
+                                                println!("Pipeline Layout Debug object name changed");
+                                            }
+                                        }
+                                        Err(err) => {
+                                            #[cfg(debug_assertions)]
+                                            {
+                                                println!("Error setting the Debug name for the newly created Pipeline Layout, will use handle. Error: {}", err);
+                                                assert_eq!(true, false);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            None => {}
+                        };
+                    }
+                    None => {}
+                }
+                
+                Ok(Arc::new(Self {
+                    device,
+                    pipeline_layout,
+                    layout_bindings: binding_descriptors.to_vec(),
+                    push_constant_ranges: constant_ranges.to_vec(),
+                }))
+            },
             Err(err) => {
                 #[cfg(debug_assertions)]
                 {
