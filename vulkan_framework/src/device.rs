@@ -75,8 +75,8 @@ impl Device {
             Err(err) => {
                 #[cfg(debug_assertions)]
                 {
-                    println!("Error waiting for device to be idle: {}", err);
-                    assert_eq!(true, false)
+                    panic!("Error waiting for device to be idle: {}", err)
+                    
                 }
 
                 Err(VulkanError::Unspecified)
@@ -177,8 +177,7 @@ impl Device {
                         None => {
                             #[cfg(debug_assertions)]
                             {
-                                println!("SurfaceKHR extension not available, have you forgotten to specify it on instance creation?");
-                                assert_eq!(true, false)
+                                panic!("SurfaceKHR extension not available, have you forgotten to specify it on instance creation?")
                             }
                             return None;
                         }
@@ -500,8 +499,7 @@ impl Device {
                                                         Err(err) => {
                                                             #[cfg(debug_assertions)]
                                                             {
-                                                                println!("Error setting the Debug name for the newly created Device, will use handle. Error: {}", err);
-                                                                assert_eq!(true, false);
+                                                                panic!("Error setting the Debug name for the newly created Device, will use handle. Error: {}", err)
                                                             }
                                                         }
                                                     }
@@ -549,8 +547,7 @@ impl Device {
                     None => {
                         #[cfg(debug_assertions)]
                         {
-                            println!("The queue family with index {} has already been created once and there can only be one QueueFamily for requested queue capabilies.", index);
-                            assert_eq!(true, false)
+                            panic!("The queue family with index {} has already been created once and there can only be one QueueFamily for requested queue capabilies.", index)
                         }
 
                         Option::None
@@ -559,8 +556,7 @@ impl Device {
                 false => {
                     #[cfg(debug_assertions)]
                     {
-                        println!("A queue family with index {} does not exists, at device creation time only {} queue families were requested.", index, collection.len());
-                        assert_eq!(true, false)
+                        panic!("A queue family with index {} does not exists, at device creation time only {} queue families were requested.", index, collection.len())
                     }
 
                     Option::None
@@ -569,8 +565,7 @@ impl Device {
             Err(err) => {
                 #[cfg(debug_assertions)]
                 {
-                    println!("Error acquiring internal mutex: {}", err);
-                    assert_eq!(true, false)
+                    panic!("Error acquiring internal mutex: {}", err)
                 }
 
                 Option::None

@@ -90,8 +90,7 @@ impl ComputePipeline {
                 if pipelines.len() != 1 {
                     #[cfg(debug_assertions)]
                     {
-                        println!("Error creating the compute pipeline: expected 1 pipeline to be created, instead {} were created.", pipelines.len());
-                        assert_eq!(true, false)
+                        panic!("Error creating the compute pipeline: expected 1 pipeline to be created, instead {} were created.", pipelines.len())
                     }
 
                     return Err(VulkanError::Unspecified);
@@ -131,8 +130,7 @@ impl ComputePipeline {
                                         Err(err) => {
                                             #[cfg(debug_assertions)]
                                             {
-                                                println!("Error setting the Debug name for the newly created Pipeline, will use handle. Error: {}", err);
-                                                assert_eq!(true, false);
+                                                panic!("Error setting the Debug name for the newly created Pipeline, will use handle. Error: {}", err)
                                             }
                                         }
                                     }
@@ -153,8 +151,7 @@ impl ComputePipeline {
             Err((_, err)) => {
                 #[cfg(debug_assertions)]
                 {
-                    println!("Error creating the compute pipeline: {}", err);
-                    assert_eq!(true, false)
+                    panic!("Error creating the compute pipeline: {}", err)
                 }
 
                 Err(VulkanError::Unspecified)

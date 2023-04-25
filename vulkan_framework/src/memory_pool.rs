@@ -78,8 +78,7 @@ where
                 Err(err) => {
                     #[cfg(debug_assertions)]
                     {
-                        println!("Error creating the memory pool: {}", err);
-                        assert_eq!(true, false)
+                        panic!("Error creating the memory pool: {}", err)
                     }
 
                     Err(VulkanError::Unspecified)

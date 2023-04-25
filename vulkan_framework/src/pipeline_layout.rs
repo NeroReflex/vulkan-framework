@@ -115,8 +115,7 @@ impl PipelineLayout {
                                         Err(err) => {
                                             #[cfg(debug_assertions)]
                                             {
-                                                println!("Error setting the Debug name for the newly created Pipeline Layout, will use handle. Error: {}", err);
-                                                assert_eq!(true, false);
+                                                panic!("Error setting the Debug name for the newly created Pipeline Layout, will use handle. Error: {}", err)
                                             }
                                         }
                                     }
@@ -138,8 +137,7 @@ impl PipelineLayout {
             Err(err) => {
                 #[cfg(debug_assertions)]
                 {
-                    println!("Error creating the pipeline layout: {}", err);
-                    assert_eq!(true, false)
+                    panic!("Error creating the pipeline layout: {}", err)
                 }
 
                 Err(VulkanError::Unspecified)

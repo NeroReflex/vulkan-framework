@@ -25,8 +25,7 @@ impl Drop for Surface {
             None => {
                 #[cfg(debug_assertions)]
                 {
-                    println!("Surface KHR extension has not been loaded, have you forgotten to specify surface support at instance creation? You have to call manually call vkDestroySurfaceKHR before destroy the Instance.");
-                    assert_eq!(true, false)
+                    panic!("Surface KHR extension has not been loaded, have you forgotten to specify surface support at instance creation? You have to call manually call vkDestroySurfaceKHR before destroy the Instance.");
                 }
             }
         }

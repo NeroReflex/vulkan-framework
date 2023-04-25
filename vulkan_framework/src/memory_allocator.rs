@@ -110,8 +110,7 @@ impl MemoryAllocator for StackAllocator {
             Err(err) => {
                 #[cfg(debug_assertions)]
                 {
-                    println!("Error acquiring internal mutex: {}", err);
-                    assert_eq!(true, false)
+                    panic!("Error acquiring internal mutex: {}", err)
                 }
 
                 Option::None
@@ -144,8 +143,7 @@ impl MemoryAllocator for StackAllocator {
                 #[cfg(debug_assertions)]
                 {
                     println!("Error acquiring internal mutex: {}", err);
-                    println!("Given memory will be lost forever");
-                    assert_eq!(true, false)
+                    panic!("Given memory will be lost forever");
                 }
             }
         }

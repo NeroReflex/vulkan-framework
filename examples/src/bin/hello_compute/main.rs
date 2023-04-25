@@ -1,8 +1,13 @@
 use inline_spirv::*;
+use vulkan_framework::command_buffer::OneTimeSubmittablePrimaryCommandBuffer;
 use vulkan_framework::command_buffer::PrimaryCommandBuffer;
 use vulkan_framework::command_pool::CommandPool;
 use vulkan_framework::compute_pipeline::ComputePipeline;
 use vulkan_framework::compute_shader::ComputeShader;
+use vulkan_framework::descriptor_pool::DescriptorPool;
+use vulkan_framework::descriptor_pool::DescriptorPoolConcreteDescriptor;
+use vulkan_framework::descriptor_pool::DescriptorPoolSizesConcreteDescriptor;
+use vulkan_framework::descriptor_set::DescriptorSet;
 use vulkan_framework::descriptor_set_layout::DescriptorSetLayout;
 use vulkan_framework::device::*;
 use vulkan_framework::image::ConcreteImageDescriptor;
@@ -214,8 +219,8 @@ fn main() {
                                     };
 
                                     let compute_pipeline_layout = match PipelineLayout::new(
-                                        device,
-                                        &[descriptor_set_layout],
+                                        device.clone(),
+                                        &[descriptor_set_layout.clone()],
                                         &[image_dimensions_shader_push_constant],
                                         Some("Layout of Example pipeline"),
                                     ) {
@@ -246,7 +251,7 @@ fn main() {
                                     };
 
                                     let command_pool = match CommandPool::new(
-                                        queue_family,
+                                        queue_family.clone(),
                                         Some("My command pool"),
                                     ) {
                                         Ok(res) => {
@@ -259,7 +264,41 @@ fn main() {
                                         }
                                     };
 
-                                    let _command_buffer = match PrimaryCommandBuffer::new(
+                                    let descriptor_pool = match DescriptorPool::new(
+                                        device.clone(),
+                                        DescriptorPoolConcreteDescriptor::new(
+                                            DescriptorPoolSizesConcreteDescriptor::new(
+                                                0, 0, 0, 1, 0, 0, 0, 0, 0, None,
+                                            ),
+                                            1,
+                                        ),
+                                        Some("My descriptor pool"),
+                                    ) {
+                                        Ok(res) => {
+                                            println!("Descriptor Pool created");
+                                            res
+                                        }
+                                        Err(_err) => {
+                                            println!("Error creating the Descriptor Pool...");
+                                            return;
+                                        }
+                                    };
+
+                                    let descriptor_set = match DescriptorSet::new(
+                                        descriptor_pool.clone(),
+                                        descriptor_set_layout.clone(),
+                                    ) {
+                                        Ok(res) => {
+                                            println!("Descriptor Set created");
+                                            res
+                                        }
+                                        Err(_err) => {
+                                            println!("Error creating the Descriptor Set...");
+                                            return;
+                                        }
+                                    };
+
+                                    let command_buffer = match PrimaryCommandBuffer::new(
                                         command_pool,
                                         Some("my command buffer <3"),
                                     ) {
@@ -270,6 +309,21 @@ fn main() {
                                         Err(_err) => {
                                             println!(
                                                 "Error creating the Primary Command Buffer..."
+                                            );
+                                            return;
+                                        }
+                                    };
+
+                                    let recorder = match OneTimeSubmittablePrimaryCommandBuffer::new(
+                                        command_buffer.clone(),
+                                    ) {
+                                        Ok(res) => {
+                                            println!("Primary Command Buffer recorder created");
+                                            res
+                                        }
+                                        Err(_err) => {
+                                            println!(
+                                                "Error creating the Primary Command Buffer recorder..."
                                             );
                                             return;
                                         }

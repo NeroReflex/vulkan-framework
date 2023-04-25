@@ -76,8 +76,7 @@ impl DescriptorSet {
             Err(err) => {
                 #[cfg(debug_assertions)]
                 {
-                    println!("Error creating the descriptor set: {}", err);
-                    assert_eq!(true, false)
+                    panic!("Error creating the descriptor set: {}", err)
                 }
 
                 Err(VulkanError::Unspecified)

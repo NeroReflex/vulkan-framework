@@ -753,8 +753,7 @@ where
                 Err(err) => {
                     #[cfg(debug_assertions)]
                     {
-                        println!("Error creating the image: {}", err);
-                        assert_eq!(true, false)
+                        panic!("Error creating the image: {}", err)
                     }
 
                     return Err(VulkanError::Unspecified);
@@ -796,8 +795,7 @@ where
                                 Err(err) => {
                                     #[cfg(debug_assertions)]
                                     {
-                                        println!("Error setting the Debug name for the newly created Image, will use handle. Error: {}", err);
-                                        assert_eq!(true, false);
+                                        panic!("Error setting the Debug name for the newly created Image, will use handle. Error: {}", err)
                                     }
                                 }
                             }
@@ -842,17 +840,16 @@ where
                             descriptor,
                         })),
                         Err(err) => {
-                            #[cfg(debug_assertions)]
-                            {
-                                println!("Error allocating memory on the device: {}, probably this is due to an incorrect implementation of the memory allocation algorithm", err);
-                                assert_eq!(true, false)
-                            }
-
                             // the image will not let this function, destroy it or it will leak
                             device.ash_handle().destroy_image(
                                 image,
                                 device.get_parent_instance().get_alloc_callbacks(),
                             );
+
+                            #[cfg(debug_assertions)]
+                            {
+                                panic!("Error allocating memory on the device: {}, probably this is due to an incorrect implementation of the memory allocation algorithm", err)
+                            }
 
                             Err(VulkanError::Unspecified)
                         }

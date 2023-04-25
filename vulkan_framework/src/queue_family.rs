@@ -84,8 +84,7 @@ impl QueueFamily {
             None => {
                 #[cfg(debug_assertions)]
                 {
-                    println!("Something bad happened while moving out the queue family from the provided Device");
-                    assert_eq!(true, false)
+                    panic!("Something bad happened while moving out the queue family from the provided Device")
                 }
 
                 Err(VulkanError::Unspecified)
@@ -108,8 +107,7 @@ impl QueueFamily {
                     false => {
                         #[cfg(debug_assertions)]
                         {
-                            println!("From this QueueFamily the number of created Queue(s) is {} out of a maximum supported number of {} has already been created.", created_queues_num, total_number_of_queues);
-                            assert_eq!(true, false)
+                            panic!("From this QueueFamily the number of created Queue(s) is {} out of a maximum supported number of {} has already been created.", created_queues_num, total_number_of_queues)
                         }
 
                         Option::None
@@ -119,8 +117,7 @@ impl QueueFamily {
             Err(err) => {
                 #[cfg(debug_assertions)]
                 {
-                    println!("Error acquiring internal mutex: {}", err);
-                    assert_eq!(true, false)
+                    panic!("Error acquiring internal mutex: {}", err)
                 }
 
                 Option::None
