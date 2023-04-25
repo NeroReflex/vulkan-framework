@@ -25,7 +25,7 @@ impl Drop for OneTimeSubmittablePrimaryCommandBuffer {
             Ordering::Relaxed,
         ) {
             Ok(_) => {}
-            Err(err) => {
+            Err(_err) => {
                 #[cfg(debug_assertions)]
                 {
                     panic!("Error removing the command buffer recorder. In release mode this will lead to an unusable command buffer as it won't be able to record any more command.");
@@ -43,16 +43,10 @@ impl OneTimeSubmittablePrimaryCommandBuffer {
             Ordering::Acquire,
             Ordering::Relaxed,
         ) {
-            Ok(_) => {
-                Ok(
-                    Arc::new(
-                        Self {
-                            command_buffer,
-                            status_registered: AtomicBool::new(false)
-                        }
-                    )
-                )
-            }
+            Ok(_) => Ok(Arc::new(Self {
+                command_buffer,
+                status_registered: AtomicBool::new(false),
+            })),
             Err(_err) => {
                 #[cfg(debug_assertions)]
                 {
@@ -63,7 +57,8 @@ impl OneTimeSubmittablePrimaryCommandBuffer {
     }
 
     pub fn begin_commands(&self) -> VulkanResult<()> {
-        let device = self.command_buffer
+        let device = self
+            .command_buffer
             .get_parent_command_pool()
             .get_parent_queue_family()
             .get_parent_device();
@@ -72,52 +67,52 @@ impl OneTimeSubmittablePrimaryCommandBuffer {
             .flags(ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
             .build();
 
-            match self.status_registered.compare_exchange(
-                true,
-                false,
-                Ordering::Acquire,
-                Ordering::Acquire,
-            ) {
-                Ok(_) => match unsafe {
-                    device
-                        .ash_handle()
-                        .end_command_buffer(self.command_buffer.ash_handle())
-                } {
-                    Ok(()) => {
-                        match unsafe {
-                            device
-                                .ash_handle()
-                                .begin_command_buffer(self.command_buffer.ash_handle(), &begin_info)
-                        } {
-                            Ok(()) => Ok(()),
-                            Err(err) => {
-                                #[cfg(debug_assertions)]
-                                {
-                                    panic!("Error creating the command buffer recorder: {}", err)
-                                }
-                
-                                Err(VulkanError::Unspecified)
+        match self.status_registered.compare_exchange(
+            true,
+            false,
+            Ordering::Acquire,
+            Ordering::Acquire,
+        ) {
+            Ok(_) => match unsafe {
+                device
+                    .ash_handle()
+                    .end_command_buffer(self.command_buffer.ash_handle())
+            } {
+                Ok(()) => {
+                    match unsafe {
+                        device
+                            .ash_handle()
+                            .begin_command_buffer(self.command_buffer.ash_handle(), &begin_info)
+                    } {
+                        Ok(()) => Ok(()),
+                        Err(err) => {
+                            #[cfg(debug_assertions)]
+                            {
+                                panic!("Error creating the command buffer recorder: {}", err)
                             }
+
+                            Err(VulkanError::Unspecified)
                         }
-                    },
-                    Err(_err) => {
-                        #[cfg(debug_assertions)]
-                        {
-                            panic!("Error creating the command buffer recorder: the command buffer already is in recording state!")
-                        }
-    
-                        Err(VulkanError::Unspecified)
                     }
-                },
-                Err(err) => {
+                }
+                Err(_err) => {
                     #[cfg(debug_assertions)]
                     {
-                        panic!("Error creating the command buffer recorder: {}", err)
+                        panic!("Error creating the command buffer recorder: the command buffer already is in recording state!")
                     }
-    
+
                     Err(VulkanError::Unspecified)
                 }
+            },
+            Err(err) => {
+                #[cfg(debug_assertions)]
+                {
+                    panic!("Error creating the command buffer recorder: {}", err)
+                }
+
+                Err(VulkanError::Unspecified)
             }
+        }
     }
 
     pub fn end_commands(&self) -> VulkanResult<()> {

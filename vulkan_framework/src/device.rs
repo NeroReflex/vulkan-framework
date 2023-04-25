@@ -76,7 +76,6 @@ impl Device {
                 #[cfg(debug_assertions)]
                 {
                     panic!("Error waiting for device to be idle: {}", err)
-                    
                 }
 
                 Err(VulkanError::Unspecified)
