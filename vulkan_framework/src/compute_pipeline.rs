@@ -45,6 +45,10 @@ impl Drop for ComputePipeline {
 }*/
 
 impl ComputePipeline {
+    pub(crate) fn ash_handle(&self) -> ash::vk::Pipeline {
+        self.pipeline
+    }
+
     pub fn new(
         pipeline_layout: Arc<PipelineLayout>,
         shader: Arc<ComputeShader>,

@@ -35,6 +35,27 @@ use vulkan_framework::shader_layout_binding::BindingType;
 use vulkan_framework::shader_layout_binding::NativeBindingType;
 use vulkan_framework::shader_stage_access::ShaderStageAccess;
 
+const COMPUTE_SPV: &'static [u32] = inline_spirv!(
+    r#"
+#version 450 core
+layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
+
+uniform layout(binding=0,rgba32f) writeonly image2D someImage;
+
+layout(push_constant) uniform pushConstants {
+    uint width;
+    uint height;
+} u_pushConstants;
+
+void main() {
+    if ((gl_GlobalInvocationID.x < u_pushConstants.width) && (gl_GlobalInvocationID.y < u_pushConstants.height)) {
+        imageStore(someImage, ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y), vec4(1.0, 1.0, 1.0, 1.0));
+    }
+}
+"#,
+    comp
+);
+
 fn main() {
     let instance_extensions = vec![String::from("VK_EXT_debug_utils")];
     let engine_name = String::from("None");
@@ -167,32 +188,11 @@ fn main() {
                                     let image_dimensions_shader_push_constant =
                                         PushConstanRange::new(0, 8, ShaderStageAccess::compute());
 
-                                    let spv: &'static [u32] = inline_spirv!(
-                                        r#"
-                                    #version 450 core
-                                    layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
-                                    
-                                    uniform layout(binding=0,rgba32f) writeonly image2D someImage;
-
-                                    layout(push_constant) uniform pushConstants {
-                                        uint width;
-                                        uint height;
-                                    } u_pushConstants;
-
-                                    void main() {
-                                        if ((gl_GlobalInvocationID.x < u_pushConstants.width) && (gl_GlobalInvocationID.y < u_pushConstants.height)) {
-                                            imageStore(someImage, ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y), vec4(1.0, 1.0, 1.0, 1.0));
-                                        }
-                                    }
-                                    "#,
-                                        comp
-                                    );
-
                                     let compute_shader = match ComputeShader::new(
                                         device.clone(),
                                         &[image_dimensions_shader_push_constant.clone()],
                                         &[resulting_image_shader_binding.clone()],
-                                        spv,
+                                        COMPUTE_SPV,
                                     ) {
                                         Ok(res) => {
                                             println!("Shader module created");
@@ -234,7 +234,7 @@ fn main() {
                                         }
                                     };
 
-                                    let _compute_pipeline = match ComputePipeline::new(
+                                    let compute_pipeline = match ComputePipeline::new(
                                         compute_pipeline_layout,
                                         compute_shader,
                                         None,
@@ -314,20 +314,39 @@ fn main() {
                                         }
                                     };
 
-                                    let recorder = match OneTimeSubmittablePrimaryCommandBuffer::new(
+                                    let command_buffer_submittable = match OneTimeSubmittablePrimaryCommandBuffer::new(
                                         command_buffer.clone(),
                                     ) {
                                         Ok(res) => {
-                                            println!("Primary Command Buffer recorder created");
+                                            println!("Primary Command Buffer Submittable created");
                                             res
                                         }
                                         Err(_err) => {
+                                            println!("Error creating the Primary Command Buffer Submittable...");
+                                            return;
+                                        }
+                                    };
+                                    
+                                    let mut recorder = match command_buffer_submittable.begin_commands() {
+                                        Ok(res) => {
+                                            println!("Primary Command Buffer recorder created");
+                                            res
+                                        },
+                                        Err(_err) => {
                                             println!(
-                                                "Error creating the Primary Command Buffer recorder..."
+                                                "Error creating the Command Buffer recorder..."
                                             );
                                             return;
                                         }
                                     };
+
+                                    {
+                                        let descriptor_sets = vec![descriptor_set.clone()];
+                                        recorder.use_compute_pipeline(compute_pipeline.clone(), descriptor_sets.as_slice());
+                                        
+                                    }
+
+                                    let _ = command_buffer_submittable.submit();
                                 }
                                 Err(_err) => {
                                     println!("Error creating the memory heap :(");

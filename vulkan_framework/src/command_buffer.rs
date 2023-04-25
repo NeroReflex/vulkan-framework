@@ -3,13 +3,80 @@ use std::sync::{
     Arc,
 };
 
-use crate::queue_family::QueueFamilyOwned;
+use crate::{queue_family::QueueFamilyOwned, compute_pipeline::ComputePipeline, device::Device, pipeline_layout::{PipelineLayout, PipelineLayoutDependant}, descriptor_set::DescriptorSet};
 use crate::{
     command_pool::{CommandPool, CommandPoolOwned},
     device::DeviceOwned,
     instance::InstanceOwned,
     prelude::{VulkanError, VulkanResult},
 };
+
+// TODO: it would be better for performance to use smallvec...
+pub struct ResourcesInUseByGPU {
+    layouts: Vec<Arc<PipelineLayout>>,
+    compute_pipelines: Vec<Arc<ComputePipeline>>,
+    descriptor_sets: Vec<Arc<DescriptorSet>>,
+}
+
+impl ResourcesInUseByGPU {
+    pub fn create() -> Self {
+        Self {
+            layouts: vec!(),
+            compute_pipelines: vec!(),
+            descriptor_sets: vec!(),
+        }
+    }
+}
+
+pub struct CommandBufferRecorder<'a> {
+    device: Arc<Device>, // this field is repeated to speed-up execution, otherwise a ton of Arc<>.clone() will be performed
+    command_buffer: &'a dyn CommandBufferCrateTrait,
+
+    used_resources: ResourcesInUseByGPU
+}
+
+impl<'a> CommandBufferRecorder<'a> {
+    pub fn native_handle(&self) -> u64 {
+        ash::vk::Handle::as_raw(self.command_buffer.ash_handle())
+    }
+
+    pub fn use_compute_pipeline(
+        &mut self,
+        compute_pipeline: Arc<ComputePipeline>,
+        descriptor_sets: &[Arc<DescriptorSet>],
+    ) {
+        unsafe {
+            self.device.ash_handle().cmd_bind_pipeline(
+                self.command_buffer.ash_handle(), 
+                ash::vk::PipelineBindPoint::COMPUTE, 
+                compute_pipeline.ash_handle()
+            ) 
+        }
+
+        let mut sets = Vec::<ash::vk::DescriptorSet>::new();
+        let mut dynamic_offsets = Vec::<u32>::new();
+
+        for ds in descriptor_sets.iter() {
+            self.used_resources.descriptor_sets.push(ds.clone());
+            sets.push(ds.ash_handle());
+            dynamic_offsets.push(0)
+        }
+
+        unsafe {
+            self.device.ash_handle().cmd_bind_descriptor_sets(
+                self.command_buffer.ash_handle(),
+                ash::vk::PipelineBindPoint::COMPUTE,
+                compute_pipeline.get_parent_pipeline_layout().ash_handle(),
+                0,
+                sets.as_slice(),
+                dynamic_offsets.as_slice()
+            )
+        }
+
+        self.used_resources.compute_pipelines.push(compute_pipeline)
+    }
+
+}
 
 pub struct OneTimeSubmittablePrimaryCommandBuffer {
     command_buffer: Arc<PrimaryCommandBuffer>,
@@ -36,6 +103,11 @@ impl Drop for OneTimeSubmittablePrimaryCommandBuffer {
 }
 
 impl OneTimeSubmittablePrimaryCommandBuffer {
+    pub fn submit(&self) -> VulkanResult<()> {
+
+        todo!()
+    }
+
     pub fn new(command_buffer: Arc<PrimaryCommandBuffer>) -> VulkanResult<Arc<Self>> {
         match command_buffer.recording_status.compare_exchange(
             false,
@@ -56,7 +128,7 @@ impl OneTimeSubmittablePrimaryCommandBuffer {
         }
     }
 
-    pub fn begin_commands(&self) -> VulkanResult<()> {
+    pub fn begin_commands(&self) -> VulkanResult<CommandBufferRecorder> {
         let device = self
             .command_buffer
             .get_parent_command_pool()
@@ -68,46 +140,38 @@ impl OneTimeSubmittablePrimaryCommandBuffer {
             .build();
 
         match self.status_registered.compare_exchange(
-            true,
             false,
+            true,
             Ordering::Acquire,
             Ordering::Acquire,
         ) {
             Ok(_) => match unsafe {
                 device
-                    .ash_handle()
-                    .end_command_buffer(self.command_buffer.ash_handle())
-            } {
-                Ok(()) => {
-                    match unsafe {
-                        device
                             .ash_handle()
                             .begin_command_buffer(self.command_buffer.ash_handle(), &begin_info)
-                    } {
-                        Ok(()) => Ok(()),
-                        Err(err) => {
-                            #[cfg(debug_assertions)]
-                            {
-                                panic!("Error creating the command buffer recorder: {}", err)
-                            }
-
-                            Err(VulkanError::Unspecified)
+            } {
+                Ok(()) => {
+                    Ok(
+                        CommandBufferRecorder {
+                            device,
+                            command_buffer: self.command_buffer.as_ref(),
+                            used_resources: ResourcesInUseByGPU::create(),
                         }
-                    }
+                    )
                 }
-                Err(_err) => {
+                Err(err) => {
                     #[cfg(debug_assertions)]
                     {
-                        panic!("Error creating the command buffer recorder: the command buffer already is in recording state!")
+                        panic!("Error creating the command buffer recorder: {}", err)
                     }
 
                     Err(VulkanError::Unspecified)
                 }
             },
-            Err(err) => {
+            Err(_err) => {
                 #[cfg(debug_assertions)]
                 {
-                    panic!("Error creating the command buffer recorder: {}", err)
+                    panic!("Error creating the command buffer recorder: the command buffer already is in recording state!")
                 }
 
                 Err(VulkanError::Unspecified)
@@ -115,7 +179,12 @@ impl OneTimeSubmittablePrimaryCommandBuffer {
         }
     }
 
-    pub fn end_commands(&self) -> VulkanResult<()> {
+    pub fn end_commands<'a>(&self, recorder: CommandBufferRecorder<'a>) -> VulkanResult<()> {
+        #[cfg(debug_assertions)]
+        {
+            assert_eq!(recorder.command_buffer.native_handle(), self.command_buffer.native_handle())
+        }
+
         let device = self
             .command_buffer
             .get_parent_command_pool()
