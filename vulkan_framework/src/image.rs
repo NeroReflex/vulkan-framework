@@ -762,49 +762,39 @@ where
         };
 
         let mut obj_name_bytes = vec![];
-        match device.get_parent_instance().get_debug_ext_extension() {
-            Some(ext) => {
-                match debug_name {
-                    Some(name) => {
-                        for name_ch in name.as_bytes().iter() {
-                            obj_name_bytes.push(*name_ch);
+        if let Some(ext) = device.get_parent_instance().get_debug_ext_extension() {
+            if let Some(name) = debug_name {
+                for name_ch in name.as_bytes().iter() {
+                    obj_name_bytes.push(*name_ch);
+                }
+                obj_name_bytes.push(0x00);
+
+                unsafe {
+                    let object_name =
+                        std::ffi::CStr::from_bytes_with_nul_unchecked(obj_name_bytes.as_slice());
+                    // set device name for debugging
+                    let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::builder()
+                        .object_type(ash::vk::ObjectType::IMAGE)
+                        .object_handle(ash::vk::Handle::as_raw(image))
+                        .object_name(object_name)
+                        .build();
+
+                    match ext.set_debug_utils_object_name(device.ash_handle().handle(), &dbg_info) {
+                        Ok(_) => {
+                            #[cfg(debug_assertions)]
+                            {
+                                println!("Queue Debug object name changed");
+                            }
                         }
-                        obj_name_bytes.push(0x00);
-
-                        unsafe {
-                            let object_name = std::ffi::CStr::from_bytes_with_nul_unchecked(
-                                obj_name_bytes.as_slice(),
-                            );
-                            // set device name for debugging
-                            let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::builder()
-                                .object_type(ash::vk::ObjectType::IMAGE)
-                                .object_handle(ash::vk::Handle::as_raw(image))
-                                .object_name(object_name)
-                                .build();
-
-                            match ext.set_debug_utils_object_name(
-                                device.ash_handle().handle(),
-                                &dbg_info,
-                            ) {
-                                Ok(_) => {
-                                    #[cfg(debug_assertions)]
-                                    {
-                                        println!("Queue Debug object name changed");
-                                    }
-                                }
-                                Err(err) => {
-                                    #[cfg(debug_assertions)]
-                                    {
-                                        panic!("Error setting the Debug name for the newly created Image, will use handle. Error: {}", err)
-                                    }
-                                }
+                        Err(err) => {
+                            #[cfg(debug_assertions)]
+                            {
+                                panic!("Error setting the Debug name for the newly created Image, will use handle. Error: {}", err)
                             }
                         }
                     }
-                    None => {}
-                };
+                }
             }
-            None => {}
         }
 
         unsafe {

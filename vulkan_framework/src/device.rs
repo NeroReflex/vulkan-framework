@@ -41,10 +41,6 @@ impl PartialEq for Device {
         ash::vk::Handle::as_raw(self.device.handle())
             == ash::vk::Handle::as_raw(other.device.handle())
     }
-
-    fn ne(&self, other: &Self) -> bool {
-        !self.eq(other)
-    }
 }
 
 impl InstanceOwned for Device {
@@ -317,7 +313,7 @@ impl Device {
                             for (family_index, current_descriptor) in
                                 available_queue_families.clone()
                             {
-                                match Self::corresponds(
+                                if let Some(score) = Self::corresponds(
                                     current_requested_queue_family_descriptor
                                         .get_supported_operations()
                                         .iter(),
@@ -328,25 +324,19 @@ impl Device {
                                     family_index as u32,
                                     current_requested_queue_family_descriptor.max_queues() as u32,
                                 ) {
-                                    Some(score) => {
-                                        // Found a suitable queue family.
-                                        // Use this queue family if it's a better fit than the previous one
-                                        match selected_queue_family {
-                                            Some((_, best_fit_queue_score)) => {
-                                                if best_fit_queue_score > score {
-                                                    selected_queue_family =
-                                                        Some((family_index, score))
-                                                }
-                                            }
-                                            None => {
+                                    // Found a suitable queue family.
+                                    // Use this queue family if it's a better fit than the previous one
+                                    match selected_queue_family {
+                                        Some((_, best_fit_queue_score)) => {
+                                            if best_fit_queue_score > score {
                                                 selected_queue_family = Some((family_index, score))
                                             }
                                         }
-
-                                        // Stop the search. This changes the algorithm from a "best fit" to a "first fit"
-                                        //break 'suitable_queue_family_search;
+                                        None => selected_queue_family = Some((family_index, score)),
                                     }
-                                    None => {}
+
+                                    // Stop the search. This changes the algorithm from a "best fit" to a "first fit"
+                                    //break 'suitable_queue_family_search;
                                 }
                             }
 
@@ -354,16 +344,14 @@ impl Device {
                             // otherwise remove the current best fit from the queue of available queue_families to avoid choosing it two times
                             match selected_queue_family {
                                 Some((family_index, _)) => {
-                                    let mut queue_create_info =
-                                        ash::vk::DeviceQueueCreateInfo::default();
-                                    queue_create_info.queue_family_index = family_index as u32;
-                                    queue_create_info.queue_count =
-                                        current_requested_queue_family_descriptor.max_queues()
-                                            as u32;
-                                    queue_create_info.p_queue_priorities =
-                                        current_requested_queue_family_descriptor
-                                            .get_queue_priorities()
-                                            .as_ptr();
+                                    let queue_create_info =
+                                        ash::vk::DeviceQueueCreateInfo::builder()
+                                            .queue_family_index(family_index as u32)
+                                            .queue_priorities(
+                                                current_requested_queue_family_descriptor
+                                                    .get_queue_priorities(),
+                                            )
+                                            .build();
 
                                     selected_queues.push(queue_create_info);
                                     required_family_collection.push(Option::Some((
@@ -423,24 +411,12 @@ impl Device {
                                 .map(|str| str.as_ptr())
                                 .collect::<Vec<*const c_char>>();
 
-                            let mut device_create_info = ash::vk::DeviceCreateInfo::default();
-
-                            device_create_info.queue_create_info_count =
-                                selected_device.selected_queues.len() as u32;
-                            device_create_info.p_queue_create_infos =
-                                selected_device.selected_queues.as_slice().as_ptr();
-
-                            device_create_info.p_enabled_features =
-                                &selected_device.selected_device_features;
-
-                            device_create_info.enabled_layer_count = layers_ptr.len() as u32;
-                            device_create_info.pp_enabled_layer_names =
-                                layers_ptr.as_slice().as_ptr();
-
-                            device_create_info.enabled_extension_count =
-                                extensions_ptr.len() as u32;
-                            device_create_info.pp_enabled_extension_names =
-                                extensions_ptr.as_slice().as_ptr();
+                            let device_create_info = ash::vk::DeviceCreateInfo::builder()
+                                .queue_create_infos(selected_device.selected_queues.as_slice())
+                                .enabled_features(&selected_device.selected_device_features)
+                                .enabled_layer_names(layers_ptr.as_slice())
+                                .enabled_extension_names(extensions_ptr.as_slice())
+                                .build();
 
                             return match instance.ash_handle().create_device(
                                 selected_device.selected_physical_device.to_owned(),
@@ -451,11 +427,10 @@ impl Device {
                                     // open requested swapchain extensions (or implied ones)
                                     let swapchain_ext: Option<ash::extensions::khr::Swapchain> =
                                         match device_extensions.iter().any(|ext| {
-                                            *ext == String::from(
-                                                ash::extensions::khr::Swapchain::name()
+                                            ext.as_str()
+                                                == ash::extensions::khr::Swapchain::name()
                                                     .to_str()
-                                                    .unwrap_or(""),
-                                            )
+                                                    .unwrap_or("")
                                         }) {
                                             true => {
                                                 Option::Some(ash::extensions::khr::Swapchain::new(
@@ -468,45 +443,47 @@ impl Device {
 
                                     let mut obj_name_bytes = vec![];
 
-                                    match instance.get_debug_ext_extension() {
-                                        Some(ext) => {
-                                            match debug_name {
-                                                Some(name) => {
-                                                    for name_ch in name.as_bytes().iter() {
-                                                        obj_name_bytes.push(*name_ch);
-                                                    }
-                                                    obj_name_bytes.push(0x00);
+                                    if let Some(ext) = instance.get_debug_ext_extension() {
+                                        if let Some(name) = debug_name {
+                                            for name_ch in name.as_bytes().iter() {
+                                                obj_name_bytes.push(*name_ch);
+                                            }
+                                            obj_name_bytes.push(0x00);
 
-                                                    let object_name = std::ffi::CStr::from_bytes_with_nul_unchecked(obj_name_bytes.as_slice());
-                                                    // set device name for debugging
-                                                    let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::builder()
-                                                        .object_type(ash::vk::ObjectType::DEVICE)
-                                                        .object_handle(ash::vk::Handle::as_raw(device.handle()))
-                                                        .object_name(object_name)
-                                                        .build();
-
-                                                    match ext.set_debug_utils_object_name(
+                                            let object_name =
+                                                std::ffi::CStr::from_bytes_with_nul_unchecked(
+                                                    obj_name_bytes.as_slice(),
+                                                );
+                                            // set device name for debugging
+                                            let dbg_info =
+                                                ash::vk::DebugUtilsObjectNameInfoEXT::builder()
+                                                    .object_type(ash::vk::ObjectType::DEVICE)
+                                                    .object_handle(ash::vk::Handle::as_raw(
                                                         device.handle(),
-                                                        &dbg_info,
-                                                    ) {
-                                                        Ok(_) => {
-                                                            #[cfg(debug_assertions)]
-                                                            {
-                                                                println!("Device Debug object name changed");
-                                                            }
-                                                        }
-                                                        Err(err) => {
-                                                            #[cfg(debug_assertions)]
-                                                            {
-                                                                panic!("Error setting the Debug name for the newly created Device, will use handle. Error: {}", err)
-                                                            }
-                                                        }
+                                                    ))
+                                                    .object_name(object_name)
+                                                    .build();
+
+                                            match ext.set_debug_utils_object_name(
+                                                device.handle(),
+                                                &dbg_info,
+                                            ) {
+                                                Ok(_) => {
+                                                    #[cfg(debug_assertions)]
+                                                    {
+                                                        println!(
+                                                            "Device Debug object name changed"
+                                                        );
                                                     }
                                                 }
-                                                None => {}
-                                            };
+                                                Err(err) => {
+                                                    #[cfg(debug_assertions)]
+                                                    {
+                                                        panic!("Error setting the Debug name for the newly created Device, will use handle. Error: {}", err)
+                                                    }
+                                                }
+                                            }
                                         }
-                                        None => {}
                                     }
 
                                     Ok(Arc::new(Self {
