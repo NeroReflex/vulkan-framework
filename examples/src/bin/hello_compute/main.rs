@@ -327,47 +327,44 @@ fn main() {
                                             println!("Commands written in the command buffer, there are resources used in that.");
                                             res
                                         }
-                                        Err(err) => {
+                                        Err(_err) => {
                                             println!("Error writing the Command Buffer...");
                                             return;
                                         }
                                     };
 
-                                    let fence =
-                                        match Fence::new(device.clone(), false, Some("MyFence")) {
-                                            Ok(res) => {
-                                                println!("Fence created");
-                                                res
-                                            }
-                                            Err(_err) => {
-                                                println!(
-                                                    "Error creating the Primary Command Buffer..."
-                                                );
-                                                return;
-                                            }
-                                        };
+                                    let fence = match Fence::new(device, false, Some("MyFence")) {
+                                        Ok(res) => {
+                                            println!("Fence created");
+                                            res
+                                        }
+                                        Err(_err) => {
+                                            println!(
+                                                "Error creating the Primary Command Buffer..."
+                                            );
+                                            return;
+                                        }
+                                    };
 
                                     match queue.submit(
-                                        vec![command_buffer.clone()],
+                                        vec![command_buffer],
                                         vec![used_resources],
-                                        fence.clone(),
+                                        fence,
                                     ) {
-                                        Ok(mut fence_waiter) => {
-                                            'wait_for_fence: loop { 
-                                                match fence_waiter.wait(100u64) {
-                                                    Ok(_) => {
-                                                        break 'wait_for_fence;
-                                                    },
-                                                    Err(err) => {
-                                                        if err.timeout() {
-                                                            continue 'wait_for_fence
-                                                        }
-
-                                                        panic!("Error waiting for device to complete the task. Don't know what to do... Panic!");
+                                        Ok(mut fence_waiter) => 'wait_for_fence: loop {
+                                            match fence_waiter.wait(100u64) {
+                                                Ok(_) => {
+                                                    break 'wait_for_fence;
+                                                }
+                                                Err(err) => {
+                                                    if err.timeout() {
+                                                        continue 'wait_for_fence;
                                                     }
+
+                                                    panic!("Error waiting for device to complete the task. Don't know what to do... Panic!");
                                                 }
                                             }
-                                        }
+                                        },
                                         Err(_) => {
                                             println!("Error submitting the command buffer to the queue. No work will be done :(");
                                         }

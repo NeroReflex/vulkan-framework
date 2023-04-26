@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    command_buffer::{ResourcesInUseByGPU, CommandBufferTrait},
+    command_buffer::{CommandBufferTrait, ResourcesInUseByGPU},
     device::{Device, DeviceOwned},
     instance::InstanceOwned,
     prelude::{VulkanError, VulkanResult},
@@ -176,7 +176,11 @@ impl Drop for FenceWaiter {
 }
 
 impl FenceWaiter {
-    pub(crate) fn new(fence: Arc<Fence>, command_buffers: Vec<Arc<dyn CommandBufferTrait>>, occupied_resources: Vec<ResourcesInUseByGPU>) -> Self {
+    pub(crate) fn new(
+        fence: Arc<Fence>,
+        command_buffers: Vec<Arc<dyn CommandBufferTrait>>,
+        occupied_resources: Vec<ResourcesInUseByGPU>,
+    ) -> Self {
         Self {
             fence: Some(fence),
             occupied_resources,
@@ -200,9 +204,7 @@ impl FenceWaiter {
 
                     Ok(())
                 }
-                Err(err) => {
-                    return Err(err)
-                }
+                Err(err) => Err(err),
             }
         } else {
             todo!()

@@ -33,8 +33,8 @@ impl Drop for Queue {
 impl Queue {
     pub fn submit_unchecked(
         &self,
-        command_buffers: &[Arc<dyn CommandBufferTrait>],
-        used_resources: &[ResourcesInUseByGPU],
+        _command_buffers: &[Arc<dyn CommandBufferTrait>],
+        _used_resources: &[ResourcesInUseByGPU],
     ) -> VulkanResult<()> {
         // TODO: assert queue.device == self.device
         todo!()

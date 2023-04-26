@@ -3,9 +3,7 @@
 pub type VulkanResult<T> = Result<T, VulkanError>;
 
 #[derive(Debug)]
-pub enum FrameworkError {
-    
-}
+pub enum FrameworkError {}
 
 #[derive(Debug)]
 pub enum VulkanError {
@@ -18,7 +16,7 @@ pub enum VulkanError {
 impl VulkanError {
     pub fn timeout(&self) -> bool {
         if let Self::Vulkan(err_code) = self {
-            return err_code.clone() == 2
+            return *err_code == 2;
         }
 
         false
