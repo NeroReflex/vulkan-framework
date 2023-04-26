@@ -2,7 +2,7 @@ use crate::{
     device::DeviceOwned,
     instance::InstanceOwned,
     prelude::{VulkanError, VulkanResult},
-    queue_family::*,
+    queue_family::*, fence::{Fence, FenceWaiter}, command_buffer::ResourcesInUseByGPU,
 };
 
 use std::sync::Arc;
@@ -27,8 +27,31 @@ impl Drop for Queue {
 }
 
 impl Queue {
+    pub fn submit_unchecked(
+        &self,
+        used_resources: &[ResourcesInUseByGPU]
+    ) -> VulkanResult<()> {
+        
+        // TODO: assert queue.device == self.device
+        todo!()
+    }
+    
+    pub fn submit(
+        &self,
+        used_resources: &[ResourcesInUseByGPU],
+        fence: Arc<Fence>
+    ) -> VulkanResult<FenceWaiter> {
+        
+        // TODO: assert queue.device == self.device
+        todo!()
+    }
+
     pub fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.queue)
+    }
+
+    pub(crate) fn ash_handle(&self) -> ash::vk::Queue {
+        self.queue
     }
 
     pub fn get_priority(&self) -> f32 {

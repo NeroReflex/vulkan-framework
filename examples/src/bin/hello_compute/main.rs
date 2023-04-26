@@ -1,5 +1,4 @@
 use inline_spirv::*;
-use vulkan_framework::command_buffer::OneTimeSubmittablePrimaryCommandBuffer;
 use vulkan_framework::command_buffer::PrimaryCommandBuffer;
 use vulkan_framework::command_pool::CommandPool;
 use vulkan_framework::compute_pipeline::ComputePipeline;
@@ -10,6 +9,7 @@ use vulkan_framework::descriptor_pool::DescriptorPoolSizesConcreteDescriptor;
 use vulkan_framework::descriptor_set::DescriptorSet;
 use vulkan_framework::descriptor_set_layout::DescriptorSetLayout;
 use vulkan_framework::device::*;
+use vulkan_framework::fence::{Fence, FenceWaiter};
 use vulkan_framework::image::ConcreteImageDescriptor;
 use vulkan_framework::image::Image;
 use vulkan_framework::image::Image2DDimensions;
@@ -96,7 +96,7 @@ fn main() {
                     println!("Base queue family obtained successfully from Device");
 
                     match Queue::new(queue_family.clone(), Some("best queua evah")) {
-                        Ok(_queue) => {
+                        Ok(queue) => {
                             println!("Queue created successfully");
 
                             match MemoryHeap::new(
@@ -265,7 +265,7 @@ fn main() {
                                     };
 
                                     let descriptor_pool = match DescriptorPool::new(
-                                        device,
+                                        device.clone(),
                                         DescriptorPoolConcreteDescriptor::new(
                                             DescriptorPoolSizesConcreteDescriptor::new(
                                                 0, 0, 0, 1, 0, 0, 0, 0, 0, None,
@@ -314,45 +314,57 @@ fn main() {
                                         }
                                     };
 
-                                    let command_buffer_submittable =
-                                        match OneTimeSubmittablePrimaryCommandBuffer::new(
-                                            command_buffer,
-                                        ) {
-                                            Ok(res) => {
-                                                println!(
-                                                    "Primary Command Buffer Submittable created"
-                                                );
-                                                res
-                                            }
-                                            Err(_err) => {
-                                                println!("Error creating the Primary Command Buffer Submittable...");
-                                                return;
-                                            }
-                                        };
-
-                                    let mut recorder =
-                                        match command_buffer_submittable.begin_commands() {
-                                            Ok(res) => {
-                                                println!("Primary Command Buffer recorder created");
-                                                res
-                                            }
-                                            Err(_err) => {
-                                                println!(
-                                                    "Error creating the Command Buffer recorder..."
-                                                );
-                                                return;
-                                            }
-                                        };
-
+                                    
+                                    
+                                    let used_resources = match command_buffer.record_commands(|recorder|
                                     {
-                                        let descriptor_sets = vec![descriptor_set];
+                                        let descriptor_sets = vec![descriptor_set.clone()];
                                         recorder.use_compute_pipeline(
-                                            compute_pipeline,
+                                            compute_pipeline.clone(),
                                             descriptor_sets.as_slice(),
                                         );
-                                    }
+                                    }) {
+                                        Ok(res) => {
+                                            println!("Commands written in the command buffer, there are resources used in that.");
+                                            res
+                                        },
+                                        Err(err) => {
+                                            println!(
+                                                "Error writing the Command Buffer..."
+                                            );
+                                            return;
+                                        }
+                                    };
 
-                                    let _ = command_buffer_submittable.submit();
+                                    let fence = match Fence::new(device.clone(), false, Some("MyFence")) {
+                                        Ok(res) => {
+                                            println!("Fence created");
+                                            res
+                                        },
+                                        Err(err) => {
+                                            println!(
+                                                "Error creating the Primary Command Buffer..."
+                                            );
+                                            return;
+                                        }
+                                    };
+
+                                    match queue.submit(&[used_resources], fence.clone()) {
+                                        Ok(fence_waiter) => {
+                                            /*match fence_waiter.wait(1000000000u64) {
+                                                Ok(wait_result) => {
+
+                                                },
+                                                Err(_) => {
+                                                    panic!("Error waiting for device to complete the task. Don't know what to do... Panic!");
+                                                }
+                                            }*/
+                                        },
+                                        Err(_) => {
+                                            println!("Error submitting the command buffer to the queue. No work will be done :(");
+                                        }
+                                    }
+                                    
                                 }
                                 Err(_err) => {
                                     println!("Error creating the memory heap :(");

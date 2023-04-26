@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::{
     device::{Device, DeviceOwned},
     instance::InstanceOwned,
-    prelude::{VulkanError, VulkanResult},
+    prelude::{VulkanError, VulkanResult}, command_buffer::ResourcesInUseByGPU,
 };
 
 pub struct Fence {
@@ -42,7 +42,7 @@ impl Fence {
      * This function accepts fences that have been created from the same device.
      */
     pub fn wait_for_fences(
-        fences: &[Self],
+        fences: &[Arc<Self>],
         wait_target: FenceWaitFor,
         device_timeout_ns: u64,
     ) -> VulkanResult<()> {
@@ -152,6 +152,41 @@ impl Fence {
 
                 Err(VulkanError::Unspecified)
             }
+        }
+    }
+}
+
+pub struct FenceWaiter {
+    fence: Option<Arc<Fence>>,
+    occupied_resources: Vec<ResourcesInUseByGPU>
+}
+
+impl Drop for FenceWaiter {
+    fn drop(&mut self) {
+        if let Some(_fence) = &self.fence {
+            panic!("Nooooooo you still have resources in use, please wait for the fence!!! :(");
+        }
+    }
+}
+
+impl FenceWaiter {
+    pub fn wait(&mut self, device_timeout_ns: u64) {
+
+        if let Some(fence) = &self.fence {
+            let fence_arr = [  fence.clone()];
+
+            match Fence::wait_for_fences(fence_arr.as_slice(), FenceWaitFor::All, device_timeout_ns) {
+                Ok(_) => {
+                    // here I am gonna destroy the fence and the list of occupied resources so that they can finally be free
+                    self.fence = None;
+                    self.occupied_resources.clear();
+                },
+                Err(_err) => {
+                    panic!("TODO: this part is a WIP");
+                }
+            }
+        } else {
+            todo!()
         }
     }
 }
