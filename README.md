@@ -10,7 +10,7 @@ This project is designed to run everywhere vulkan 1.0.0 with no extensions is su
 
 To achieve this goal only rust's standard library and ash is used, everything else that might be needed (as the sdl2 glue) __MUST__ be manually imported by the developer.
 
-Moreover eveything that depends on an extension is optional and is not "flattened" as it is in the vulkan documentation, insted it is very explicit when you are using a Vulkan extension!
+Moreover everything that depends on an extension is optional and is not "flattened" as it is in the vulkan documentation, insted it is very explicit when you are using a Vulkan extension!
 
 ## Memory Management
 The framework makes it very clear what resources needs memory, and the user of the library is responsible for memory management for those resources.
@@ -27,3 +27,12 @@ As for Sparse memory binding that is planned to be supported in a future release
 ## Raytracing
 In spite of aiming to basic vulkan 1.0 compatibility, for this framework extensions *VK_KHR_ray_tracing_pipeline* and *VK_KHR_ray_query* are first-class citizens
 and support for ray-tracing pipeline is a focal point.
+
+## Resource Tracking at GPU side
+This framework gives the developer basic tools to track resource usage on the GPU so that it's impossible to destroy handles of resources while those are used.
+
+This functionality will be the main development point after the first release.
+
+This functionality does not place automatic barriers, you are still responsible for every aspect of GPU and Host memory synchronization! You are a vulkan developer, after all, that is what we want! Say no to OpenGL!
+
+The developer can obviously just ignore this feature and in that case CPU <-> GPU coherency is up to him.

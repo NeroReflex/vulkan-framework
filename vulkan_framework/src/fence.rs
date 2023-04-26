@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
 use crate::{
+    command_buffer::ResourcesInUseByGPU,
     device::{Device, DeviceOwned},
     instance::InstanceOwned,
-    prelude::{VulkanError, VulkanResult}, command_buffer::ResourcesInUseByGPU,
+    prelude::{VulkanError, VulkanResult},
 };
 
 pub struct Fence {
@@ -34,6 +35,10 @@ pub enum FenceWaitFor {
 }
 
 impl Fence {
+    pub(crate) fn ash_handle(&self) -> ash::vk::Fence {
+        self.fence
+    }
+
     pub fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.fence)
     }
@@ -158,7 +163,7 @@ impl Fence {
 
 pub struct FenceWaiter {
     fence: Option<Arc<Fence>>,
-    occupied_resources: Vec<ResourcesInUseByGPU>
+    occupied_resources: Vec<ResourcesInUseByGPU>,
 }
 
 impl Drop for FenceWaiter {
@@ -170,17 +175,24 @@ impl Drop for FenceWaiter {
 }
 
 impl FenceWaiter {
+    pub(crate) fn new(fence: Arc<Fence>, occupied_resources: Vec<ResourcesInUseByGPU>) -> Self {
+        Self {
+            fence: Some(fence),
+            occupied_resources,
+        }
+    }
+
     pub fn wait(&mut self, device_timeout_ns: u64) {
-
         if let Some(fence) = &self.fence {
-            let fence_arr = [  fence.clone()];
+            let fence_arr = [fence.clone()];
 
-            match Fence::wait_for_fences(fence_arr.as_slice(), FenceWaitFor::All, device_timeout_ns) {
+            match Fence::wait_for_fences(fence_arr.as_slice(), FenceWaitFor::All, device_timeout_ns)
+            {
                 Ok(_) => {
                     // here I am gonna destroy the fence and the list of occupied resources so that they can finally be free
                     self.fence = None;
                     self.occupied_resources.clear();
-                },
+                }
                 Err(_err) => {
                     panic!("TODO: this part is a WIP");
                 }

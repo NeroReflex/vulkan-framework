@@ -1,8 +1,12 @@
+use ash::vk::Handle;
+
 use crate::{
+    command_buffer::{CommandBufferTrait, ResourcesInUseByGPU},
     device::DeviceOwned,
+    fence::{Fence, FenceWaiter},
     instance::InstanceOwned,
     prelude::{VulkanError, VulkanResult},
-    queue_family::*, fence::{Fence, FenceWaiter}, command_buffer::ResourcesInUseByGPU,
+    queue_family::*,
 };
 
 use std::sync::Arc;
@@ -29,21 +33,51 @@ impl Drop for Queue {
 impl Queue {
     pub fn submit_unchecked(
         &self,
-        used_resources: &[ResourcesInUseByGPU]
+        command_buffers: &[Arc<dyn CommandBufferTrait>],
+        used_resources: &[ResourcesInUseByGPU],
     ) -> VulkanResult<()> {
-        
         // TODO: assert queue.device == self.device
         todo!()
     }
-    
+
     pub fn submit(
         &self,
-        used_resources: &[ResourcesInUseByGPU],
-        fence: Arc<Fence>
+        command_buffers: &[Arc<dyn CommandBufferTrait>],
+        used_resources: Vec<ResourcesInUseByGPU>,
+        fence: Arc<Fence>,
     ) -> VulkanResult<FenceWaiter> {
-        
-        // TODO: assert queue.device == self.device
-        todo!()
+        // TODO: assert queue.device == command_buffers.device
+
+        let cmd_buffers = command_buffers
+            .iter()
+            .map(|f| ash::vk::CommandBuffer::from_raw(f.native_handle()))
+            .collect::<Vec<ash::vk::CommandBuffer>>();
+
+        let submit_info = ash::vk::SubmitInfo::builder()
+            .command_buffers(cmd_buffers.as_slice())
+            .build();
+
+        let submits = [submit_info];
+
+        match unsafe {
+            self.get_parent_queue_family()
+                .get_parent_device()
+                .ash_handle()
+                .queue_submit(self.ash_handle(), submits.as_slice(), fence.ash_handle())
+        } {
+            Ok(_) => Ok(FenceWaiter::new(fence, used_resources)),
+            Err(err) => {
+                #[cfg(debug_assertions)]
+                {
+                    panic!(
+                        "Error submitting command buffers to the current queue: {}",
+                        err
+                    );
+                }
+
+                Err(VulkanError::Unspecified)
+            }
+        }
     }
 
     pub fn native_handle(&self) -> u64 {

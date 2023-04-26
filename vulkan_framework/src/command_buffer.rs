@@ -1,5 +1,5 @@
 use std::sync::{
-    atomic::{Ordering, AtomicU8},
+    atomic::{AtomicU8, Ordering},
     Arc,
 };
 
@@ -10,11 +10,8 @@ use crate::{
     prelude::{VulkanError, VulkanResult},
 };
 use crate::{
-    compute_pipeline::ComputePipeline,
-    descriptor_set::DescriptorSet,
-    device::Device,
-    pipeline_layout::PipelineLayoutDependant,
-    queue_family::QueueFamilyOwned,
+    compute_pipeline::ComputePipeline, descriptor_set::DescriptorSet, device::Device,
+    pipeline_layout::PipelineLayoutDependant, queue_family::QueueFamilyOwned,
 };
 
 // TODO: it would be better for performance to use smallvec...
@@ -42,7 +39,6 @@ pub struct CommandBufferRecorder<'a> {
 }
 
 impl<'a> CommandBufferRecorder<'a> {
-
     pub fn use_compute_pipeline(
         &mut self,
         compute_pipeline: Arc<ComputePipeline>,
@@ -70,13 +66,12 @@ impl<'a> CommandBufferRecorder<'a> {
                 compute_pipeline.get_parent_pipeline_layout().ash_handle(),
                 0,
                 sets.as_slice(),
-                &[]
+                &[],
             )
         }
 
         self.used_resources.compute_pipelines.push(compute_pipeline)
     }
-
 }
 
 pub trait CommandBufferTrait: CommandPoolOwned {
@@ -125,10 +120,14 @@ impl CommandBufferCrateTrait for PrimaryCommandBuffer {
 }
 
 impl PrimaryCommandBuffer {
-    pub fn record_commands<F>(&self, commands_writer_fn: F) ->VulkanResult<ResourcesInUseByGPU>
+    pub fn record_commands<F>(&self, commands_writer_fn: F) -> VulkanResult<ResourcesInUseByGPU>
     where
-        F: Fn(&mut CommandBufferRecorder) + Sized {
-        match self.recording_status.compare_exchange(0, 1, Ordering::Acquire, Ordering::Relaxed) {
+        F: Fn(&mut CommandBufferRecorder) + Sized,
+    {
+        match self
+            .recording_status
+            .compare_exchange(0, 1, Ordering::Acquire, Ordering::Relaxed)
+        {
             Ok(_) => {
                 let device = self
                     .get_parent_command_pool()
@@ -148,31 +147,27 @@ impl PrimaryCommandBuffer {
                         let mut recorder = CommandBufferRecorder {
                             device: device.clone(),
                             command_buffer: self,
-                            used_resources: ResourcesInUseByGPU::create()
+                            used_resources: ResourcesInUseByGPU::create(),
                         };
 
                         commands_writer_fn(&mut recorder);
 
-                        match unsafe {
-                            device
-                                .ash_handle()
-                                .end_command_buffer(self.ash_handle())
-                        } {
+                        match unsafe { device.ash_handle().end_command_buffer(self.ash_handle()) } {
                             Ok(()) => {
                                 self.recording_status.store(2, Ordering::Release);
 
                                 Ok(recorder.used_resources)
-                            },
+                            }
                             Err(_err) => {
                                 #[cfg(debug_assertions)]
                                 {
                                     panic!("Error creating the command buffer recorder: the command buffer already is in recording state!")
                                 }
-            
+
                                 Err(VulkanError::Unspecified)
                             }
                         }
-                    },
+                    }
                     Err(err) => {
                         // TODO: the command buffer is in the previous state... A good one unless the error is DEVICE_LOST
                         self.recording_status.store(0, Ordering::Release);
@@ -185,7 +180,7 @@ impl PrimaryCommandBuffer {
                         Err(VulkanError::Unspecified)
                     }
                 }
-            },
+            }
             Err(_) => {
                 #[cfg(debug_assertions)]
                 {
@@ -195,7 +190,7 @@ impl PrimaryCommandBuffer {
                 Err(VulkanError::Unspecified)
             }
         }
-    } 
+    }
 
     pub fn new(
         command_pool: Arc<CommandPool>,

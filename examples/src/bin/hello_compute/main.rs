@@ -314,43 +314,46 @@ fn main() {
                                         }
                                     };
 
-                                    
-                                    
-                                    let used_resources = match command_buffer.record_commands(|recorder|
-                                    {
-                                        let descriptor_sets = vec![descriptor_set.clone()];
-                                        recorder.use_compute_pipeline(
-                                            compute_pipeline.clone(),
-                                            descriptor_sets.as_slice(),
-                                        );
-                                    }) {
+                                    let used_resources = match command_buffer.record_commands(
+                                        |recorder| {
+                                            let descriptor_sets = vec![descriptor_set.clone()];
+                                            recorder.use_compute_pipeline(
+                                                compute_pipeline.clone(),
+                                                descriptor_sets.as_slice(),
+                                            );
+                                        },
+                                    ) {
                                         Ok(res) => {
                                             println!("Commands written in the command buffer, there are resources used in that.");
                                             res
-                                        },
+                                        }
                                         Err(err) => {
-                                            println!(
-                                                "Error writing the Command Buffer..."
-                                            );
+                                            println!("Error writing the Command Buffer...");
                                             return;
                                         }
                                     };
 
-                                    let fence = match Fence::new(device.clone(), false, Some("MyFence")) {
-                                        Ok(res) => {
-                                            println!("Fence created");
-                                            res
-                                        },
-                                        Err(err) => {
-                                            println!(
-                                                "Error creating the Primary Command Buffer..."
-                                            );
-                                            return;
-                                        }
-                                    };
+                                    let fence =
+                                        match Fence::new(device.clone(), false, Some("MyFence")) {
+                                            Ok(res) => {
+                                                println!("Fence created");
+                                                res
+                                            }
+                                            Err(_err) => {
+                                                println!(
+                                                    "Error creating the Primary Command Buffer..."
+                                                );
+                                                return;
+                                            }
+                                        };
 
-                                    match queue.submit(&[used_resources], fence.clone()) {
-                                        Ok(fence_waiter) => {
+                                    match queue.submit(
+                                        &[command_buffer.clone()],
+                                        vec![used_resources],
+                                        fence.clone(),
+                                    ) {
+                                        Ok(mut fence_waiter) => {
+                                            fence_waiter.wait(1000000000u64);
                                             /*match fence_waiter.wait(1000000000u64) {
                                                 Ok(wait_result) => {
 
@@ -359,12 +362,11 @@ fn main() {
                                                     panic!("Error waiting for device to complete the task. Don't know what to do... Panic!");
                                                 }
                                             }*/
-                                        },
+                                        }
                                         Err(_) => {
                                             println!("Error submitting the command buffer to the queue. No work will be done :(");
                                         }
                                     }
-                                    
                                 }
                                 Err(_err) => {
                                     println!("Error creating the memory heap :(");
