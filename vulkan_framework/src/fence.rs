@@ -81,7 +81,7 @@ impl Fence {
 
                 match wait_result {
                     Ok(_) => Ok(()),
-                    Err(_err) => Err(VulkanError::Unspecified),
+                    Err(err) => Err(VulkanError::Vulkan(err.as_raw())),
                 }
             }
             None => Err(VulkanError::Unspecified),
@@ -184,7 +184,7 @@ impl FenceWaiter {
         }
     }
 
-    pub fn wait(&mut self, device_timeout_ns: u64) {
+    pub fn wait(&mut self, device_timeout_ns: u64) -> VulkanResult<()> {
         if let Some(fence) = &self.fence {
             let fence_arr = [fence.clone()];
 
@@ -197,9 +197,11 @@ impl FenceWaiter {
                     }
                     self.fence = None;
                     self.occupied_resources.clear();
+
+                    Ok(())
                 }
-                Err(_err) => {
-                    panic!("TODO: this part is a WIP");
+                Err(err) => {
+                    return Err(err)
                 }
             }
         } else {

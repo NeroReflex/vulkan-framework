@@ -1,17 +1,32 @@
+//use crate::command_buffer::ResourcesInUseByGPU;
+
 pub type VulkanResult<T> = Result<T, VulkanError>;
 
-pub struct FrameworkError {
-    error_name: String,
+#[derive(Debug)]
+pub enum FrameworkError {
+    
 }
 
+#[derive(Debug)]
 pub enum VulkanError {
     Framework(FrameworkError),
-    Vulkan,
+    Vulkan(i32),
+    //Reschedule(ResourcesInUseByGPU),
     Unspecified,
 }
 
 impl VulkanError {
+    pub fn timeout(&self) -> bool {
+        if let Self::Vulkan(err_code) = self {
+            return err_code.clone() == 2
+        }
+
+        false
+    }
+}
+
+/*impl VulkanError {
     pub(crate) fn new() -> VulkanError {
         todo!()
     }
-}
+}*/

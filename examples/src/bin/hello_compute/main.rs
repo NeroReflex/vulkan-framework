@@ -27,6 +27,7 @@ use vulkan_framework::memory_heap::MemoryHeap;
 use vulkan_framework::memory_heap::MemoryType;
 use vulkan_framework::memory_pool::MemoryPool;
 use vulkan_framework::pipeline_layout::PipelineLayout;
+use vulkan_framework::prelude::VulkanError;
 use vulkan_framework::push_constant_range::PushConstanRange;
 use vulkan_framework::queue::Queue;
 use vulkan_framework::queue_family::*;
@@ -353,15 +354,20 @@ fn main() {
                                         fence.clone(),
                                     ) {
                                         Ok(mut fence_waiter) => {
-                                            fence_waiter.wait(1000000000u64);
-                                            /*match fence_waiter.wait(1000000000u64) {
-                                                Ok(wait_result) => {
-
-                                                },
-                                                Err(_) => {
-                                                    panic!("Error waiting for device to complete the task. Don't know what to do... Panic!");
+                                            'wait_for_fence: loop { 
+                                                match fence_waiter.wait(100u64) {
+                                                    Ok(_) => {
+                                                        break 'wait_for_fence;
+                                                    },
+                                                    Err(err) => {
+                                                        if err.timeout() {
+                                                            continue 'wait_for_fence
+                                                        }
+                                                        
+                                                        panic!("Error waiting for device to complete the task. Don't know what to do... Panic!");
+                                                    }
                                                 }
-                                            }*/
+                                            }
                                         }
                                         Err(_) => {
                                             println!("Error submitting the command buffer to the queue. No work will be done :(");
