@@ -9,7 +9,7 @@ use vulkan_framework::descriptor_pool::DescriptorPoolSizesConcreteDescriptor;
 use vulkan_framework::descriptor_set::DescriptorSet;
 use vulkan_framework::descriptor_set_layout::DescriptorSetLayout;
 use vulkan_framework::device::*;
-use vulkan_framework::fence::{Fence, FenceWaiter};
+use vulkan_framework::fence::Fence;
 use vulkan_framework::image::ConcreteImageDescriptor;
 use vulkan_framework::image::Image;
 use vulkan_framework::image::Image2DDimensions;
@@ -27,7 +27,6 @@ use vulkan_framework::memory_heap::MemoryHeap;
 use vulkan_framework::memory_heap::MemoryType;
 use vulkan_framework::memory_pool::MemoryPool;
 use vulkan_framework::pipeline_layout::PipelineLayout;
-use vulkan_framework::prelude::VulkanError;
 use vulkan_framework::push_constant_range::PushConstanRange;
 use vulkan_framework::queue::Queue;
 use vulkan_framework::queue_family::*;
@@ -363,7 +362,7 @@ fn main() {
                                                         if err.timeout() {
                                                             continue 'wait_for_fence
                                                         }
-                                                        
+
                                                         panic!("Error waiting for device to complete the task. Don't know what to do... Panic!");
                                                     }
                                                 }
