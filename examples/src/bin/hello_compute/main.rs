@@ -348,7 +348,7 @@ fn main() {
                                         };
 
                                     match queue.submit(
-                                        &[command_buffer.clone()],
+                                        vec![command_buffer.clone()],
                                         vec![used_resources],
                                         fence.clone(),
                                     ) {

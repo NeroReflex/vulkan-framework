@@ -76,12 +76,12 @@ impl<'a> CommandBufferRecorder<'a> {
 
 pub trait CommandBufferTrait: CommandPoolOwned {
     fn native_handle(&self) -> u64;
+
+    fn flag_execution_as_finished(&self);
 }
 
 pub(crate) trait CommandBufferCrateTrait: CommandBufferTrait {
     fn ash_handle(&self) -> ash::vk::CommandBuffer;
-
-    fn flag_execution_as_finished(&self);
 }
 
 pub struct PrimaryCommandBuffer {
@@ -106,16 +106,16 @@ impl CommandBufferTrait for PrimaryCommandBuffer {
     fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.command_buffer)
     }
+
+    fn flag_execution_as_finished(&self) {
+        // store a zero so that a new set of commands can be registered
+        self.recording_status.store(0, Ordering::Release);
+    }
 }
 
 impl CommandBufferCrateTrait for PrimaryCommandBuffer {
     fn ash_handle(&self) -> ash::vk::CommandBuffer {
         self.command_buffer
-    }
-
-    fn flag_execution_as_finished(&self) {
-        // store a zero so that a new set of commands can be registered
-        self.recording_status.store(0, Ordering::Release);
     }
 }
 

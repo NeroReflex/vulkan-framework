@@ -42,7 +42,7 @@ impl Queue {
 
     pub fn submit(
         &self,
-        command_buffers: &[Arc<dyn CommandBufferTrait>],
+        command_buffers: Vec<Arc<dyn CommandBufferTrait>>,
         used_resources: Vec<ResourcesInUseByGPU>,
         fence: Arc<Fence>,
     ) -> VulkanResult<FenceWaiter> {
@@ -65,7 +65,7 @@ impl Queue {
                 .ash_handle()
                 .queue_submit(self.ash_handle(), submits.as_slice(), fence.ash_handle())
         } {
-            Ok(_) => Ok(FenceWaiter::new(fence, used_resources)),
+            Ok(_) => Ok(FenceWaiter::new(fence, command_buffers, used_resources)),
             Err(err) => {
                 #[cfg(debug_assertions)]
                 {
