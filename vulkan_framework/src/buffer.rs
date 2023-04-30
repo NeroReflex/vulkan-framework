@@ -134,6 +134,12 @@ impl ConcreteBufferDescriptor {
     }
 }
 
+pub trait BufferTrait {
+    fn size(&self) -> u64;
+
+    fn native_handle(&self) -> u64;
+}
+
 pub struct Buffer<Allocator>
 where
     Allocator: MemoryAllocator + Send + Sync,
@@ -185,16 +191,25 @@ where
     }
 }
 
+impl<Allocator> BufferTrait for Buffer<Allocator> 
+where
+    Allocator: MemoryAllocator + Send + Sync,
+{
+    fn size(&self) -> u64 {
+        self.descriptor.ash_size()
+    }
+
+    fn native_handle(&self) -> u64 {
+        ash::vk::Handle::as_raw(self.buffer)
+    }
+}
+
 impl<Allocator> Buffer<Allocator>
 where
     Allocator: MemoryAllocator + Send + Sync,
 {
-    pub(crate) fn ash_native(&self) -> ash::vk::Buffer {
+    pub(crate) fn ash_handle(&self) -> ash::vk::Buffer {
         self.buffer
-    }
-
-    pub fn native_handle(&self) -> u64 {
-        ash::vk::Handle::as_raw(self.buffer)
     }
 
     pub fn new(

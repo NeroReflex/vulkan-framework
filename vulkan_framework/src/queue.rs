@@ -1,12 +1,12 @@
 use ash::vk::Handle;
 
 use crate::{
-    command_buffer::{CommandBufferTrait, ResourcesInUseByGPU},
+    command_buffer::CommandBufferTrait,
     device::DeviceOwned,
     fence::{Fence, FenceWaiter},
     instance::InstanceOwned,
     prelude::{VulkanError, VulkanResult},
-    queue_family::*,
+    queue_family::*, resource_tracking::ResourcesInUseByGPU,
 };
 
 use std::sync::Arc;

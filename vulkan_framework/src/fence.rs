@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use crate::{
-    command_buffer::{CommandBufferTrait, ResourcesInUseByGPU},
+    command_buffer::CommandBufferTrait,
     device::{Device, DeviceOwned},
     instance::InstanceOwned,
-    prelude::{VulkanError, VulkanResult},
+    prelude::{VulkanError, VulkanResult}, resource_tracking::ResourcesInUseByGPU,
 };
 
 pub struct Fence {

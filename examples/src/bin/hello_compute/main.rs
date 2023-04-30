@@ -126,7 +126,7 @@ fn main() {
                                     let image = match Image::new(
                                                     stack_allocator,
                                                     ConcreteImageDescriptor::new(
-                                                        ImageDimensions::Image2D {extent: Image2DDimensions::new(100, 100)},
+                                                        ImageDimensions::Image2D {extent: Image2DDimensions::new(1024, 1024)},
                                                         ImageUsage::Managed(
                                                             ImageUsageSpecifier::new(
                                                                 true,
@@ -235,7 +235,7 @@ fn main() {
                                     };
 
                                     let compute_pipeline = match ComputePipeline::new(
-                                        compute_pipeline_layout,
+                                        compute_pipeline_layout.clone(),
                                         compute_shader,
                                         None,
                                         Some("Example pipeline"),
@@ -314,15 +314,29 @@ fn main() {
                                         }
                                     };
 
-                                    let used_resources = match command_buffer.record_commands(
-                                        |recorder| {
+                                    let descriptor_set_used_resources =
+                                        descriptor_set.bind_resources(|binder| {});
+
+                                    let command_buffer_used_resources = match command_buffer
+                                        .record_commands(|recorder| {
                                             let descriptor_sets = vec![descriptor_set.clone()];
-                                            recorder.use_compute_pipeline(
-                                                compute_pipeline.clone(),
+                                            recorder
+                                                .bind_compute_pipeline(compute_pipeline.clone());
+
+                                            recorder.bind_descriptor_sets(
+                                                compute_pipeline_layout.clone(),
+                                                0,
                                                 descriptor_sets.as_slice(),
                                             );
-                                        },
-                                    ) {
+
+                                            recorder.push_constant_for_compute_shader(
+                                                compute_pipeline_layout.clone(),
+                                                0,
+                                                &[],
+                                            );
+
+                                            recorder.dispatch(32, 32, 1)
+                                        }) {
                                         Ok(res) => {
                                             println!("Commands written in the command buffer, there are resources used in that.");
                                             res
@@ -348,7 +362,10 @@ fn main() {
 
                                     match queue.submit(
                                         vec![command_buffer],
-                                        vec![used_resources],
+                                        vec![
+                                            descriptor_set_used_resources,
+                                            command_buffer_used_resources,
+                                        ],
                                         fence,
                                     ) {
                                         Ok(mut fence_waiter) => 'wait_for_fence: loop {

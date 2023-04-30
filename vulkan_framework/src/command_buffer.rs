@@ -7,29 +7,13 @@ use crate::{
     command_pool::{CommandPool, CommandPoolOwned},
     device::DeviceOwned,
     instance::InstanceOwned,
-    prelude::{VulkanError, VulkanResult},
+    pipeline_layout::PipelineLayout,
+    prelude::{VulkanError, VulkanResult}, resource_tracking::ResourcesInUseByGPU,
 };
 use crate::{
     compute_pipeline::ComputePipeline, descriptor_set::DescriptorSet, device::Device,
     pipeline_layout::PipelineLayoutDependant, queue_family::QueueFamilyOwned,
 };
-
-// TODO: it would be better for performance to use smallvec...
-pub struct ResourcesInUseByGPU {
-    //layouts: Vec<Arc<PipelineLayout>>,
-    compute_pipelines: Vec<Arc<ComputePipeline>>,
-    descriptor_sets: Vec<Arc<DescriptorSet>>,
-}
-
-impl ResourcesInUseByGPU {
-    pub fn create() -> Self {
-        Self {
-            //layouts: vec![],
-            compute_pipelines: vec![],
-            descriptor_sets: vec![],
-        }
-    }
-}
 
 pub struct CommandBufferRecorder<'a> {
     device: Arc<Device>, // this field is repeated to speed-up execution, otherwise a ton of Arc<>.clone() will be performed
@@ -39,11 +23,9 @@ pub struct CommandBufferRecorder<'a> {
 }
 
 impl<'a> CommandBufferRecorder<'a> {
-    pub fn use_compute_pipeline(
-        &mut self,
-        compute_pipeline: Arc<ComputePipeline>,
-        descriptor_sets: &[Arc<DescriptorSet>],
-    ) {
+    
+
+    pub fn bind_compute_pipeline(&mut self, compute_pipeline: Arc<ComputePipeline>) {
         unsafe {
             self.device.ash_handle().cmd_bind_pipeline(
                 self.command_buffer.ash_handle(),
@@ -52,10 +34,19 @@ impl<'a> CommandBufferRecorder<'a> {
             )
         }
 
+        self.used_resources.register_compute_pipeline_usage(compute_pipeline)
+    }
+
+    pub fn bind_descriptor_sets(
+        &mut self,
+        pipeline_layout: Arc<PipelineLayout>,
+        offset: u32,
+        descriptor_sets: &[Arc<DescriptorSet>],
+    ) {
         let mut sets = Vec::<ash::vk::DescriptorSet>::new();
 
         for ds in descriptor_sets.iter() {
-            self.used_resources.descriptor_sets.push(ds.clone());
+            self.used_resources.register_descriptor_set_usage(ds.clone());
             sets.push(ds.ash_handle());
         }
 
@@ -63,14 +54,44 @@ impl<'a> CommandBufferRecorder<'a> {
             self.device.ash_handle().cmd_bind_descriptor_sets(
                 self.command_buffer.ash_handle(),
                 ash::vk::PipelineBindPoint::COMPUTE,
-                compute_pipeline.get_parent_pipeline_layout().ash_handle(),
-                0,
+                pipeline_layout.ash_handle(),
+                offset,
                 sets.as_slice(),
                 &[],
             )
         }
 
-        self.used_resources.compute_pipelines.push(compute_pipeline)
+        self.used_resources.register_pipeline_layout_usage(pipeline_layout)
+    }
+
+    pub fn push_constant_for_compute_shader(
+        &mut self,
+        pipeline_layout: Arc<PipelineLayout>,
+        offset: u32,
+        data: &[u8],
+    ) {
+        unsafe {
+            self.device.ash_handle().cmd_push_constants(
+                self.command_buffer.ash_handle(),
+                pipeline_layout.ash_handle(),
+                ash::vk::ShaderStageFlags::COMPUTE,
+                offset,
+                data,
+            )
+        }
+
+        self.used_resources.register_pipeline_layout_usage(pipeline_layout)
+    }
+
+    pub fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
+        unsafe {
+            self.device.ash_handle().cmd_dispatch(
+                self.command_buffer.ash_handle(),
+                group_count_x,
+                group_count_y,
+                group_count_z,
+            )
+        }
     }
 }
 
