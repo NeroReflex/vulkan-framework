@@ -3,12 +3,13 @@ use std::sync::Arc;
 use ash::vk::Handle;
 
 use crate::{
-    buffer::{Buffer, BufferTrait},
+    buffer::BufferTrait,
     descriptor_pool::{DescriptorPool, DescriptorPoolOwned},
     descriptor_set_layout::{DescriptorSetLayout, DescriptorSetLayoutDependant},
-    device::{Device, DeviceOwned},
+    device::DeviceOwned,
     memory_allocator::MemoryAllocator,
-    prelude::{VulkanError, VulkanResult}, resource_tracking::ResourcesInUseByGPU,
+    prelude::{VulkanError, VulkanResult},
+    resource_tracking::ResourcesInUseByGPU,
 };
 
 pub struct DescriptorSetWriter<'a> {
@@ -22,9 +23,9 @@ impl<'a> DescriptorSetWriter<'a> {
     pub(crate) fn new(descriptor_set: &'a DescriptorSet) -> Self {
         Self {
             /*device: descriptor_set
-                .get_parent_descriptor_pool()
-                .get_parent_device()
-                .clone(),*/
+            .get_parent_descriptor_pool()
+            .get_parent_device()
+            .clone(),*/
             descriptor_set,
             writer: vec![],
             //binder: ash::vk::WriteDescriptorSet::builder(),
@@ -46,13 +47,10 @@ impl<'a> DescriptorSetWriter<'a> {
         let descriptor = vec![ash::vk::DescriptorBufferInfo::builder()
             .range(match size {
                 Option::Some(sz) => sz,
-                Option::None => buffer.size()
+                Option::None => buffer.size(),
             })
             .buffer(ash::vk::Buffer::from_raw(buffer.native_handle()))
-            .offset(match offset {
-                Option::Some(o) => o,
-                Option::None => 0,
-            })
+            .offset(offset.unwrap_or(0))
             .build()];
 
         let descriptor_writes = ash::vk::WriteDescriptorSet::builder()

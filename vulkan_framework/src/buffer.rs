@@ -191,7 +191,7 @@ where
     }
 }
 
-impl<Allocator> BufferTrait for Buffer<Allocator> 
+impl<Allocator> BufferTrait for Buffer<Allocator>
 where
     Allocator: MemoryAllocator + Send + Sync,
 {

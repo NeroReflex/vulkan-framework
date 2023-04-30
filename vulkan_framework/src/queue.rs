@@ -6,7 +6,8 @@ use crate::{
     fence::{Fence, FenceWaiter},
     instance::InstanceOwned,
     prelude::{VulkanError, VulkanResult},
-    queue_family::*, resource_tracking::ResourcesInUseByGPU,
+    queue_family::*,
+    resource_tracking::ResourcesInUseByGPU,
 };
 
 use std::sync::Arc;

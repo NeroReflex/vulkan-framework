@@ -4,7 +4,8 @@ use crate::{
     command_buffer::CommandBufferTrait,
     device::{Device, DeviceOwned},
     instance::InstanceOwned,
-    prelude::{VulkanError, VulkanResult}, resource_tracking::ResourcesInUseByGPU,
+    prelude::{VulkanError, VulkanResult},
+    resource_tracking::ResourcesInUseByGPU,
 };
 
 pub struct Fence {

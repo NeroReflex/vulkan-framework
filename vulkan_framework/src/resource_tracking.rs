@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
-use crate::{compute_pipeline::ComputePipeline, pipeline_layout::PipelineLayout, descriptor_set::DescriptorSet, buffer::BufferTrait};
-
+use crate::{
+    buffer::BufferTrait, compute_pipeline::ComputePipeline, descriptor_set::DescriptorSet,
+    pipeline_layout::PipelineLayout,
+};
 
 // TODO: it would be better for performance to use smallvec...
 pub struct ResourcesInUseByGPU {
@@ -17,7 +19,7 @@ impl ResourcesInUseByGPU {
             pipeline_layouts: vec![],
             compute_pipelines: vec![],
             descriptor_sets: vec![],
-            buffers: vec![]
+            buffers: vec![],
         }
     }
 

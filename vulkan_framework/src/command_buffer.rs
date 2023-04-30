@@ -8,11 +8,12 @@ use crate::{
     device::DeviceOwned,
     instance::InstanceOwned,
     pipeline_layout::PipelineLayout,
-    prelude::{VulkanError, VulkanResult}, resource_tracking::ResourcesInUseByGPU,
+    prelude::{VulkanError, VulkanResult},
+    resource_tracking::ResourcesInUseByGPU,
 };
 use crate::{
     compute_pipeline::ComputePipeline, descriptor_set::DescriptorSet, device::Device,
-    pipeline_layout::PipelineLayoutDependant, queue_family::QueueFamilyOwned,
+    queue_family::QueueFamilyOwned,
 };
 
 pub struct CommandBufferRecorder<'a> {
@@ -23,8 +24,6 @@ pub struct CommandBufferRecorder<'a> {
 }
 
 impl<'a> CommandBufferRecorder<'a> {
-    
-
     pub fn bind_compute_pipeline(&mut self, compute_pipeline: Arc<ComputePipeline>) {
         unsafe {
             self.device.ash_handle().cmd_bind_pipeline(
@@ -34,7 +33,8 @@ impl<'a> CommandBufferRecorder<'a> {
             )
         }
 
-        self.used_resources.register_compute_pipeline_usage(compute_pipeline)
+        self.used_resources
+            .register_compute_pipeline_usage(compute_pipeline)
     }
 
     pub fn bind_descriptor_sets(
@@ -46,7 +46,8 @@ impl<'a> CommandBufferRecorder<'a> {
         let mut sets = Vec::<ash::vk::DescriptorSet>::new();
 
         for ds in descriptor_sets.iter() {
-            self.used_resources.register_descriptor_set_usage(ds.clone());
+            self.used_resources
+                .register_descriptor_set_usage(ds.clone());
             sets.push(ds.ash_handle());
         }
 
@@ -61,7 +62,8 @@ impl<'a> CommandBufferRecorder<'a> {
             )
         }
 
-        self.used_resources.register_pipeline_layout_usage(pipeline_layout)
+        self.used_resources
+            .register_pipeline_layout_usage(pipeline_layout)
     }
 
     pub fn push_constant_for_compute_shader(
@@ -80,7 +82,8 @@ impl<'a> CommandBufferRecorder<'a> {
             )
         }
 
-        self.used_resources.register_pipeline_layout_usage(pipeline_layout)
+        self.used_resources
+            .register_pipeline_layout_usage(pipeline_layout)
     }
 
     pub fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
