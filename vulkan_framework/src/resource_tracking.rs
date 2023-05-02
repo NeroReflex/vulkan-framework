@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     buffer::BufferTrait, compute_pipeline::ComputePipeline, descriptor_set::DescriptorSet,
-    pipeline_layout::PipelineLayout,
+    pipeline_layout::PipelineLayout, image_view::ImageView,
 };
 
 // TODO: it would be better for performance to use smallvec...
@@ -11,6 +11,7 @@ pub struct ResourcesInUseByGPU {
     compute_pipelines: Vec<Arc<ComputePipeline>>,
     descriptor_sets: Vec<Arc<DescriptorSet>>,
     buffers: Vec<Arc<dyn BufferTrait>>,
+    image_views: Vec<Arc<ImageView>>
 }
 
 impl ResourcesInUseByGPU {
@@ -20,6 +21,7 @@ impl ResourcesInUseByGPU {
             compute_pipelines: vec![],
             descriptor_sets: vec![],
             buffers: vec![],
+            image_views: vec![],
         }
     }
 
@@ -41,5 +43,10 @@ impl ResourcesInUseByGPU {
     pub fn register_compute_pipeline_usage(&mut self, compute_pipeline: Arc<ComputePipeline>) {
         // TODO: think about having lots of copies of the same object and how it affect memory usage and performance
         self.compute_pipelines.push(compute_pipeline)
+    }
+
+    pub fn register_image_view_usage(&mut self, image_view: Arc<ImageView>) {
+        // TODO: think about having lots of copies of the same object and how it affect memory usage and performance
+        self.image_views.push(image_view)
     }
 }

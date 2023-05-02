@@ -160,6 +160,10 @@ impl Drop for ImageView {
 }
 
 impl ImageView {
+    pub(crate) fn ash_handle(&self) -> ash::vk::ImageView {
+        self.image_view
+    }
+
     pub fn view_type(&self) -> ImageViewType {
         self.view_type
     }

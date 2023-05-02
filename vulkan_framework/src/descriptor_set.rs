@@ -9,7 +9,7 @@ use crate::{
     device::DeviceOwned,
     memory_allocator::MemoryAllocator,
     prelude::{VulkanError, VulkanResult},
-    resource_tracking::ResourcesInUseByGPU,
+    resource_tracking::ResourcesInUseByGPU, image::{ImageTrait, ImageLayout}, image_view::ImageView,
 };
 
 pub struct DescriptorSetWriter<'a> {
@@ -36,33 +36,99 @@ impl<'a> DescriptorSetWriter<'a> {
     pub fn bind_uniform_buffer<T>(
         &mut self,
         first_layout_id: u32,
-        buffer: Arc<dyn BufferTrait>,
+        buffers: &[Arc<dyn BufferTrait>],
         offset: Option<u64>,
         size: Option<u64>,
     ) where
         T: Send + Sync + MemoryAllocator,
     {
-        // TODO: assert usage has VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT bit set
-
-        let descriptor = vec![ash::vk::DescriptorBufferInfo::builder()
-            .range(match size {
-                Option::Some(sz) => sz,
-                Option::None => buffer.size(),
-            })
-            .buffer(ash::vk::Buffer::from_raw(buffer.native_handle()))
-            .offset(offset.unwrap_or(0))
-            .build()];
+        let descriptors: Vec<ash::vk::DescriptorBufferInfo> = buffers.iter().map(|buffer| {
+            // TODO: assert usage has VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT bit set
+            
+            self.used_resources.register_buffer_usage(buffer.clone());
+            
+            ash::vk::DescriptorBufferInfo::builder()
+                .range(match size {
+                    Option::Some(sz) => sz,
+                    Option::None => buffer.size(),
+                })
+                .buffer(ash::vk::Buffer::from_raw(buffer.native_handle()))
+                .offset(offset.unwrap_or(0))
+                .build()
+            }
+        ).collect();
 
         let descriptor_writes = ash::vk::WriteDescriptorSet::builder()
             .dst_set(self.descriptor_set.ash_handle())
             .dst_binding(first_layout_id)
             .descriptor_type(ash::vk::DescriptorType::UNIFORM_BUFFER)
-            .buffer_info(descriptor.as_slice())
+            .buffer_info(descriptors.as_slice())
             .build();
 
         self.writer.push(descriptor_writes);
+    }
 
-        self.used_resources.register_buffer_usage(buffer)
+    pub fn bind_storage_buffers<T>(
+        &mut self,
+        first_layout_id: u32,
+        buffers: &[Arc<dyn BufferTrait>],
+        offset: Option<u64>,
+        size: Option<u64>,
+    ) where
+        T: Send + Sync + MemoryAllocator,
+    {
+        let descriptors: Vec<ash::vk::DescriptorBufferInfo> = buffers.iter().map(|buffer| {
+            // TODO: assert usage has VK_BUFFER_USAGE_STORAGE_BUFFER_BIT bit set
+
+            self.used_resources.register_buffer_usage(buffer.clone());
+            
+            ash::vk::DescriptorBufferInfo::builder()
+                .range(match size {
+                    Option::Some(sz) => sz,
+                    Option::None => buffer.size(),
+                })
+                .buffer(ash::vk::Buffer::from_raw(buffer.native_handle()))
+                .offset(offset.unwrap_or(0))
+                .build()
+            }
+        ).collect();
+
+        let descriptor_writes = ash::vk::WriteDescriptorSet::builder()
+            .dst_set(self.descriptor_set.ash_handle())
+            .dst_binding(first_layout_id)
+            .descriptor_type(ash::vk::DescriptorType::STORAGE_BUFFER)
+            .buffer_info(descriptors.as_slice())
+            .build();
+
+        self.writer.push(descriptor_writes);
+    }
+
+    pub fn bind_storage_images(
+        &mut self,
+        first_layout_id: u32,
+        images: &[(ImageLayout, Arc<ImageView>)],
+    )
+    {
+        let descriptors: Vec<ash::vk::DescriptorImageInfo> = images.iter().map(|(layout, image)| {
+            // TODO: assert usage has VK_BUFFER_USAGE_STORAGE_BUFFER_BIT bit set
+
+            self.used_resources.register_image_view_usage(image.clone());
+            
+            ash::vk::DescriptorImageInfo::builder()
+                .image_layout(layout.ash_layout())
+                .image_view(image.ash_handle())
+                .build()
+            }
+        ).collect();
+
+        let descriptor_writes = ash::vk::WriteDescriptorSet::builder()
+            .dst_set(self.descriptor_set.ash_handle())
+            .dst_binding(first_layout_id)
+            .descriptor_type(ash::vk::DescriptorType::STORAGE_IMAGE)
+            .image_info(descriptors.as_slice())
+            .build();
+
+        self.writer.push(descriptor_writes);
     }
 }
 

@@ -15,6 +15,7 @@ use vulkan_framework::image::Image;
 use vulkan_framework::image::Image2DDimensions;
 use vulkan_framework::image::ImageDimensions;
 use vulkan_framework::image::ImageFlags;
+use vulkan_framework::image::ImageLayout;
 use vulkan_framework::image::ImageTiling;
 use vulkan_framework::image::ImageUsage;
 use vulkan_framework::image::ImageUsageSpecifier;
@@ -159,7 +160,7 @@ fn main() {
                                                     }
                                                 };
 
-                                    let _image_view = match ImageView::new(
+                                    let image_view = match ImageView::new(
                                         image,
                                         ImageViewType::Image2D,
                                         None,
@@ -315,7 +316,9 @@ fn main() {
                                     };
 
                                     let descriptor_set_used_resources =
-                                        descriptor_set.bind_resources(|binder| {});
+                                        descriptor_set.bind_resources(|binder| {
+                                            binder.bind_storage_images(0, &[(ImageLayout::Undefined, image_view.clone())])
+                                        });
 
                                     let command_buffer_used_resources = match command_buffer
                                         .record_commands(|recorder| {

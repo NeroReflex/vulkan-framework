@@ -1,4 +1,4 @@
-use ash::vk::{Extent3D, ImageLayout, ImageType, SampleCountFlags, SharingMode};
+use ash::vk::{Extent3D, ImageType, SampleCountFlags, SharingMode};
 
 use crate::{
     device::{Device, DeviceOwned},
@@ -11,6 +11,16 @@ use crate::{
 };
 
 use std::sync::Arc;
+
+pub enum ImageLayout {
+    Undefined,
+}
+
+impl ImageLayout {
+    pub(crate) fn ash_layout(&self) -> ash::vk::ImageLayout {
+        todo!()
+    }
+}
 
 pub trait Image1DTrait {
     fn width(&self) -> u32;
@@ -731,7 +741,7 @@ where
             .samples(descriptor.ash_sample_count())
             .mip_levels(descriptor.img_mip_levels)
             .array_layers(descriptor.img_layers)
-            .initial_layout(ImageLayout::UNDEFINED)
+            .initial_layout(ash::vk::ImageLayout::UNDEFINED)
             .format(descriptor.ash_format())
             .usage(descriptor.ash_usage())
             .sharing_mode(match queue_family_indices.len() <= 1 {
