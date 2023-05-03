@@ -7,7 +7,7 @@ use crate::{
     memory_heap::MemoryHeapOwned,
     memory_pool::{MemoryPool, MemoryPoolBacked},
     prelude::{VulkanError, VulkanResult},
-    queue_family::QueueFamily,
+    queue_family::QueueFamily, resource_tracking::RenderingRequiredResource,
 };
 
 use std::sync::Arc;
@@ -134,7 +134,7 @@ impl ConcreteBufferDescriptor {
     }
 }
 
-pub trait BufferTrait {
+pub trait BufferTrait : Send + Sync + DeviceOwned {
     fn size(&self) -> u64;
 
     fn native_handle(&self) -> u64;
@@ -149,6 +149,11 @@ where
     descriptor: ConcreteBufferDescriptor,
     buffer: ash::vk::Buffer,
 }
+
+impl<Allocator> RenderingRequiredResource for Buffer<Allocator>
+where
+    Allocator: MemoryAllocator + Send + Sync,
+{}
 
 impl<Allocator> Drop for Buffer<Allocator>
 where

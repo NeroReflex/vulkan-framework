@@ -619,7 +619,7 @@ impl ConcreteImageDescriptor {
     }
 }
 
-pub trait ImageTrait: DeviceOwned {
+pub trait ImageTrait: Send + Sync + DeviceOwned {
     fn native_handle(&self) -> u64;
 
     fn format(&self) -> ImageFormat;
