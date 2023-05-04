@@ -1,7 +1,7 @@
-use std::sync::{
+use std::{sync::{
     atomic::{AtomicU8, Ordering},
     Arc,
-};
+}, hash::Hash, collections::HashSet};
 
 use crate::{
     command_pool::{CommandPool, CommandPoolOwned},
@@ -9,18 +9,53 @@ use crate::{
     instance::InstanceOwned,
     pipeline_layout::PipelineLayout,
     prelude::{VulkanError, VulkanResult},
-    resource_tracking::ResourcesInUseByGPU,
 };
 use crate::{
     compute_pipeline::ComputePipeline, descriptor_set::DescriptorSet, device::Device,
     queue_family::QueueFamilyOwned,
 };
 
+enum CommandBufferReferencedResource {
+    ComputePipeline(Arc<ComputePipeline>),
+    DescriptorSet(Arc<DescriptorSet>),
+    PipelineLayout(Arc<PipelineLayout>),
+}
+
+impl Eq for CommandBufferReferencedResource {}
+
+impl CommandBufferReferencedResource {
+    pub fn hash(&self) -> u128 {
+        match self {
+            Self::ComputePipeline(l0) => (0b0000u128 << 124u128)  | (l0.native_handle() as u128),
+            Self::DescriptorSet(l0) => (0b0001u128 << 124u128)  | (l0.native_handle() as u128),
+            Self::PipelineLayout(l0) => (0b0010u128 << 124u128)  | (l0.native_handle() as u128),
+            _ => todo!() // If you are here the main developer of this create has forgotten an arm case...
+        }
+    }
+}
+
+impl PartialEq for CommandBufferReferencedResource {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::ComputePipeline(l0), Self::ComputePipeline(r0)) => l0.native_handle() == r0.native_handle(),
+            (Self::DescriptorSet(l0), Self::DescriptorSet(r0)) => l0.native_handle() == r0.native_handle(),
+            (Self::PipelineLayout(l0), Self::PipelineLayout(r0)) => l0.native_handle() == r0.native_handle(),
+            _ => false,
+        }
+    }
+}
+
+impl Hash for CommandBufferReferencedResource {
+    fn hash<H: /*~const*/ std::hash::Hasher>(&self, state: &mut H) {
+        state.write_u128(self.hash())
+    }
+}
+
 pub struct CommandBufferRecorder<'a> {
     device: Arc<Device>, // this field is repeated to speed-up execution, otherwise a ton of Arc<>.clone() will be performed
     command_buffer: &'a dyn CommandBufferCrateTrait,
 
-    used_resources: ResourcesInUseByGPU,
+    used_resources: HashSet<CommandBufferReferencedResource>,
 }
 
 impl<'a> CommandBufferRecorder<'a> {
@@ -33,8 +68,8 @@ impl<'a> CommandBufferRecorder<'a> {
             )
         }
 
-        self.used_resources
-            .register_compute_pipeline_usage(compute_pipeline)
+        self.used_resources.insert(CommandBufferReferencedResource::ComputePipeline(compute_pipeline));
+            //.register_compute_pipeline_usage(compute_pipeline)
     }
 
     pub fn bind_descriptor_sets(
@@ -46,8 +81,8 @@ impl<'a> CommandBufferRecorder<'a> {
         let mut sets = Vec::<ash::vk::DescriptorSet>::new();
 
         for ds in descriptor_sets.iter() {
-            self.used_resources
-                .register_descriptor_set_usage(ds.clone());
+            self.used_resources.insert(CommandBufferReferencedResource::DescriptorSet(ds.clone()));
+
             sets.push(ds.ash_handle());
         }
 
@@ -62,8 +97,7 @@ impl<'a> CommandBufferRecorder<'a> {
             )
         }
 
-        self.used_resources
-            .register_pipeline_layout_usage(pipeline_layout)
+        self.used_resources.insert(CommandBufferReferencedResource::PipelineLayout(pipeline_layout));
     }
 
     pub fn push_constant_for_compute_shader(
@@ -82,8 +116,7 @@ impl<'a> CommandBufferRecorder<'a> {
             )
         }
 
-        self.used_resources
-            .register_pipeline_layout_usage(pipeline_layout)
+        self.used_resources.insert(CommandBufferReferencedResource::PipelineLayout(pipeline_layout));
     }
 
     pub fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {

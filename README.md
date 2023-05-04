@@ -29,10 +29,8 @@ In spite of aiming to basic vulkan 1.0 compatibility, for this framework extensi
 and support for ray-tracing pipeline is a focal point.
 
 ## Resource Tracking at GPU side
-This framework gives the developer basic tools to track resource usage on the GPU so that it's impossible to destroy handles of resources while those are used.
+This framework gives the developer basic tools to track resource usage on the GPU so that it should be impossible to destroy handles of resources while those are used or can be used by the GPU.
 
 This functionality will be the main development point after the first release.
 
 This functionality does not place automatic barriers, you are still responsible for every aspect of GPU and Host memory synchronization! You are a vulkan developer, after all, that is what we want! Say no to OpenGL!
-
-The developer can obviously just ignore this feature and in that case CPU <-> GPU coherency is up to him.
