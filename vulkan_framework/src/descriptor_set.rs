@@ -15,6 +15,8 @@ use crate::{
 pub struct DescriptorSetWriter<'a> {
     //device: Arc<Device>,
     descriptor_set: &'a DescriptorSet,
+    images_writers: Vec<Vec<ash::vk::DescriptorImageInfo>>,
+    buffers_writers: Vec<Vec<ash::vk::DescriptorBufferInfo>>,
     writer: Vec<ash::vk::WriteDescriptorSet>, // TODO: use a smallvec here
     used_resources: Vec<DescriptorSetBoundResource>,
 }
@@ -27,6 +29,8 @@ impl<'a> DescriptorSetWriter<'a> {
             .get_parent_device()
             .clone(),*/
             descriptor_set,
+            images_writers: vec![],
+            buffers_writers: vec![],
             writer: vec![],
             //binder: ash::vk::WriteDescriptorSet::builder(),
             used_resources: (0..size).map(|_idx| { DescriptorSetBoundResource::None }).collect(),
@@ -62,11 +66,13 @@ impl<'a> DescriptorSetWriter<'a> {
             }
         ).collect();
 
+        self.buffers_writers.push(descriptors);
+
         let descriptor_writes = ash::vk::WriteDescriptorSet::builder()
             .dst_set(self.descriptor_set.ash_handle())
             .dst_binding(first_layout_id)
             .descriptor_type(ash::vk::DescriptorType::UNIFORM_BUFFER)
-            .buffer_info(descriptors.as_slice())
+            .buffer_info(self.buffers_writers[self.buffers_writers.len() - 1].as_slice())
             .build();
 
         self.writer.push(descriptor_writes);
@@ -97,11 +103,13 @@ impl<'a> DescriptorSetWriter<'a> {
             }
         ).collect();
 
+        self.buffers_writers.push(descriptors);
+
         let descriptor_writes = ash::vk::WriteDescriptorSet::builder()
             .dst_set(self.descriptor_set.ash_handle())
             .dst_binding(first_layout_id)
             .descriptor_type(ash::vk::DescriptorType::STORAGE_BUFFER)
-            .buffer_info(descriptors.as_slice())
+            .buffer_info(self.buffers_writers[self.buffers_writers.len() - 1].as_slice())
             .build();
 
         self.writer.push(descriptor_writes);
@@ -125,11 +133,13 @@ impl<'a> DescriptorSetWriter<'a> {
             }
         ).collect();
 
+        self.images_writers.push(descriptors);
+
         let descriptor_writes = ash::vk::WriteDescriptorSet::builder()
             .dst_set(self.descriptor_set.ash_handle())
             .dst_binding(first_layout_id)
             .descriptor_type(ash::vk::DescriptorType::STORAGE_IMAGE)
-            .image_info(descriptors.as_slice())
+            .image_info(self.images_writers[self.images_writers.len() - 1].as_slice())
             .build();
 
         self.writer.push(descriptor_writes);

@@ -57,6 +57,13 @@ void main() {
     comp
 );
 
+unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
+    ::std::slice::from_raw_parts(
+        (p as *const T) as *const u8,
+        ::std::mem::size_of::<T>(),
+    )
+}
+
 fn main() {
     let instance_extensions = vec![String::from("VK_EXT_debug_utils")];
     let engine_name = String::from("None");
@@ -322,7 +329,7 @@ fn main() {
                                             panic!("error in binding resources");
                                         }
 
-                                    let command_buffer_used_resources = match command_buffer
+                                    match command_buffer
                                         .record_commands(|recorder| {
                                             let descriptor_sets = vec![descriptor_set.clone()];
                                             recorder
@@ -334,10 +341,12 @@ fn main() {
                                                 descriptor_sets.as_slice(),
                                             );
 
+                                            let data = [unsafe { any_as_u8_slice( &1024u32 ) }, unsafe { any_as_u8_slice( &1024u32 ) }].concat();
+
                                             recorder.push_constant_for_compute_shader(
                                                 compute_pipeline_layout.clone(),
                                                 0,
-                                                &[],
+                                                data.as_slice(),
                                             );
 
                                             recorder.dispatch(32, 32, 1)
