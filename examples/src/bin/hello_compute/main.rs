@@ -315,10 +315,12 @@ fn main() {
                                         }
                                     };
 
-                                    let descriptor_set_used_resources =
+                                    if let Err(error) =
                                         descriptor_set.bind_resources(|binder| {
                                             binder.bind_storage_images(0, &[(ImageLayout::Undefined, image_view.clone())])
-                                        });
+                                        }) {
+                                            panic!("error in binding resources");
+                                        }
 
                                     let command_buffer_used_resources = match command_buffer
                                         .record_commands(|recorder| {
@@ -366,7 +368,6 @@ fn main() {
                                     match queue.submit(
                                         vec![command_buffer],
                                         vec![
-                                            descriptor_set_used_resources,
                                             command_buffer_used_resources,
                                         ],
                                         fence,

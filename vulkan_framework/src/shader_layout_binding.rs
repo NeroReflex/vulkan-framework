@@ -84,6 +84,10 @@ impl BindingDescriptor {
             .build()
     }
 
+    pub fn binding_range(&self) -> (u32, u32) {
+        (self.binding_point, self.binding_point + self.binding_count)
+    }
+
     pub fn new(
         shader_access: ShaderStageAccess,
         binding_type: BindingType,

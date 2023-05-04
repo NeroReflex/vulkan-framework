@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use ash::vk::Handle;
 
@@ -9,18 +9,18 @@ use crate::{
     device::DeviceOwned,
     memory_allocator::MemoryAllocator,
     prelude::{VulkanError, VulkanResult},
-    resource_tracking::ResourcesInUseByGPU, image::{ImageTrait, ImageLayout}, image_view::ImageView,
+    image::ImageLayout, image_view::ImageView,
 };
 
 pub struct DescriptorSetWriter<'a> {
     //device: Arc<Device>,
     descriptor_set: &'a DescriptorSet,
     writer: Vec<ash::vk::WriteDescriptorSet>, // TODO: use a smallvec here
-    used_resources: ResourcesInUseByGPU,
+    used_resources: Vec<DescriptorSetBoundResource>,
 }
 
 impl<'a> DescriptorSetWriter<'a> {
-    pub(crate) fn new(descriptor_set: &'a DescriptorSet) -> Self {
+    pub(crate) fn new(descriptor_set: &'a DescriptorSet, size: u32) -> Self {
         Self {
             /*device: descriptor_set
             .get_parent_descriptor_pool()
@@ -29,8 +29,12 @@ impl<'a> DescriptorSetWriter<'a> {
             descriptor_set,
             writer: vec![],
             //binder: ash::vk::WriteDescriptorSet::builder(),
-            used_resources: ResourcesInUseByGPU::create(),
+            used_resources: (0..size).map(|_idx| { DescriptorSetBoundResource::None }).collect(),
         }
+    }
+
+    pub(crate) fn ref_used_resources(&self) -> &Vec<DescriptorSetBoundResource> {
+        &self.used_resources
     }
 
     pub fn bind_uniform_buffer<T>(
@@ -42,10 +46,10 @@ impl<'a> DescriptorSetWriter<'a> {
     ) where
         T: Send + Sync + MemoryAllocator,
     {
-        let descriptors: Vec<ash::vk::DescriptorBufferInfo> = buffers.iter().map(|buffer| {
+        let descriptors: Vec<ash::vk::DescriptorBufferInfo> = buffers.iter().enumerate().map(|(index, buffer)| {
             // TODO: assert usage has VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT bit set
             
-            self.used_resources.register_buffer_usage(buffer.clone());
+            self.used_resources[(first_layout_id as usize) + index] = DescriptorSetBoundResource::Buffer(buffer.clone());
             
             ash::vk::DescriptorBufferInfo::builder()
                 .range(match size {
@@ -77,10 +81,10 @@ impl<'a> DescriptorSetWriter<'a> {
     ) where
         T: Send + Sync + MemoryAllocator,
     {
-        let descriptors: Vec<ash::vk::DescriptorBufferInfo> = buffers.iter().map(|buffer| {
+        let descriptors: Vec<ash::vk::DescriptorBufferInfo> = buffers.iter().enumerate().map(|(index, buffer)| {
             // TODO: assert usage has VK_BUFFER_USAGE_STORAGE_BUFFER_BIT bit set
 
-            self.used_resources.register_buffer_usage(buffer.clone());
+            self.used_resources[(first_layout_id as usize) + index] = DescriptorSetBoundResource::Buffer(buffer.clone());
             
             ash::vk::DescriptorBufferInfo::builder()
                 .range(match size {
@@ -109,10 +113,10 @@ impl<'a> DescriptorSetWriter<'a> {
         images: &[(ImageLayout, Arc<ImageView>)],
     )
     {
-        let descriptors: Vec<ash::vk::DescriptorImageInfo> = images.iter().map(|(layout, image)| {
-            // TODO: assert usage has VK_BUFFER_USAGE_STORAGE_BUFFER_BIT bit set
+        let descriptors: Vec<ash::vk::DescriptorImageInfo> = images.iter().enumerate().map(|(index, (layout, image))| {
+            // TODO: assert usage has the right bit set and layout is not ImageLayout::Unspecified
 
-            self.used_resources.register_image_view_usage(image.clone());
+            self.used_resources[(first_layout_id as usize) + index] = DescriptorSetBoundResource::ImageView(image.clone());
             
             ash::vk::DescriptorImageInfo::builder()
                 .image_layout(layout.ash_layout())
@@ -132,10 +136,18 @@ impl<'a> DescriptorSetWriter<'a> {
     }
 }
 
+#[derive(Clone)]
+pub enum DescriptorSetBoundResource {
+    None,
+    Buffer(Arc<dyn BufferTrait>),
+    ImageView(Arc<ImageView>),
+}
+
 pub struct DescriptorSet {
     pool: Arc<DescriptorPool>,
     layout: Arc<DescriptorSetLayout>,
     descriptor_set: ash::vk::DescriptorSet,
+    bound_resources: Mutex<Vec<DescriptorSetBoundResource>>
 }
 
 impl DescriptorSetLayoutDependant for DescriptorSet {
@@ -171,22 +183,43 @@ impl DescriptorSet {
         self.descriptor_set
     }
 
-    pub fn bind_resources<F>(&self, f: F) -> ResourcesInUseByGPU
+    pub fn bind_resources<F>(&self, f: F) -> VulkanResult<()>
     where
         F: Fn(&mut DescriptorSetWriter),
     {
-        let mut writer = DescriptorSetWriter::new(self);
+        match self.bound_resources.lock() {
+            Ok(mut lck) => {
+                let mut writer = DescriptorSetWriter::new(self, lck.len() as u32);
 
-        f(&mut writer);
+                f(&mut writer);
 
-        unsafe {
-            self.get_parent_descriptor_pool()
-                .get_parent_device()
-                .ash_handle()
-                .update_descriptor_sets(writer.writer.as_slice(), &[])
-        };
+                unsafe {
+                    self.get_parent_descriptor_pool()
+                        .get_parent_device()
+                        .ash_handle()
+                        .update_descriptor_sets(writer.writer.as_slice(), &[])
+                };
 
-        writer.used_resources
+                for (idx, res) in writer.ref_used_resources().iter().enumerate() {
+                    match res {
+                        DescriptorSetBoundResource::None => {},
+                        updated_resource => {(*lck)[idx] = updated_resource.clone();}
+                    }
+                }
+
+                Ok(())
+            },
+            Err(err) => {
+                #[cfg(debug_assertions)]
+                {
+                    panic!("Error acquiring the descriptor set mutex: {}", err)
+                }
+
+                Err(VulkanError::Unspecified)
+            }
+        }
+
+        
     }
 
     pub fn new(
@@ -201,28 +234,40 @@ impl DescriptorSet {
             );
         }
 
-        let create_info = ash::vk::DescriptorSetAllocateInfo::builder()
-            .descriptor_pool(pool.ash_handle())
-            .set_layouts([layout.ash_handle()].as_slice())
-            .build();
+        let (min_idx, max_idx) = layout.binding_range();
 
-        match unsafe {
-            pool.get_parent_device()
-                .ash_handle()
-                .allocate_descriptor_sets(&create_info)
-        } {
-            Ok(descriptor_set) => Ok(Arc::new(Self {
-                pool,
-                descriptor_set: descriptor_set[0],
-                layout,
-            })),
-            Err(err) => {
-                #[cfg(debug_assertions)]
-                {
-                    panic!("Error creating the descriptor set: {}", err)
+        if min_idx != 0 {
+            #[cfg(debug_assertions)]
+            {
+                panic!("Error creating the descriptor set: bindings are not starting from zero")
+            }
+
+            Err(VulkanError::Unspecified)
+        } else {
+            let create_info = ash::vk::DescriptorSetAllocateInfo::builder()
+                .descriptor_pool(pool.ash_handle())
+                .set_layouts([layout.ash_handle()].as_slice())
+                .build();
+
+            match unsafe {
+                pool.get_parent_device()
+                    .ash_handle()
+                    .allocate_descriptor_sets(&create_info)
+            } {
+                Ok(descriptor_set) => Ok(Arc::new(Self {
+                    pool,
+                    descriptor_set: descriptor_set[0],
+                    layout,
+                    bound_resources: Mutex::new((0..(max_idx + 1)).map(|idx| { DescriptorSetBoundResource::None }).collect())
+                })),
+                Err(err) => {
+                    #[cfg(debug_assertions)]
+                    {
+                        panic!("Error creating the descriptor set: {}", err)
+                    }
+
+                    Err(VulkanError::Unspecified)
                 }
-
-                Err(VulkanError::Unspecified)
             }
         }
     }

@@ -48,6 +48,19 @@ impl DescriptorSetLayout {
         self.layout
     }
 
+    pub fn binding_range(&self) -> (u32, u32) {
+        let mut min_idx: u32 = 1000;
+        let mut max_idx: u32 = 0;
+
+        for range in self.descriptors.iter() {
+            let (start, end) = range.binding_range();
+            min_idx = start.min(min_idx);
+            max_idx = end.max(max_idx);
+        }
+
+        (min_idx, max_idx)
+    }
+
     pub fn descriptors(&self) -> Vec<Arc<BindingDescriptor>> {
         self.descriptors.clone()
     }
@@ -86,6 +99,15 @@ impl DescriptorSetLayout {
         device: Arc<Device>,
         descriptors: &[Arc<BindingDescriptor>],
     ) -> VulkanResult<Arc<Self>> {
+        if descriptors.is_empty() {
+            #[cfg(debug_assertions)]
+            {
+                panic!("Error creating the descriptor set layout: no binding descriptors specified")
+            }
+
+            return Err(VulkanError::Unspecified)
+        }
+
         // a collection of VkDescriptorSetLayoutBinding
         let bindings: Vec<ash::vk::DescriptorSetLayoutBinding> =
             descriptors.iter().map(|d| d.ash_handle()).collect();

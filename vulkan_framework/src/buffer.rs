@@ -7,7 +7,7 @@ use crate::{
     memory_heap::MemoryHeapOwned,
     memory_pool::{MemoryPool, MemoryPoolBacked},
     prelude::{VulkanError, VulkanResult},
-    queue_family::QueueFamily, resource_tracking::RenderingRequiredResource,
+    queue_family::QueueFamily
 };
 
 use std::sync::Arc;
@@ -149,11 +149,6 @@ where
     descriptor: ConcreteBufferDescriptor,
     buffer: ash::vk::Buffer,
 }
-
-impl<Allocator> RenderingRequiredResource for Buffer<Allocator>
-where
-    Allocator: MemoryAllocator + Send + Sync,
-{}
 
 impl<Allocator> Drop for Buffer<Allocator>
 where
