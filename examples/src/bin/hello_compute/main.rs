@@ -367,9 +367,6 @@ fn main() {
 
                                     match queue.submit(
                                         vec![command_buffer],
-                                        vec![
-                                            command_buffer_used_resources,
-                                        ],
                                         fence,
                                     ) {
                                         Ok(mut fence_waiter) => 'wait_for_fence: loop {

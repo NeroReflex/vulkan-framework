@@ -165,7 +165,6 @@ impl Fence {
 pub struct FenceWaiter {
     fence: Option<Arc<Fence>>,
     command_buffers: Vec<Arc<dyn CommandBufferTrait>>,
-    occupied_resources: Vec<ResourcesInUseByGPU>,
 }
 
 impl Drop for FenceWaiter {
@@ -180,11 +179,9 @@ impl FenceWaiter {
     pub(crate) fn new(
         fence: Arc<Fence>,
         command_buffers: Vec<Arc<dyn CommandBufferTrait>>,
-        occupied_resources: Vec<ResourcesInUseByGPU>,
     ) -> Self {
         Self {
             fence: Some(fence),
-            occupied_resources,
             command_buffers,
         }
     }
@@ -201,7 +198,6 @@ impl FenceWaiter {
                         cmd_buffer.flag_execution_as_finished();
                     }
                     self.fence = None;
-                    self.occupied_resources.clear();
 
                     Ok(())
                 }

@@ -1,6 +1,6 @@
 use std::{sync::{
     atomic::{AtomicU8, Ordering},
-    Arc,
+    Arc, Mutex,
 }, hash::Hash, collections::HashSet};
 
 use crate::{
@@ -144,7 +144,7 @@ pub(crate) trait CommandBufferCrateTrait: CommandBufferTrait {
 pub struct PrimaryCommandBuffer {
     command_pool: Arc<CommandPool>,
     command_buffer: ash::vk::CommandBuffer,
-    recording_status: AtomicU8,
+    resources_in_use: Mutex<HashSet<CommandBufferReferencedResource>>,
 }
 
 impl Drop for PrimaryCommandBuffer {
@@ -177,7 +177,7 @@ impl CommandBufferCrateTrait for PrimaryCommandBuffer {
 }
 
 impl PrimaryCommandBuffer {
-    pub fn record_commands<F>(&self, commands_writer_fn: F) -> VulkanResult<ResourcesInUseByGPU>
+    pub fn record_commands<F>(&self, commands_writer_fn: F) -> VulkanResult<()>
     where
         F: Fn(&mut CommandBufferRecorder) + Sized,
     {
@@ -204,7 +204,7 @@ impl PrimaryCommandBuffer {
                         let mut recorder = CommandBufferRecorder {
                             device: device.clone(),
                             command_buffer: self,
-                            used_resources: ResourcesInUseByGPU::create(),
+                            used_resources: HashSet::new(),
                         };
 
                         commands_writer_fn(&mut recorder);
@@ -213,7 +213,7 @@ impl PrimaryCommandBuffer {
                             Ok(()) => {
                                 self.recording_status.store(2, Ordering::Release);
 
-                                Ok(recorder.used_resources)
+                                Ok(())
                             }
                             Err(_err) => {
                                 #[cfg(debug_assertions)]
@@ -308,7 +308,7 @@ impl PrimaryCommandBuffer {
                 Ok(Arc::new(Self {
                     command_buffer,
                     command_pool,
-                    recording_status: AtomicU8::new(0),
+                    resources_in_use: Mutex::new(HashSet::new()),
                 }))
             }
             Err(err) => {
