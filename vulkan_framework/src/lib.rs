@@ -19,7 +19,6 @@ pub mod prelude;
 pub mod push_constant_range;
 pub mod queue;
 pub mod queue_family;
-pub mod resource_tracking;
 pub mod semaphore;
 pub mod shader_layout_binding;
 pub mod shader_stage_access;

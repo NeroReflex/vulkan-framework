@@ -12,13 +12,26 @@ use crate::{
 
 use std::sync::Arc;
 
+#[repr(u32)]
 pub enum ImageLayout {
-    Undefined,
+    Undefined = 0,
+    General = 1,
+    ColorAttachmentOptimal = 2,
+    DepthStencilAttachmentOptimal = 3,
+    DepthStencilReadOnlyOptimal = 4,
+    ShaderReadOnlyOptimal = 5,
+    TransferSrcOptimal = 6,
+    TransferDstOptimal = 7,
+    Preinitialized = 8,
+    Other(u32)
 }
 
 impl ImageLayout {
     pub(crate) fn ash_layout(&self) -> ash::vk::ImageLayout {
-        todo!()
+        ash::vk::ImageLayout::from_raw(match self {
+            ImageLayout::Other(fmt) => *fmt,
+            fmt => unsafe { std::mem::transmute_copy::<ImageLayout, u32>(fmt) },
+        } as i32)
     }
 }
 

@@ -317,7 +317,7 @@ fn main() {
 
                                     if let Err(error) =
                                         descriptor_set.bind_resources(|binder| {
-                                            binder.bind_storage_images(0, &[(ImageLayout::Undefined, image_view.clone())])
+                                            binder.bind_storage_images(0, &[(ImageLayout::General, image_view.clone())])
                                         }) {
                                             panic!("error in binding resources");
                                         }

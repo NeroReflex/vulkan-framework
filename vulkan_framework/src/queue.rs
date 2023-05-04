@@ -7,7 +7,6 @@ use crate::{
     instance::InstanceOwned,
     prelude::{VulkanError, VulkanResult},
     queue_family::*,
-    resource_tracking::ResourcesInUseByGPU,
 };
 
 use std::sync::Arc;
@@ -35,7 +34,6 @@ impl Queue {
     pub fn submit_unchecked(
         &self,
         _command_buffers: &[Arc<dyn CommandBufferTrait>],
-        _used_resources: &[ResourcesInUseByGPU],
     ) -> VulkanResult<()> {
         // TODO: assert queue.device == self.device
         todo!()

@@ -5,7 +5,6 @@ use crate::{
     device::{Device, DeviceOwned},
     instance::InstanceOwned,
     prelude::{VulkanError, VulkanResult},
-    resource_tracking::ResourcesInUseByGPU,
 };
 
 pub struct Fence {

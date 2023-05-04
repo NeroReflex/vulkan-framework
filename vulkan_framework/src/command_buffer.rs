@@ -1,5 +1,4 @@
 use std::{sync::{
-    atomic::{AtomicU8, Ordering},
     Arc, Mutex,
 }, hash::Hash, collections::HashSet};
 
@@ -165,8 +164,8 @@ impl CommandBufferTrait for PrimaryCommandBuffer {
     }
 
     fn flag_execution_as_finished(&self) {
-        // store a zero so that a new set of commands can be registered
-        self.recording_status.store(0, Ordering::Release);
+        // TODO: if the record was a one-time-submit clear the list of used resources
+        //self.recording_status.store(0, Ordering::Release);
     }
 }
 
@@ -181,18 +180,15 @@ impl PrimaryCommandBuffer {
     where
         F: Fn(&mut CommandBufferRecorder) + Sized,
     {
-        match self
-            .recording_status
-            .compare_exchange(0, 1, Ordering::Acquire, Ordering::Relaxed)
-        {
-            Ok(_) => {
-                let device = self
-                    .get_parent_command_pool()
-                    .get_parent_queue_family()
-                    .get_parent_device();
+        let device = self
+            .get_parent_command_pool()
+            .get_parent_queue_family()
+            .get_parent_device();
 
+        match self.resources_in_use.lock() {
+            Ok(mut resources_lck) => {
                 let begin_info = ash::vk::CommandBufferBeginInfo::builder()
-                    .flags(ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
+                    .flags(ash::vk::CommandBufferUsageFlags::empty() /*ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT*/)
                     .build();
 
                 match unsafe {
@@ -211,7 +207,7 @@ impl PrimaryCommandBuffer {
 
                         match unsafe { device.ash_handle().end_command_buffer(self.ash_handle()) } {
                             Ok(()) => {
-                                self.recording_status.store(2, Ordering::Release);
+                                *resources_lck = recorder.used_resources;
 
                                 Ok(())
                             }
@@ -227,7 +223,6 @@ impl PrimaryCommandBuffer {
                     }
                     Err(err) => {
                         // TODO: the command buffer is in the previous state... A good one unless the error is DEVICE_LOST
-                        self.recording_status.store(0, Ordering::Release);
 
                         #[cfg(debug_assertions)]
                         {
@@ -237,11 +232,11 @@ impl PrimaryCommandBuffer {
                         Err(VulkanError::Unspecified)
                     }
                 }
-            }
-            Err(_) => {
+            },
+            Err(err) => {
                 #[cfg(debug_assertions)]
                 {
-                    panic!("Error creating the command buffer recorder: a record operation is already in progress.");
+                    panic!("Error opening the command buffer for writing: Error acquiring mutex: {}", err);
                 }
 
                 Err(VulkanError::Unspecified)

@@ -1,5 +1,3 @@
-//use crate::command_buffer::ResourcesInUseByGPU;
-
 pub type VulkanResult<T> = Result<T, VulkanError>;
 
 #[derive(Debug)]
@@ -9,7 +7,6 @@ pub enum FrameworkError {}
 pub enum VulkanError {
     Framework(FrameworkError),
     Vulkan(i32),
-    //Reschedule(ResourcesInUseByGPU),
     Unspecified,
 }
 
