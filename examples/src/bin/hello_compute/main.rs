@@ -1,4 +1,7 @@
 use inline_spirv::*;
+use vulkan_framework::command_buffer::ImageMemoryBarrier;
+use vulkan_framework::command_buffer::PipelineStage;
+use vulkan_framework::command_buffer::PipelineStages;
 use vulkan_framework::command_buffer::PrimaryCommandBuffer;
 use vulkan_framework::command_pool::CommandPool;
 use vulkan_framework::compute_pipeline::ComputePipeline;
@@ -168,7 +171,7 @@ fn main() {
                                                 };
 
                                     let image_view = match ImageView::new(
-                                        image,
+                                        image.clone(),
                                         ImageViewType::Image2D,
                                         None,
                                         None,
@@ -259,7 +262,7 @@ fn main() {
                                     };
 
                                     let command_pool = match CommandPool::new(
-                                        queue_family,
+                                        queue_family.clone(),
                                         Some("My command pool"),
                                     ) {
                                         Ok(res) => {
@@ -331,6 +334,18 @@ fn main() {
 
                                     match command_buffer
                                         .record_commands(|recorder| {
+                                            recorder.image_barrier(
+                                                ImageMemoryBarrier::new(
+                                                    PipelineStages::from(&[PipelineStage::TopOfPipe], None, None, None),
+                                                    PipelineStages::from(&[PipelineStage::ComputeShader], None, None, None),
+                                                    image.clone(),
+                                                    ImageLayout::Undefined,
+                                                    ImageLayout::General,
+                                                    queue_family.clone(),
+                                                    queue_family.clone()
+                                                )
+                                            );
+
                                             let descriptor_sets = vec![descriptor_set.clone()];
                                             recorder
                                                 .bind_compute_pipeline(compute_pipeline.clone());

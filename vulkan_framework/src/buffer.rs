@@ -16,12 +16,12 @@ use std::sync::Arc;
  * Provided by VK_KHR_acceleration_structure
  */
 #[derive(Clone)]
-pub struct BufferUsageAccelerationKHR {
+pub struct BufferUsageAccelerationStructureKHR {
     acceleration_structure_storage: bool,
     acceleration_structure_build_input_read_only: bool,
 }
 
-impl BufferUsageAccelerationKHR {
+impl BufferUsageAccelerationStructureKHR {
     pub(crate) fn ash_usage(&self) -> ash::vk::BufferUsageFlags {
         (match self.acceleration_structure_storage {
             true => ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR,
@@ -61,7 +61,7 @@ pub struct BufferUsageSpecifier {
     index_buffer: bool,
     vertex_buffer: bool,
     indirect_buffer: bool,
-    acceleration_structure: BufferUsageAccelerationKHR,
+    acceleration_structure: BufferUsageAccelerationStructureKHR,
     ray_tracing: BufferUsageRayTracingPipelineKHR,
 }
 
