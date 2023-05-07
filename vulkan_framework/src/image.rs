@@ -13,6 +13,7 @@ use crate::{
 use std::sync::Arc;
 
 #[repr(u32)]
+#[derive(PartialEq, Eq, Copy, Clone)]
 pub enum ImageLayout {
     Undefined = 0,
     General = 1,

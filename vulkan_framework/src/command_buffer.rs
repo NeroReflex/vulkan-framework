@@ -392,6 +392,10 @@ pub struct ImageMemoryBarrier {
     src_stages: PipelineStages,
     dst_stages: PipelineStages,
     image: Arc<dyn ImageTrait>,
+    base_mip_level: u32,
+    mip_levels_count: u32,
+    base_array_layer: u32,
+    array_layers_count: u32,
     old_layout: ImageLayout,
     new_layout: ImageLayout,
     src_queue_family: Arc<QueueFamily>,
@@ -427,19 +431,60 @@ impl ImageMemoryBarrier {
         self.dst_stages.ash_flags()
     }
 
+    pub (crate) fn ash_subresource_range(&self) -> ash::vk::ImageSubresourceRange {
+        // TODO: think about aspect flags and its derivation from the image handle
+        todo!();
+
+        ash::vk::ImageSubresourceRange::builder()
+            .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+            .base_array_layer(self.base_array_layer)
+            .layer_count(self.array_layers_count)
+            .base_mip_level(self.base_mip_level)
+            .level_count(self.mip_levels_count)
+            .build()
+    }
+
     pub fn new(
         src_stages: PipelineStages,
         dst_stages: PipelineStages,
         image: Arc<dyn ImageTrait>,
+        maybe_base_mip_level: Option<u32>,
+        maybe_mip_levels_count: Option<u32>,
+        maybe_base_array_layer: Option<u32>,
+        maybe_array_layers_count: Option<u32>,
         old_layout: ImageLayout,
         new_layout: ImageLayout,
         src_queue_family: Arc<QueueFamily>,
         dst_queue_family: Arc<QueueFamily>,
     ) -> Self {
+        let base_mip_level = match maybe_base_mip_level {
+            Option::Some(custom) => custom,
+            Option::None => 0,
+        };
+
+        let mip_levels_count = match maybe_mip_levels_count {
+            Option::Some(custom) => custom,
+            Option::None => image.mip_levels_count(),
+        };
+
+        let base_array_layer = match maybe_base_array_layer {
+            Option::Some(custom) => custom,
+            Option::None => 0,
+        };
+
+        let array_layers_count = match maybe_array_layers_count {
+            Option::Some(custom) => custom,
+            Option::None => image.layers_count(),
+        };
+
         Self {
             src_stages,
             dst_stages,
             image,
+            base_mip_level,
+            mip_levels_count,
+            base_array_layer,
+            array_layers_count,
             old_layout,
             new_layout,
             src_queue_family,
@@ -459,14 +504,6 @@ impl<'a> CommandBufferRecorder<'a> {
     pub fn image_barrier(&mut self, dependency_info: ImageMemoryBarrier) {
         // TODO: check every resource is from the same device
 
-        let subresource_range = ash::vk::ImageSubresourceRange::builder()
-            .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
-            .base_array_layer(0)
-            .layer_count(1)
-            .base_mip_level(0)
-            .level_count(1)
-            .build();
-
         let image_memory_barrier = ash::vk::ImageMemoryBarrier::builder()
             .image(dependency_info.ash_image_handle())
             .old_layout(dependency_info.old_layout.ash_layout())
@@ -475,9 +512,8 @@ impl<'a> CommandBufferRecorder<'a> {
             .dst_queue_family_index(dependency_info.ash_dst_queue_family())
             .src_access_mask(dependency_info.ash_src_access_mask_flags())
             .dst_access_mask(dependency_info.ash_dst_access_mask_flags())
-            .subresource_range(subresource_range)
+            .subresource_range(dependency_info.ash_subresource_range())
             .build();
-        
 
         unsafe {
             self.device.ash_handle().cmd_pipeline_barrier(
