@@ -459,6 +459,14 @@ impl<'a> CommandBufferRecorder<'a> {
     pub fn image_barrier(&mut self, dependency_info: ImageMemoryBarrier) {
         // TODO: check every resource is from the same device
 
+        let subresource_range = ash::vk::ImageSubresourceRange::builder()
+            .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+            .base_array_layer(0)
+            .layer_count(1)
+            .base_mip_level(0)
+            .level_count(1)
+            .build();
+
         let image_memory_barrier = ash::vk::ImageMemoryBarrier::builder()
             .image(dependency_info.ash_image_handle())
             .old_layout(dependency_info.old_layout.ash_layout())
@@ -467,6 +475,7 @@ impl<'a> CommandBufferRecorder<'a> {
             .dst_queue_family_index(dependency_info.ash_dst_queue_family())
             .src_access_mask(dependency_info.ash_src_access_mask_flags())
             .dst_access_mask(dependency_info.ash_dst_access_mask_flags())
+            .subresource_range(subresource_range)
             .build();
         
 
