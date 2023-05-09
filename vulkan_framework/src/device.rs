@@ -582,7 +582,7 @@ impl Device {
                     }
 
                     match host_visibility {
-                        Some(_visibility_model) => {
+                        Some(visibility_model) => {
                             // a visibility model is specified, exclude heaps that are not suitable as not memory-mappable
                             if !heap_descriptor
                                 .property_flags
@@ -590,9 +590,30 @@ impl Device {
                             {
                                 continue 'suitable_heap_search;
                             }
+
+                            match visibility_model.cached()
+                            {
+                                true => {
+                                    if !heap_descriptor
+                                        .property_flags
+                                        .contains(ash::vk::MemoryPropertyFlags::HOST_CACHED)
+                                    {
+                                        continue 'suitable_heap_search;
+                                    }
+                                },
+                                false => {
+                                    if heap_descriptor
+                                        .property_flags
+                                        .contains(ash::vk::MemoryPropertyFlags::HOST_CACHED)
+                                    {
+                                        continue 'suitable_heap_search;
+                                    }
+                                }
+                            }
+                            
                         }
                         None => {
-                            // a visibility model is NOT specified, the user wants memory that is not memory-mappable, so protected memory <3
+                            // a visibility model is NOT specified, the user wants memory that is not memory-mappable
                             if heap_descriptor
                                 .property_flags
                                 .contains(ash::vk::MemoryPropertyFlags::HOST_VISIBLE)

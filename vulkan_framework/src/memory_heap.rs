@@ -5,8 +5,24 @@ use crate::{
 
 use std::sync::Arc;
 
-#[derive(Clone)]
-pub enum MemoryHostVisibility {}
+#[derive(PartialEq, Eq, Copy, Clone)]
+pub struct MemoryHostVisibility {
+    cached: bool,
+}
+
+impl MemoryHostVisibility {
+    pub fn cached(&self) -> bool {
+        self.cached
+    }
+
+    pub fn new(
+        cached: bool,
+    ) -> Self {
+        Self {
+            cached,
+        }
+    }
+}
 
 #[derive(Clone)]
 pub enum MemoryHostCoherence {

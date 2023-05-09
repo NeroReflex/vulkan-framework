@@ -320,7 +320,7 @@ where
                 Some(reserved_memory_from_pool) => {
                     match device.ash_handle().bind_buffer_memory(
                         buffer,
-                        memory_pool.native_handle(),
+                        memory_pool.ash_handle(),
                         reserved_memory_from_pool.offset_in_pool(),
                     ) {
                         Ok(_) => Ok(Arc::new(Self {

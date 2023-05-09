@@ -28,6 +28,7 @@ use vulkan_framework::instance::*;
 use vulkan_framework::memory_allocator::StackAllocator;
 use vulkan_framework::memory_heap::ConcreteMemoryHeapDescriptor;
 use vulkan_framework::memory_heap::MemoryHeap;
+use vulkan_framework::memory_heap::MemoryHostVisibility;
 use vulkan_framework::memory_heap::MemoryType;
 use vulkan_framework::memory_pool::MemoryPool;
 use vulkan_framework::pipeline_layout::PipelineLayout;
@@ -113,7 +114,7 @@ fn main() {
                             match MemoryHeap::new(
                                 device.clone(),
                                 ConcreteMemoryHeapDescriptor::new(
-                                    MemoryType::DeviceLocal(None),
+                                    MemoryType::DeviceLocal(Some(MemoryHostVisibility::new(false))),
                                     1024 * 1024 * 512,
                                 ),
                             ) {
@@ -155,7 +156,7 @@ fn main() {
                                                         1,
                                                         vulkan_framework::image::ImageFormat::r32g32b32a32_sfloat,
                                                         ImageFlags::empty(),
-                                                        ImageTiling::Optimal
+                                                        ImageTiling::Linear
                                                     ),
                                                     None,
                                                     Some("Test Image")
@@ -343,6 +344,7 @@ fn main() {
                                                     None,
                                                     None,
                                                     None,
+                                                    None,
                                                     ImageLayout::Undefined,
                                                     ImageLayout::General,
                                                     queue_family.clone(),
@@ -397,19 +399,27 @@ fn main() {
                                         vec![command_buffer],
                                         fence,
                                     ) {
-                                        Ok(mut fence_waiter) => 'wait_for_fence: loop {
-                                            match fence_waiter.wait(100u64) {
-                                                Ok(_) => {
-                                                    break 'wait_for_fence;
-                                                }
-                                                Err(err) => {
-                                                    if err.timeout() {
-                                                        continue 'wait_for_fence;
-                                                    }
+                                        Ok(mut fence_waiter) => 
+                                        {
+                                            'wait_for_fence: loop {
+                                                println!("Command buffer submitted! GPU will work on that!");
 
-                                                    panic!("Error waiting for device to complete the task. Don't know what to do... Panic!");
+                                                match fence_waiter.wait(100u64) {
+                                                    Ok(_) => {
+                                                        break 'wait_for_fence;
+                                                    }
+                                                    Err(err) => {
+                                                        if err.timeout() {
+                                                            continue 'wait_for_fence;
+                                                        }
+
+                                                        panic!("Error waiting for device to complete the task. Don't know what to do... Panic!");
+                                                    }
                                                 }
                                             }
+
+                                            todo!()
+                                            //stack_allocator.clone_raw_data(image., size)
                                         },
                                         Err(_) => {
                                             println!("Error submitting the command buffer to the queue. No work will be done :(");

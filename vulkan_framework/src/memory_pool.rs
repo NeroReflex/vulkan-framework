@@ -1,3 +1,5 @@
+use ash::vk;
+
 use crate::{
     device::DeviceOwned,
     instance::InstanceOwned,
@@ -53,8 +55,24 @@ impl<Allocator> MemoryPool<Allocator>
 where
     Allocator: MemoryAllocator + Send + Sync,
 {
-    pub(crate) fn native_handle(&self) -> ash::vk::DeviceMemory {
+    pub fn native_handle(&self) -> u64 {
+        ash::vk::Handle::as_raw(self.memory)
+    }
+
+    pub(crate) fn ash_handle(&self) -> ash::vk::DeviceMemory {
         self.memory
+    }
+
+    pub fn clone_raw_data(&self, offset: u64, size: u64) -> VulkanResult<Vec<u8>> {
+        let device = self.get_parent_memory_heap().get_parent_device();
+        
+        let data: Vec<u8> = vec![];
+
+        unsafe { device.ash_handle().map_memory(self.memory, offset, size, vk::MemoryMapFlags::empty()) };
+
+        todo!();
+
+        Ok(data)
     }
 
     pub fn new(memory_heap: Arc<MemoryHeap>, allocator: Allocator) -> VulkanResult<Arc<Self>> {

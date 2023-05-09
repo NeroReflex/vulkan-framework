@@ -9,7 +9,7 @@ use crate::{
     device::DeviceOwned,
     instance::InstanceOwned,
     pipeline_layout::PipelineLayout,
-    prelude::{VulkanError, VulkanResult}, image::{Image, ImageTrait, ImageLayout}, queue_family::QueueFamily,
+    prelude::{VulkanError, VulkanResult}, image::{Image, ImageTrait, ImageLayout, ImageAspect, ImageAspects}, queue_family::QueueFamily,
 };
 use crate::{
     compute_pipeline::ComputePipeline, descriptor_set::DescriptorSet, device::Device,
@@ -392,6 +392,7 @@ pub struct ImageMemoryBarrier {
     src_stages: PipelineStages,
     dst_stages: PipelineStages,
     image: Arc<dyn ImageTrait>,
+    image_aspect: ImageAspects,
     base_mip_level: u32,
     mip_levels_count: u32,
     base_array_layer: u32,
@@ -432,11 +433,8 @@ impl ImageMemoryBarrier {
     }
 
     pub (crate) fn ash_subresource_range(&self) -> ash::vk::ImageSubresourceRange {
-        // TODO: think about aspect flags and its derivation from the image handle
-        todo!();
-
         ash::vk::ImageSubresourceRange::builder()
-            .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+            .aspect_mask(self.image_aspect.ash_flags())
             .base_array_layer(self.base_array_layer)
             .layer_count(self.array_layers_count)
             .base_mip_level(self.base_mip_level)
@@ -448,6 +446,7 @@ impl ImageMemoryBarrier {
         src_stages: PipelineStages,
         dst_stages: PipelineStages,
         image: Arc<dyn ImageTrait>,
+        maybe_image_aspect: Option<ImageAspects>,
         maybe_base_mip_level: Option<u32>,
         maybe_mip_levels_count: Option<u32>,
         maybe_base_array_layer: Option<u32>,
@@ -477,10 +476,16 @@ impl ImageMemoryBarrier {
             Option::None => image.layers_count(),
         };
 
+        let image_aspect = match maybe_image_aspect {
+            Option::Some(aspect) => aspect,
+            Option::None => ImageAspects::all_from_format(&image.format())
+        };
+
         Self {
             src_stages,
             dst_stages,
             image,
+            image_aspect,
             base_mip_level,
             mip_levels_count,
             base_array_layer,
@@ -538,7 +543,6 @@ impl<'a> CommandBufferRecorder<'a> {
         }
 
         self.used_resources.insert(CommandBufferReferencedResource::ComputePipeline(compute_pipeline));
-            //.register_compute_pipeline_usage(compute_pipeline)
     }
 
     pub fn bind_descriptor_sets(

@@ -14,6 +14,81 @@ use std::sync::Arc;
 
 #[repr(u32)]
 #[derive(PartialEq, Eq, Copy, Clone)]
+pub enum ImageAspect {
+    Color = 0x00000001u32,
+    Depth = 0x00000002u32,
+    Stencil = 0x00000004u32,
+    Metadata = 0x00000008u32,
+}
+
+#[derive(PartialEq, Eq, Copy, Clone)]
+pub struct ImageAspects {
+    color: bool,
+    depth: bool,
+    stencil: bool,
+    metadata: bool,
+}
+
+impl ImageAspects {
+    pub(crate) fn ash_flags(&self) -> ash::vk::ImageAspectFlags {
+        (match self.color {
+            true => ash::vk::ImageAspectFlags::COLOR,
+            false => ash::vk::ImageAspectFlags::empty(),
+        }) |
+        (match self.depth {
+            true => ash::vk::ImageAspectFlags::DEPTH,
+            false => ash::vk::ImageAspectFlags::empty(),
+        }) |
+        (match self.stencil {
+            true => ash::vk::ImageAspectFlags::STENCIL,
+            false => ash::vk::ImageAspectFlags::empty(),
+        }) |
+        (match self.metadata {
+            true => ash::vk::ImageAspectFlags::METADATA,
+            false => ash::vk::ImageAspectFlags::empty(),
+        })
+    }
+    
+    pub fn new(
+        color: bool,
+        depth: bool,
+        stencil: bool,
+        metadata: bool,
+    ) -> Self {
+        Self {
+            color,
+            depth,
+            stencil,
+            metadata,
+        }
+    }
+
+    pub fn from(aspects: &[ImageAspect]) -> Self {
+        Self {
+            color: aspects.contains(&ImageAspect::Color),
+            depth: aspects.contains(&ImageAspect::Depth),
+            stencil: aspects.contains(&ImageAspect::Stencil),
+            metadata: aspects.contains(&ImageAspect::Metadata),
+        }
+    }
+
+    pub fn all_from_format(format: &ImageFormat) -> Self {
+        match format {
+            ImageFormat::undefined => todo!(),
+            ImageFormat::s8_uint => Self::from(&[]),
+            ImageFormat::d16_unorm => Self::from(&[ImageAspect::Depth]),
+            ImageFormat::x8_d24_unorm_pack32 => Self::from(&[ImageAspect::Depth]),
+            ImageFormat::d32_sfloat => Self::from(&[ImageAspect::Depth]),
+            ImageFormat::d32_sfloat_s8_uint => Self::from(&[ImageAspect::Stencil, ImageAspect::Depth]),
+            ImageFormat::d16_unorm_s8_uint => Self::from(&[ImageAspect::Stencil, ImageAspect::Depth]),
+            ImageFormat::d24_unorm_s8_uint => Self::from(&[ImageAspect::Stencil, ImageAspect::Depth]),
+            _ => Self::from(&[ImageAspect::Color])
+        }
+    }
+}
+
+#[repr(u32)]
+#[derive(PartialEq, Eq, Copy, Clone)]
 pub enum ImageLayout {
     Undefined = 0,
     General = 1,
@@ -144,7 +219,7 @@ pub enum ImageMultisampling {
 /**
  *
  */
-#[derive(Clone)]
+#[derive(PartialEq, Eq, Copy, Clone)]
 pub struct ImageUsageSpecifier {
     transfer_src: bool,
     transfer_dst: bool,
@@ -225,7 +300,7 @@ pub enum ImageUsage {
  * but it is always possible to specify Other(VkFormat).
  */
 #[allow(non_camel_case_types)]
-#[derive(Copy, Clone, PartialEq)]
+#[derive(PartialEq, Eq, Copy, Clone)]
 #[repr(i32)]
 pub enum ImageFormat {
     undefined = 0,
@@ -844,7 +919,7 @@ where
                 Some(reserved_memory_from_pool) => {
                     match device.ash_handle().bind_image_memory(
                         image,
-                        memory_pool.native_handle(),
+                        memory_pool.ash_handle(),
                         reserved_memory_from_pool.offset_in_pool(),
                     ) {
                         Ok(_) => Ok(Arc::new(Self {
