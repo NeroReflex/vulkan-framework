@@ -57,7 +57,9 @@ layout(push_constant) uniform pushConstants {
 
 void main() {
     if ((gl_GlobalInvocationID.x < u_pushConstants.width) && (gl_GlobalInvocationID.y < u_pushConstants.height)) {
-        const vec4 interpolation = vec4(0.0, 0.0, 0.0, 0.0) /*mix(vec4(0.0, 0.0, 0.0, 0.0), vec4(1.0, 1.0, 1.0, 1.0)), vec2(0.5, 0.5)*/;
+        const float red_content = mix(0.0, 1.0, float(gl_LocalInvocationID.x) / float(gl_WorkGroupSize.x));
+        const float blu_content = mix(0.0, 1.0, float(gl_LocalInvocationID.y) / float(gl_WorkGroupSize.y));
+        const vec4 interpolation = vec4(red_content, 0, blu_content, 1.0);
         imageStore(someImage, ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y), interpolation );
     }
 }
@@ -330,7 +332,7 @@ fn main() {
                                         }
                                     };
 
-                                    if let Err(error) =
+                                    if let Err(_error) =
                                         descriptor_set.bind_resources(|binder| {
                                             binder.bind_storage_images(0, &[(ImageLayout::General, image_view.clone())])
                                         }) {
@@ -436,19 +438,23 @@ fn main() {
 
                                                     let rgb_data = image_raw_data.iter().map(|f| [f[0], f[1], f[2]] ).collect::<Vec<[f32;3]>>();
 
-                                                    write!(file, "PF\n1024 1024\n-1.0\n");
-                                                    rgb_data.iter().map(|rgb| {
+                                                    if let Err(err) = write!(file, "PF\n1024 1024\n-1.0\n") {
+                                                        panic!("Unexpected error while writing the resulting image header: {}", err);
+                                                    }
+
+                                                    for rgb in rgb_data.iter() {
                                                         let slice = unsafe {std::slice::from_raw_parts(
                                                             rgb.as_ptr() as *const u8,
                                                             rgb.len() * std::mem::size_of::<[f32;3]>(),
                                                         )
                                                         };
 
-                                                        file.write(slice);
-                                                    }).collect::<Vec<()>>();
-                                                    //file.write(unsafe { std::ptr::slice_from_raw_parts(rgb_data.as_slice().as_ptr() as *const u8, rgb_data.len()) });
+                                                        if let Err(err) = file.write(slice) {
+                                                            panic!("Unexpected error while writing the resulting image data: {}", err);
+                                                        }
+                                                    }
                                                 },
-                                                Err(err) => {
+                                                Err(_err) => {
                                                     println!("Error copying data from the GPU memory :(");
                                                 }
                                             }
