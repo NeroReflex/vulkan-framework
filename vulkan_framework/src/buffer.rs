@@ -178,6 +178,14 @@ where
     fn get_backing_memory_pool(&self) -> Arc<MemoryPool<Allocator>> {
         self.memory_pool.clone()
     }
+
+    fn allocation_offset(&self) -> u64 {
+        self.reserved_memory_from_pool.offset_in_pool()
+    }
+
+    fn allocation_size(&self) -> u64 {
+        self.reserved_memory_from_pool.size()
+    }
 }
 
 impl<Allocator> DeviceOwned for Buffer<Allocator>

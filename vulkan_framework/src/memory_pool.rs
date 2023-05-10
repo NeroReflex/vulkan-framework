@@ -8,7 +8,7 @@ use crate::{
     prelude::{VulkanError, VulkanResult},
 };
 
-use std::sync::Arc;
+use std::{sync::Arc, mem::size_of};
 
 pub struct MemoryPool<Allocator>
 where
@@ -33,6 +33,10 @@ where
     Allocator: MemoryAllocator + Send + Sync,
 {
     fn get_backing_memory_pool(&self) -> Arc<MemoryPool<Allocator>>;
+
+    fn allocation_offset(&self) -> u64;
+
+    fn allocation_size(&self) -> u64;
 }
 
 impl<Allocator> Drop for MemoryPool<Allocator>
@@ -63,16 +67,24 @@ where
         self.memory
     }
 
-    pub fn clone_raw_data(&self, offset: u64, size: u64) -> VulkanResult<Vec<u8>> {
+    pub fn clone_raw_data<T>(&self, offset: u64, size: u64) -> VulkanResult<Vec<T>>
+    where T: Copy {
         let device = self.get_parent_memory_heap().get_parent_device();
         
-        let data: Vec<u8> = vec![];
+        match unsafe { device.ash_handle().map_memory(self.memory, offset, size, vk::MemoryMapFlags::empty()) } {
+            Ok(ptr) => {
+                let slice = std::ptr::slice_from_raw_parts(ptr as *const T, (size as usize) / size_of::<T>());
 
-        unsafe { device.ash_handle().map_memory(self.memory, offset, size, vk::MemoryMapFlags::empty()) };
+                let data = unsafe { (*slice).iter().map(|f| *f).collect::<Vec<T>>() };
 
-        todo!();
+                unsafe { device.ash_handle().unmap_memory(self.memory) }
 
-        Ok(data)
+                Ok(data)
+            },
+            Err(err) => {
+                todo!()
+            }
+        }
     }
 
     pub fn new(memory_heap: Arc<MemoryHeap>, allocator: Allocator) -> VulkanResult<Arc<Self>> {

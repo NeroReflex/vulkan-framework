@@ -13,6 +13,10 @@ impl AllocationResult {
         self.resulting_address
     }
 
+    pub fn size(&self) -> u64 {
+        self.requested_size
+    }
+
     pub fn new(
         requested_size: u64,
         requested_alignment: u64,

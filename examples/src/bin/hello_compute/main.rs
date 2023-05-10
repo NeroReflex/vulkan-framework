@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use inline_spirv::*;
 use vulkan_framework::command_buffer::ImageMemoryBarrier;
 use vulkan_framework::command_buffer::PipelineStage;
@@ -31,6 +33,7 @@ use vulkan_framework::memory_heap::MemoryHeap;
 use vulkan_framework::memory_heap::MemoryHostVisibility;
 use vulkan_framework::memory_heap::MemoryType;
 use vulkan_framework::memory_pool::MemoryPool;
+use vulkan_framework::memory_pool::MemoryPoolBacked;
 use vulkan_framework::pipeline_layout::PipelineLayout;
 use vulkan_framework::push_constant_range::PushConstanRange;
 use vulkan_framework::queue::Queue;
@@ -54,7 +57,8 @@ layout(push_constant) uniform pushConstants {
 
 void main() {
     if ((gl_GlobalInvocationID.x < u_pushConstants.width) && (gl_GlobalInvocationID.y < u_pushConstants.height)) {
-        imageStore(someImage, ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y), vec4(1.0, 1.0, 1.0, 1.0));
+        const vec4 interpolation = vec4(0.0, 0.0, 0.0, 0.0) /*mix(vec4(0.0, 0.0, 0.0, 0.0), vec4(1.0, 1.0, 1.0, 1.0)), vec2(0.5, 0.5)*/;
+        imageStore(someImage, ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y), interpolation );
     }
 }
 "#,
@@ -136,7 +140,7 @@ fn main() {
                                     };
 
                                     let image = match Image::new(
-                                                    stack_allocator,
+                                                    stack_allocator.clone(),
                                                     ConcreteImageDescriptor::new(
                                                         ImageDimensions::Image2D {extent: Image2DDimensions::new(1024, 1024)},
                                                         ImageUsage::Managed(
@@ -401,9 +405,9 @@ fn main() {
                                     ) {
                                         Ok(mut fence_waiter) => 
                                         {
-                                            'wait_for_fence: loop {
-                                                println!("Command buffer submitted! GPU will work on that!");
+                                            println!("Command buffer submitted! GPU will work on that!");
 
+                                            'wait_for_fence: loop {
                                                 match fence_waiter.wait(100u64) {
                                                     Ok(_) => {
                                                         break 'wait_for_fence;
@@ -418,8 +422,36 @@ fn main() {
                                                 }
                                             }
 
-                                            todo!()
-                                            //stack_allocator.clone_raw_data(image., size)
+                                            match stack_allocator.clone_raw_data::<[f32; 4]>(image.allocation_offset(), image.allocation_size()) {
+                                                Ok(image_raw_data) => {
+                                                    println!("Image in GPU memory is {} bytes long, {} pixels in rgba32f were retrieved!", image.allocation_size(), image_raw_data.len());
+                                                
+                                                    let path = std::path::Path::new("image.pfm");
+                                                    let display = path.display();
+
+                                                    let mut file = match std::fs::File::create(&path) {
+                                                        Ok(f) => f,
+                                                        Err(why) => panic!("couldn't open {}: {}", display, why),
+                                                    };
+
+                                                    let rgb_data = image_raw_data.iter().map(|f| [f[0], f[1], f[2]] ).collect::<Vec<[f32;3]>>();
+
+                                                    write!(file, "PF\n1024 1024\n-1.0\n");
+                                                    rgb_data.iter().map(|rgb| {
+                                                        let slice = unsafe {std::slice::from_raw_parts(
+                                                            rgb.as_ptr() as *const u8,
+                                                            rgb.len() * std::mem::size_of::<[f32;3]>(),
+                                                        )
+                                                        };
+
+                                                        file.write(slice);
+                                                    }).collect::<Vec<()>>();
+                                                    //file.write(unsafe { std::ptr::slice_from_raw_parts(rgb_data.as_slice().as_ptr() as *const u8, rgb_data.len()) });
+                                                },
+                                                Err(err) => {
+                                                    println!("Error copying data from the GPU memory :(");
+                                                }
+                                            }
                                         },
                                         Err(_) => {
                                             println!("Error submitting the command buffer to the queue. No work will be done :(");
