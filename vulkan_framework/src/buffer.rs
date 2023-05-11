@@ -1,5 +1,3 @@
-use ash::vk::SharingMode;
-
 use crate::{
     device::{Device, DeviceOwned},
     instance::{InstanceAPIVersion, InstanceOwned},
@@ -244,8 +242,8 @@ where
             .size(descriptor.ash_size())
             .usage(descriptor.ash_usage())
             .sharing_mode(match queue_family_indices.len() <= 1 {
-                true => SharingMode::EXCLUSIVE,
-                false => SharingMode::CONCURRENT,
+                true => ash::vk::SharingMode::EXCLUSIVE,
+                false => ash::vk::SharingMode::CONCURRENT,
             })
             .queue_family_indices(queue_family_indices.as_ref())
             .build();

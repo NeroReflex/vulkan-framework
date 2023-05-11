@@ -82,7 +82,12 @@ where
                 Ok(data)
             },
             Err(err) => {
-                todo!()
+                #[cfg(debug_assertions)]
+                {
+                    panic!("Error mapping the memory: {}", err)
+                }
+
+                Err(VulkanError::Unspecified)
             }
         }
     }

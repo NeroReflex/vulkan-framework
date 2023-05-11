@@ -61,7 +61,15 @@ impl Device {
         ash::vk::Handle::as_raw(self.device.handle())
     }
 
-    pub fn ash_handle(&self) -> &ash::Device {
+    pub(crate) fn ash_ext_swapchain_khr(&self) -> &Option<ash::extensions::khr::Swapchain> {
+        &self.extensions.swapchain_khr_ext
+    }
+
+    pub(crate) fn ash_physical_device_handle(&self) -> &ash::vk::PhysicalDevice {
+        &self.physical_device
+    }
+
+    pub(crate) fn ash_handle(&self) -> &ash::Device {
         &self.device
     }
 
@@ -280,6 +288,48 @@ impl Device {
                         let phy_device_properties = instance
                             .ash_handle()
                             .get_physical_device_properties(phy_device.to_owned());
+                        let phy_device_extensions = instance
+                            .ash_handle()
+                            .enumerate_device_extension_properties(phy_device.to_owned());
+                        let phy_device_name = std::str::from_utf8_unchecked(std::ptr::slice_from_raw_parts(phy_device_properties.to_owned().device_name.as_ptr() as *const u8, phy_device_properties.to_owned().device_name.len()).as_ref().unwrap() );
+
+                        match phy_device_extensions {
+                            Ok(supported_extensions) => {
+                                let supproted_extensions_map = supported_extensions.iter().map(|f| f.extension_name.to_vec()).collect::<Vec<Vec<i8>>>();
+
+                                let supported_extensions_strings: Vec<&str> = supproted_extensions_map.iter().map(|ext| {
+                                    match ext.iter().position(|n| *n == 0) {
+                                        Some(ext_len) => std::str::from_utf8_unchecked(std::ptr::slice_from_raw_parts(ext.as_ptr() as *const u8, ext_len.min(ext.len())).as_ref().unwrap() ),
+                                        None => todo!()
+                                    }
+                                    
+                                }).collect::<Vec<&str>>();
+
+                                println!("Device {} supports the following extensions: ", phy_device_name);
+                                for ext_str in supported_extensions_strings.iter() {
+                                    println!("    {}", ext_str);
+                                }
+
+                                for requested_extension in device_extensions.iter() {
+                                    if !supported_extensions_strings.iter().any(
+                                        |supported_ext| {
+                                            requested_extension == supported_ext
+                                        }
+                                    ) 
+                                    {
+                                        println!("Requested extension {} is not supported by physical device {}. This device won't be selected.", requested_extension, phy_device_name);
+                                        continue 'suitable_device_search
+                                    } else {
+                                        println!("Requested extension {} is supported by physical device {}!", requested_extension, phy_device_name);
+                                    }
+                                }
+                            },
+                            Err(err) => {
+                                println!("Error enumerating device extensions for device {}: {}. Will skip this device.", phy_device_name, err);
+
+                                continue 'suitable_device_search
+                            }
+                        }
 
                         let msbytes = match phy_device_properties.device_type {
                             ash::vk::PhysicalDeviceType::DISCRETE_GPU => 0xC000000000000000u64,
@@ -381,6 +431,8 @@ impl Device {
                             enabled_extensions,
                             enabled_layers,
                         };
+
+                        println!("Found suitable device: {}", phy_device_name);
 
                         match selected_physical_device {
                             Some(currently_selected_device) => {

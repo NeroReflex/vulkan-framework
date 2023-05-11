@@ -1,4 +1,4 @@
-use ash::vk::{Extent3D, ImageType, SampleCountFlags, SharingMode};
+use ash::vk::{Extent3D, ImageType, SampleCountFlags};
 
 use crate::{
     device::{Device, DeviceOwned},
@@ -291,6 +291,55 @@ impl ImageUsageSpecifier {
 pub enum ImageUsage {
     Managed(ImageUsageSpecifier),
     Unmanaged(u32),
+}
+
+impl ImageUsage {
+    pub(crate) fn ash_usage(&self) -> ash::vk::ImageUsageFlags {
+        match &self {
+            ImageUsage::Managed(flags) => {
+                let raw_flags = (match flags.transfer_src() {
+                    true => {
+                        ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::TRANSFER_SRC)
+                    }
+                    false => 0x00000000u32,
+                }) | (match flags.transfer_dst() {
+                    true => {
+                        ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::TRANSFER_DST)
+                    }
+                    false => 0x00000000u32,
+                }) | (match flags.sampled() {
+                    true => ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::SAMPLED),
+                    false => 0x00000000u32,
+                }) | (match flags.storage() {
+                    true => ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::STORAGE),
+                    false => 0x00000000u32,
+                }) | (match flags.color_attachment() {
+                    true => {
+                        ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::COLOR_ATTACHMENT)
+                    }
+                    false => 0x00000000u32,
+                }) | (match flags.depth_stencil_attachment() {
+                    true => ash::vk::ImageUsageFlags::as_raw(
+                        ash::vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+                    ),
+                    false => 0x00000000u32,
+                }) | (match flags.transient_attachment() {
+                    true => ash::vk::ImageUsageFlags::as_raw(
+                        ash::vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
+                    ),
+                    false => 0x00000000u32,
+                }) | (match flags.input_attachment() {
+                    true => {
+                        ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::INPUT_ATTACHMENT)
+                    }
+                    false => 0x00000000u32,
+                });
+
+                ash::vk::ImageUsageFlags::from_raw(raw_flags)
+            }
+            ImageUsage::Unmanaged(raw_flags) => ash::vk::ImageUsageFlags::from_raw(*raw_flags),
+        }
+    }
 }
 
 /**
@@ -593,50 +642,7 @@ impl ConcreteImageDescriptor {
     }
 
     pub(crate) fn ash_usage(&self) -> ash::vk::ImageUsageFlags {
-        match &self.img_usage {
-            ImageUsage::Managed(flags) => {
-                let raw_flags = (match flags.transfer_src() {
-                    true => {
-                        ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::TRANSFER_SRC)
-                    }
-                    false => 0x00000000u32,
-                }) | (match flags.transfer_dst() {
-                    true => {
-                        ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::TRANSFER_DST)
-                    }
-                    false => 0x00000000u32,
-                }) | (match flags.sampled() {
-                    true => ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::SAMPLED),
-                    false => 0x00000000u32,
-                }) | (match flags.storage() {
-                    true => ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::STORAGE),
-                    false => 0x00000000u32,
-                }) | (match flags.color_attachment() {
-                    true => {
-                        ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::COLOR_ATTACHMENT)
-                    }
-                    false => 0x00000000u32,
-                }) | (match flags.depth_stencil_attachment() {
-                    true => ash::vk::ImageUsageFlags::as_raw(
-                        ash::vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
-                    ),
-                    false => 0x00000000u32,
-                }) | (match flags.transient_attachment() {
-                    true => ash::vk::ImageUsageFlags::as_raw(
-                        ash::vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
-                    ),
-                    false => 0x00000000u32,
-                }) | (match flags.input_attachment() {
-                    true => {
-                        ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::INPUT_ATTACHMENT)
-                    }
-                    false => 0x00000000u32,
-                });
-
-                ash::vk::ImageUsageFlags::from_raw(raw_flags)
-            }
-            ImageUsage::Unmanaged(raw_flags) => ash::vk::ImageUsageFlags::from_raw(*raw_flags),
-        }
+        self.img_usage.ash_usage()
     }
 
     pub(crate) fn ash_format(&self) -> ash::vk::Format {
@@ -834,8 +840,8 @@ where
             .format(descriptor.ash_format())
             .usage(descriptor.ash_usage())
             .sharing_mode(match queue_family_indices.len() <= 1 {
-                true => SharingMode::EXCLUSIVE,
-                false => SharingMode::CONCURRENT,
+                true => ash::vk::SharingMode::EXCLUSIVE,
+                false => ash::vk::SharingMode::CONCURRENT,
             })
             .queue_family_indices(queue_family_indices.as_ref())
             .tiling(descriptor.ash_tiling())

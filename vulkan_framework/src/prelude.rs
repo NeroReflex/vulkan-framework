@@ -7,6 +7,7 @@ pub enum FrameworkError {}
 pub enum VulkanError {
     Framework(FrameworkError),
     Vulkan(i32),
+    MissingExtension(String),
     Unspecified,
 }
 

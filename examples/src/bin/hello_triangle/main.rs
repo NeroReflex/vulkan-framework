@@ -2,14 +2,14 @@ use vulkan_framework::{
     device::*,
     image::{
         ConcreteImageDescriptor, Image, Image2DDimensions, ImageDimensions, ImageFlags,
-        ImageTiling, ImageUsage, ImageUsageSpecifier,
+        ImageTiling, ImageUsage, ImageUsageSpecifier, ImageFormat,
     },
     instance::*,
     memory_allocator::*,
     memory_heap::*,
     memory_pool::MemoryPool,
     queue::*,
-    queue_family::*,
+    queue_family::*, swapchain::{SwapchainKHR, DeviceSurfaceInfo, PresentModeSwapchainKHR, SurfaceColorspaceSwapchainKHR},
 };
 
 fn main() {
@@ -24,10 +24,13 @@ fn main() {
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
 
+    const WIDTH: u32 = 800;
+    const HEIGHT: u32 = 800;
+
     {
         // this parenthesis contains the window handle and closes before calling deinitialize(). This is important as Window::drop() MUST be called BEFORE calling deinitialize()!!!
         // create a sdl2 window
-        match video_subsystem.window("Window", 800, 600).vulkan().build() {
+        match video_subsystem.window("Window", WIDTH, HEIGHT).vulkan().build() {
             Ok(window) => {
                 println!("SDL2 window created");
 
@@ -55,180 +58,94 @@ fn main() {
                     }
                 }
 
-                if let Ok(instance) = Instance::new(
+                let instance = Instance::new(
                     [String::from("VK_LAYER_KHRONOS_validation")].as_slice(),
                     instance_extensions.as_slice(),
                     &engine_name,
                     &app_name,
                     &api_version,
-                ) {
-                    println!("Vulkan instance created");
+                ).unwrap();
+                println!("Vulkan instance created");
 
-                    match window
-                        .vulkan_create_surface(instance.native_handle() as sdl2::video::VkInstance)
-                    {
-                        Ok(surface_handle) => {
-                            println!("Vulkan rendering surface created successfully");
+                let sfc= vulkan_framework::surface::Surface::from_raw(
+                    instance.clone(),
+                    window.vulkan_create_surface(instance.native_handle() as sdl2::video::VkInstance).unwrap(),
+                ).unwrap();
+                println!("Vulkan rendering surface created and registered successfully");
 
-                            match vulkan_framework::surface::Surface::from_raw(
-                                instance.clone(),
-                                surface_handle,
-                            ) {
-                                Ok(sfc) => {
-                                    println!("Surface registered");
+                let dev = Device::new(
+                    instance.clone(),
+                    [ConcreteQueueFamilyDescriptor::new(
+                        vec![
+                            QueueFamilySupportedOperationType::Graphics,
+                            QueueFamilySupportedOperationType::Transfer,
+                            QueueFamilySupportedOperationType::Present(sfc.clone()),
+                        ]
+                        .as_ref(),
+                        [1.0f32].as_slice(),
+                    )]
+                    .as_slice(),
+                    device_extensions.as_slice(),
+                    device_layers.as_slice(),
+                    Some("Opened Device"),
+                ).unwrap();
+                println!("Device opened successfully");
 
-                                    {
-                                        let device_result = Device::new(
-                                            instance.clone(),
-                                            [ConcreteQueueFamilyDescriptor::new(
-                                                vec![
-                                                    QueueFamilySupportedOperationType::Graphics,
-                                                    QueueFamilySupportedOperationType::Transfer,
-                                                    QueueFamilySupportedOperationType::Present(sfc),
-                                                ]
-                                                .as_ref(),
-                                                [1.0f32].as_slice(),
-                                            )]
-                                            .as_slice(),
-                                            device_extensions.as_slice(),
-                                            device_layers.as_slice(),
-                                            Some("Opened Device"),
-                                        );
+                let queue_family = QueueFamily::new(dev.clone(), 0).unwrap();
 
-                                        match device_result {
-                                            Ok(dev) => {
-                                                println!("Device opened successfully");
+                println!("Base queue family obtained successfully from Device");
 
-                                                match QueueFamily::new(dev.clone(), 0) {
-                                                    Ok(queue_family) => {
-                                                        println!("Base queue family obtained successfully from Device");
+                let queue = Queue::new(
+                    queue_family.clone(),
+                    Some("best queua evah"),
+                ).unwrap();
+                println!("Queue created successfully");
 
-                                                        match Queue::new(
-                                                            queue_family,
-                                                            Some("best queua evah"),
-                                                        ) {
-                                                            Ok(_queue) => {
-                                                                println!(
-                                                                    "Queue created successfully"
-                                                                );
+                let memory_heap = MemoryHeap::new(
+                    dev.clone(),
+                    ConcreteMemoryHeapDescriptor::new(
+                        MemoryType::DeviceLocal(None),
+                        1024 * 1024 * 1024 * 2, // 2GB of memory!
+                    ),
+                ).unwrap();
+                println!("Memory heap created! <3");
 
-                                                                match MemoryHeap::new(
-                                                                    dev,
-                                                                    ConcreteMemoryHeapDescriptor::new(
-                                                                        MemoryType::DeviceLocal(None),
-                                                                        1024 * 1024 * 1024 * 2, // 2GB of memory!
-                                                                    ),
-                                                                ) {
-                                                                    Ok(memory_heap) => {
-                                                                        println!("Memory heap created! <3");
+                let default_allocator = MemoryPool::new(
+                    memory_heap,
+                    StackAllocator::new(
+                        1024 * 1024 * 128, // 128MiB
+                    ),
+                ).unwrap();
 
-                                                                        let _stack_allocator =
-                                                                            match MemoryPool::new(
-                                                                                memory_heap.clone(),
-                                                                                StackAllocator::new(
-                                                                                    1024 * 1024
-                                                                                        * 1024,
-                                                                                ),
-                                                                            ) {
-                                                                                Ok(mem_pool) => {
-                                                                                    println!("Stack allocator created");
-                                                                                    mem_pool
-                                                                                }
-                                                                                Err(_err) => {
-                                                                                    println!("Error creating the memory pool");
-                                                                                    return ;
-                                                                                }
-                                                                            };
+                let device_swapchain_info = DeviceSurfaceInfo::new(dev.clone(), sfc.clone()).unwrap();
 
-                                                                        let default_allocator =
-                                                                            match MemoryPool::new(
-                                                                                memory_heap,
-                                                                                StackAllocator::new(
-                                                                                    1024 * 1024
-                                                                                        * 1024,
-                                                                                ),
-                                                                            ) {
-                                                                                Ok(mem_pool) => {
-                                                                                    println!("Default allocator created");
-                                                                                    mem_pool
-                                                                                }
-                                                                                Err(_err) => {
-                                                                                    println!("Error creating the memory pool");
-                                                                                    return ;
-                                                                                }
-                                                                            };
+                let swapchain = SwapchainKHR::new(
+                    &device_swapchain_info,
+                    &[queue_family.clone()],
+                    None,
+                    PresentModeSwapchainKHR::FIFO,
+                    SurfaceColorspaceSwapchainKHR::SRGBNonlinear,
+                    true,
+                    ImageFormat::b8g8r8a8_srgb,
+                    ImageUsage::Managed(
+                        ImageUsageSpecifier::new(
+                            false, 
+                            true,
+                            false,
+                            false,
+                            true,
+                            false,
+                            false,
+                            false
+                        )
+                    ),
+                    Image2DDimensions::new(WIDTH, HEIGHT),
+                    3,
+                    1
+                ).unwrap();
 
-                                                                        let _image = match Image::new(
-                                                                            default_allocator,
-                                                                            ConcreteImageDescriptor::new(
-                                                                                ImageDimensions::Image2D {extent: Image2DDimensions::new(100, 100)},
-                                                                                ImageUsage::Managed(
-                                                                                    ImageUsageSpecifier::new(
-                                                                                        true,
-                                                                                        false,
-                                                                                        true,
-                                                                                        false,
-                                                                                        true,
-                                                                                        false,
-                                                                                        false,
-                                                                                        true
-                                                                                    )
-                                                                                ),
-                                                                                None,
-                                                                                1,
-                                                                                1,
-                                                                                vulkan_framework::image::ImageFormat::r32g32b32a32_sfloat,
-                                                                                ImageFlags::empty(),
-                                                                                ImageTiling::Linear
-                                                                            ),
-                                                                            None,
-                                                                            Some("Test Image")
-                                                                        ) {
-                                                                            Ok(img) => {
-                                                                                println!("Image created");
-                                                                                img
-                                                                            },
-                                                                            Err(_err) => {
-                                                                                println!("Error creating image...");
-                                                                                return
-                                                                            }
-                                                                        };
-                                                                    }
-                                                                    Err(_err) => {
-                                                                        println!("Error creating the memory heap :(");
-                                                                    }
-                                                                }
-                                                            }
-                                                            Err(_err) => {
-                                                                println!("Error opening a queue from the given QueueFamily");
-                                                            }
-                                                        }
-                                                    }
-                                                    Err(_err) => {
-                                                        println!(
-                                                            "Error opening the base queue family"
-                                                        );
-                                                    }
-                                                }
-                                            }
-                                            Err(_err) => {
-                                                println!("Error opening a suitable device");
-                                            }
-                                        };
-                                    }
-                                }
-                                Err(_err) => {
-                                    println!("Error registering the given surface");
-                                }
-                            }
-                        }
-                        Err(err) => {
-                            println!("Error creating vulkan rendering surface: {}", err);
-                        }
-                    }
-                } else {
-                    println!("Error creating vulkan instance");
-                }
+
+
             }
             Err(err) => {
                 println!("Error creating sdl2 window: {}", err);
