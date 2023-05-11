@@ -9,7 +9,7 @@ use vulkan_framework::{
     memory_heap::*,
     memory_pool::MemoryPool,
     queue::*,
-    queue_family::*, swapchain::{SwapchainKHR, DeviceSurfaceInfo, PresentModeSwapchainKHR, SurfaceColorspaceSwapchainKHR},
+    queue_family::*, swapchain::{SwapchainKHR, DeviceSurfaceInfo, PresentModeSwapchainKHR, SurfaceColorspaceSwapchainKHR, SurfaceTransformSwapchainKHR, CompositeAlphaSwapchainKHR},
 };
 
 fn main() {
@@ -119,14 +119,22 @@ fn main() {
 
                 let device_swapchain_info = DeviceSurfaceInfo::new(dev.clone(), sfc.clone()).unwrap();
 
+                let final_format = ImageFormat::b8g8r8a8_srgb;
+                let color_space = SurfaceColorspaceSwapchainKHR::SRGBNonlinear;
+                if !device_swapchain_info.format_supported(&color_space, &final_format) {
+                    panic!("Device does not support the most common format. LOL.");
+                }
+
                 let swapchain = SwapchainKHR::new(
                     &device_swapchain_info,
                     &[queue_family.clone()],
                     None,
                     PresentModeSwapchainKHR::FIFO,
-                    SurfaceColorspaceSwapchainKHR::SRGBNonlinear,
+                    color_space,
+                    CompositeAlphaSwapchainKHR::Opaque,
+                    SurfaceTransformSwapchainKHR::Identity,
                     true,
-                    ImageFormat::b8g8r8a8_srgb,
+                    final_format,
                     ImageUsage::Managed(
                         ImageUsageSpecifier::new(
                             false, 
@@ -143,7 +151,7 @@ fn main() {
                     3,
                     1
                 ).unwrap();
-
+                println!("Swapchain created!");
 
 
             }

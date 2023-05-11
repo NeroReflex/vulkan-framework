@@ -4,13 +4,6 @@ use ash::vk::Handle;
 
 use crate::{device::{Device, DeviceOwned}, prelude::{VulkanResult, VulkanError}, instance::InstanceOwned, image::{Image2DDimensions, Image1DTrait, Image2DTrait, ImageUsageSpecifier, ImageUsage, ImageFormat}, queue_family::QueueFamily, surface::Surface};
 
-pub struct SwapchainKHR {
-    device: Arc<Device>,
-    surface: Arc<Surface>,
-    swapchain: ash::vk::SwapchainKHR,
-    image_count: u32,
-}
-
 /**
  * Swapchain present modes as defined in vulkan.
  * 
@@ -47,6 +40,56 @@ impl SurfaceColorspaceSwapchainKHR {
     pub(crate) fn ash_colorspace(&self) -> ash::vk::ColorSpaceKHR {
         match self {
             SurfaceColorspaceSwapchainKHR::SRGBNonlinear => ash::vk::ColorSpaceKHR::SRGB_NONLINEAR
+        }
+    }
+}
+
+#[repr(u32)]
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum CompositeAlphaSwapchainKHR {
+    Opaque = 0x00000001u32,
+    PreMultiplied = 0x00000002u32,
+    PostMultiplied = 0x00000004u32,
+    Inherit = 0x00000008u32,
+}
+
+impl CompositeAlphaSwapchainKHR {
+    pub(crate) fn ash_alpha(&self) -> ash::vk::CompositeAlphaFlagsKHR {
+        match self {
+            Self::Opaque => ash::vk::CompositeAlphaFlagsKHR::OPAQUE,
+            Self::PreMultiplied => ash::vk::CompositeAlphaFlagsKHR::PRE_MULTIPLIED,
+            Self::PostMultiplied => ash::vk::CompositeAlphaFlagsKHR::POST_MULTIPLIED,
+            Self::Inherit => ash::vk::CompositeAlphaFlagsKHR::INHERIT,
+        }
+    }
+}
+
+#[repr(u32)]
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum SurfaceTransformSwapchainKHR {
+    Identity = 0x00000001u32,
+    Rotate90 = 0x00000002u32,
+    Rotate180 = 0x00000004u32,
+    Rotate270 = 0x00000008u32,
+    HorizontalMirror = 0x00000010u32,
+    HorizontalMirrorRotate90 = 0x00000020,
+    HorizontalMirrorRotate180 = 0x00000040u32,
+    HorizontalMirrorRotate270 = 0x00000080u32,
+    Inherit = 0x00000100u32,
+}
+
+impl SurfaceTransformSwapchainKHR {
+    pub(crate) fn ash_transform(&self) -> ash::vk::SurfaceTransformFlagsKHR {
+        match self {
+            Self::Identity => ash::vk::SurfaceTransformFlagsKHR::IDENTITY,
+            Self::Rotate90 => ash::vk::SurfaceTransformFlagsKHR::ROTATE_90,
+            Self::Rotate180 => ash::vk::SurfaceTransformFlagsKHR::ROTATE_180,
+            Self::Rotate270 => ash::vk::SurfaceTransformFlagsKHR::ROTATE_270,
+            Self::HorizontalMirror => ash::vk::SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR,
+            Self::HorizontalMirrorRotate90 => ash::vk::SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_90,
+            Self::HorizontalMirrorRotate180 => ash::vk::SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_180,
+            Self::HorizontalMirrorRotate270 => ash::vk::SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_270,
+            Self::Inherit => ash::vk::SurfaceTransformFlagsKHR::INHERIT,
         }
     }
 }
@@ -111,6 +154,23 @@ impl DeviceSurfaceInfo {
     }
 }
 
+pub struct SwapchainKHR {
+    device: Arc<Device>,
+    surface: Arc<Surface>,
+    swapchain: ash::vk::SwapchainKHR,
+    image_format: ImageFormat,
+    image_usage: ImageUsage,
+    extent: Image2DDimensions,
+    transform: SurfaceTransformSwapchainKHR,
+    composite_alpha: CompositeAlphaSwapchainKHR,
+    min_image_count: u32,
+    image_layers: u32,
+}
+
+pub trait SwapchainKHROwned {
+    fn get_parent_swapchain(&self) -> Arc<SwapchainKHR>;
+}
+
 impl DeviceOwned for SwapchainKHR {
     fn get_parent_device(&self) -> Arc<Device> {
         self.device.clone()
@@ -134,6 +194,17 @@ impl Drop for SwapchainKHR {
 }
 
 impl SwapchainKHR {
+    pub fn images_format(&self) -> crate::image::ImageFormat {
+        self.image_format
+    }
+
+    pub fn images_extent(&self) -> crate::image::Image2DDimensions {
+        self.extent
+    }
+
+    pub fn images_layers_count(&self) -> u32 {
+        self.image_layers
+    }
     
     pub fn new(
         device_info: &DeviceSurfaceInfo,
@@ -141,11 +212,13 @@ impl SwapchainKHR {
         old_swapchain: Option<Arc<Self>>,
         present_mode: PresentModeSwapchainKHR,
         color_space: SurfaceColorspaceSwapchainKHR,
+        composite_alpha: CompositeAlphaSwapchainKHR,
+        transform: SurfaceTransformSwapchainKHR,
         clipped: bool,
         image_format: ImageFormat,
         image_usage: ImageUsage,
         extent: Image2DDimensions,
-        image_count: u32,
+        min_image_count: u32,
         image_layers: u32,
     ) -> VulkanResult<Arc<Self>> {
         let queue_family_indexes: Vec<u32> = queue_families.iter().map(|family| family.get_family_index()).collect();
@@ -183,6 +256,9 @@ impl SwapchainKHR {
                     .image_color_space(color_space.ash_colorspace())
                     .present_mode(present_mode.ash_value())
                     .clipped(clipped)
+                    .pre_transform(transform.ash_transform())
+                    .composite_alpha(composite_alpha.ash_alpha())
+                    .min_image_count(min_image_count)
                     .build();
                 
                 //let surface_capabilities =
@@ -196,7 +272,13 @@ impl SwapchainKHR {
                             device,
                             surface,
                             swapchain,
-                            image_count,
+                            min_image_count,
+                            transform,
+                            composite_alpha,
+                            image_format,
+                            image_usage,
+                            extent,
+                            image_layers,
                         }))
                     },
                     Err(err) => {

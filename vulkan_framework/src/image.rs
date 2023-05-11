@@ -123,7 +123,7 @@ pub trait Image3DTrait: Image2DTrait {
     fn depth(&self) -> u32;
 }
 
-#[derive(Clone)]
+#[derive(PartialEq, Eq, Copy, Clone)]
 pub struct Image1DDimensions {
     width: u32,
 }
@@ -140,7 +140,7 @@ impl Image1DTrait for Image1DDimensions {
     }
 }
 
-#[derive(Clone)]
+#[derive(PartialEq, Eq, Copy, Clone)]
 pub struct Image2DDimensions {
     width: u32,
     height: u32,
@@ -164,7 +164,7 @@ impl Image2DTrait for Image2DDimensions {
     }
 }
 
-#[derive(Clone)]
+#[derive(PartialEq, Eq, Copy, Clone)]
 pub struct Image3DDimensions {
     width: u32,
     height: u32,
