@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use ash::vk::Handle;
 
-use crate::{device::{Device, DeviceOwned}, prelude::{VulkanResult, VulkanError}, instance::InstanceOwned, image::{Image2DDimensions, Image1DTrait, Image2DTrait, ImageUsageSpecifier, ImageUsage, ImageFormat}, queue_family::QueueFamily, surface::Surface};
+use crate::{device::{Device, DeviceOwned}, prelude::{VulkanResult, VulkanError}, instance::InstanceOwned, image::{Image2DDimensions, Image1DTrait, Image2DTrait, ImageUsageSpecifier, ImageUsage, ImageFormat}, queue_family::QueueFamily, surface::Surface, semaphore::Semaphore, fence::Fence};
 
 /**
  * Swapchain present modes as defined in vulkan.
@@ -98,8 +98,8 @@ pub struct DeviceSurfaceInfo {
     device: Arc<Device>,
     surface: Arc<Surface>,
     surface_capabilities: ash::vk::SurfaceCapabilitiesKHR,
-    surface_present_modes: Vec<ash::vk::PresentModeKHR>,
-    surface_formats: Vec<ash::vk::SurfaceFormatKHR>,
+    surface_present_modes: smallvec::SmallVec::<[ash::vk::PresentModeKHR; 4]>,
+    surface_formats: smallvec::SmallVec::<[ash::vk::SurfaceFormatKHR; 8]>,
 }
 
 impl DeviceOwned for DeviceSurfaceInfo {
@@ -129,8 +129,18 @@ impl DeviceSurfaceInfo {
         match device.get_parent_instance().get_surface_khr_extension() {
             Some(sfc_ext) => {
                 let surface_capabilities_result = unsafe { sfc_ext.get_physical_device_surface_capabilities(device.ash_physical_device_handle().to_owned(), surface.ash_handle().to_owned()) };
-                let surface_present_modes_result = unsafe { sfc_ext.get_physical_device_surface_present_modes(device.ash_physical_device_handle().to_owned(), surface.ash_handle().to_owned()) };
-                let surface_formats_result = unsafe { sfc_ext.get_physical_device_surface_formats(device.ash_physical_device_handle().to_owned(), surface.ash_handle().to_owned()) };
+                let surface_present_modes_result = unsafe {
+                    sfc_ext.get_physical_device_surface_present_modes(
+                        device.ash_physical_device_handle().to_owned(),
+                        surface.ash_handle().to_owned()
+                    )
+                };
+                let surface_formats_result = unsafe {
+                    sfc_ext.get_physical_device_surface_formats(
+                        device.ash_physical_device_handle().to_owned(),
+                        surface.ash_handle().to_owned()
+                    )
+                };
 
                 match (surface_capabilities_result, surface_present_modes_result, surface_formats_result) {
                     (Ok(surface_capabilities), Ok(surface_present_modes), Ok(surface_formats)) => {
@@ -139,8 +149,8 @@ impl DeviceSurfaceInfo {
                                 device,
                                 surface,
                                 surface_capabilities,
-                                surface_present_modes,
-                                surface_formats,
+                                surface_present_modes: surface_present_modes.into_iter().map(|val| val).collect::<smallvec::SmallVec::<[ash::vk::PresentModeKHR; 4]>>(),
+                                surface_formats: surface_formats.into_iter().map(|val| val).collect::<smallvec::SmallVec::<[ash::vk::SurfaceFormatKHR; 8]>>(),
                             }
                         )
                     },
@@ -194,6 +204,10 @@ impl Drop for SwapchainKHR {
 }
 
 impl SwapchainKHR {
+    pub(crate) fn ash_handle(&self) -> ash::vk::SwapchainKHR {
+        self.swapchain
+    } 
+
     pub fn images_format(&self) -> crate::image::ImageFormat {
         self.image_format
     }
@@ -204,6 +218,39 @@ impl SwapchainKHR {
 
     pub fn images_layers_count(&self) -> u32 {
         self.image_layers
+    }
+
+    pub fn acquire_next_image_index(&self, timeout: u64, maybe_semaphore: &Option<Arc<Semaphore>>, maybe_fence: &Option<Arc<Fence>>) -> u64 {
+        match self.get_parent_device().ash_ext_swapchain_khr() {
+            Option::Some(ext) => {
+                match unsafe {
+                    ext.acquire_next_image(
+                        self.swapchain,
+                        timeout,
+                        match maybe_semaphore {
+                            Option::Some(semaphore) => semaphore.ash_handle(),
+                            Option::None => ash::vk::Semaphore::null()
+                        },
+                        match maybe_fence {
+                            Option::Some(fence) => fence.ash_handle(),
+                            Option::None => ash::vk::Fence::null()
+                        }
+                    )
+                } {
+                    Ok((a, b)) => {
+
+                    },
+                    Err(a) => {
+
+                    }
+                }
+            },
+            Option::None => {
+
+            }
+        }
+
+        todo!()
     }
     
     pub fn new(

@@ -29,6 +29,10 @@ impl DeviceOwned for Semaphore {
 }
 
 impl Semaphore {
+    pub(crate) fn ash_handle(&self) -> ash::vk::Semaphore {
+        self.semaphore
+    }
+
     pub fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.semaphore)
     }

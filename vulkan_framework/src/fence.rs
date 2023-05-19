@@ -39,6 +39,49 @@ impl Fence {
         self.fence
     }
 
+    pub fn reset(&self) -> VulkanResult<()> {
+        match unsafe { self.get_parent_device().ash_handle().reset_fences(&[self.fence]) } {
+            Ok(()) => Ok(()),
+            Err(err) => Err(VulkanError::Vulkan(err.as_raw())),
+        }
+    }
+
+    /**
+     * This function accepts fences that have been created from the same device.
+     */
+    pub fn reset_fences(fences: &[Arc<Self>]) -> VulkanResult<()> {
+        let mut device_native_handle: Option<Arc<Device>> = None;
+        let mut native_fences = Vec::<ash::vk::Fence>::new();
+        for fence in fences {
+            match &device_native_handle {
+                Some(old_device) => {
+                    if fence.native_handle() != old_device.native_handle() {
+                        return Err(VulkanError::Unspecified);
+                    }
+                }
+                None => device_native_handle = Some(fence.device.clone()),
+            }
+
+            native_fences.push(fence.fence)
+        }
+
+        match device_native_handle {
+            Some(device) => {
+                let reset_result = unsafe {
+                    device.ash_handle().reset_fences(
+                        native_fences.as_ref(),
+                    )
+                };
+
+                match reset_result {
+                    Ok(_) => Ok(()),
+                    Err(err) => Err(VulkanError::Vulkan(err.as_raw())),
+                }
+            }
+            None => Err(VulkanError::Unspecified),
+        }
+    }
+
     pub fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.fence)
     }
@@ -52,7 +95,7 @@ impl Fence {
         device_timeout_ns: u64,
     ) -> VulkanResult<()> {
         let mut device_native_handle: Option<Arc<Device>> = None;
-        let mut native_fences = Vec::<ash::vk::Fence>::new();
+        let mut native_fences = smallvec::SmallVec::<[ash::vk::Fence; 4]>::new();
         for fence in fences {
             match &device_native_handle {
                 Some(old_device) => {
@@ -163,7 +206,7 @@ impl Fence {
 
 pub struct FenceWaiter {
     fence: Option<Arc<Fence>>,
-    command_buffers: Vec<Arc<dyn CommandBufferTrait>>,
+    command_buffers: smallvec::SmallVec<[Arc<dyn CommandBufferTrait>; 8]>,
 }
 
 impl Drop for FenceWaiter {
@@ -177,11 +220,11 @@ impl Drop for FenceWaiter {
 impl FenceWaiter {
     pub(crate) fn new(
         fence: Arc<Fence>,
-        command_buffers: Vec<Arc<dyn CommandBufferTrait>>,
+        command_buffers: &[Arc<dyn CommandBufferTrait>],
     ) -> Self {
         Self {
             fence: Some(fence),
-            command_buffers,
+            command_buffers: command_buffers.into_iter().map(|cb| cb.clone()).collect::<smallvec::SmallVec<[Arc<dyn CommandBufferTrait>; 8]>>(),
         }
     }
 
@@ -203,7 +246,9 @@ impl FenceWaiter {
                 Err(err) => Err(err),
             }
         } else {
-            todo!()
+            // If this is empty then a successful wait operation has already been completed, therefore there is nothing to do.
+            // It is safe to return another Ok() as bound resources have been already freed
+            Ok(())
         }
     }
 }

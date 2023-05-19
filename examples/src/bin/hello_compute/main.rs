@@ -402,7 +402,7 @@ fn main() {
                                     };
 
                                     match queue.submit(
-                                        vec![command_buffer],
+                                        &[command_buffer],
                                         fence,
                                     ) {
                                         Ok(mut fence_waiter) => 

@@ -41,7 +41,7 @@ impl Queue {
 
     pub fn submit(
         &self,
-        command_buffers: Vec<Arc<dyn CommandBufferTrait>>,
+        command_buffers: &[Arc<dyn CommandBufferTrait>],
         fence: Arc<Fence>,
     ) -> VulkanResult<FenceWaiter> {
         // TODO: assert queue.device == command_buffers.device
