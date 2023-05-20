@@ -34,27 +34,19 @@ impl ImageAspects {
         (match self.color {
             true => ash::vk::ImageAspectFlags::COLOR,
             false => ash::vk::ImageAspectFlags::empty(),
-        }) |
-        (match self.depth {
+        }) | (match self.depth {
             true => ash::vk::ImageAspectFlags::DEPTH,
             false => ash::vk::ImageAspectFlags::empty(),
-        }) |
-        (match self.stencil {
+        }) | (match self.stencil {
             true => ash::vk::ImageAspectFlags::STENCIL,
             false => ash::vk::ImageAspectFlags::empty(),
-        }) |
-        (match self.metadata {
+        }) | (match self.metadata {
             true => ash::vk::ImageAspectFlags::METADATA,
             false => ash::vk::ImageAspectFlags::empty(),
         })
     }
-    
-    pub fn new(
-        color: bool,
-        depth: bool,
-        stencil: bool,
-        metadata: bool,
-    ) -> Self {
+
+    pub fn new(color: bool, depth: bool, stencil: bool, metadata: bool) -> Self {
         Self {
             color,
             depth,
@@ -79,10 +71,16 @@ impl ImageAspects {
             ImageFormat::d16_unorm => Self::from(&[ImageAspect::Depth]),
             ImageFormat::x8_d24_unorm_pack32 => Self::from(&[ImageAspect::Depth]),
             ImageFormat::d32_sfloat => Self::from(&[ImageAspect::Depth]),
-            ImageFormat::d32_sfloat_s8_uint => Self::from(&[ImageAspect::Stencil, ImageAspect::Depth]),
-            ImageFormat::d16_unorm_s8_uint => Self::from(&[ImageAspect::Stencil, ImageAspect::Depth]),
-            ImageFormat::d24_unorm_s8_uint => Self::from(&[ImageAspect::Stencil, ImageAspect::Depth]),
-            _ => Self::from(&[ImageAspect::Color])
+            ImageFormat::d32_sfloat_s8_uint => {
+                Self::from(&[ImageAspect::Stencil, ImageAspect::Depth])
+            }
+            ImageFormat::d16_unorm_s8_uint => {
+                Self::from(&[ImageAspect::Stencil, ImageAspect::Depth])
+            }
+            ImageFormat::d24_unorm_s8_uint => {
+                Self::from(&[ImageAspect::Stencil, ImageAspect::Depth])
+            }
+            _ => Self::from(&[ImageAspect::Color]),
         }
     }
 }
@@ -99,7 +97,7 @@ pub enum ImageLayout {
     TransferSrcOptimal = 6,
     TransferDstOptimal = 7,
     Preinitialized = 8,
-    Other(u32)
+    Other(u32),
 }
 
 impl ImageLayout {

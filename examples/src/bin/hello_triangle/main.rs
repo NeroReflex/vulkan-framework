@@ -2,14 +2,18 @@ use vulkan_framework::{
     device::*,
     image::{
         ConcreteImageDescriptor, Image, Image2DDimensions, ImageDimensions, ImageFlags,
-        ImageTiling, ImageUsage, ImageUsageSpecifier, ImageFormat,
+        ImageFormat, ImageTiling, ImageUsage, ImageUsageSpecifier,
     },
     instance::*,
     memory_allocator::*,
     memory_heap::*,
     memory_pool::MemoryPool,
     queue::*,
-    queue_family::*, swapchain::{SwapchainKHR, DeviceSurfaceInfo, PresentModeSwapchainKHR, SurfaceColorspaceSwapchainKHR, SurfaceTransformSwapchainKHR, CompositeAlphaSwapchainKHR},
+    queue_family::*,
+    swapchain::{
+        CompositeAlphaSwapchainKHR, DeviceSurfaceInfo, PresentModeSwapchainKHR,
+        SurfaceColorspaceSwapchainKHR, SurfaceTransformSwapchainKHR, SwapchainKHR,
+    },
 };
 
 fn main() {
@@ -30,7 +34,11 @@ fn main() {
     {
         // this parenthesis contains the window handle and closes before calling deinitialize(). This is important as Window::drop() MUST be called BEFORE calling deinitialize()!!!
         // create a sdl2 window
-        match video_subsystem.window("Window", WIDTH, HEIGHT).vulkan().build() {
+        match video_subsystem
+            .window("Window", WIDTH, HEIGHT)
+            .vulkan()
+            .build()
+        {
             Ok(window) => {
                 println!("SDL2 window created");
 
@@ -64,13 +72,17 @@ fn main() {
                     &engine_name,
                     &app_name,
                     &api_version,
-                ).unwrap();
+                )
+                .unwrap();
                 println!("Vulkan instance created");
 
-                let sfc= vulkan_framework::surface::Surface::from_raw(
+                let sfc = vulkan_framework::surface::Surface::from_raw(
                     instance.clone(),
-                    window.vulkan_create_surface(instance.native_handle() as sdl2::video::VkInstance).unwrap(),
-                ).unwrap();
+                    window
+                        .vulkan_create_surface(instance.native_handle() as sdl2::video::VkInstance)
+                        .unwrap(),
+                )
+                .unwrap();
                 println!("Vulkan rendering surface created and registered successfully");
 
                 let dev = Device::new(
@@ -88,17 +100,15 @@ fn main() {
                     device_extensions.as_slice(),
                     device_layers.as_slice(),
                     Some("Opened Device"),
-                ).unwrap();
+                )
+                .unwrap();
                 println!("Device opened successfully");
 
                 let queue_family = QueueFamily::new(dev.clone(), 0).unwrap();
 
                 println!("Base queue family obtained successfully from Device");
 
-                let queue = Queue::new(
-                    queue_family.clone(),
-                    Some("best queua evah"),
-                ).unwrap();
+                let queue = Queue::new(queue_family.clone(), Some("best queua evah")).unwrap();
                 println!("Queue created successfully");
 
                 let memory_heap = MemoryHeap::new(
@@ -107,7 +117,8 @@ fn main() {
                         MemoryType::DeviceLocal(None),
                         1024 * 1024 * 1024 * 2, // 2GB of memory!
                     ),
-                ).unwrap();
+                )
+                .unwrap();
                 println!("Memory heap created! <3");
 
                 let default_allocator = MemoryPool::new(
@@ -115,9 +126,11 @@ fn main() {
                     StackAllocator::new(
                         1024 * 1024 * 128, // 128MiB
                     ),
-                ).unwrap();
+                )
+                .unwrap();
 
-                let device_swapchain_info = DeviceSurfaceInfo::new(dev.clone(), sfc.clone()).unwrap();
+                let device_swapchain_info =
+                    DeviceSurfaceInfo::new(dev.clone(), sfc.clone()).unwrap();
 
                 let final_format = ImageFormat::b8g8r8a8_srgb;
                 let color_space = SurfaceColorspaceSwapchainKHR::SRGBNonlinear;
@@ -135,25 +148,15 @@ fn main() {
                     SurfaceTransformSwapchainKHR::Identity,
                     true,
                     final_format,
-                    ImageUsage::Managed(
-                        ImageUsageSpecifier::new(
-                            false, 
-                            true,
-                            false,
-                            false,
-                            true,
-                            false,
-                            false,
-                            false
-                        )
-                    ),
+                    ImageUsage::Managed(ImageUsageSpecifier::new(
+                        false, true, false, false, true, false, false, false,
+                    )),
                     Image2DDimensions::new(WIDTH, HEIGHT),
                     3,
-                    1
-                ).unwrap();
+                    1,
+                )
+                .unwrap();
                 println!("Swapchain created!");
-
-
             }
             Err(err) => {
                 println!("Error creating sdl2 window: {}", err);

@@ -1,15 +1,19 @@
-use std::{sync::{
-    Arc, Mutex,
-}, hash::Hash, collections::HashSet};
+use std::{
+    collections::HashSet,
+    hash::Hash,
+    sync::{Arc, Mutex},
+};
 
 use ash::vk::Handle;
 
 use crate::{
     command_pool::{CommandPool, CommandPoolOwned},
     device::DeviceOwned,
+    image::{Image, ImageAspect, ImageAspects, ImageLayout, ImageTrait},
     instance::InstanceOwned,
     pipeline_layout::PipelineLayout,
-    prelude::{VulkanError, VulkanResult}, image::{Image, ImageTrait, ImageLayout, ImageAspect, ImageAspects}, queue_family::QueueFamily,
+    prelude::{VulkanError, VulkanResult},
+    queue_family::QueueFamily,
 };
 use crate::{
     compute_pipeline::ComputePipeline, descriptor_set::DescriptorSet, device::Device,
@@ -27,9 +31,9 @@ impl Eq for CommandBufferReferencedResource {}
 impl CommandBufferReferencedResource {
     pub fn hash(&self) -> u128 {
         match self {
-            Self::ComputePipeline(l0) => (0b0000u128 << 124u128)  | (l0.native_handle() as u128),
-            Self::DescriptorSet(l0) => (0b0001u128 << 124u128)  | (l0.native_handle() as u128),
-            Self::PipelineLayout(l0) => (0b0010u128 << 124u128)  | (l0.native_handle() as u128),
+            Self::ComputePipeline(l0) => (0b0000u128 << 124u128) | (l0.native_handle() as u128),
+            Self::DescriptorSet(l0) => (0b0001u128 << 124u128) | (l0.native_handle() as u128),
+            Self::PipelineLayout(l0) => (0b0010u128 << 124u128) | (l0.native_handle() as u128),
         }
     }
 }
@@ -37,16 +41,22 @@ impl CommandBufferReferencedResource {
 impl PartialEq for CommandBufferReferencedResource {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::ComputePipeline(l0), Self::ComputePipeline(r0)) => l0.native_handle() == r0.native_handle(),
-            (Self::DescriptorSet(l0), Self::DescriptorSet(r0)) => l0.native_handle() == r0.native_handle(),
-            (Self::PipelineLayout(l0), Self::PipelineLayout(r0)) => l0.native_handle() == r0.native_handle(),
+            (Self::ComputePipeline(l0), Self::ComputePipeline(r0)) => {
+                l0.native_handle() == r0.native_handle()
+            }
+            (Self::DescriptorSet(l0), Self::DescriptorSet(r0)) => {
+                l0.native_handle() == r0.native_handle()
+            }
+            (Self::PipelineLayout(l0), Self::PipelineLayout(r0)) => {
+                l0.native_handle() == r0.native_handle()
+            }
             _ => false,
         }
     }
 }
 
 impl Hash for CommandBufferReferencedResource {
-    fn hash<H: /*~const*/ std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         state.write_u128(self.hash())
     }
 }
@@ -64,28 +74,27 @@ pub struct PipelineStagesAccelerationStructureKHR {
 impl PipelineStagesAccelerationStructureKHR {
     pub fn empty() -> Self {
         Self {
-            acceleration_structure_build: false
+            acceleration_structure_build: false,
         }
     }
 
     pub fn from(flags: &[PipelineStageAccelerationStructureKHR]) -> Self {
         Self {
-            acceleration_structure_build: flags.contains(&PipelineStageAccelerationStructureKHR::AccelerationStructureBuild)
+            acceleration_structure_build: flags
+                .contains(&PipelineStageAccelerationStructureKHR::AccelerationStructureBuild),
         }
     }
 
-    pub fn new(
-        acceleration_structure_build: bool,
-    ) -> Self {
+    pub fn new(acceleration_structure_build: bool) -> Self {
         Self {
-            acceleration_structure_build
+            acceleration_structure_build,
         }
     }
 
     pub(crate) fn ash_flags(&self) -> ash::vk::PipelineStageFlags {
         match self.acceleration_structure_build {
             true => ash::vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR,
-            false => ash::vk::PipelineStageFlags::empty()
+            false => ash::vk::PipelineStageFlags::empty(),
         }
     }
 }
@@ -103,28 +112,25 @@ pub struct PipelineStagesRayTracingPipelineKHR {
 impl PipelineStagesRayTracingPipelineKHR {
     pub fn empty() -> Self {
         Self {
-            ray_tracing_shader: false
+            ray_tracing_shader: false,
         }
     }
 
     pub fn from(flags: &[PipelineStageRayTracingPipelineKHR]) -> Self {
         Self {
-            ray_tracing_shader: flags.contains(&PipelineStageRayTracingPipelineKHR::RayTracingShader)
+            ray_tracing_shader: flags
+                .contains(&PipelineStageRayTracingPipelineKHR::RayTracingShader),
         }
     }
 
-    pub fn new(
-        ray_tracing_shader: bool,
-    ) -> Self {
-        Self {
-            ray_tracing_shader
-        }
+    pub fn new(ray_tracing_shader: bool) -> Self {
+        Self { ray_tracing_shader }
     }
 
     pub(crate) fn ash_flags(&self) -> ash::vk::PipelineStageFlags {
         match self.ray_tracing_shader {
             true => ash::vk::PipelineStageFlags::RAY_TRACING_SHADER_KHR,
-            false => ash::vk::PipelineStageFlags::empty()
+            false => ash::vk::PipelineStageFlags::empty(),
         }
     }
 }
@@ -136,34 +142,30 @@ pub enum PipelineStageSynchronization2KHR {
 }
 
 pub struct PipelineStagesSynchronization2KHR {
-    synchronization_2: bool
+    synchronization_2: bool,
 }
 
 impl PipelineStagesSynchronization2KHR {
     pub fn empty() -> Self {
         Self {
-            synchronization_2: false
+            synchronization_2: false,
         }
     }
 
     pub fn from(flags: &[PipelineStageSynchronization2KHR]) -> Self {
         Self {
-            synchronization_2: flags.contains(&PipelineStageSynchronization2KHR::None)
+            synchronization_2: flags.contains(&PipelineStageSynchronization2KHR::None),
         }
     }
 
-    pub fn new(
-        synchronization_2: bool,
-    ) -> Self {
-        Self {
-            synchronization_2
-        }
+    pub fn new(synchronization_2: bool) -> Self {
+        Self { synchronization_2 }
     }
 
     pub(crate) fn ash_flags(&self) -> ash::vk::PipelineStageFlags {
         match self.synchronization_2 {
             true => ash::vk::PipelineStageFlags::NONE,
-            false => ash::vk::PipelineStageFlags::empty()
+            false => ash::vk::PipelineStageFlags::empty(),
         }
     }
 }
@@ -188,7 +190,7 @@ pub enum PipelineStage {
     Host = 0x00004000,
     AllGraphics = 0x00008000,
     AllCommands = 0x00010000,
-    Other(u32)
+    Other(u32),
 }
 
 pub struct PipelineStages {
@@ -227,7 +229,8 @@ impl PipelineStages {
             vertex_input: stages.contains(&PipelineStage::VertexInput),
             vertex_shader: stages.contains(&PipelineStage::VertexShader),
             tessellation_control_shader: stages.contains(&PipelineStage::TessellationControlShader),
-            tessellation_evaluation_shader: stages.contains(&PipelineStage::TessellationEvaluationShader),
+            tessellation_evaluation_shader: stages
+                .contains(&PipelineStage::TessellationEvaluationShader),
             geometry_shader: stages.contains(&PipelineStage::GeometryShader),
             fragment_shader: stages.contains(&PipelineStage::GeometryShader),
             early_fragment_tests: stages.contains(&PipelineStage::EarlyFragmentTests),
@@ -304,7 +307,7 @@ impl PipelineStages {
             },
             ray_tracing: match ray_tracing {
                 Option::Some(rt) => rt,
-                Option::None => PipelineStagesRayTracingPipelineKHR::empty()
+                Option::None => PipelineStagesRayTracingPipelineKHR::empty(),
             },
         }
     }
@@ -313,78 +316,60 @@ impl PipelineStages {
         (match self.top_of_pipe {
             true => ash::vk::PipelineStageFlags::TOP_OF_PIPE,
             false => ash::vk::PipelineStageFlags::empty(),
-        }) |
-        (match self.draw_indirect {
+        }) | (match self.draw_indirect {
             true => ash::vk::PipelineStageFlags::DRAW_INDIRECT,
             false => ash::vk::PipelineStageFlags::empty(),
-        }) |
-        (match self.vertex_input {
+        }) | (match self.vertex_input {
             true => ash::vk::PipelineStageFlags::VERTEX_INPUT,
             false => ash::vk::PipelineStageFlags::empty(),
-        }) |
-        (match self.vertex_shader {
+        }) | (match self.vertex_shader {
             true => ash::vk::PipelineStageFlags::VERTEX_SHADER,
             false => ash::vk::PipelineStageFlags::empty(),
-        }) |
-        (match self.tessellation_control_shader {
+        }) | (match self.tessellation_control_shader {
             true => ash::vk::PipelineStageFlags::TESSELLATION_CONTROL_SHADER,
             false => ash::vk::PipelineStageFlags::empty(),
-        }) |
-        (match self.tessellation_evaluation_shader {
+        }) | (match self.tessellation_evaluation_shader {
             true => ash::vk::PipelineStageFlags::TESSELLATION_EVALUATION_SHADER,
             false => ash::vk::PipelineStageFlags::empty(),
-        }) |
-        (match self.geometry_shader {
+        }) | (match self.geometry_shader {
             true => ash::vk::PipelineStageFlags::GEOMETRY_SHADER,
             false => ash::vk::PipelineStageFlags::empty(),
-        }) |
-        (match self.fragment_shader {
+        }) | (match self.fragment_shader {
             true => ash::vk::PipelineStageFlags::FRAGMENT_SHADER,
             false => ash::vk::PipelineStageFlags::empty(),
-        }) |
-        (match self.early_fragment_tests {
+        }) | (match self.early_fragment_tests {
             true => ash::vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
             false => ash::vk::PipelineStageFlags::empty(),
-        }) |
-        (match self.late_fragment_tests {
+        }) | (match self.late_fragment_tests {
             true => ash::vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
             false => ash::vk::PipelineStageFlags::empty(),
-        }) |
-        (match self.color_attachment_output {
+        }) | (match self.color_attachment_output {
             true => ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
             false => ash::vk::PipelineStageFlags::empty(),
-        }) |
-        (match self.compute_shader {
+        }) | (match self.compute_shader {
             true => ash::vk::PipelineStageFlags::COMPUTE_SHADER,
             false => ash::vk::PipelineStageFlags::empty(),
-        }) |
-        (match self.transfer {
+        }) | (match self.transfer {
             true => ash::vk::PipelineStageFlags::TRANSFER,
             false => ash::vk::PipelineStageFlags::empty(),
-        }) |
-        (match self.bottom_of_pipe {
+        }) | (match self.bottom_of_pipe {
             true => ash::vk::PipelineStageFlags::BOTTOM_OF_PIPE,
             false => ash::vk::PipelineStageFlags::empty(),
-        }) |
-        (match self.host {
+        }) | (match self.host {
             true => ash::vk::PipelineStageFlags::HOST,
             false => ash::vk::PipelineStageFlags::empty(),
-        }) |
-        (match self.host {
+        }) | (match self.host {
             true => ash::vk::PipelineStageFlags::HOST,
             false => ash::vk::PipelineStageFlags::empty(),
-        }) |
-        (match self.all_graphics {
+        }) | (match self.all_graphics {
             true => ash::vk::PipelineStageFlags::ALL_GRAPHICS,
             false => ash::vk::PipelineStageFlags::empty(),
-        }) |
-        (match self.all_commands {
+        }) | (match self.all_commands {
             true => ash::vk::PipelineStageFlags::ALL_COMMANDS,
             false => ash::vk::PipelineStageFlags::empty(),
-        }) |
-        self.acceleration_structure.ash_flags() |
-        self.ray_tracing.ash_flags() |
-        self.synchronization_2.ash_flags()
+        }) | self.acceleration_structure.ash_flags()
+            | self.ray_tracing.ash_flags()
+            | self.synchronization_2.ash_flags()
     }
 }
 
@@ -432,7 +417,7 @@ impl ImageMemoryBarrier {
         self.dst_stages.ash_flags()
     }
 
-    pub (crate) fn ash_subresource_range(&self) -> ash::vk::ImageSubresourceRange {
+    pub(crate) fn ash_subresource_range(&self) -> ash::vk::ImageSubresourceRange {
         ash::vk::ImageSubresourceRange::builder()
             .aspect_mask(self.image_aspect.ash_flags())
             .base_array_layer(self.base_array_layer)
@@ -478,7 +463,7 @@ impl ImageMemoryBarrier {
 
         let image_aspect = match maybe_image_aspect {
             Option::Some(aspect) => aspect,
-            Option::None => ImageAspects::all_from_format(&image.format())
+            Option::None => ImageAspects::all_from_format(&image.format()),
         };
 
         Self {
@@ -542,7 +527,10 @@ impl<'a> CommandBufferRecorder<'a> {
             )
         }
 
-        self.used_resources.insert(CommandBufferReferencedResource::ComputePipeline(compute_pipeline));
+        self.used_resources
+            .insert(CommandBufferReferencedResource::ComputePipeline(
+                compute_pipeline,
+            ));
     }
 
     pub fn bind_descriptor_sets(
@@ -554,7 +542,8 @@ impl<'a> CommandBufferRecorder<'a> {
         let mut sets = Vec::<ash::vk::DescriptorSet>::new();
 
         for ds in descriptor_sets.iter() {
-            self.used_resources.insert(CommandBufferReferencedResource::DescriptorSet(ds.clone()));
+            self.used_resources
+                .insert(CommandBufferReferencedResource::DescriptorSet(ds.clone()));
 
             sets.push(ds.ash_handle());
         }
@@ -570,7 +559,10 @@ impl<'a> CommandBufferRecorder<'a> {
             )
         }
 
-        self.used_resources.insert(CommandBufferReferencedResource::PipelineLayout(pipeline_layout));
+        self.used_resources
+            .insert(CommandBufferReferencedResource::PipelineLayout(
+                pipeline_layout,
+            ));
     }
 
     pub fn push_constant_for_compute_shader(
@@ -589,7 +581,10 @@ impl<'a> CommandBufferRecorder<'a> {
             )
         }
 
-        self.used_resources.insert(CommandBufferReferencedResource::PipelineLayout(pipeline_layout));
+        self.used_resources
+            .insert(CommandBufferReferencedResource::PipelineLayout(
+                pipeline_layout,
+            ));
     }
 
     pub fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
@@ -706,11 +701,14 @@ impl PrimaryCommandBuffer {
                         Err(VulkanError::Unspecified)
                     }
                 }
-            },
+            }
             Err(err) => {
                 #[cfg(debug_assertions)]
                 {
-                    panic!("Error opening the command buffer for writing: Error acquiring mutex: {}", err);
+                    panic!(
+                        "Error opening the command buffer for writing: Error acquiring mutex: {}",
+                        err
+                    );
                 }
 
                 Err(VulkanError::Unspecified)

@@ -40,7 +40,11 @@ impl Fence {
     }
 
     pub fn reset(&self) -> VulkanResult<()> {
-        match unsafe { self.get_parent_device().ash_handle().reset_fences(&[self.fence]) } {
+        match unsafe {
+            self.get_parent_device()
+                .ash_handle()
+                .reset_fences(&[self.fence])
+        } {
             Ok(()) => Ok(()),
             Err(err) => Err(VulkanError::Vulkan(err.as_raw())),
         }
@@ -67,11 +71,8 @@ impl Fence {
 
         match device_native_handle {
             Some(device) => {
-                let reset_result = unsafe {
-                    device.ash_handle().reset_fences(
-                        native_fences.as_ref(),
-                    )
-                };
+                let reset_result =
+                    unsafe { device.ash_handle().reset_fences(native_fences.as_ref()) };
 
                 match reset_result {
                     Ok(_) => Ok(()),
@@ -218,13 +219,13 @@ impl Drop for FenceWaiter {
 }
 
 impl FenceWaiter {
-    pub(crate) fn new(
-        fence: Arc<Fence>,
-        command_buffers: &[Arc<dyn CommandBufferTrait>],
-    ) -> Self {
+    pub(crate) fn new(fence: Arc<Fence>, command_buffers: &[Arc<dyn CommandBufferTrait>]) -> Self {
         Self {
             fence: Some(fence),
-            command_buffers: command_buffers.into_iter().map(|cb| cb.clone()).collect::<smallvec::SmallVec<[Arc<dyn CommandBufferTrait>; 8]>>(),
+            command_buffers: command_buffers
+                .into_iter()
+                .map(|cb| cb.clone())
+                .collect::<smallvec::SmallVec<[Arc<dyn CommandBufferTrait>; 8]>>(),
         }
     }
 

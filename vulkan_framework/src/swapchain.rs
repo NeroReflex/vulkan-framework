@@ -2,11 +2,23 @@ use std::sync::Arc;
 
 use ash::vk::Handle;
 
-use crate::{device::{Device, DeviceOwned}, prelude::{VulkanResult, VulkanError}, instance::InstanceOwned, image::{Image2DDimensions, Image1DTrait, Image2DTrait, ImageUsageSpecifier, ImageUsage, ImageFormat}, queue_family::QueueFamily, surface::Surface, semaphore::Semaphore, fence::Fence};
+use crate::{
+    device::{Device, DeviceOwned},
+    fence::Fence,
+    image::{
+        Image1DTrait, Image2DDimensions, Image2DTrait, ImageFormat, ImageUsage, ImageUsageSpecifier,
+    },
+    instance::InstanceOwned,
+    prelude::{VulkanError, VulkanResult},
+    queue::Queue,
+    queue_family::{QueueFamily, QueueFamilyOwned},
+    semaphore::Semaphore,
+    surface::Surface,
+};
 
 /**
  * Swapchain present modes as defined in vulkan.
- * 
+ *
  * Immediate = VK_PRESENT_MODE_IMMEDIATE_KHR. This one is the one that results in visible tearing
  * Mailbox = VK_PRESENT_MODE_MAILBOX_KHR
  * FIFO = VK_PRESENT_MODE_FIFO_KHR this cannot generate tearing and is always supported
@@ -39,7 +51,7 @@ pub enum SurfaceColorspaceSwapchainKHR {
 impl SurfaceColorspaceSwapchainKHR {
     pub(crate) fn ash_colorspace(&self) -> ash::vk::ColorSpaceKHR {
         match self {
-            SurfaceColorspaceSwapchainKHR::SRGBNonlinear => ash::vk::ColorSpaceKHR::SRGB_NONLINEAR
+            SurfaceColorspaceSwapchainKHR::SRGBNonlinear => ash::vk::ColorSpaceKHR::SRGB_NONLINEAR,
         }
     }
 }
@@ -86,9 +98,15 @@ impl SurfaceTransformSwapchainKHR {
             Self::Rotate180 => ash::vk::SurfaceTransformFlagsKHR::ROTATE_180,
             Self::Rotate270 => ash::vk::SurfaceTransformFlagsKHR::ROTATE_270,
             Self::HorizontalMirror => ash::vk::SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR,
-            Self::HorizontalMirrorRotate90 => ash::vk::SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_90,
-            Self::HorizontalMirrorRotate180 => ash::vk::SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_180,
-            Self::HorizontalMirrorRotate270 => ash::vk::SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_270,
+            Self::HorizontalMirrorRotate90 => {
+                ash::vk::SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_90
+            }
+            Self::HorizontalMirrorRotate180 => {
+                ash::vk::SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_180
+            }
+            Self::HorizontalMirrorRotate270 => {
+                ash::vk::SurfaceTransformFlagsKHR::HORIZONTAL_MIRROR_ROTATE_270
+            }
             Self::Inherit => ash::vk::SurfaceTransformFlagsKHR::INHERIT,
         }
     }
@@ -98,8 +116,8 @@ pub struct DeviceSurfaceInfo {
     device: Arc<Device>,
     surface: Arc<Surface>,
     surface_capabilities: ash::vk::SurfaceCapabilitiesKHR,
-    surface_present_modes: smallvec::SmallVec::<[ash::vk::PresentModeKHR; 4]>,
-    surface_formats: smallvec::SmallVec::<[ash::vk::SurfaceFormatKHR; 8]>,
+    surface_present_modes: smallvec::SmallVec<[ash::vk::PresentModeKHR; 4]>,
+    surface_formats: smallvec::SmallVec<[ash::vk::SurfaceFormatKHR; 8]>,
 }
 
 impl DeviceOwned for DeviceSurfaceInfo {
@@ -113,7 +131,11 @@ impl DeviceSurfaceInfo {
         self.surface_present_modes.contains(&mode.ash_value())
     }
 
-    pub fn format_supported(&self, color_space: &SurfaceColorspaceSwapchainKHR, format: &ImageFormat) -> bool {
+    pub fn format_supported(
+        &self,
+        color_space: &SurfaceColorspaceSwapchainKHR,
+        format: &ImageFormat,
+    ) -> bool {
         let fmt = ash::vk::SurfaceFormatKHR::builder()
             .format(format.ash_format())
             .color_space(color_space.ash_colorspace())
@@ -122,44 +144,53 @@ impl DeviceSurfaceInfo {
         self.surface_formats.contains(&fmt)
     }
 
-    pub fn new(
-        device: Arc<Device>,
-        surface: Arc<Surface>,
-    ) -> VulkanResult<Self> {
+    pub fn new(device: Arc<Device>, surface: Arc<Surface>) -> VulkanResult<Self> {
         match device.get_parent_instance().get_surface_khr_extension() {
             Some(sfc_ext) => {
-                let surface_capabilities_result = unsafe { sfc_ext.get_physical_device_surface_capabilities(device.ash_physical_device_handle().to_owned(), surface.ash_handle().to_owned()) };
+                let surface_capabilities_result = unsafe {
+                    sfc_ext.get_physical_device_surface_capabilities(
+                        device.ash_physical_device_handle().to_owned(),
+                        surface.ash_handle().to_owned(),
+                    )
+                };
                 let surface_present_modes_result = unsafe {
                     sfc_ext.get_physical_device_surface_present_modes(
                         device.ash_physical_device_handle().to_owned(),
-                        surface.ash_handle().to_owned()
+                        surface.ash_handle().to_owned(),
                     )
                 };
                 let surface_formats_result = unsafe {
                     sfc_ext.get_physical_device_surface_formats(
                         device.ash_physical_device_handle().to_owned(),
-                        surface.ash_handle().to_owned()
+                        surface.ash_handle().to_owned(),
                     )
                 };
 
-                match (surface_capabilities_result, surface_present_modes_result, surface_formats_result) {
+                match (
+                    surface_capabilities_result,
+                    surface_present_modes_result,
+                    surface_formats_result,
+                ) {
                     (Ok(surface_capabilities), Ok(surface_present_modes), Ok(surface_formats)) => {
-                        Ok(
-                            Self {
-                                device,
-                                surface,
-                                surface_capabilities,
-                                surface_present_modes: surface_present_modes.into_iter().map(|val| val).collect::<smallvec::SmallVec::<[ash::vk::PresentModeKHR; 4]>>(),
-                                surface_formats: surface_formats.into_iter().map(|val| val).collect::<smallvec::SmallVec::<[ash::vk::SurfaceFormatKHR; 8]>>(),
-                            }
-                        )
-                    },
-                    _ => Err(VulkanError::Unspecified)
+                        Ok(Self {
+                            device,
+                            surface,
+                            surface_capabilities,
+                            surface_present_modes: surface_present_modes
+                                .into_iter()
+                                .map(|val| val)
+                                .collect::<smallvec::SmallVec<[ash::vk::PresentModeKHR; 4]>>(),
+                            surface_formats: surface_formats
+                                .into_iter()
+                                .map(|val| val)
+                                .collect::<smallvec::SmallVec<[ash::vk::SurfaceFormatKHR; 8]>>(
+                            ),
+                        })
+                    }
+                    _ => Err(VulkanError::Unspecified),
                 }
-            },
-            Nome => {
-                Err(VulkanError::Unspecified)
             }
+            Nome => Err(VulkanError::Unspecified),
         }
     }
 }
@@ -190,23 +221,23 @@ impl DeviceOwned for SwapchainKHR {
 impl Drop for SwapchainKHR {
     fn drop(&mut self) {
         match self.device.ash_ext_swapchain_khr() {
-            Some(ext) => {
-                unsafe {
-                    ext.destroy_swapchain(self.swapchain, self.device.get_parent_instance().get_alloc_callbacks())
-                }
+            Some(ext) => unsafe {
+                ext.destroy_swapchain(
+                    self.swapchain,
+                    self.device.get_parent_instance().get_alloc_callbacks(),
+                )
             },
             None => {
                 panic!("Swapchain extension is not available anymore. This should not happend. If you read this main developer of this crate made something bad.");
             }
         }
-        
     }
 }
 
 impl SwapchainKHR {
     pub(crate) fn ash_handle(&self) -> ash::vk::SwapchainKHR {
         self.swapchain
-    } 
+    }
 
     pub fn images_format(&self) -> crate::image::ImageFormat {
         self.image_format
@@ -220,7 +251,50 @@ impl SwapchainKHR {
         self.image_layers
     }
 
-    pub fn acquire_next_image_index(&self, timeout: u64, maybe_semaphore: &Option<Arc<Semaphore>>, maybe_fence: &Option<Arc<Fence>>) -> u64 {
+    pub fn queue_present(
+        &self,
+        queue: Arc<Queue>,
+        index: u32,
+        semaphores: &[Arc<Semaphore>],
+    ) -> VulkanResult<()> {
+        if self.get_parent_device() != queue.get_parent_queue_family().get_parent_device() {
+            return Err(VulkanError::Unspecified);
+        }
+
+        let native_semaphores = semaphores
+            .iter()
+            .map(|sem| {
+                // TODO: check self.device == sem.device
+
+                sem.ash_handle()
+            })
+            .collect::<smallvec::SmallVec<[ash::vk::Semaphore; 8]>>();
+
+        let present_info = ash::vk::PresentInfoKHR::builder()
+            .swapchains(&[self.ash_handle()])
+            .image_indices(&[index])
+            .wait_semaphores(native_semaphores.as_slice())
+            .build();
+
+        match self.get_parent_device().ash_ext_swapchain_khr() {
+            Option::Some(ext) => {
+                match unsafe { ext.queue_present(queue.ash_handle(), &present_info) } {
+                    Ok(suboptimal) => Ok(()),
+                    Err(err) => Err(VulkanError::Vulkan(err.as_raw())),
+                }
+            }
+            Option::None => Err(VulkanError::MissingExtension(String::from(
+                "VK_KHR_swapchain",
+            ))),
+        }
+    }
+
+    pub fn acquire_next_image_index(
+        &self,
+        timeout: u64,
+        maybe_semaphore: &Option<Arc<Semaphore>>,
+        maybe_fence: &Option<Arc<Fence>>,
+    ) -> VulkanResult<u32> {
         match self.get_parent_device().ash_ext_swapchain_khr() {
             Option::Some(ext) => {
                 match unsafe {
@@ -229,30 +303,31 @@ impl SwapchainKHR {
                         timeout,
                         match maybe_semaphore {
                             Option::Some(semaphore) => semaphore.ash_handle(),
-                            Option::None => ash::vk::Semaphore::null()
+                            Option::None => ash::vk::Semaphore::null(),
                         },
                         match maybe_fence {
                             Option::Some(fence) => fence.ash_handle(),
-                            Option::None => ash::vk::Fence::null()
-                        }
+                            Option::None => ash::vk::Fence::null(),
+                        },
                     )
                 } {
-                    Ok((a, b)) => {
+                    Ok((a, b)) => Ok(a),
+                    Err(err) => {
+                        #[cfg(debug_assertions)]
+                        {
+                            panic!("Error creating the swapchain: {}", err)
+                        }
 
-                    },
-                    Err(a) => {
-
+                        Err(VulkanError::Vulkan(err.as_raw()))
                     }
                 }
-            },
-            Option::None => {
-
             }
+            Option::None => Err(VulkanError::MissingExtension(String::from(
+                "VK_KHR_swapchain",
+            ))),
         }
-
-        todo!()
     }
-    
+
     pub fn new(
         device_info: &DeviceSurfaceInfo,
         queue_families: &[Arc<QueueFamily>],
@@ -268,28 +343,31 @@ impl SwapchainKHR {
         min_image_count: u32,
         image_layers: u32,
     ) -> VulkanResult<Arc<Self>> {
-        let queue_family_indexes: Vec<u32> = queue_families.iter().map(|family| family.get_family_index()).collect();
+        let queue_family_indexes: Vec<u32> = queue_families
+            .iter()
+            .map(|family| family.get_family_index())
+            .collect();
 
         let device = device_info.device.clone();
         let surface = device_info.surface.clone();
 
         match device.ash_ext_swapchain_khr() {
             Some(ext) => {
-
-                assert!(device_info.format_supported(&color_space, &image_format) && device_info.present_mode_supported(&present_mode));
+                assert!(
+                    device_info.format_supported(&color_space, &image_format)
+                        && device_info.present_mode_supported(&present_mode)
+                );
 
                 let create_info = ash::vk::SwapchainCreateInfoKHR::builder()
-                    .old_swapchain(
-                        match &old_swapchain {
-                            Some(old) => old.swapchain,
-                            None => ash::vk::SwapchainKHR::from_raw(0)
-                        }
-                    )
+                    .old_swapchain(match &old_swapchain {
+                        Some(old) => old.swapchain,
+                        None => ash::vk::SwapchainKHR::from_raw(0),
+                    })
                     .image_extent(
                         ash::vk::Extent2D::builder()
                             .height(extent.height())
                             .width(extent.width())
-                            .build()
+                            .build(),
                     )
                     .surface(*surface.ash_handle())
                     .queue_family_indices(queue_family_indexes.as_slice())
@@ -307,14 +385,19 @@ impl SwapchainKHR {
                     .composite_alpha(composite_alpha.ash_alpha())
                     .min_image_count(min_image_count)
                     .build();
-                
+
                 //let surface_capabilities =
 
-                match unsafe { ext.create_swapchain(&create_info, device.get_parent_instance().get_alloc_callbacks()) } {
+                match unsafe {
+                    ext.create_swapchain(
+                        &create_info,
+                        device.get_parent_instance().get_alloc_callbacks(),
+                    )
+                } {
                     Ok(swapchain) => {
                         // the old swapchain (or at least my handle of it) must be removed AFTER the creation of the new one, not BEFORE!
                         std::mem::drop(old_swapchain);
-                        
+
                         Ok(Arc::new(Self {
                             device,
                             surface,
@@ -327,7 +410,7 @@ impl SwapchainKHR {
                             extent,
                             image_layers,
                         }))
-                    },
+                    }
                     Err(err) => {
                         #[cfg(debug_assertions)]
                         {
@@ -337,9 +420,11 @@ impl SwapchainKHR {
                         Err(VulkanError::Unspecified)
                     }
                 }
-            },
+            }
             None => {
-                return Err(VulkanError::MissingExtension(String::from("VK_KHR_swapchain")))
+                return Err(VulkanError::MissingExtension(String::from(
+                    "VK_KHR_swapchain",
+                )))
             }
         }
     }

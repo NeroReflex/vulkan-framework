@@ -8,7 +8,7 @@ use crate::{
     prelude::{VulkanError, VulkanResult},
 };
 
-use std::{sync::Arc, mem::size_of};
+use std::{mem::size_of, sync::Arc};
 
 pub struct MemoryPool<Allocator>
 where
@@ -68,19 +68,28 @@ where
     }
 
     pub fn clone_raw_data<T>(&self, offset: u64, size: u64) -> VulkanResult<Vec<T>>
-    where T: Copy {
+    where
+        T: Copy,
+    {
         let device = self.get_parent_memory_heap().get_parent_device();
-        
-        match unsafe { device.ash_handle().map_memory(self.memory, offset, size, vk::MemoryMapFlags::empty()) } {
+
+        match unsafe {
+            device
+                .ash_handle()
+                .map_memory(self.memory, offset, size, vk::MemoryMapFlags::empty())
+        } {
             Ok(ptr) => {
-                let slice = std::ptr::slice_from_raw_parts(ptr as *const T, (size as usize) / size_of::<T>());
+                let slice = std::ptr::slice_from_raw_parts(
+                    ptr as *const T,
+                    (size as usize) / size_of::<T>(),
+                );
 
                 let data = unsafe { (*slice).iter().map(|f| *f).collect::<Vec<T>>() };
 
                 unsafe { device.ash_handle().unmap_memory(self.memory) }
 
                 Ok(data)
-            },
+            }
             Err(err) => {
                 #[cfg(debug_assertions)]
                 {

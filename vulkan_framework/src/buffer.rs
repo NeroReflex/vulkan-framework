@@ -5,7 +5,7 @@ use crate::{
     memory_heap::MemoryHeapOwned,
     memory_pool::{MemoryPool, MemoryPoolBacked},
     prelude::{VulkanError, VulkanResult},
-    queue_family::QueueFamily
+    queue_family::QueueFamily,
 };
 
 use std::sync::Arc;
@@ -132,7 +132,7 @@ impl ConcreteBufferDescriptor {
     }
 }
 
-pub trait BufferTrait : Send + Sync + DeviceOwned {
+pub trait BufferTrait: Send + Sync + DeviceOwned {
     fn size(&self) -> u64;
 
     fn native_handle(&self) -> u64;

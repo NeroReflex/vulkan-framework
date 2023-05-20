@@ -105,7 +105,7 @@ impl DescriptorSetLayout {
                 panic!("Error creating the descriptor set layout: no binding descriptors specified")
             }
 
-            return Err(VulkanError::Unspecified)
+            return Err(VulkanError::Unspecified);
         }
 
         // a collection of VkDescriptorSetLayoutBinding

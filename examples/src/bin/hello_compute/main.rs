@@ -68,10 +68,7 @@ void main() {
 );
 
 unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
-    ::std::slice::from_raw_parts(
-        (p as *const T) as *const u8,
-        ::std::mem::size_of::<T>(),
-    )
+    ::std::slice::from_raw_parts((p as *const T) as *const u8, ::std::mem::size_of::<T>())
 }
 
 fn main() {
@@ -142,40 +139,40 @@ fn main() {
                                     };
 
                                     let image = match Image::new(
-                                                    stack_allocator.clone(),
-                                                    ConcreteImageDescriptor::new(
-                                                        ImageDimensions::Image2D {extent: Image2DDimensions::new(1024, 1024)},
-                                                        ImageUsage::Managed(
-                                                            ImageUsageSpecifier::new(
-                                                                true,
-                                                                false,
-                                                                false,
-                                                                true,
-                                                                false,
-                                                                false,
-                                                                false,
-                                                                false
-                                                            )
-                                                        ),
-                                                        None,
-                                                        1,
-                                                        1,
-                                                        vulkan_framework::image::ImageFormat::r32g32b32a32_sfloat,
-                                                        ImageFlags::empty(),
-                                                        ImageTiling::Linear
-                                                    ),
-                                                    None,
-                                                    Some("Test Image")
-                                                ) {
-                                                    Ok(img) => {
-                                                        println!("Image created");
-                                                        img
-                                                    },
-                                                    Err(_err) => {
-                                                        println!("Error creating image...");
-                                                        return
-                                                    }
-                                                };
+                                        stack_allocator.clone(),
+                                        ConcreteImageDescriptor::new(
+                                            ImageDimensions::Image2D {extent: Image2DDimensions::new(1024, 1024)},
+                                            ImageUsage::Managed(
+                                                ImageUsageSpecifier::new(
+                                                    true,
+                                                    false,
+                                                    false,
+                                                    true,
+                                                    false,
+                                                    false,
+                                                    false,
+                                                    false
+                                                )
+                                            ),
+                                            None,
+                                            1,
+                                            1,
+                                            vulkan_framework::image::ImageFormat::r32g32b32a32_sfloat,
+                                            ImageFlags::empty(),
+                                            ImageTiling::Linear
+                                        ),
+                                        None,
+                                        Some("Test Image")
+                                    ) {
+                                        Ok(img) => {
+                                            println!("Image created");
+                                            img
+                                        },
+                                        Err(_err) => {
+                                            println!("Error creating image...");
+                                            return
+                                        }
+                                    };
 
                                     let image_view = match ImageView::new(
                                         image.clone(),
@@ -332,52 +329,63 @@ fn main() {
                                         }
                                     };
 
-                                    if let Err(_error) =
-                                        descriptor_set.bind_resources(|binder| {
-                                            binder.bind_storage_images(0, &[(ImageLayout::General, image_view.clone())])
-                                        }) {
-                                            panic!("error in binding resources");
-                                        }
+                                    if let Err(_error) = descriptor_set.bind_resources(|binder| {
+                                        binder.bind_storage_images(
+                                            0,
+                                            &[(ImageLayout::General, image_view.clone())],
+                                        )
+                                    }) {
+                                        panic!("error in binding resources");
+                                    }
 
-                                    match command_buffer
-                                        .record_commands(|recorder| {
-                                            recorder.image_barrier(
-                                                ImageMemoryBarrier::new(
-                                                    PipelineStages::from(&[PipelineStage::TopOfPipe], None, None, None),
-                                                    PipelineStages::from(&[PipelineStage::ComputeShader], None, None, None),
-                                                    image.clone(),
-                                                    None,
-                                                    None,
-                                                    None,
-                                                    None,
-                                                    None,
-                                                    ImageLayout::Undefined,
-                                                    ImageLayout::General,
-                                                    queue_family.clone(),
-                                                    queue_family.clone()
-                                                )
-                                            );
+                                    match command_buffer.record_commands(|recorder| {
+                                        recorder.image_barrier(ImageMemoryBarrier::new(
+                                            PipelineStages::from(
+                                                &[PipelineStage::TopOfPipe],
+                                                None,
+                                                None,
+                                                None,
+                                            ),
+                                            PipelineStages::from(
+                                                &[PipelineStage::ComputeShader],
+                                                None,
+                                                None,
+                                                None,
+                                            ),
+                                            image.clone(),
+                                            None,
+                                            None,
+                                            None,
+                                            None,
+                                            None,
+                                            ImageLayout::Undefined,
+                                            ImageLayout::General,
+                                            queue_family.clone(),
+                                            queue_family.clone(),
+                                        ));
 
-                                            let descriptor_sets = vec![descriptor_set.clone()];
-                                            recorder
-                                                .bind_compute_pipeline(compute_pipeline.clone());
+                                        let descriptor_sets = vec![descriptor_set.clone()];
+                                        recorder.bind_compute_pipeline(compute_pipeline.clone());
 
-                                            recorder.bind_descriptor_sets(
-                                                compute_pipeline_layout.clone(),
-                                                0,
-                                                descriptor_sets.as_slice(),
-                                            );
+                                        recorder.bind_descriptor_sets(
+                                            compute_pipeline_layout.clone(),
+                                            0,
+                                            descriptor_sets.as_slice(),
+                                        );
 
-                                            let data = [unsafe { any_as_u8_slice( &1024u32 ) }, unsafe { any_as_u8_slice( &1024u32 ) }].concat();
+                                        let data = [unsafe { any_as_u8_slice(&1024u32) }, unsafe {
+                                            any_as_u8_slice(&1024u32)
+                                        }]
+                                        .concat();
 
-                                            recorder.push_constant_for_compute_shader(
-                                                compute_pipeline_layout.clone(),
-                                                0,
-                                                data.as_slice(),
-                                            );
+                                        recorder.push_constant_for_compute_shader(
+                                            compute_pipeline_layout.clone(),
+                                            0,
+                                            data.as_slice(),
+                                        );
 
-                                            recorder.dispatch(32, 32, 1)
-                                        }) {
+                                        recorder.dispatch(32, 32, 1)
+                                    }) {
                                         Ok(res) => {
                                             println!("Commands written in the command buffer, there are resources used in that.");
                                             res
@@ -401,13 +409,11 @@ fn main() {
                                         }
                                     };
 
-                                    match queue.submit(
-                                        &[command_buffer],
-                                        fence,
-                                    ) {
-                                        Ok(mut fence_waiter) => 
-                                        {
-                                            println!("Command buffer submitted! GPU will work on that!");
+                                    match queue.submit(&[command_buffer], fence) {
+                                        Ok(mut fence_waiter) => {
+                                            println!(
+                                                "Command buffer submitted! GPU will work on that!"
+                                            );
 
                                             'wait_for_fence: loop {
                                                 match fence_waiter.wait(100u64) {
@@ -424,41 +430,58 @@ fn main() {
                                                 }
                                             }
 
-                                            match stack_allocator.clone_raw_data::<[f32; 4]>(image.allocation_offset(), image.allocation_size()) {
+                                            match stack_allocator.clone_raw_data::<[f32; 4]>(
+                                                image.allocation_offset(),
+                                                image.allocation_size(),
+                                            ) {
                                                 Ok(image_raw_data) => {
                                                     println!("Image in GPU memory is {} bytes long, {} pixels in rgba32f were retrieved!", image.allocation_size(), image_raw_data.len());
-                                                
+
                                                     let path = std::path::Path::new("image.pfm");
                                                     let display = path.display();
 
-                                                    let mut file = match std::fs::File::create(&path) {
-                                                        Ok(f) => f,
-                                                        Err(why) => panic!("couldn't open {}: {}", display, why),
-                                                    };
+                                                    let mut file =
+                                                        match std::fs::File::create(&path) {
+                                                            Ok(f) => f,
+                                                            Err(why) => panic!(
+                                                                "couldn't open {}: {}",
+                                                                display, why
+                                                            ),
+                                                        };
 
-                                                    let rgb_data = image_raw_data.iter().map(|f| [f[0], f[1], f[2]] ).collect::<Vec<[f32;3]>>();
+                                                    let rgb_data = image_raw_data
+                                                        .iter()
+                                                        .map(|f| [f[0], f[1], f[2]])
+                                                        .collect::<Vec<[f32; 3]>>();
 
-                                                    if let Err(err) = write!(file, "PF\n1024 1024\n-1.0\n") {
+                                                    if let Err(err) =
+                                                        write!(file, "PF\n1024 1024\n-1.0\n")
+                                                    {
                                                         panic!("Unexpected error while writing the resulting image header: {}", err);
                                                     }
 
                                                     for rgb in rgb_data.iter() {
-                                                        let slice = unsafe {std::slice::from_raw_parts(
-                                                            rgb.as_ptr() as *const u8,
-                                                            rgb.len() * std::mem::size_of::<[f32;3]>(),
-                                                        )
+                                                        let slice = unsafe {
+                                                            std::slice::from_raw_parts(
+                                                                rgb.as_ptr() as *const u8,
+                                                                rgb.len()
+                                                                    * std::mem::size_of::<[f32; 3]>(
+                                                                    ),
+                                                            )
                                                         };
 
                                                         if let Err(err) = file.write(slice) {
                                                             panic!("Unexpected error while writing the resulting image data: {}", err);
                                                         }
                                                     }
-                                                },
+                                                }
                                                 Err(_err) => {
-                                                    println!("Error copying data from the GPU memory :(");
+                                                    println!(
+                                                        "Error copying data from the GPU memory :("
+                                                    );
                                                 }
                                             }
-                                        },
+                                        }
                                         Err(_) => {
                                             println!("Error submitting the command buffer to the queue. No work will be done :(");
                                         }

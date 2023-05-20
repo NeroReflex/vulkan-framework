@@ -15,12 +15,8 @@ impl MemoryHostVisibility {
         self.cached
     }
 
-    pub fn new(
-        cached: bool,
-    ) -> Self {
-        Self {
-            cached,
-        }
+    pub fn new(cached: bool) -> Self {
+        Self { cached }
     }
 }
 
