@@ -508,21 +508,13 @@ fn main() {
                                                 }
                                             };
 
-                                            let fence =
-                                                match Fence::new(device, false, Some("MyFence")) {
-                                                    Ok(res) => {
-                                                        println!("Fence created");
-                                                        res
-                                                    }
-                                                    Err(_err) => {
-                                                        println!(
-                                                "Error creating the Primary Command Buffer..."
-                                            );
-                                                        return;
-                                                    }
-                                                };
+                                            let fence = Fence::new(device.clone(), false, Some("MyFence")).unwrap();
+                                            println!("Fence created");
 
-                                            match queue.submit(&[command_buffer], fence) {
+                                            let semaphore = vulkan_framework::semaphore::Semaphore::new(device.clone(), false, Some("MyFence")).unwrap();
+                                            println!("Fence created");
+
+                                            match queue.submit(&[command_buffer], &[semaphore.clone()], fence) {
                                                 Ok(mut fence_waiter) => {
                                                     println!("Command buffer submitted! GPU will work on that!");
 
@@ -541,61 +533,16 @@ fn main() {
                                                         }
                                                     }
 
-                                                    match stack_allocator
-                                                        .clone_raw_data::<[f32; 4]>(
-                                                            image.allocation_offset(),
-                                                            image.allocation_size(),
-                                                        ) {
-                                                        Ok(image_raw_data) => {
-                                                            println!("Image in GPU memory is {} bytes long, {} pixels in rgba32f were retrieved!", image.allocation_size(), image_raw_data.len());
-
-                                                            let path =
-                                                                std::path::Path::new("image.pfm");
-                                                            let display = path.display();
-
-                                                            let mut file =
-                                                                match std::fs::File::create(&path) {
-                                                                    Ok(f) => f,
-                                                                    Err(why) => panic!(
-                                                                        "couldn't open {}: {}",
-                                                                        display, why
-                                                                    ),
-                                                                };
-
-                                                            let rgb_data = image_raw_data
-                                                                .iter()
-                                                                .map(|f| [f[0], f[1], f[2]])
-                                                                .collect::<Vec<[f32; 3]>>();
-
-                                                            if let Err(err) = write!(
-                                                                file,
-                                                                "PF\n1024 1024\n-1.0\n"
-                                                            ) {
-                                                                panic!("Unexpected error while writing the resulting image header: {}", err);
-                                                            }
-
-                                                            for rgb in rgb_data.iter() {
-                                                                let slice = unsafe {
-                                                                    std::slice::from_raw_parts(
-                                                                        rgb.as_ptr() as *const u8,
-                                                                        rgb.len()
-                                                                            * std::mem::size_of::<
-                                                                                [f32; 3],
-                                                                            >(
-                                                                            ),
-                                                                    )
-                                                                };
-
-                                                                if let Err(err) = file.write(slice)
-                                                                {
-                                                                    panic!("Unexpected error while writing the resulting image data: {}", err);
-                                                                }
-                                                            }
-                                                        }
-                                                        Err(_err) => {
-                                                            println!("Error copying data from the GPU memory :(");
-                                                        }
+                                                    let mut exit = false;
+                                                    while !exit {
+                                                        let swapchain_index = swapchain.acquire_next_image_index(
+                                                            None,
+                                                            Some(semaphore.clone()),
+                                                            None
+                                                        ).unwrap();
+                                                        println!("Swapchain image acquired!");
                                                     }
+                                                    
                                                 }
                                                 Err(_) => {
                                                     println!("Error submitting the command buffer to the queue. No work will be done :(");

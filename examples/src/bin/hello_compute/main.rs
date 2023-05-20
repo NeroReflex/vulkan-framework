@@ -409,7 +409,7 @@ fn main() {
                                         }
                                     };
 
-                                    match queue.submit(&[command_buffer], fence) {
+                                    match queue.submit(&[command_buffer], &[], fence) {
                                         Ok(mut fence_waiter) => {
                                             println!(
                                                 "Command buffer submitted! GPU will work on that!"

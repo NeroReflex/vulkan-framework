@@ -291,16 +291,19 @@ impl SwapchainKHR {
 
     pub fn acquire_next_image_index(
         &self,
-        timeout: u64,
-        maybe_semaphore: &Option<Arc<Semaphore>>,
-        maybe_fence: &Option<Arc<Fence>>,
+        timeout: Option<u64>,
+        maybe_semaphore: Option<Arc<Semaphore>>,
+        maybe_fence: Option<Arc<Fence>>,
     ) -> VulkanResult<u32> {
         match self.get_parent_device().ash_ext_swapchain_khr() {
             Option::Some(ext) => {
                 match unsafe {
                     ext.acquire_next_image(
                         self.swapchain,
-                        timeout,
+                        match timeout {
+                            Option::Some(t) => t,
+                            None => u64::MAX
+                        },
                         match maybe_semaphore {
                             Option::Some(semaphore) => semaphore.ash_handle(),
                             Option::None => ash::vk::Semaphore::null(),

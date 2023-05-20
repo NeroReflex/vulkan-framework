@@ -6,7 +6,7 @@ use crate::{
     fence::{Fence, FenceWaiter},
     instance::InstanceOwned,
     prelude::{VulkanError, VulkanResult},
-    queue_family::*,
+    queue_family::*, semaphore::Semaphore,
 };
 
 use std::sync::Arc;
@@ -42,17 +42,36 @@ impl Queue {
     pub fn submit(
         &self,
         command_buffers: &[Arc<dyn CommandBufferTrait>],
+        signal_semaphores: &[Arc<Semaphore>],
         fence: Arc<Fence>,
     ) -> VulkanResult<FenceWaiter> {
+        if self.get_parent_queue_family().get_parent_device() != fence.get_parent_device() {
+            return Err(VulkanError::Unspecified);
+        }
         // TODO: assert queue.device == command_buffers.device
+
+        let signal_semaphores = signal_semaphores.iter().map(|sem|
+            {
+                // TODO: check self.device == sem.device
+
+                sem.ash_handle()
+            }
+        ).collect::<smallvec::SmallVec<[ash::vk::Semaphore; 8]>>();
 
         let cmd_buffers = command_buffers
             .iter()
-            .map(|f| ash::vk::CommandBuffer::from_raw(f.native_handle()))
+            .map(|f|
+                {
+                    // TODO: assert f.device == self.device
+
+                    ash::vk::CommandBuffer::from_raw(f.native_handle())
+                }
+            )
             .collect::<Vec<ash::vk::CommandBuffer>>();
 
         let submit_info = ash::vk::SubmitInfo::builder()
             .command_buffers(cmd_buffers.as_slice())
+            .signal_semaphores(signal_semaphores.as_slice())
             .build();
 
         let submits = [submit_info];
