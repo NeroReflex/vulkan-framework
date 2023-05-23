@@ -1,6 +1,8 @@
 use std::io::Write;
 
+use ash::vk::CommandBuffer;
 use inline_spirv::*;
+use vulkan_framework::command_buffer::CommandBufferRecorder;
 use vulkan_framework::command_buffer::ImageMemoryBarrier;
 use vulkan_framework::command_buffer::PipelineStage;
 use vulkan_framework::command_buffer::PipelineStages;
@@ -15,6 +17,7 @@ use vulkan_framework::descriptor_set::DescriptorSet;
 use vulkan_framework::descriptor_set_layout::DescriptorSetLayout;
 use vulkan_framework::device::*;
 use vulkan_framework::fence::Fence;
+use vulkan_framework::fence::FenceWaiter;
 use vulkan_framework::image::ConcreteImageDescriptor;
 use vulkan_framework::image::Image;
 use vulkan_framework::image::Image2DDimensions;
@@ -39,6 +42,7 @@ use vulkan_framework::pipeline_layout::PipelineLayout;
 use vulkan_framework::push_constant_range::PushConstanRange;
 use vulkan_framework::queue::Queue;
 use vulkan_framework::queue_family::*;
+use vulkan_framework::semaphore::Semaphore;
 use vulkan_framework::shader_layout_binding::BindingDescriptor;
 use vulkan_framework::shader_layout_binding::BindingType;
 use vulkan_framework::shader_layout_binding::NativeBindingType;
@@ -49,13 +53,14 @@ use vulkan_framework::swapchain::PresentModeSwapchainKHR;
 use vulkan_framework::swapchain::SurfaceColorspaceSwapchainKHR;
 use vulkan_framework::swapchain::SurfaceTransformSwapchainKHR;
 use vulkan_framework::swapchain::SwapchainKHR;
+use vulkan_framework::swapchain_image::ImageSwapchainKHR;
 
 const COMPUTE_SPV: &[u32] = inline_spirv!(
     r#"
 #version 450 core
 layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
 
-uniform layout(binding=0,rgba32f) writeonly image2D someImage;
+uniform layout(binding=0,rgba8_snorm) writeonly image2D someImage;
 
 layout(push_constant) uniform pushConstants {
     uint width;
@@ -220,47 +225,41 @@ fn main() {
                                                     false,
                                                 )),
                                                 Image2DDimensions::new(WIDTH, HEIGHT),
-                                                3,
+                                                4,
                                                 1,
                                             )
                                             .unwrap();
                                             println!("Swapchain created!");
 
                                             let image = match Image::new(
-                                        stack_allocator.clone(),
-                                        ConcreteImageDescriptor::new(
-                                            ImageDimensions::Image2D {extent: Image2DDimensions::new(1024, 1024)},
-                                            ImageUsage::Managed(
-                                                ImageUsageSpecifier::new(
-                                                    true,
-                                                    false,
-                                                    false,
-                                                    true,
-                                                    false,
-                                                    false,
-                                                    false,
-                                                    false
-                                                )
-                                            ),
-                                            None,
-                                            1,
-                                            1,
-                                            vulkan_framework::image::ImageFormat::r32g32b32a32_sfloat,
-                                            ImageFlags::empty(),
-                                            ImageTiling::Linear
-                                        ),
-                                        None,
-                                        Some("Test Image")
-                                    ) {
-                                        Ok(img) => {
-                                            println!("Image created");
-                                            img
-                                        },
-                                        Err(_err) => {
-                                            println!("Error creating image...");
-                                            return
-                                        }
-                                    };
+                                                stack_allocator.clone(),
+                                                ConcreteImageDescriptor::new(
+                                                    ImageDimensions::Image2D {
+                                                        extent: Image2DDimensions::new(1024, 1024),
+                                                    },
+                                                    ImageUsage::Managed(ImageUsageSpecifier::new(
+                                                        true, false, false, true, false, false,
+                                                        false, false,
+                                                    )),
+                                                    None,
+                                                    1,
+                                                    1,
+                                                    final_format,
+                                                    ImageFlags::empty(),
+                                                    ImageTiling::Linear,
+                                                ),
+                                                None,
+                                                Some("Test Image"),
+                                            ) {
+                                                Ok(img) => {
+                                                    println!("Image created");
+                                                    img
+                                                }
+                                                Err(_err) => {
+                                                    println!("Error creating image...");
+                                                    return;
+                                                }
+                                            };
 
                                             let image_view = match ImageView::new(
                                                 image.clone(),
@@ -418,7 +417,7 @@ fn main() {
                                             };
 
                                             let command_buffer = match PrimaryCommandBuffer::new(
-                                                command_pool,
+                                                command_pool.clone(),
                                                 Some("my command buffer <3"),
                                             ) {
                                                 Ok(res) => {
@@ -508,19 +507,152 @@ fn main() {
                                                 }
                                             };
 
-                                            let fence = Fence::new(device.clone(), false, Some("MyFence")).unwrap();
+                                            let fence =
+                                                Fence::new(device.clone(), false, Some("MyFence"))
+                                                    .unwrap();
                                             println!("Fence created");
 
-                                            let semaphore = vulkan_framework::semaphore::Semaphore::new(device.clone(), false, Some("MyFence")).unwrap();
+                                            let semaphore = Semaphore::new(
+                                                device.clone(),
+                                                false,
+                                                Some("MySemaphore"),
+                                            )
+                                            .unwrap();
                                             println!("Fence created");
 
-                                            match queue.submit(&[command_buffer], &[semaphore.clone()], fence) {
+                                            let swapchain_images = ImageSwapchainKHR::extract(swapchain.clone());
+
+                                            let image_available_semaphores = vec![
+                                                Semaphore::new(
+                                                    device.clone(),
+                                                    false,
+                                                    Some("image_available_semaphores[0]"),
+                                                )
+                                                .unwrap(),
+                                                Semaphore::new(
+                                                    device.clone(),
+                                                    false,
+                                                    Some("image_available_semaphores[1]"),
+                                                )
+                                                .unwrap(),
+                                                Semaphore::new(
+                                                    device.clone(),
+                                                    false,
+                                                    Some("image_available_semaphores[2]"),
+                                                )
+                                                .unwrap(),
+                                                Semaphore::new(
+                                                    device.clone(),
+                                                    false,
+                                                    Some("image_available_semaphores[3]"),
+                                                )
+                                                .unwrap(),
+                                            ];
+
+                                            let image_rendered_semaphores = vec![
+                                                Semaphore::new(
+                                                    device.clone(),
+                                                    false,
+                                                    Some("image_rendered_semaphores[0]"),
+                                                )
+                                                .unwrap(),
+                                                Semaphore::new(
+                                                    device.clone(),
+                                                    false,
+                                                    Some("image_rendered_semaphores[1]"),
+                                                )
+                                                .unwrap(),
+                                                Semaphore::new(
+                                                    device.clone(),
+                                                    false,
+                                                    Some("image_rendered_semaphores[2]"),
+                                                )
+                                                .unwrap(),
+                                                Semaphore::new(
+                                                    device.clone(),
+                                                    false,
+                                                    Some("image_rendered_semaphores[3]"),
+                                                )
+                                                .unwrap(),
+                                            ];
+
+                                            let swapchain_fences = vec![
+                                                Fence::new(
+                                                    device.clone(),
+                                                    true,
+                                                    Some("swapchain_fences[0]"),
+                                                )
+                                                .unwrap(),
+                                                Fence::new(
+                                                    device.clone(),
+                                                    true,
+                                                    Some("swapchain_fences[1]"),
+                                                )
+                                                .unwrap(),
+                                                Fence::new(
+                                                    device.clone(),
+                                                    true,
+                                                    Some("swapchain_fences[2]"),
+                                                )
+                                                .unwrap(),
+                                                Fence::new(
+                                                    device.clone(),
+                                                    true,
+                                                    Some("swapchain_fences[3]"),
+                                                )
+                                                .unwrap(),
+                                            ];
+
+                                            let mut swapchain_fence_waiters = vec![
+                                                FenceWaiter::from_fence(swapchain_fences[0].clone()),
+                                                FenceWaiter::from_fence(swapchain_fences[1].clone()),
+                                                FenceWaiter::from_fence(swapchain_fences[2].clone()),
+                                                FenceWaiter::from_fence(swapchain_fences[3].clone()),
+                                            ];
+
+                                            let present_command_buffers = vec![
+                                                PrimaryCommandBuffer::new(
+                                                    command_pool.clone(),
+                                                    Some("present_command_buffers[0]"),
+                                                )
+                                                .unwrap(),
+                                                PrimaryCommandBuffer::new(
+                                                    command_pool.clone(),
+                                                    Some("present_command_buffers[1]"),
+                                                )
+                                                .unwrap(),
+                                                PrimaryCommandBuffer::new(
+                                                    command_pool.clone(),
+                                                    Some("present_command_buffers[2]"),
+                                                )
+                                                .unwrap(),
+                                                PrimaryCommandBuffer::new(
+                                                    command_pool.clone(),
+                                                    Some("present_command_buffers[3]"),
+                                                )
+                                                .unwrap(),
+                                            ];
+
+                                            let mut current_frame: usize = 0;
+
+                                            match queue.submit(
+                                                &[command_buffer],
+                                                &[semaphore.clone()],
+                                                fence,
+                                            ) {
                                                 Ok(mut fence_waiter) => {
                                                     println!("Command buffer submitted! GPU will work on that!");
 
                                                     'wait_for_fence: loop {
                                                         match fence_waiter.wait(100u64) {
                                                             Ok(_) => {
+                                                                for i in 0..4 {
+                                                                    swapchain_fence_waiters[i]
+                                                                        .wait(u64::MAX)
+                                                                        .unwrap()
+                                                                }
+
+                                                                device.wait_idle().unwrap();
                                                                 break 'wait_for_fence;
                                                             }
                                                             Err(err) => {
@@ -533,16 +665,65 @@ fn main() {
                                                         }
                                                     }
 
-                                                    let mut exit = false;
-                                                    while !exit {
-                                                        let swapchain_index = swapchain.acquire_next_image_index(
-                                                            None,
-                                                            Some(semaphore.clone()),
-                                                            None
-                                                        ).unwrap();
+                                                    let mut event_pump =
+                                                        sdl_context.event_pump().unwrap();
+                                                    'running: loop {
+                                                        for event in event_pump.poll_iter() {
+                                                            match event {
+                                                                sdl2::event::Event::Quit {..} | sdl2::event::Event::KeyDown { keycode: Some(sdl2::keyboard::Keycode::Escape), .. } => {
+                                                                    break 'running
+                                                                },
+                                                                _ => {}
+                                                            }
+                                                        }
+
+                                                        let swapchain_index = swapchain
+                                                            .acquire_next_image_index(
+                                                                None,
+                                                                Some(
+                                                                    image_available_semaphores
+                                                                        [current_frame % 4]
+                                                                        .clone(),
+                                                                ),
+                                                                None,
+                                                            )
+                                                            .unwrap();
                                                         println!("Swapchain image acquired!");
+
+                                                        // wait for fence
+                                                        swapchain_fence_waiters[current_frame % 4].wait(u64::MAX).unwrap();
+
+                                                        present_command_buffers[current_frame % 4].record_commands(|recorder: &mut CommandBufferRecorder| {
+                                                            
+                                                        }).unwrap();
+
+                                                        swapchain_fence_waiters[current_frame % 4] =
+                                                            queue
+                                                                .submit(
+                                                                    &[present_command_buffers
+                                                                        [current_frame % 4]
+                                                                        .clone()],
+                                                                    &[image_rendered_semaphores
+                                                                        [current_frame % 4]
+                                                                        .clone()],
+                                                                    swapchain_fences
+                                                                        [current_frame % 4]
+                                                                        .clone(),
+                                                                )
+                                                                .unwrap();
+
+                                                        swapchain
+                                                            .queue_present(
+                                                                queue.clone(),
+                                                                swapchain_index,
+                                                                &[image_rendered_semaphores
+                                                                    [current_frame % 4]
+                                                                    .clone()],
+                                                            )
+                                                            .unwrap();
+
+                                                        current_frame = swapchain_index as usize;
                                                     }
-                                                    
                                                 }
                                                 Err(_) => {
                                                     println!("Error submitting the command buffer to the queue. No work will be done :(");

@@ -50,7 +50,7 @@ impl ImageTrait for ImageSwapchainKHR {
 
 impl ImageSwapchainKHR {
     pub fn extract(
-        swapchain: &Arc<SwapchainKHR>,
+        swapchain: Arc<SwapchainKHR>,
     ) -> VulkanResult<smallvec::SmallVec<[Arc<Self>; 8]>> {
         match swapchain.get_parent_device().ash_ext_swapchain_khr() {
             Option::Some(ext) => {

@@ -229,6 +229,13 @@ impl FenceWaiter {
         }
     }
 
+    pub fn from_fence(fence: Arc<Fence>,) -> Self {
+        Self {
+            fence: Some(fence),
+            command_buffers: smallvec::smallvec![]
+        }
+    }
+
     pub fn wait(&mut self, device_timeout_ns: u64) -> VulkanResult<()> {
         if let Some(fence) = &self.fence {
             let fence_arr = [fence.clone()];
@@ -236,13 +243,18 @@ impl FenceWaiter {
             match Fence::wait_for_fences(fence_arr.as_slice(), FenceWaitFor::All, device_timeout_ns)
             {
                 Ok(_) => {
-                    // here I am gonna destroy the fence and the list of occupied resources so that they can finally be free
-                    for cmd_buffer in self.command_buffers.iter() {
-                        cmd_buffer.flag_execution_as_finished();
-                    }
-                    self.fence = None;
+                    match fence.reset() {
+                        Ok(()) => {
+                            // here I am gonna destroy the fence and the list of occupied resources so that they can finally be free
+                            for cmd_buffer in self.command_buffers.iter() {
+                                cmd_buffer.flag_execution_as_finished();
+                            }
+                            self.fence = None;
 
-                    Ok(())
+                            Ok(())
+                        }
+                        Err(err) => Err(err),
+                    }
                 }
                 Err(err) => Err(err),
             }

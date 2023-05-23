@@ -6,7 +6,8 @@ use crate::{
     fence::{Fence, FenceWaiter},
     instance::InstanceOwned,
     prelude::{VulkanError, VulkanResult},
-    queue_family::*, semaphore::Semaphore,
+    queue_family::*,
+    semaphore::Semaphore,
 };
 
 use std::sync::Arc;
@@ -50,23 +51,22 @@ impl Queue {
         }
         // TODO: assert queue.device == command_buffers.device
 
-        let signal_semaphores = signal_semaphores.iter().map(|sem|
-            {
+        let signal_semaphores = signal_semaphores
+            .iter()
+            .map(|sem| {
                 // TODO: check self.device == sem.device
 
                 sem.ash_handle()
-            }
-        ).collect::<smallvec::SmallVec<[ash::vk::Semaphore; 8]>>();
+            })
+            .collect::<smallvec::SmallVec<[ash::vk::Semaphore; 8]>>();
 
         let cmd_buffers = command_buffers
             .iter()
-            .map(|f|
-                {
-                    // TODO: assert f.device == self.device
+            .map(|f| {
+                // TODO: assert f.device == self.device
 
-                    ash::vk::CommandBuffer::from_raw(f.native_handle())
-                }
-            )
+                ash::vk::CommandBuffer::from_raw(f.native_handle())
+            })
             .collect::<Vec<ash::vk::CommandBuffer>>();
 
         let submit_info = ash::vk::SubmitInfo::builder()

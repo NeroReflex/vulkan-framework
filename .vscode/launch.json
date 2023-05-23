@@ -266,6 +266,49 @@
         {
             "type": "lldb",
             "request": "launch",
+            "name": "Debug executable 'compute_rendering'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=compute_rendering",
+                    "--package=examples"
+                ],
+                "filter": {
+                    "name": "compute_rendering",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "env":
+            {
+                //"VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/radeon_icd.i686.json:/usr/share/vulkan/icd.d/radeon_icd.x86_64.json"
+                "VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/amd_icd32.json:/usr/share/vulkan/icd.d/amd_icd64.json"
+                //"VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/amd_pro_icd32.json:/usr/share/vulkan/icd.d/amd_pro_icd64.json"
+            },
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'compute_rendering'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=compute_rendering",
+                    "--package=examples"
+                ],
+                "filter": {
+                    "name": "compute_rendering",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
             "name": "Debug unit tests in library 'vulkan_framework'",
             "cargo": {
                 "args": [

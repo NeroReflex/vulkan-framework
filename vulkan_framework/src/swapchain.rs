@@ -302,7 +302,7 @@ impl SwapchainKHR {
                         self.swapchain,
                         match timeout {
                             Option::Some(t) => t,
-                            None => u64::MAX
+                            None => u64::MAX,
                         },
                         match maybe_semaphore {
                             Option::Some(semaphore) => semaphore.ash_handle(),
