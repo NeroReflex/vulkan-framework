@@ -2,8 +2,8 @@ use std::io::Write;
 
 use inline_spirv::*;
 use vulkan_framework::command_buffer::ImageMemoryBarrier;
-use vulkan_framework::command_buffer::PipelineStage;
-use vulkan_framework::command_buffer::PipelineStages;
+use vulkan_framework::pipeline_stage::PipelineStage;
+use vulkan_framework::pipeline_stage::PipelineStages;
 use vulkan_framework::command_buffer::PrimaryCommandBuffer;
 use vulkan_framework::command_pool::CommandPool;
 use vulkan_framework::compute_pipeline::ComputePipeline;
@@ -409,7 +409,7 @@ fn main() {
                                         }
                                     };
 
-                                    match queue.submit(&[command_buffer], &[], fence) {
+                                    match queue.submit(&[command_buffer], &[], &[], fence) {
                                         Ok(mut fence_waiter) => {
                                             println!(
                                                 "Command buffer submitted! GPU will work on that!"

@@ -26,3 +26,4 @@ pub mod shader_trait;
 pub mod surface;
 pub mod swapchain;
 pub mod swapchain_image;
+pub mod pipeline_stage;

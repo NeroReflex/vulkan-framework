@@ -85,6 +85,91 @@ impl ImageAspects {
     }
 }
 
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub struct ImageSubresourceRange {
+    image_aspect: ImageAspects,
+    base_mip_level: u32,
+    mip_levels_count: u32,
+    base_array_layer: u32,
+    array_layers_count: u32,
+}
+
+impl ImageSubresourceRange {
+    pub fn new(
+        image_aspect: ImageAspects,
+        base_mip_level: u32,
+        mip_levels_count: u32,
+        base_array_layer: u32,
+        array_layers_count: u32,
+    ) -> Self {
+        Self {
+            image_aspect,
+            base_mip_level,
+            mip_levels_count,
+            base_array_layer,
+            array_layers_count,
+        }
+    }
+
+    pub fn from(
+        image: Arc<dyn ImageTrait>,
+        maybe_image_aspect: Option<ImageAspects>,
+        maybe_base_mip_level: Option<u32>,
+        maybe_mip_levels_count: Option<u32>,
+        maybe_base_array_layer: Option<u32>,
+        maybe_array_layers_count: Option<u32>,
+    ) -> Self {
+        let base_mip_level = match maybe_base_mip_level {
+            Option::Some(custom) => custom,
+            Option::None => 0,
+        };
+
+        let mip_levels_count = match maybe_mip_levels_count {
+            Option::Some(custom) => custom,
+            Option::None => image.mip_levels_count(),
+        };
+
+        let base_array_layer = match maybe_base_array_layer {
+            Option::Some(custom) => custom,
+            Option::None => 0,
+        };
+
+        let array_layers_count = match maybe_array_layers_count {
+            Option::Some(custom) => custom,
+            Option::None => image.layers_count(),
+        };
+
+        let image_aspect = match maybe_image_aspect {
+            Option::Some(aspect) => aspect,
+            Option::None => ImageAspects::all_from_format(&image.format()),
+        };
+
+        Self {
+            image_aspect,
+            base_mip_level,
+            mip_levels_count,
+            base_array_layer,
+            array_layers_count,
+        }
+    }
+
+    pub(crate) fn ash_subresource_range(&self) -> ash::vk::ImageSubresourceRange {
+        ash::vk::ImageSubresourceRange::builder()
+            .aspect_mask(self.image_aspect.ash_flags())
+            .base_array_layer(self.base_array_layer)
+            .layer_count(self.array_layers_count)
+            .base_mip_level(self.base_mip_level)
+            .level_count(self.mip_levels_count)
+            .build()
+    }
+}
+
+#[repr(u32)]
+#[derive(PartialEq, Eq, Copy, Clone)]
+pub enum ImageLayoutSwapchainKHR {
+    PresentSrc = 1000001002u32,
+}
+
 #[repr(u32)]
 #[derive(PartialEq, Eq, Copy, Clone)]
 pub enum ImageLayout {
@@ -97,6 +182,7 @@ pub enum ImageLayout {
     TransferSrcOptimal = 6,
     TransferDstOptimal = 7,
     Preinitialized = 8,
+    SwapchainKHR(ImageLayoutSwapchainKHR),
     Other(u32),
 }
 
@@ -104,6 +190,7 @@ impl ImageLayout {
     pub(crate) fn ash_layout(&self) -> ash::vk::ImageLayout {
         ash::vk::ImageLayout::from_raw(match self {
             ImageLayout::Other(fmt) => *fmt,
+            ImageLayout::SwapchainKHR(swapchain_fmt) => todo!(),
             fmt => unsafe { std::mem::transmute_copy::<ImageLayout, u32>(fmt) },
         } as i32)
     }
@@ -202,6 +289,28 @@ pub enum ImageDimensions {
     Image1D { extent: Image1DDimensions },
     Image2D { extent: Image2DDimensions },
     Image3D { extent: Image3DDimensions },
+}
+
+impl ImageDimensions {
+    pub(crate) fn ash_extent_3d(&self) -> Extent3D {
+        match &self {
+            ImageDimensions::Image1D { extent } => Extent3D {
+                width: extent.width(),
+                height: 1,
+                depth: 1,
+            },
+            ImageDimensions::Image2D { extent } => Extent3D {
+                width: extent.width(),
+                height: extent.height(),
+                depth: 1,
+            },
+            ImageDimensions::Image3D { extent } => Extent3D {
+                width: extent.width(),
+                height: extent.height(),
+                depth: extent.depth(),
+            },
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -670,23 +779,7 @@ impl ConcreteImageDescriptor {
     }
 
     pub(crate) fn ash_extent_3d(&self) -> Extent3D {
-        match &self.img_dimensions {
-            ImageDimensions::Image1D { extent } => Extent3D {
-                width: extent.width(),
-                height: 1,
-                depth: 1,
-            },
-            ImageDimensions::Image2D { extent } => Extent3D {
-                width: extent.width(),
-                height: extent.height(),
-                depth: 1,
-            },
-            ImageDimensions::Image3D { extent } => Extent3D {
-                width: extent.width(),
-                height: extent.height(),
-                depth: extent.depth(),
-            },
-        }
+        self.img_dimensions.ash_extent_3d()
     }
 
     pub fn new(

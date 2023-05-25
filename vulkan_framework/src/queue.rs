@@ -1,7 +1,9 @@
 use ash::vk::Handle;
+use smallvec::{SmallVec, smallvec};
 
 use crate::{
     command_buffer::CommandBufferTrait,
+    pipeline_stage::PipelineStages,
     device::DeviceOwned,
     fence::{Fence, FenceWaiter},
     instance::InstanceOwned,
@@ -43,6 +45,7 @@ impl Queue {
     pub fn submit(
         &self,
         command_buffers: &[Arc<dyn CommandBufferTrait>],
+        wait_semaphores: &[(PipelineStages, Arc<Semaphore>)],
         signal_semaphores: &[Arc<Semaphore>],
         fence: Arc<Fence>,
     ) -> VulkanResult<FenceWaiter> {
@@ -50,6 +53,18 @@ impl Queue {
             return Err(VulkanError::Unspecified);
         }
         // TODO: assert queue.device == command_buffers.device
+
+        let mut wait_sems: SmallVec<[ash::vk::Semaphore; 8]> = smallvec![];
+        let mut wait_stages: SmallVec<[ash::vk::PipelineStageFlags; 8]> = smallvec![];
+
+        for pipeline_bubble in wait_semaphores.iter() {
+            // TODO: assert f.device == self.device
+
+            let (wait_cond, wait_sem) = pipeline_bubble;
+
+            wait_sems.push(wait_sem.ash_handle());
+            wait_stages.push(wait_cond.ash_flags());
+        }
 
         let signal_semaphores = signal_semaphores
             .iter()
@@ -72,6 +87,8 @@ impl Queue {
         let submit_info = ash::vk::SubmitInfo::builder()
             .command_buffers(cmd_buffers.as_slice())
             .signal_semaphores(signal_semaphores.as_slice())
+            .wait_dst_stage_mask(wait_stages.as_slice())
+            .wait_semaphores(wait_sems.as_slice())
             .build();
 
         let submits = [submit_info];
