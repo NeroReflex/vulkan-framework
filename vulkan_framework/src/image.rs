@@ -170,6 +170,14 @@ pub enum ImageLayoutSwapchainKHR {
     PresentSrc = 1000001002u32,
 }
 
+impl ImageLayoutSwapchainKHR {
+    pub(crate) fn ash_layout(&self) -> u32 {
+        match self {
+            fmt => unsafe { std::mem::transmute_copy::<ImageLayoutSwapchainKHR, u32>(fmt) },
+        }
+    }
+}
+
 #[repr(u32)]
 #[derive(PartialEq, Eq, Copy, Clone)]
 pub enum ImageLayout {
@@ -190,7 +198,7 @@ impl ImageLayout {
     pub(crate) fn ash_layout(&self) -> ash::vk::ImageLayout {
         ash::vk::ImageLayout::from_raw(match self {
             ImageLayout::Other(fmt) => *fmt,
-            ImageLayout::SwapchainKHR(swapchain_fmt) => todo!(),
+            ImageLayout::SwapchainKHR(swapchain_fmt) => swapchain_fmt.ash_layout(),
             fmt => unsafe { std::mem::transmute_copy::<ImageLayout, u32>(fmt) },
         } as i32)
     }

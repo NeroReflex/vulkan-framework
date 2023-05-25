@@ -223,7 +223,13 @@ fn main() {
                                                 true,
                                                 final_format,
                                                 ImageUsage::Managed(ImageUsageSpecifier::new(
-                                                    false, true, false, false, true, false, false,
+                                                    false,
+                                                    true,
+                                                    false,
+                                                    false,
+                                                    true,
+                                                    false,
+                                                    false,
                                                     false,
                                                 )),
                                                 Image2DDimensions::new(WIDTH, HEIGHT),
@@ -240,8 +246,14 @@ fn main() {
                                                         extent: Image2DDimensions::new(1024, 1024),
                                                     },
                                                     ImageUsage::Managed(ImageUsageSpecifier::new(
-                                                        true, false, false, true, false, false,
-                                                        false, false,
+                                                        true,
+                                                        false,
+                                                        false,
+                                                        true,
+                                                        false,
+                                                        false,
+                                                        false,
+                                                        false,
                                                     )),
                                                     None,
                                                     1,
@@ -726,6 +738,33 @@ fn main() {
                                                         present_command_buffers[current_frame % 4].record_commands(|recorder: &mut CommandBufferRecorder| {
                                                             // when submitting wait for the image available semaphore before beginning transfer
 
+                                                            recorder.image_barrier(
+                                                                ImageMemoryBarrier::new(
+                                                                    PipelineStages::from(
+                                                                        &[PipelineStage::TopOfPipe],
+                                                                        None,
+                                                                        None,
+                                                                        None
+                                                                    ),
+                                                                    PipelineStages::from(
+                                                                        &[PipelineStage::Transfer],
+                                                                        None,
+                                                                        None,
+                                                                        None
+                                                                    ),
+                                                                    swapchain_images[current_frame % 4].clone(),
+                                                                    None,
+                                                                    None,
+                                                                    None,
+                                                                    None,
+                                                                    None,
+                                                                    ImageLayout::Undefined,
+                                                                    ImageLayout::TransferDstOptimal,
+                                                                    queue_family.clone(),
+                                                                    queue_family.clone(),
+                                                                )
+                                                            );
+
                                                             recorder.copy_image(
                                                                 ImageLayout::TransferSrcOptimal,
                                                                 image.clone(),
@@ -735,32 +774,32 @@ fn main() {
 
                                                             );
 
-                                                            let swapchain_image_written_mem_barrier = ImageMemoryBarrier::new(
-                                                                PipelineStages::from(
-                                                                    &[PipelineStage::Transfer],
+                                                            recorder.image_barrier(
+                                                                ImageMemoryBarrier::new(
+                                                                    PipelineStages::from(
+                                                                        &[PipelineStage::Transfer],
+                                                                        None,
+                                                                        None,
+                                                                        None
+                                                                    ),
+                                                                    PipelineStages::from(
+                                                                        &[PipelineStage::BottomOfPipe],
+                                                                        None,
+                                                                        None,
+                                                                        None
+                                                                    ),
+                                                                    swapchain_images[current_frame % 4].clone(),
                                                                     None,
                                                                     None,
-                                                                    None
-                                                                ),
-                                                                PipelineStages::from(
-                                                                    &[PipelineStage::BottomOfPipe],
                                                                     None,
                                                                     None,
-                                                                    None
-                                                                ),
-                                                                image.clone(),
-                                                                None,
-                                                                None,
-                                                                None,
-                                                                None,
-                                                                None,
-                                                                ImageLayout::TransferDstOptimal,
-                                                                ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
-                                                                queue_family.clone(),
-                                                                queue_family.clone(),
+                                                                    None,
+                                                                    ImageLayout::TransferDstOptimal,
+                                                                    ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
+                                                                    queue_family.clone(),
+                                                                    queue_family.clone(),
+                                                                )
                                                             );
-                                                            
-                                                            recorder.image_barrier(swapchain_image_written_mem_barrier);
                                                         }).unwrap();
 
                                                         swapchain_fence_waiters[current_frame % 4] =
