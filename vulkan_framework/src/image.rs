@@ -86,6 +86,39 @@ impl ImageAspects {
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
+pub struct ImageSubresourceLayers {
+    image_aspect: ImageAspects,
+    mip_level: u32,
+    base_array_layer: u32,
+    array_layers_count: u32,
+}
+
+impl ImageSubresourceLayers {
+    pub(crate) fn ash_subresource_layers(&self) -> ash::vk::ImageSubresourceLayers {
+        ash::vk::ImageSubresourceLayers::builder()
+            .aspect_mask(self.image_aspect.ash_flags())
+            .base_array_layer(self.base_array_layer)
+            .layer_count(self.array_layers_count)
+            .mip_level(self.mip_level)
+            .build()
+    }
+
+    pub fn new(
+        image_aspect: ImageAspects,
+        mip_level: u32,
+        base_array_layer: u32,
+        array_layers_count: u32,
+    ) -> Self {
+        Self {
+            image_aspect,
+            mip_level,
+            base_array_layer,
+            array_layers_count,
+        }
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct ImageSubresourceRange {
     image_aspect: ImageAspects,
     base_mip_level: u32,

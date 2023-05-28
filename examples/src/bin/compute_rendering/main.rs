@@ -6,6 +6,9 @@ use vulkan_framework::command_buffer::AccessFlag;
 use vulkan_framework::command_buffer::AccessFlags;
 use vulkan_framework::command_buffer::CommandBufferRecorder;
 use vulkan_framework::command_buffer::ImageMemoryBarrier;
+use vulkan_framework::image::ImageAspect;
+use vulkan_framework::image::ImageAspects;
+use vulkan_framework::image::ImageSubresourceLayers;
 use vulkan_framework::pipeline_stage::PipelineStage;
 use vulkan_framework::pipeline_stage::PipelineStages;
 use vulkan_framework::command_buffer::PrimaryCommandBuffer;
@@ -694,12 +697,6 @@ fn main() {
                                                     'wait_for_fence: loop {
                                                         match fence_waiter.wait(100u64) {
                                                             Ok(_) => {
-                                                                for i in 0..4 {
-                                                                    swapchain_fence_waiters[i]
-                                                                        .wait(u64::MAX)
-                                                                        .unwrap()
-                                                                }
-
                                                                 device.wait_idle().unwrap();
                                                                 break 'wait_for_fence;
                                                             }
@@ -719,6 +716,12 @@ fn main() {
                                                         for event in event_pump.poll_iter() {
                                                             match event {
                                                                 sdl2::event::Event::Quit {..} | sdl2::event::Event::KeyDown { keycode: Some(sdl2::keyboard::Keycode::Escape), .. } => {
+                                                                    for i in 0..4 {
+                                                                        swapchain_fence_waiters[i]
+                                                                            .wait(u64::MAX)
+                                                                            .unwrap()
+                                                                    }
+                                                                    
                                                                     break 'running
                                                                 },
                                                                 _ => {}
@@ -736,7 +739,6 @@ fn main() {
                                                                 None,
                                                             )
                                                             .unwrap();
-                                                        println!("Swapchain image acquired!");
 
                                                         // wait for fence
                                                         swapchain_fence_waiters[current_frame % 4].wait(u64::MAX).unwrap();
@@ -775,11 +777,22 @@ fn main() {
 
                                                             recorder.copy_image(
                                                                 ImageLayout::TransferSrcOptimal,
+                                                                ImageSubresourceLayers::new(
+                                                                    ImageAspects::from(&[ImageAspect::Color]),
+                                                                    0,
+                                                                    0,
+                                                                    1
+                                                                ),
                                                                 image.clone(),
                                                                 ImageLayout::TransferDstOptimal,
+                                                                ImageSubresourceLayers::new(
+                                                                    ImageAspects::from(&[ImageAspect::Color]),
+                                                                    0,
+                                                                    0,
+                                                                    1
+                                                                ),
                                                                 swapchain_images[current_frame % 4].clone(),
                                                                 image.dimensions(),
-
                                                             );
 
                                                             recorder.image_barrier(

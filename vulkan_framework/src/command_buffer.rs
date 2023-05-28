@@ -9,7 +9,7 @@ use ash::vk::Handle;
 use crate::{
     command_pool::{CommandPool, CommandPoolOwned},
     device::DeviceOwned,
-    image::{ImageLayout, ImageTrait, ImageDimensions, ImageSubresourceRange, ImageAspects},
+    image::{ImageLayout, ImageTrait, ImageDimensions, ImageSubresourceRange, ImageAspects, ImageSubresourceLayers},
     instance::InstanceOwned,
     pipeline_layout::PipelineLayout,
     prelude::{VulkanError, VulkanResult},
@@ -368,23 +368,14 @@ impl<'a> CommandBufferRecorder<'a> {
     pub fn copy_image(
         &mut self,
         src_layout: ImageLayout,
+        src_subresource: ImageSubresourceLayers,
         src: Arc<dyn ImageTrait>,
         dst_layout: ImageLayout,
+        dst_subresource: ImageSubresourceLayers,
         dst: Arc<dyn ImageTrait>,
         extent: ImageDimensions,
         //srr: ImageSubresourceRange,
     ) {
-        let src_subresource_layers = ash::vk::ImageSubresourceLayers::builder()
-            
-            .build();
-
-        let dst_subresource_layers = ash::vk::ImageSubresourceLayers::builder()
-            .aspect_mask(aspect_mask)
-            .base_array_layer(base_array_layer)
-            .layer_count(1)
-            .mip_level(0)
-            .build();
-
         let src_offset = ash::vk::Offset3D::builder()
             .x(0)
             .y(0)
@@ -399,8 +390,8 @@ impl<'a> CommandBufferRecorder<'a> {
 
         let regions = ash::vk::ImageCopy::builder()
             .extent(extent.ash_extent_3d())
-            .dst_subresource(dst_subresource_layers)
-            .src_subresource(src_subresource_layers)
+            .dst_subresource(dst_subresource.ash_subresource_layers())
+            .src_subresource(src_subresource.ash_subresource_layers())
             .dst_offset(dst_offset)
             .src_offset(src_offset)
             .build();
