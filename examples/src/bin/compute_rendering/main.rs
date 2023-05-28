@@ -2,6 +2,8 @@ use std::io::Write;
 
 use ash::vk::CommandBuffer;
 use inline_spirv::*;
+use vulkan_framework::command_buffer::AccessFlag;
+use vulkan_framework::command_buffer::AccessFlags;
 use vulkan_framework::command_buffer::CommandBufferRecorder;
 use vulkan_framework::command_buffer::ImageMemoryBarrier;
 use vulkan_framework::pipeline_stage::PipelineStage;
@@ -97,8 +99,8 @@ fn main() {
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
 
-    const WIDTH: u32 = 800;
-    const HEIGHT: u32 = 800;
+    const WIDTH: u32 = 1024;
+    const HEIGHT: u32 = 1024;
 
     match video_subsystem
         .window("Window", WIDTH, HEIGHT)
@@ -468,12 +470,14 @@ fn main() {
                                                         None,
                                                         None,
                                                     ),
+                                                    AccessFlags::from(&[]),
                                                     PipelineStages::from(
                                                         &[PipelineStage::ComputeShader],
                                                         None,
                                                         None,
                                                         None,
                                                     ),
+                                                    AccessFlags::from(&[AccessFlag::ShaderWrite]),
                                                     image.clone(),
                                                     None,
                                                     None,
@@ -518,12 +522,14 @@ fn main() {
                                                         None,
                                                         None
                                                     ),
+                                                    AccessFlags::from(&[]),
                                                     PipelineStages::from(
                                                         &[PipelineStage::Transfer],
                                                         None,
                                                         None,
                                                         None
                                                     ),
+                                                    AccessFlags::from(&[AccessFlag::TransferRead]),
                                                     image.clone(),
                                                     None,
                                                     None,
@@ -746,12 +752,14 @@ fn main() {
                                                                         None,
                                                                         None
                                                                     ),
+                                                                    AccessFlags::from(&[]),
                                                                     PipelineStages::from(
                                                                         &[PipelineStage::Transfer],
                                                                         None,
                                                                         None,
                                                                         None
                                                                     ),
+                                                                    AccessFlags::from(&[AccessFlag::TransferWrite]),
                                                                     swapchain_images[current_frame % 4].clone(),
                                                                     None,
                                                                     None,
@@ -782,12 +790,14 @@ fn main() {
                                                                         None,
                                                                         None
                                                                     ),
+                                                                    AccessFlags::from(&[AccessFlag::TransferWrite]),
                                                                     PipelineStages::from(
                                                                         &[PipelineStage::BottomOfPipe],
                                                                         None,
                                                                         None,
                                                                         None
                                                                     ),
+                                                                    AccessFlags::from(&[]),
                                                                     swapchain_images[current_frame % 4].clone(),
                                                                     None,
                                                                     None,

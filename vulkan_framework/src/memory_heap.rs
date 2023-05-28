@@ -87,6 +87,10 @@ impl Drop for MemoryHeap {
 }
 
 impl MemoryHeap {
+    pub fn heap_index(&self) -> u32 {
+        self.heap_index
+    }
+
     pub fn memory_type(&self) -> MemoryType {
         self.descriptor.memory_type.clone()
     }
@@ -97,10 +101,6 @@ impl MemoryHeap {
 
     pub(crate) fn type_index(&self) -> u32 {
         self.heap_type_index
-    }
-
-    pub(crate) fn heap_index(&self) -> u32 {
-        self.heap_index
     }
 
     pub fn new(

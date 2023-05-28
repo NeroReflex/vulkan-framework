@@ -1,6 +1,8 @@
 use std::io::Write;
 
 use inline_spirv::*;
+use vulkan_framework::command_buffer::AccessFlag;
+use vulkan_framework::command_buffer::AccessFlags;
 use vulkan_framework::command_buffer::ImageMemoryBarrier;
 use vulkan_framework::pipeline_stage::PipelineStage;
 use vulkan_framework::pipeline_stage::PipelineStages;
@@ -346,12 +348,14 @@ fn main() {
                                                 None,
                                                 None,
                                             ),
+                                            AccessFlags::from(&[AccessFlag::MemoryRead]),
                                             PipelineStages::from(
                                                 &[PipelineStage::ComputeShader],
                                                 None,
                                                 None,
                                                 None,
                                             ),
+                                            AccessFlags::from(&[AccessFlag::ShaderWrite]),
                                             image.clone(),
                                             None,
                                             None,

@@ -1,6 +1,8 @@
 use std::sync::Arc;
 use std::vec::Vec;
 
+use smallvec::SmallVec;
+
 use crate::{
     descriptor_set_layout::DescriptorSetLayout,
     device::{Device, DeviceOwned},
@@ -11,8 +13,8 @@ use crate::{
 
 pub struct PipelineLayout {
     device: Arc<Device>,
-    layout_bindings: Vec<Arc<DescriptorSetLayout>>,
-    push_constant_ranges: Vec<Arc<PushConstanRange>>,
+    layout_bindings: SmallVec<[Arc<DescriptorSetLayout>; 8]>,
+    push_constant_ranges: SmallVec<[Arc<PushConstanRange>; 8]>,
     pipeline_layout: ash::vk::PipelineLayout,
 }
 
@@ -122,8 +124,8 @@ impl PipelineLayout {
                 Ok(Arc::new(Self {
                     device,
                     pipeline_layout,
-                    layout_bindings: binding_descriptors.to_vec(),
-                    push_constant_ranges: constant_ranges.to_vec(),
+                    layout_bindings: binding_descriptors.iter().map(|e| e.clone()).collect(),
+                    push_constant_ranges: constant_ranges.iter().map(|e| e.clone()).collect(),
                 }))
             }
             Err(err) => {

@@ -66,9 +66,189 @@ impl Hash for CommandBufferReferencedResource {
     }
 }
 
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum AccessFlag {
+    IndirectCommandRead,
+    IndexRead,
+    VertexAttribureRead,
+    UniformRead,
+    InputAttachmentRead,
+    ShaderRead,
+    ShaderWrite,
+    ColorAttachmentRead,
+    ColorAttachmentWrite,
+    DepthStencilAttachmentRead,
+    DepthStencilAttachmentWrite,
+    TransferRead,
+    TransferWrite,
+    HostRead,
+    HostWrite,
+    MemoryRead,
+    MemoryWrite,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub struct AccessFlags {
+    indirect_command_read: bool,
+    index_read: bool,
+    vertex_attribure_read: bool,
+    uniform_read: bool,
+    input_attachment_read: bool,
+    shader_read: bool,
+    shader_write: bool,
+    color_attachment_read: bool,
+    color_attachment_write: bool,
+    depth_stencil_attachment_read: bool,
+    depth_stencil_attachment_write: bool,
+    transfer_read: bool,
+    transfer_write: bool,
+    host_read: bool,
+    host_write: bool,
+    memory_read: bool,
+    memory_write: bool,
+}
+
+impl AccessFlags {
+    pub fn new(
+        indirect_command_read: bool,
+        index_read: bool,
+        vertex_attribure_read: bool,
+        uniform_read: bool,
+        input_attachment_read: bool,
+        shader_read: bool,
+        shader_write: bool,
+        color_attachment_read: bool,
+        color_attachment_write: bool,
+        depth_stencil_attachment_read: bool,
+        depth_stencil_attachment_write: bool,
+        transfer_read: bool,
+        transfer_write: bool,
+        host_read: bool,
+        host_write: bool,
+        memory_read: bool,
+        memory_write: bool,
+    ) -> Self {
+        Self {
+            indirect_command_read,
+            index_read,
+            vertex_attribure_read,
+            uniform_read,
+            input_attachment_read,
+            shader_read,
+            shader_write,
+            color_attachment_read,
+            color_attachment_write,
+            depth_stencil_attachment_read,
+            depth_stencil_attachment_write,
+            transfer_read,
+            transfer_write,
+            host_read,
+            host_write,
+            memory_read,
+            memory_write,
+        }
+    }
+    
+    pub fn from(flags: &[AccessFlag]) -> Self {
+        Self::new(
+            flags.contains(&AccessFlag::IndirectCommandRead),
+            flags.contains(&AccessFlag::IndexRead),
+            flags.contains(&AccessFlag::VertexAttribureRead),
+            flags.contains(&AccessFlag::UniformRead),
+            flags.contains(&AccessFlag::InputAttachmentRead),
+            flags.contains(&AccessFlag::ShaderRead),
+            flags.contains(&AccessFlag::ShaderWrite),
+            flags.contains(&AccessFlag::ColorAttachmentRead),
+            flags.contains(&AccessFlag::ColorAttachmentWrite),
+            flags.contains(&AccessFlag::DepthStencilAttachmentRead),
+            flags.contains(&AccessFlag::DepthStencilAttachmentWrite),
+            flags.contains(&AccessFlag::TransferRead),
+            flags.contains(&AccessFlag::TransferWrite),
+            flags.contains(&AccessFlag::HostRead),
+            flags.contains(&AccessFlag::HostWrite),
+            flags.contains(&AccessFlag::MemoryRead),
+            flags.contains(&AccessFlag::MemoryWrite)
+        )
+    }
+
+    pub(crate) fn ash_flags(&self) -> ash::vk::AccessFlags {
+        (ash::vk::AccessFlags::empty()) |
+        (match self.indirect_command_read {
+            true => ash::vk::AccessFlags::INDIRECT_COMMAND_READ,
+            false => ash::vk::AccessFlags::empty(),
+        }) |
+        (match self.index_read {
+            true => ash::vk::AccessFlags::INDEX_READ,
+            false => ash::vk::AccessFlags::empty(),
+        }) |
+        (match self.vertex_attribure_read {
+            true => ash::vk::AccessFlags::VERTEX_ATTRIBUTE_READ,
+            false => ash::vk::AccessFlags::empty(),
+        }) |
+        (match self.uniform_read {
+            true => ash::vk::AccessFlags::UNIFORM_READ,
+            false => ash::vk::AccessFlags::empty(),
+        }) |
+        (match self.input_attachment_read {
+            true => ash::vk::AccessFlags::INPUT_ATTACHMENT_READ,
+            false => ash::vk::AccessFlags::empty(),
+        }) |
+        (match self.shader_read {
+            true => ash::vk::AccessFlags::SHADER_READ,
+            false => ash::vk::AccessFlags::empty(),
+        }) |
+        (match self.shader_write {
+            true => ash::vk::AccessFlags::SHADER_WRITE,
+            false => ash::vk::AccessFlags::empty(),
+        }) |
+        (match self.color_attachment_read {
+            true => ash::vk::AccessFlags::COLOR_ATTACHMENT_READ,
+            false => ash::vk::AccessFlags::empty(),
+        }) |
+        (match self.color_attachment_write {
+            true => ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+            false => ash::vk::AccessFlags::empty(),
+        }) |
+        (match self.depth_stencil_attachment_read {
+            true => ash::vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ,
+            false => ash::vk::AccessFlags::empty(),
+        }) |
+        (match self.depth_stencil_attachment_write {
+            true => ash::vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
+            false => ash::vk::AccessFlags::empty(),
+        }) |
+        (match self.transfer_read {
+            true => ash::vk::AccessFlags::TRANSFER_READ,
+            false => ash::vk::AccessFlags::empty(),
+        }) |
+        (match self.transfer_write {
+            true => ash::vk::AccessFlags::TRANSFER_WRITE,
+            false => ash::vk::AccessFlags::empty(),
+        }) |
+        (match self.host_read {
+            true => ash::vk::AccessFlags::HOST_READ,
+            false => ash::vk::AccessFlags::empty(),
+        }) |
+        (match self.host_write {
+            true => ash::vk::AccessFlags::HOST_WRITE,
+            false => ash::vk::AccessFlags::empty(),
+        }) |
+        (match self.memory_read {
+            true => ash::vk::AccessFlags::MEMORY_READ,
+            false => ash::vk::AccessFlags::empty(),
+        }) |
+        (match self.memory_write {
+            true => ash::vk::AccessFlags::MEMORY_WRITE,
+            false => ash::vk::AccessFlags::empty(),
+        })
+    }
+}
+
 pub struct ImageMemoryBarrier {
     src_stages: PipelineStages,
+    src_access: AccessFlags,
     dst_stages: PipelineStages,
+    dst_access: AccessFlags,
     image: Arc<dyn ImageTrait>,
     srr: ImageSubresourceRange,
     old_layout: ImageLayout,
@@ -79,11 +259,11 @@ pub struct ImageMemoryBarrier {
 
 impl ImageMemoryBarrier {
     pub(crate) fn ash_src_access_mask_flags(&self) -> ash::vk::AccessFlags {
-        ash::vk::AccessFlags::NONE
+        self.src_access.ash_flags()
     }
 
     pub(crate) fn ash_dst_access_mask_flags(&self) -> ash::vk::AccessFlags {
-        ash::vk::AccessFlags::SHADER_WRITE
+        self.dst_access.ash_flags()
     }
 
     pub(crate) fn ash_src_queue_family(&self) -> u32 {
@@ -112,7 +292,9 @@ impl ImageMemoryBarrier {
 
     pub fn from_subnresource_range(
         src_stages: PipelineStages,
+        src_access: AccessFlags,
         dst_stages: PipelineStages,
+        dst_access: AccessFlags,
         image: Arc<dyn ImageTrait>,
         srr: ImageSubresourceRange,
         old_layout: ImageLayout,
@@ -122,7 +304,9 @@ impl ImageMemoryBarrier {
     ) -> Self {
         Self {
             src_stages,
+            src_access,
             dst_stages,
+            dst_access,
             image,
             srr,
             old_layout,
@@ -134,7 +318,9 @@ impl ImageMemoryBarrier {
 
     pub fn new(
         src_stages: PipelineStages,
+        src_access: AccessFlags,
         dst_stages: PipelineStages,
+        dst_access: AccessFlags,
         image: Arc<dyn ImageTrait>,
         maybe_image_aspect: Option<ImageAspects>,
         maybe_base_mip_level: Option<u32>,
@@ -158,7 +344,9 @@ impl ImageMemoryBarrier {
 
         Self {
             src_stages,
+            src_access,
             dst_stages,
+            dst_access,
             image,
             srr,
             old_layout,
@@ -191,7 +379,10 @@ impl<'a> CommandBufferRecorder<'a> {
             .build();
 
         let dst_subresource_layers = ash::vk::ImageSubresourceLayers::builder()
-            
+            .aspect_mask(aspect_mask)
+            .base_array_layer(base_array_layer)
+            .layer_count(1)
+            .mip_level(0)
             .build();
 
         let src_offset = ash::vk::Offset3D::builder()
