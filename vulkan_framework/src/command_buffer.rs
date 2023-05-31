@@ -125,10 +125,7 @@ impl AccessFlagsAccelerationStructureKHR {
         }
     }
 
-    pub fn new(
-        acceleration_structure_read: bool,
-        acceleration_structure_write: bool,
-    ) -> Self {
+    pub fn new(acceleration_structure_read: bool, acceleration_structure_write: bool) -> Self {
         Self {
             acceleration_structure_read,
             acceleration_structure_write,
@@ -139,8 +136,7 @@ impl AccessFlagsAccelerationStructureKHR {
         (match self.acceleration_structure_read {
             true => ash::vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR,
             false => ash::vk::AccessFlags::empty(),
-        }) |
-        (match self.acceleration_structure_write {
+        }) | (match self.acceleration_structure_write {
             true => ash::vk::AccessFlags::ACCELERATION_STRUCTURE_WRITE_KHR,
             false => ash::vk::AccessFlags::empty(),
         })
@@ -148,7 +144,7 @@ impl AccessFlagsAccelerationStructureKHR {
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
-pub struct AccessFlags {
+pub struct AccessFlagsSpecifier {
     indirect_command_read: bool,
     index_read: bool,
     vertex_attribure_read: bool,
@@ -169,7 +165,7 @@ pub struct AccessFlags {
     acceleration_structure: AccessFlagsAccelerationStructureKHR,
 }
 
-impl AccessFlags {
+impl AccessFlagsSpecifier {
     pub fn new(
         indirect_command_read: bool,
         index_read: bool,
@@ -210,12 +206,15 @@ impl AccessFlags {
             memory_write,
             acceleration_structure: match maybe_acceleration_structure {
                 Some(access_accel_structure_khr) => access_accel_structure_khr,
-                None => AccessFlagsAccelerationStructureKHR::empty()
-            }
+                None => AccessFlagsAccelerationStructureKHR::empty(),
+            },
         }
     }
 
-    pub fn from(flags: &[AccessFlag], acceleration_structure_flags: Option<&[AccessFlagAccelerationStructureKHR]>) -> Self {
+    pub fn from(
+        flags: &[AccessFlag],
+        acceleration_structure_flags: Option<&[AccessFlagAccelerationStructureKHR]>,
+    ) -> Self {
         Self::new(
             flags.contains(&AccessFlag::IndirectCommandRead),
             flags.contains(&AccessFlag::IndexRead),
@@ -235,9 +234,11 @@ impl AccessFlags {
             flags.contains(&AccessFlag::MemoryRead),
             flags.contains(&AccessFlag::MemoryWrite),
             match acceleration_structure_flags {
-                Some(accel_structure_flags) => Some(AccessFlagsAccelerationStructureKHR::from(accel_structure_flags)),
-                None => None
-            }
+                Some(accel_structure_flags) => Some(AccessFlagsAccelerationStructureKHR::from(
+                    accel_structure_flags,
+                )),
+                None => None,
+            },
         )
     }
 
@@ -311,6 +312,33 @@ impl AccessFlags {
                 true => ash::vk::AccessFlags::MEMORY_WRITE,
                 false => ash::vk::AccessFlags::empty(),
             })
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum AccessFlags {
+    Managed(AccessFlagsSpecifier),
+    Unmanaged(u32),
+}
+
+impl AccessFlags {
+    pub fn empty() -> Self {
+        Self::Unmanaged(0)
+    }
+
+    pub fn from_raw(flags: u32) -> Self {
+        Self::Unmanaged(flags)
+    }
+
+    pub fn from(flags: AccessFlagsSpecifier) -> Self {
+        Self::Managed(flags)
+    }
+
+    pub(crate) fn ash_flags(&self) -> ash::vk::AccessFlags {
+        match self {
+            Self::Managed(spec) => spec.ash_flags(),
+            Self::Unmanaged(raw) => ash::vk::AccessFlags::from_raw(*raw),
+        }
     }
 }
 

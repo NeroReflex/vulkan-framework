@@ -724,30 +724,29 @@ impl ImageFlagsCollection {
 
 #[derive(Clone)]
 pub enum ImageFlags {
-    Recognised(ImageFlagsCollection),
-    Other(u32),
-    Empty,
+    Managed(ImageFlagsCollection),
+    Unmanaged(u32),
 }
 
 impl ImageFlags {
     pub(crate) fn ash_flags(&self) -> ash::vk::ImageCreateFlags {
         match self {
-            Self::Other(raw) => ash::vk::ImageCreateFlags::from_raw(*raw),
-            Self::Recognised(r) => r.ash_flags(),
-            Self::Empty => ash::vk::ImageCreateFlags::from_raw(0),
+            Self::Unmanaged(raw) => ash::vk::ImageCreateFlags::from_raw(*raw),
+            Self::Managed(r) => r.ash_flags(),
+            //Self::Empty => ash::vk::ImageCreateFlags::from_raw(0),
         }
     }
 
     pub fn empty() -> Self {
-        Self::Empty
+        Self::Unmanaged(0u32)
     }
 
     pub fn from(flags: ImageFlagsCollection) -> Self {
-        Self::Recognised(flags)
+        Self::Managed(flags)
     }
 
     pub fn from_raw(flags: u32) -> Self {
-        Self::Other(flags)
+        Self::Unmanaged(flags)
     }
 }
 

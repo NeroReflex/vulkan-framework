@@ -1,6 +1,7 @@
 use inline_spirv::*;
 use vulkan_framework::command_buffer::AccessFlag;
 use vulkan_framework::command_buffer::AccessFlags;
+use vulkan_framework::command_buffer::AccessFlagsSpecifier;
 use vulkan_framework::command_buffer::CommandBufferRecorder;
 use vulkan_framework::command_buffer::ImageMemoryBarrier;
 use vulkan_framework::command_buffer::PrimaryCommandBuffer;
@@ -458,8 +459,7 @@ fn main() {
                                                         None,
                                                     ),
                                                     AccessFlags::from(
-                                                        &[],
-                                                        None
+                                                        AccessFlagsSpecifier::from(&[], None),
                                                     ),
                                                     PipelineStages::from(
                                                         &[PipelineStage::ComputeShader],
@@ -468,8 +468,10 @@ fn main() {
                                                         None,
                                                     ),
                                                     AccessFlags::from(
-                                                        &[AccessFlag::ShaderWrite],
-                                                        None
+                                                        AccessFlagsSpecifier::from(
+                                                            &[AccessFlag::ShaderWrite],
+                                                            None,
+                                                        ),
                                                     ),
                                                     image.clone(),
                                                     None,
@@ -517,8 +519,7 @@ fn main() {
                                                             None,
                                                         ),
                                                         AccessFlags::from(
-                                                            &[],
-                                                            None
+                                                            AccessFlagsSpecifier::from(&[], None),
                                                         ),
                                                         PipelineStages::from(
                                                             &[PipelineStage::Transfer],
@@ -527,10 +528,10 @@ fn main() {
                                                             None,
                                                         ),
                                                         AccessFlags::from(
-                                                            &[
-                                                                AccessFlag::TransferRead,
-                                                            ],
-                                                            None
+                                                            AccessFlagsSpecifier::from(
+                                                                &[AccessFlag::TransferRead],
+                                                                None,
+                                                            ),
                                                         ),
                                                         image.clone(),
                                                         None,
@@ -766,14 +767,14 @@ fn main() {
                                                                         None,
                                                                         None
                                                                     ),
-                                                                    AccessFlags::from(&[], None),
+                                                                    AccessFlags::from(AccessFlagsSpecifier::from(&[], None)),
                                                                     PipelineStages::from(
                                                                         &[PipelineStage::Transfer],
                                                                         None,
                                                                         None,
                                                                         None
                                                                     ),
-                                                                    AccessFlags::from(&[AccessFlag::TransferWrite], None),
+                                                                    AccessFlags::from(AccessFlagsSpecifier::from(&[AccessFlag::TransferWrite], None)),
                                                                     swapchain_images[current_frame % 4].clone(),
                                                                     None,
                                                                     None,
@@ -815,14 +816,14 @@ fn main() {
                                                                         None,
                                                                         None
                                                                     ),
-                                                                    AccessFlags::from(&[AccessFlag::TransferWrite], None),
+                                                                    AccessFlags::from(AccessFlagsSpecifier::from(&[AccessFlag::TransferWrite], None)),
                                                                     PipelineStages::from(
                                                                         &[PipelineStage::BottomOfPipe],
                                                                         None,
                                                                         None,
                                                                         None
                                                                     ),
-                                                                    AccessFlags::from(&[], None),
+                                                                    AccessFlags::from(AccessFlagsSpecifier::from(&[], None)),
                                                                     swapchain_images[current_frame % 4].clone(),
                                                                     None,
                                                                     None,

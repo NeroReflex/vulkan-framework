@@ -108,6 +108,18 @@ pub enum BufferUsage {
 }
 
 impl BufferUsage {
+    pub fn empty() -> Self {
+        Self::Unmanaged(0)
+    }
+
+    pub fn from_raw(flags: u32) -> Self {
+        Self::Unmanaged(flags)
+    }
+
+    pub fn from(flags: BufferUsageSpecifier) -> Self {
+        Self::Managed(flags)
+    }
+
     pub(crate) fn ash_usage(&self) -> ash::vk::BufferUsageFlags {
         match self {
             Self::Managed(spec) => spec.ash_usage(),
