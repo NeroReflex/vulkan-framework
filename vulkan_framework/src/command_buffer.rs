@@ -312,6 +312,7 @@ impl AccessFlagsSpecifier {
                 true => ash::vk::AccessFlags::MEMORY_WRITE,
                 false => ash::vk::AccessFlags::empty(),
             })
+            | (self.acceleration_structure.ash_flags())
     }
 }
 

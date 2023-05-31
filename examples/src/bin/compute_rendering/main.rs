@@ -458,21 +458,20 @@ fn main() {
                                                         None,
                                                         None,
                                                     ),
-                                                    AccessFlags::from(
-                                                        AccessFlagsSpecifier::from(&[], None),
-                                                    ),
+                                                    AccessFlags::from(AccessFlagsSpecifier::from(
+                                                        &[],
+                                                        None,
+                                                    )),
                                                     PipelineStages::from(
                                                         &[PipelineStage::ComputeShader],
                                                         None,
                                                         None,
                                                         None,
                                                     ),
-                                                    AccessFlags::from(
-                                                        AccessFlagsSpecifier::from(
-                                                            &[AccessFlag::ShaderWrite],
-                                                            None,
-                                                        ),
-                                                    ),
+                                                    AccessFlags::from(AccessFlagsSpecifier::from(
+                                                        &[AccessFlag::ShaderWrite],
+                                                        None,
+                                                    )),
                                                     image.clone(),
                                                     None,
                                                     None,
