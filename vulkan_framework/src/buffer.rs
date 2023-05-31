@@ -13,7 +13,7 @@ use std::sync::Arc;
 /**
  * Provided by VK_KHR_acceleration_structure
  */
-#[derive(Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct BufferUsageAccelerationStructureKHR {
     acceleration_structure_storage: bool,
     acceleration_structure_build_input_read_only: bool,
@@ -34,7 +34,7 @@ impl BufferUsageAccelerationStructureKHR {
 /*
  * Provided by VK_KHR_ray_tracing_pipeline
  */
-#[derive(Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct BufferUsageRayTracingPipelineKHR {
     shader_binding_table: bool,
 }
@@ -48,7 +48,7 @@ impl BufferUsageRayTracingPipelineKHR {
     }
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct BufferUsageSpecifier {
     transfer_src: bool,
     transfer_dst: bool,
@@ -101,7 +101,7 @@ impl BufferUsageSpecifier {
     }
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub enum BufferUsage {
     Managed(BufferUsageSpecifier),
     Unmanaged(u32),

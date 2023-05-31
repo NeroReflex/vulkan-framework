@@ -348,14 +348,20 @@ fn main() {
                                                 None,
                                                 None,
                                             ),
-                                            AccessFlags::from(&[AccessFlag::MemoryRead]),
+                                            AccessFlags::from(
+                                                &[AccessFlag::MemoryRead],
+                                                None
+                                            ),
                                             PipelineStages::from(
                                                 &[PipelineStage::ComputeShader],
                                                 None,
                                                 None,
                                                 None,
                                             ),
-                                            AccessFlags::from(&[AccessFlag::ShaderWrite]),
+                                            AccessFlags::from(
+                                                &[AccessFlag::ShaderWrite],
+                                                None
+                                            ),
                                             image.clone(),
                                             None,
                                             None,

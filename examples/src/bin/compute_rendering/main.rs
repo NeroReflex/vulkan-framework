@@ -457,14 +457,20 @@ fn main() {
                                                         None,
                                                         None,
                                                     ),
-                                                    AccessFlags::from(&[]),
+                                                    AccessFlags::from(
+                                                        &[],
+                                                        None
+                                                    ),
                                                     PipelineStages::from(
                                                         &[PipelineStage::ComputeShader],
                                                         None,
                                                         None,
                                                         None,
                                                     ),
-                                                    AccessFlags::from(&[AccessFlag::ShaderWrite]),
+                                                    AccessFlags::from(
+                                                        &[AccessFlag::ShaderWrite],
+                                                        None
+                                                    ),
                                                     image.clone(),
                                                     None,
                                                     None,
@@ -510,16 +516,22 @@ fn main() {
                                                             None,
                                                             None,
                                                         ),
-                                                        AccessFlags::from(&[]),
+                                                        AccessFlags::from(
+                                                            &[],
+                                                            None
+                                                        ),
                                                         PipelineStages::from(
                                                             &[PipelineStage::Transfer],
                                                             None,
                                                             None,
                                                             None,
                                                         ),
-                                                        AccessFlags::from(&[
-                                                            AccessFlag::TransferRead,
-                                                        ]),
+                                                        AccessFlags::from(
+                                                            &[
+                                                                AccessFlag::TransferRead,
+                                                            ],
+                                                            None
+                                                        ),
                                                         image.clone(),
                                                         None,
                                                         None,
@@ -754,14 +766,14 @@ fn main() {
                                                                         None,
                                                                         None
                                                                     ),
-                                                                    AccessFlags::from(&[]),
+                                                                    AccessFlags::from(&[], None),
                                                                     PipelineStages::from(
                                                                         &[PipelineStage::Transfer],
                                                                         None,
                                                                         None,
                                                                         None
                                                                     ),
-                                                                    AccessFlags::from(&[AccessFlag::TransferWrite]),
+                                                                    AccessFlags::from(&[AccessFlag::TransferWrite], None),
                                                                     swapchain_images[current_frame % 4].clone(),
                                                                     None,
                                                                     None,
@@ -803,14 +815,14 @@ fn main() {
                                                                         None,
                                                                         None
                                                                     ),
-                                                                    AccessFlags::from(&[AccessFlag::TransferWrite]),
+                                                                    AccessFlags::from(&[AccessFlag::TransferWrite], None),
                                                                     PipelineStages::from(
                                                                         &[PipelineStage::BottomOfPipe],
                                                                         None,
                                                                         None,
                                                                         None
                                                                     ),
-                                                                    AccessFlags::from(&[]),
+                                                                    AccessFlags::from(&[], None),
                                                                     swapchain_images[current_frame % 4].clone(),
                                                                     None,
                                                                     None,
