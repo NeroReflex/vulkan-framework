@@ -1,6 +1,3 @@
-use std::io::Write;
-
-use ash::vk::CommandBuffer;
 use inline_spirv::*;
 use vulkan_framework::command_buffer::AccessFlag;
 use vulkan_framework::command_buffer::AccessFlags;
