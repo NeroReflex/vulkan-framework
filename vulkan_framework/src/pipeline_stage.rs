@@ -1,4 +1,3 @@
-
 #[repr(u32)]
 #[derive(PartialEq, Copy, Clone)]
 pub enum PipelineStageAccelerationStructureKHR {

@@ -229,10 +229,10 @@ impl FenceWaiter {
         }
     }
 
-    pub fn from_fence(fence: Arc<Fence>,) -> Self {
+    pub fn from_fence(fence: Arc<Fence>) -> Self {
         Self {
             fence: Some(fence),
-            command_buffers: smallvec::smallvec![]
+            command_buffers: smallvec::smallvec![],
         }
     }
 

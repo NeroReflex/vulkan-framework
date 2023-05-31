@@ -9,11 +9,15 @@ use ash::vk::Handle;
 use crate::{
     command_pool::{CommandPool, CommandPoolOwned},
     device::DeviceOwned,
-    image::{ImageLayout, ImageTrait, ImageDimensions, ImageSubresourceRange, ImageAspects, ImageSubresourceLayers},
+    image::{
+        ImageAspects, ImageDimensions, ImageLayout, ImageSubresourceLayers, ImageSubresourceRange,
+        ImageTrait,
+    },
     instance::InstanceOwned,
     pipeline_layout::PipelineLayout,
+    pipeline_stage::PipelineStages,
     prelude::{VulkanError, VulkanResult},
-    queue_family::QueueFamily, pipeline_stage::PipelineStages,
+    queue_family::QueueFamily,
 };
 use crate::{
     compute_pipeline::ComputePipeline, descriptor_set::DescriptorSet, device::Device,
@@ -52,9 +56,7 @@ impl PartialEq for CommandBufferReferencedResource {
             (Self::PipelineLayout(l0), Self::PipelineLayout(r0)) => {
                 l0.native_handle() == r0.native_handle()
             }
-            (Self::Image(l0), Self::Image(r0)) => {
-                l0.native_handle() == r0.native_handle()
-            }
+            (Self::Image(l0), Self::Image(r0)) => l0.native_handle() == r0.native_handle(),
             _ => false,
         }
     }
@@ -148,7 +150,7 @@ impl AccessFlags {
             memory_write,
         }
     }
-    
+
     pub fn from(flags: &[AccessFlag]) -> Self {
         Self::new(
             flags.contains(&AccessFlag::IndirectCommandRead),
@@ -167,80 +169,80 @@ impl AccessFlags {
             flags.contains(&AccessFlag::HostRead),
             flags.contains(&AccessFlag::HostWrite),
             flags.contains(&AccessFlag::MemoryRead),
-            flags.contains(&AccessFlag::MemoryWrite)
+            flags.contains(&AccessFlag::MemoryWrite),
         )
     }
 
     pub(crate) fn ash_flags(&self) -> ash::vk::AccessFlags {
-        (ash::vk::AccessFlags::empty()) |
-        (match self.indirect_command_read {
-            true => ash::vk::AccessFlags::INDIRECT_COMMAND_READ,
-            false => ash::vk::AccessFlags::empty(),
-        }) |
-        (match self.index_read {
-            true => ash::vk::AccessFlags::INDEX_READ,
-            false => ash::vk::AccessFlags::empty(),
-        }) |
-        (match self.vertex_attribure_read {
-            true => ash::vk::AccessFlags::VERTEX_ATTRIBUTE_READ,
-            false => ash::vk::AccessFlags::empty(),
-        }) |
-        (match self.uniform_read {
-            true => ash::vk::AccessFlags::UNIFORM_READ,
-            false => ash::vk::AccessFlags::empty(),
-        }) |
-        (match self.input_attachment_read {
-            true => ash::vk::AccessFlags::INPUT_ATTACHMENT_READ,
-            false => ash::vk::AccessFlags::empty(),
-        }) |
-        (match self.shader_read {
-            true => ash::vk::AccessFlags::SHADER_READ,
-            false => ash::vk::AccessFlags::empty(),
-        }) |
-        (match self.shader_write {
-            true => ash::vk::AccessFlags::SHADER_WRITE,
-            false => ash::vk::AccessFlags::empty(),
-        }) |
-        (match self.color_attachment_read {
-            true => ash::vk::AccessFlags::COLOR_ATTACHMENT_READ,
-            false => ash::vk::AccessFlags::empty(),
-        }) |
-        (match self.color_attachment_write {
-            true => ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-            false => ash::vk::AccessFlags::empty(),
-        }) |
-        (match self.depth_stencil_attachment_read {
-            true => ash::vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ,
-            false => ash::vk::AccessFlags::empty(),
-        }) |
-        (match self.depth_stencil_attachment_write {
-            true => ash::vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
-            false => ash::vk::AccessFlags::empty(),
-        }) |
-        (match self.transfer_read {
-            true => ash::vk::AccessFlags::TRANSFER_READ,
-            false => ash::vk::AccessFlags::empty(),
-        }) |
-        (match self.transfer_write {
-            true => ash::vk::AccessFlags::TRANSFER_WRITE,
-            false => ash::vk::AccessFlags::empty(),
-        }) |
-        (match self.host_read {
-            true => ash::vk::AccessFlags::HOST_READ,
-            false => ash::vk::AccessFlags::empty(),
-        }) |
-        (match self.host_write {
-            true => ash::vk::AccessFlags::HOST_WRITE,
-            false => ash::vk::AccessFlags::empty(),
-        }) |
-        (match self.memory_read {
-            true => ash::vk::AccessFlags::MEMORY_READ,
-            false => ash::vk::AccessFlags::empty(),
-        }) |
-        (match self.memory_write {
-            true => ash::vk::AccessFlags::MEMORY_WRITE,
-            false => ash::vk::AccessFlags::empty(),
-        })
+        (ash::vk::AccessFlags::empty())
+            | (match self.indirect_command_read {
+                true => ash::vk::AccessFlags::INDIRECT_COMMAND_READ,
+                false => ash::vk::AccessFlags::empty(),
+            })
+            | (match self.index_read {
+                true => ash::vk::AccessFlags::INDEX_READ,
+                false => ash::vk::AccessFlags::empty(),
+            })
+            | (match self.vertex_attribure_read {
+                true => ash::vk::AccessFlags::VERTEX_ATTRIBUTE_READ,
+                false => ash::vk::AccessFlags::empty(),
+            })
+            | (match self.uniform_read {
+                true => ash::vk::AccessFlags::UNIFORM_READ,
+                false => ash::vk::AccessFlags::empty(),
+            })
+            | (match self.input_attachment_read {
+                true => ash::vk::AccessFlags::INPUT_ATTACHMENT_READ,
+                false => ash::vk::AccessFlags::empty(),
+            })
+            | (match self.shader_read {
+                true => ash::vk::AccessFlags::SHADER_READ,
+                false => ash::vk::AccessFlags::empty(),
+            })
+            | (match self.shader_write {
+                true => ash::vk::AccessFlags::SHADER_WRITE,
+                false => ash::vk::AccessFlags::empty(),
+            })
+            | (match self.color_attachment_read {
+                true => ash::vk::AccessFlags::COLOR_ATTACHMENT_READ,
+                false => ash::vk::AccessFlags::empty(),
+            })
+            | (match self.color_attachment_write {
+                true => ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+                false => ash::vk::AccessFlags::empty(),
+            })
+            | (match self.depth_stencil_attachment_read {
+                true => ash::vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ,
+                false => ash::vk::AccessFlags::empty(),
+            })
+            | (match self.depth_stencil_attachment_write {
+                true => ash::vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
+                false => ash::vk::AccessFlags::empty(),
+            })
+            | (match self.transfer_read {
+                true => ash::vk::AccessFlags::TRANSFER_READ,
+                false => ash::vk::AccessFlags::empty(),
+            })
+            | (match self.transfer_write {
+                true => ash::vk::AccessFlags::TRANSFER_WRITE,
+                false => ash::vk::AccessFlags::empty(),
+            })
+            | (match self.host_read {
+                true => ash::vk::AccessFlags::HOST_READ,
+                false => ash::vk::AccessFlags::empty(),
+            })
+            | (match self.host_write {
+                true => ash::vk::AccessFlags::HOST_WRITE,
+                false => ash::vk::AccessFlags::empty(),
+            })
+            | (match self.memory_read {
+                true => ash::vk::AccessFlags::MEMORY_READ,
+                false => ash::vk::AccessFlags::empty(),
+            })
+            | (match self.memory_write {
+                true => ash::vk::AccessFlags::MEMORY_WRITE,
+                false => ash::vk::AccessFlags::empty(),
+            })
     }
 }
 
@@ -332,14 +334,13 @@ impl ImageMemoryBarrier {
         src_queue_family: Arc<QueueFamily>,
         dst_queue_family: Arc<QueueFamily>,
     ) -> Self {
-        
         let srr = ImageSubresourceRange::from(
             image.clone(),
             maybe_image_aspect,
             maybe_base_mip_level,
             maybe_mip_levels_count,
             maybe_base_array_layer,
-            maybe_array_layers_count
+            maybe_array_layers_count,
         );
 
         Self {
@@ -376,17 +377,9 @@ impl<'a> CommandBufferRecorder<'a> {
         extent: ImageDimensions,
         //srr: ImageSubresourceRange,
     ) {
-        let src_offset = ash::vk::Offset3D::builder()
-            .x(0)
-            .y(0)
-            .z(0)
-            .build();
+        let src_offset = ash::vk::Offset3D::builder().x(0).y(0).z(0).build();
 
-        let dst_offset = ash::vk::Offset3D::builder()
-            .x(0)
-            .y(0)
-            .z(0)
-            .build();
+        let dst_offset = ash::vk::Offset3D::builder().x(0).y(0).z(0).build();
 
         let regions = ash::vk::ImageCopy::builder()
             .extent(extent.ash_extent_3d())
@@ -409,15 +402,12 @@ impl<'a> CommandBufferRecorder<'a> {
                 src_layout.ash_layout(),
                 ash::vk::Image::from_raw(dst.native_handle()),
                 dst_layout.ash_layout(),
-                &[ regions ]
+                &[regions],
             );
         }
     }
 
-    pub fn image_barrier(
-        &mut self,
-        dependency_info: ImageMemoryBarrier
-    ) {
+    pub fn image_barrier(&mut self, dependency_info: ImageMemoryBarrier) {
         // TODO: check every resource is from the same device
 
         let image_memory_barrier = ash::vk::ImageMemoryBarrier::builder()
@@ -432,7 +422,9 @@ impl<'a> CommandBufferRecorder<'a> {
             .build();
 
         self.used_resources
-            .insert(CommandBufferReferencedResource::Image(dependency_info.image.clone()));
+            .insert(CommandBufferReferencedResource::Image(
+                dependency_info.image.clone(),
+            ));
 
         unsafe {
             self.device.ash_handle().cmd_pipeline_barrier(

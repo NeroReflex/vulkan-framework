@@ -6,11 +6,6 @@ use vulkan_framework::command_buffer::AccessFlag;
 use vulkan_framework::command_buffer::AccessFlags;
 use vulkan_framework::command_buffer::CommandBufferRecorder;
 use vulkan_framework::command_buffer::ImageMemoryBarrier;
-use vulkan_framework::image::ImageAspect;
-use vulkan_framework::image::ImageAspects;
-use vulkan_framework::image::ImageSubresourceLayers;
-use vulkan_framework::pipeline_stage::PipelineStage;
-use vulkan_framework::pipeline_stage::PipelineStages;
 use vulkan_framework::command_buffer::PrimaryCommandBuffer;
 use vulkan_framework::command_pool::CommandPool;
 use vulkan_framework::compute_pipeline::ComputePipeline;
@@ -26,11 +21,14 @@ use vulkan_framework::fence::FenceWaiter;
 use vulkan_framework::image::ConcreteImageDescriptor;
 use vulkan_framework::image::Image;
 use vulkan_framework::image::Image2DDimensions;
+use vulkan_framework::image::ImageAspect;
+use vulkan_framework::image::ImageAspects;
 use vulkan_framework::image::ImageDimensions;
 use vulkan_framework::image::ImageFlags;
 use vulkan_framework::image::ImageFormat;
 use vulkan_framework::image::ImageLayout;
 use vulkan_framework::image::ImageLayoutSwapchainKHR;
+use vulkan_framework::image::ImageSubresourceLayers;
 use vulkan_framework::image::ImageTiling;
 use vulkan_framework::image::ImageTrait;
 use vulkan_framework::image::ImageUsage;
@@ -44,8 +42,9 @@ use vulkan_framework::memory_heap::MemoryHeap;
 use vulkan_framework::memory_heap::MemoryHostVisibility;
 use vulkan_framework::memory_heap::MemoryType;
 use vulkan_framework::memory_pool::MemoryPool;
-use vulkan_framework::memory_pool::MemoryPoolBacked;
 use vulkan_framework::pipeline_layout::PipelineLayout;
+use vulkan_framework::pipeline_stage::PipelineStage;
+use vulkan_framework::pipeline_stage::PipelineStages;
 use vulkan_framework::push_constant_range::PushConstanRange;
 use vulkan_framework::queue::Queue;
 use vulkan_framework::queue_family::*;
@@ -228,13 +227,7 @@ fn main() {
                                                 true,
                                                 final_format,
                                                 ImageUsage::Managed(ImageUsageSpecifier::new(
-                                                    false,
-                                                    true,
-                                                    false,
-                                                    false,
-                                                    true,
-                                                    false,
-                                                    false,
+                                                    false, true, false, false, true, false, false,
                                                     false,
                                                 )),
                                                 Image2DDimensions::new(WIDTH, HEIGHT),
@@ -251,14 +244,8 @@ fn main() {
                                                         extent: Image2DDimensions::new(1024, 1024),
                                                     },
                                                     ImageUsage::Managed(ImageUsageSpecifier::new(
-                                                        true,
-                                                        false,
-                                                        false,
-                                                        true,
-                                                        false,
-                                                        false,
-                                                        false,
-                                                        false,
+                                                        true, false, false, true, false, false,
+                                                        false, false,
                                                     )),
                                                     None,
                                                     1,
@@ -518,34 +505,39 @@ fn main() {
 
                                                 recorder.dispatch(32, 32, 1);
 
-                                                let storage_image_transition_mem_barrier = ImageMemoryBarrier::new(
-                                                    PipelineStages::from(
-                                                        &[PipelineStage::TopOfPipe],
+                                                let storage_image_transition_mem_barrier =
+                                                    ImageMemoryBarrier::new(
+                                                        PipelineStages::from(
+                                                            &[PipelineStage::TopOfPipe],
+                                                            None,
+                                                            None,
+                                                            None,
+                                                        ),
+                                                        AccessFlags::from(&[]),
+                                                        PipelineStages::from(
+                                                            &[PipelineStage::Transfer],
+                                                            None,
+                                                            None,
+                                                            None,
+                                                        ),
+                                                        AccessFlags::from(&[
+                                                            AccessFlag::TransferRead,
+                                                        ]),
+                                                        image.clone(),
                                                         None,
                                                         None,
-                                                        None
-                                                    ),
-                                                    AccessFlags::from(&[]),
-                                                    PipelineStages::from(
-                                                        &[PipelineStage::Transfer],
                                                         None,
                                                         None,
-                                                        None
-                                                    ),
-                                                    AccessFlags::from(&[AccessFlag::TransferRead]),
-                                                    image.clone(),
-                                                    None,
-                                                    None,
-                                                    None,
-                                                    None,
-                                                    None,
-                                                    ImageLayout::General,
-                                                    ImageLayout::TransferSrcOptimal,
-                                                    queue_family.clone(),
-                                                    queue_family.clone(),
+                                                        None,
+                                                        ImageLayout::General,
+                                                        ImageLayout::TransferSrcOptimal,
+                                                        queue_family.clone(),
+                                                        queue_family.clone(),
+                                                    );
+
+                                                recorder.image_barrier(
+                                                    storage_image_transition_mem_barrier,
                                                 );
-                                                
-                                                recorder.image_barrier(storage_image_transition_mem_barrier);
                                             }) {
                                                 Ok(res) => {
                                                     println!("Commands written in the command buffer, there are resources used in that.");
@@ -570,7 +562,9 @@ fn main() {
                                             .unwrap();
                                             println!("Fence created");
 
-                                            let swapchain_images = ImageSwapchainKHR::extract(swapchain.clone()).unwrap();
+                                            let swapchain_images =
+                                                ImageSwapchainKHR::extract(swapchain.clone())
+                                                    .unwrap();
 
                                             let image_available_semaphores = vec![
                                                 Semaphore::new(
@@ -654,10 +648,18 @@ fn main() {
                                             ];
 
                                             let mut swapchain_fence_waiters = vec![
-                                                FenceWaiter::from_fence(swapchain_fences[0].clone()),
-                                                FenceWaiter::from_fence(swapchain_fences[1].clone()),
-                                                FenceWaiter::from_fence(swapchain_fences[2].clone()),
-                                                FenceWaiter::from_fence(swapchain_fences[3].clone()),
+                                                FenceWaiter::from_fence(
+                                                    swapchain_fences[0].clone(),
+                                                ),
+                                                FenceWaiter::from_fence(
+                                                    swapchain_fences[1].clone(),
+                                                ),
+                                                FenceWaiter::from_fence(
+                                                    swapchain_fences[2].clone(),
+                                                ),
+                                                FenceWaiter::from_fence(
+                                                    swapchain_fences[3].clone(),
+                                                ),
                                             ];
 
                                             let present_command_buffers = vec![
@@ -721,7 +723,6 @@ fn main() {
                                                                             .wait(u64::MAX)
                                                                             .unwrap()
                                                                     }
-                                                                    
                                                                     break 'running
                                                                 },
                                                                 _ => {}
@@ -741,7 +742,9 @@ fn main() {
                                                             .unwrap();
 
                                                         // wait for fence
-                                                        swapchain_fence_waiters[current_frame % 4].wait(u64::MAX).unwrap();
+                                                        swapchain_fence_waiters[current_frame % 4]
+                                                            .wait(u64::MAX)
+                                                            .unwrap();
 
                                                         present_command_buffers[current_frame % 4].record_commands(|recorder: &mut CommandBufferRecorder| {
                                                             // when submitting wait for the image available semaphore before beginning transfer
@@ -825,25 +828,30 @@ fn main() {
                                                             );
                                                         }).unwrap();
 
-                                                        swapchain_fence_waiters[current_frame % 4] =
-                                                            queue
-                                                                .submit(
-                                                                    &[present_command_buffers
-                                                                        [current_frame % 4]
-                                                                        .clone()],
-                                                                        &[
-                                                                            (PipelineStages::from(&[PipelineStage::Transfer], None, None, None), image_available_semaphores
-                                                                            [current_frame % 4]
-                                                                            .clone())
-                                                                        ],
-                                                                    &[image_rendered_semaphores
-                                                                        [current_frame % 4]
-                                                                        .clone()],
-                                                                    swapchain_fences
+                                                        swapchain_fence_waiters
+                                                            [current_frame % 4] = queue
+                                                            .submit(
+                                                                &[present_command_buffers
+                                                                    [current_frame % 4]
+                                                                    .clone()],
+                                                                &[(
+                                                                    PipelineStages::from(
+                                                                        &[PipelineStage::Transfer],
+                                                                        None,
+                                                                        None,
+                                                                        None,
+                                                                    ),
+                                                                    image_available_semaphores
                                                                         [current_frame % 4]
                                                                         .clone(),
-                                                                )
-                                                                .unwrap();
+                                                                )],
+                                                                &[image_rendered_semaphores
+                                                                    [current_frame % 4]
+                                                                    .clone()],
+                                                                swapchain_fences[current_frame % 4]
+                                                                    .clone(),
+                                                            )
+                                                            .unwrap();
 
                                                         swapchain
                                                             .queue_present(

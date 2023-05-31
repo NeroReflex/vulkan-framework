@@ -1,12 +1,12 @@
 use ash::vk::Handle;
-use smallvec::{SmallVec, smallvec};
+use smallvec::{smallvec, SmallVec};
 
 use crate::{
     command_buffer::CommandBufferTrait,
-    pipeline_stage::PipelineStages,
     device::DeviceOwned,
     fence::{Fence, FenceWaiter},
     instance::InstanceOwned,
+    pipeline_stage::PipelineStages,
     prelude::{VulkanError, VulkanResult},
     queue_family::*,
     semaphore::Semaphore,
