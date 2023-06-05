@@ -127,6 +127,23 @@ impl DeviceOwned for DeviceSurfaceInfo {
 }
 
 impl DeviceSurfaceInfo {
+    pub fn image_count_supported(&self, count: u32) -> bool {
+        (count >= self.surface_capabilities.min_image_count) && ((count < self.surface_capabilities.max_image_count) || (self.surface_capabilities.max_image_count == 0))
+    }
+
+    /**
+     * Result is either 0 (no limits) or a number >= min_image_count()
+     * 
+     * Make sure to use the function image_count_supported to check if the desired number is supported!
+     */
+    pub fn max_image_count(&self) -> u32 {
+        self.surface_capabilities.max_image_count
+    }
+
+    pub fn min_image_count(&self) -> u32 {
+        self.surface_capabilities.min_image_count
+    }
+
     pub fn present_mode_supported(&self, mode: &PresentModeSwapchainKHR) -> bool {
         self.surface_present_modes.contains(&mode.ash_value())
     }

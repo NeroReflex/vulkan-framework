@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::vec::Vec;
 
 use smallvec::SmallVec;
 
@@ -62,12 +61,12 @@ impl PipelineLayout {
 
                 layout_binding.ash_handle()
             })
-            .collect::<Vec<ash::vk::DescriptorSetLayout>>();
+            .collect::<SmallVec<[ash::vk::DescriptorSetLayout; 8]>>();
 
         let ranges = constant_ranges
             .iter()
             .map(|r| r.ash_handle())
-            .collect::<Vec<ash::vk::PushConstantRange>>();
+            .collect::<SmallVec<[ash::vk::PushConstantRange; 8]>>();
 
         let create_info = ash::vk::PipelineLayoutCreateInfo::builder()
             .set_layouts(set_layouts.as_slice())

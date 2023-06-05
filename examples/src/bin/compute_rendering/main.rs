@@ -26,6 +26,7 @@ use vulkan_framework::image::ImageFlags;
 use vulkan_framework::image::ImageFormat;
 use vulkan_framework::image::ImageLayout;
 use vulkan_framework::image::ImageLayoutSwapchainKHR;
+use vulkan_framework::image::ImageMultisampling;
 use vulkan_framework::image::ImageSubresourceLayers;
 use vulkan_framework::image::ImageTiling;
 use vulkan_framework::image::ImageTrait;
@@ -155,6 +156,7 @@ fn main() {
                     [ConcreteQueueFamilyDescriptor::new(
                         vec![
                             QueueFamilySupportedOperationType::Compute,
+                            QueueFamilySupportedOperationType::Present(sfc.clone()),
                             QueueFamilySupportedOperationType::Transfer,
                         ]
                         .as_ref(),
@@ -245,12 +247,12 @@ fn main() {
                                                         true, false, false, true, false, false,
                                                         false, false,
                                                     )),
-                                                    None,
+                                                    ImageMultisampling::SamplesPerPixel1,
                                                     1,
                                                     1,
                                                     final_format,
                                                     ImageFlags::empty(),
-                                                    ImageTiling::Linear,
+                                                    ImageTiling::Optimal,
                                                 ),
                                                 None,
                                                 Some("Test Image"),
@@ -303,8 +305,8 @@ fn main() {
 
                                             let compute_shader = match ComputeShader::new(
                                                 device.clone(),
-                                                &[image_dimensions_shader_push_constant.clone()],
-                                                &[resulting_image_shader_binding.clone()],
+                                                //&[image_dimensions_shader_push_constant.clone()],
+                                                //&[resulting_image_shader_binding.clone()],
                                                 COMPUTE_SPV,
                                             ) {
                                                 Ok(res) => {
@@ -569,7 +571,7 @@ fn main() {
                                                 Some("MySemaphore"),
                                             )
                                             .unwrap();
-                                            println!("Fence created");
+                                            println!("Semaphore created");
 
                                             let swapchain_images =
                                                 ImageSwapchainKHR::extract(swapchain.clone())

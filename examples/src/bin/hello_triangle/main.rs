@@ -2,7 +2,7 @@ use vulkan_framework::{
     device::*,
     image::{
         ConcreteImageDescriptor, Image, Image2DDimensions, ImageDimensions, ImageFlags,
-        ImageFormat, ImageTiling, ImageUsage, ImageUsageSpecifier,
+        ImageFormat, ImageTiling, ImageUsage, ImageUsageSpecifier, ImageMultisampling, ImageLayout, ImageLayoutSwapchainKHR,
     },
     instance::*,
     memory_allocator::*,
@@ -14,6 +14,7 @@ use vulkan_framework::{
         CompositeAlphaSwapchainKHR, DeviceSurfaceInfo, PresentModeSwapchainKHR,
         SurfaceColorspaceSwapchainKHR, SurfaceTransformSwapchainKHR, SwapchainKHR,
     },
+    renderpass::{RenderPass, RenderSubPass, AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp}, swapchain_image::ImageSwapchainKHR, graphics_pipeline::GraphicsPipeline, pipeline_layout::PipelineLayout, shader_layout_binding::BindingDescriptor,
 };
 
 fn main() {
@@ -132,10 +133,21 @@ fn main() {
                 let device_swapchain_info =
                     DeviceSurfaceInfo::new(dev.clone(), sfc.clone()).unwrap();
 
+                if !device_swapchain_info.present_mode_supported(&PresentModeSwapchainKHR::FIFO) {
+                    panic!("Device does not support the most common present mode. LOL.");
+                }
+
                 let final_format = ImageFormat::b8g8r8a8_srgb;
                 let color_space = SurfaceColorspaceSwapchainKHR::SRGBNonlinear;
                 if !device_swapchain_info.format_supported(&color_space, &final_format) {
                     panic!("Device does not support the most common format. LOL.");
+                }
+
+                let mut swapchain_images_count = device_swapchain_info.min_image_count() + 2;
+
+                if !device_swapchain_info.image_count_supported(swapchain_images_count) {
+                    println!("Image count {} not supported (the maximum is {}), sticking with the minimum one: {}", swapchain_images_count, device_swapchain_info.max_image_count(), device_swapchain_info.min_image_count());
+                    swapchain_images_count = device_swapchain_info.min_image_count();
                 }
 
                 let swapchain = SwapchainKHR::new(
@@ -152,11 +164,74 @@ fn main() {
                         false, true, false, false, true, false, false, false,
                     )),
                     Image2DDimensions::new(WIDTH, HEIGHT),
-                    3,
+                    swapchain_images_count,
                     1,
                 )
                 .unwrap();
                 println!("Swapchain created!");
+
+                let swapchain_images = ImageSwapchainKHR::extract(swapchain.clone()).unwrap();
+                println!("Swapchain images extracted!");
+
+                let renderpass = RenderPass::new(
+                    dev.clone(),
+                    &[
+                        AttachmentDescription::new(
+                            final_format,
+                            ImageMultisampling::SamplesPerPixel1,
+                            ImageLayout::Undefined,
+                            ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
+                            AttachmentLoadOp::Clear,
+                            AttachmentStoreOp::Store,
+                            AttachmentLoadOp::Clear,
+                            AttachmentStoreOp::Store,
+                        ),
+                        /*
+                        // depth
+                        AttachmentDescription::new(
+                            final_format,
+                            ImageMultisampling::SamplesPerPixel1,
+                            ImageLayout::Undefined,
+                            ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
+                            AttachmentLoadOp::Clear,
+                            AttachmentStoreOp::Store,
+                            AttachmentLoadOp::Clear,
+                            AttachmentStoreOp::Store,
+                        )*/
+                    ],
+                    &[
+                        RenderSubPass::from(
+                            &[],&[0], None
+                        )
+                    ]
+                ).unwrap();
+                println!("Renderpass created!");
+                
+                let pipeline_layout = PipelineLayout::new(
+                    dev.clone(),
+                    &[
+                        /*BindingDescriptor::new(
+                            shader_access,
+                            binding_type,
+                            binding_point,
+                            binding_count
+                        )*/
+                    ],
+                    &[],
+                    Some("pipeline_layout")
+                ).unwrap();
+                println!("Pipeline layout created!");
+
+                /*
+                let graphics_pipeline = GraphicsPipeline::new(
+                    pipeline_layout,
+                    vertex_shader,
+                    fragment_shader,
+                    shader_entry_name,
+                    debug_name
+                ).unwrap();
+                println!("Graphics pipeline created!");
+                */
             }
             Err(err) => {
                 println!("Error creating sdl2 window: {}", err);

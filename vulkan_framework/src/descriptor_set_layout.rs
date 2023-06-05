@@ -65,7 +65,7 @@ impl DescriptorSetLayout {
         self.descriptors.clone()
     }
 
-    pub fn from_shaders(shaders: &[Arc<dyn ShaderTrait>]) -> VulkanResult<Arc<Self>> {
+    /*pub fn from_shaders(shaders: &[Arc<dyn ShaderTrait>]) -> VulkanResult<Arc<Self>> {
         let mut bindings: Vec<Arc<BindingDescriptor>> = Vec::new();
 
         let mut maybe_device: Option<Arc<Device>> = Option::None;
@@ -93,7 +93,7 @@ impl DescriptorSetLayout {
         };
 
         Self::new(dev, bindings.as_slice())
-    }
+    }*/
 
     pub fn new(
         device: Arc<Device>,

@@ -22,6 +22,7 @@ use vulkan_framework::image::Image2DDimensions;
 use vulkan_framework::image::ImageDimensions;
 use vulkan_framework::image::ImageFlags;
 use vulkan_framework::image::ImageLayout;
+use vulkan_framework::image::ImageMultisampling;
 use vulkan_framework::image::ImageTiling;
 use vulkan_framework::image::ImageUsage;
 use vulkan_framework::image::ImageUsageSpecifier;
@@ -157,7 +158,7 @@ fn main() {
                                                     false
                                                 )
                                             ),
-                                            None,
+                                            ImageMultisampling::SamplesPerPixel1,
                                             1,
                                             1,
                                             vulkan_framework::image::ImageFormat::r32g32b32a32_sfloat,
@@ -208,8 +209,8 @@ fn main() {
 
                                     let compute_shader = match ComputeShader::new(
                                         device.clone(),
-                                        &[image_dimensions_shader_push_constant.clone()],
-                                        &[resulting_image_shader_binding.clone()],
+                                        //&[image_dimensions_shader_push_constant.clone()],
+                                        //&[resulting_image_shader_binding.clone()],
                                         COMPUTE_SPV,
                                     ) {
                                         Ok(res) => {

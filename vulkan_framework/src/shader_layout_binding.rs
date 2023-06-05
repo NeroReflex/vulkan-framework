@@ -102,7 +102,3 @@ impl BindingDescriptor {
         })
     }
 }
-
-pub trait BindingDescriptorDependant {
-    fn get_parent_binding_descriptors(&self) -> Vec<Arc<BindingDescriptor>>;
-}

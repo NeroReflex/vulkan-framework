@@ -27,3 +27,7 @@ pub mod shader_trait;
 pub mod surface;
 pub mod swapchain;
 pub mod swapchain_image;
+pub mod vertex_shader;
+pub mod fragment_shader;
+pub mod graphics_pipeline;
+pub mod renderpass;

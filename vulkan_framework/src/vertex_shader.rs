@@ -7,14 +7,14 @@ use crate::push_constant_range::PushConstanRange;
 use crate::shader_layout_binding::BindingDescriptor;
 use crate::shader_trait::{PrivateShaderTrait, ShaderTrait, ShaderType};
 
-pub struct ComputeShader {
+pub struct VertexShader {
     device: Arc<Device>,
     //push_constant_ranges: smallvec::SmallVec<[Arc<PushConstanRange>; 4]>,
     //descriptor_bindings: Vec<Arc<BindingDescriptor>>,
     module: ash::vk::ShaderModule,
 }
 
-impl Drop for ComputeShader {
+impl Drop for VertexShader {
     fn drop(&mut self) {
         unsafe {
             self.device.ash_handle().destroy_shader_module(
@@ -25,15 +25,15 @@ impl Drop for ComputeShader {
     }
 }
 
-impl DeviceOwned for ComputeShader {
+impl DeviceOwned for VertexShader {
     fn get_parent_device(&self) -> Arc<Device> {
         self.device.clone()
     }
 }
 
-impl ShaderTrait for ComputeShader {
+impl ShaderTrait for VertexShader {
     fn shader_type(&self) -> ShaderType {
-        ShaderType::Compute
+        ShaderType::Vertex
     }
 
     fn native_handle(&self) -> u64 {
@@ -41,25 +41,24 @@ impl ShaderTrait for ComputeShader {
     }
 }
 
-impl PrivateShaderTrait for ComputeShader {
+impl PrivateShaderTrait for VertexShader {
     fn ash_handle(&self) -> ash::vk::ShaderModule {
         self.module
     }
 }
 
-impl ComputeShader {
+impl VertexShader {
     pub fn new<'a, 'b, 'c>(
         device: Arc<Device>,
-        //push_constant_ranges: &'a [Arc<PushConstanRange>],
-        //descriptor_bindings: &'b [Arc<BindingDescriptor>],
+        push_constant_ranges: &'a [Arc<PushConstanRange>],
+        descriptor_bindings: &'b [Arc<BindingDescriptor>],
         code: &'c [u32],
     ) -> VulkanResult<Arc<Self>> {
-        /*
         for push_constant_range in push_constant_ranges.iter() {
             assert_eq!(
                 push_constant_range
                     .shader_access()
-                    .is_accessible_by(&ShaderType::Compute),
+                    .is_accessible_by(&ShaderType::Vertex),
                 true
             );
         }
@@ -68,11 +67,10 @@ impl ComputeShader {
             assert_eq!(
                 descriptor_set_layout_binding
                     .shader_access()
-                    .is_accessible_by(&ShaderType::Compute),
+                    .is_accessible_by(&ShaderType::Vertex),
                 true
             );
         }
-        */
 
         let create_info = ash::vk::ShaderModuleCreateInfo::builder()
             .code(code)

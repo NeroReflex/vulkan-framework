@@ -8,7 +8,7 @@ You are __NOT__ limited to the functionality of the framework: while the C++ ver
 ## Portability
 This project is designed to run everywhere vulkan 1.0.0 with no extensions is supported and a rust compiler is available!
 
-To achieve this goal only rust's standard library and ash is used, everything else that might be needed (as the sdl2 glue) __MUST__ be manually imported by the developer.
+To achieve this goal only rust's standard library, smallvec and ash is used, everything else that might be needed (as the sdl2 glue) __MUST__ be manually imported by the developer.
 
 Moreover everything that depends on an extension is optional and is not "flattened" as it is in the vulkan documentation, insted it is very explicit when you are using a Vulkan extension!
 

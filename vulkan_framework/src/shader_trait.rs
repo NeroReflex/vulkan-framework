@@ -1,4 +1,4 @@
-use crate::{device::DeviceOwned, shader_layout_binding::BindingDescriptorDependant};
+use crate::{device::DeviceOwned};
 
 #[derive(Copy, Clone)]
 pub enum ShaderType {
@@ -8,7 +8,7 @@ pub enum ShaderType {
     Fragment,
 }
 
-pub trait ShaderTrait: DeviceOwned + BindingDescriptorDependant {
+pub trait ShaderTrait: DeviceOwned {
     fn shader_type(&self) -> ShaderType;
 
     fn native_handle(&self) -> u64;

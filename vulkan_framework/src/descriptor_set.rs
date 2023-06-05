@@ -16,10 +16,10 @@ use crate::{
 pub struct DescriptorSetWriter<'a> {
     //device: Arc<Device>,
     descriptor_set: &'a DescriptorSet,
-    images_writers: Vec<Vec<ash::vk::DescriptorImageInfo>>,
-    buffers_writers: Vec<Vec<ash::vk::DescriptorBufferInfo>>,
-    writer: Vec<ash::vk::WriteDescriptorSet>, // TODO: use a smallvec here
-    used_resources: Vec<DescriptorSetBoundResource>,
+    images_writers: smallvec::SmallVec<[Vec<ash::vk::DescriptorImageInfo>; 32]>,
+    buffers_writers: smallvec::SmallVec<[Vec<ash::vk::DescriptorBufferInfo>; 32]>,
+    writer: smallvec::SmallVec<[ash::vk::WriteDescriptorSet; 32]>,
+    used_resources: smallvec::SmallVec<[DescriptorSetBoundResource; 32]>,
 }
 
 impl<'a> DescriptorSetWriter<'a> {
@@ -30,9 +30,9 @@ impl<'a> DescriptorSetWriter<'a> {
             .get_parent_device()
             .clone(),*/
             descriptor_set,
-            images_writers: vec![],
-            buffers_writers: vec![],
-            writer: vec![],
+            images_writers: smallvec::smallvec![],
+            buffers_writers: smallvec::smallvec![],
+            writer: smallvec::smallvec![],
             //binder: ash::vk::WriteDescriptorSet::builder(),
             used_resources: (0..size)
                 .map(|_idx| DescriptorSetBoundResource::None)
@@ -40,8 +40,10 @@ impl<'a> DescriptorSetWriter<'a> {
         }
     }
 
-    pub(crate) fn ref_used_resources(&self) -> &Vec<DescriptorSetBoundResource> {
-        &self.used_resources
+    pub(crate) fn ref_used_resources<'b>(&'a self) -> impl Iterator<Item = &'a DescriptorSetBoundResource>
+    where
+        'b: 'a {
+        self.used_resources.iter()
     }
 
     pub fn bind_uniform_buffer<T>(
@@ -224,7 +226,7 @@ impl DescriptorSet {
                         .update_descriptor_sets(writer.writer.as_slice(), &[])
                 };
 
-                for (idx, res) in writer.ref_used_resources().iter().enumerate() {
+                for (idx, res) in writer.ref_used_resources().enumerate() {
                     match res {
                         DescriptorSetBoundResource::None => {}
                         updated_resource => {

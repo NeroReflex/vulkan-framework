@@ -325,7 +325,7 @@ impl Image3DTrait for Image3DDimensions {
     }
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub enum ImageDimensions {
     Image1D { extent: Image1DDimensions },
     Image2D { extent: Image2DDimensions },
@@ -354,14 +354,43 @@ impl ImageDimensions {
     }
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub enum ImageMultisampling {
+    SamplesPerPixel1,
     SamplesPerPixel2,
     SamplesPerPixel4,
     SamplesPerPixel8,
     SamplesPerPixel16,
     SamplesPerPixel32,
     SamplesPerPixel64,
+}
+
+impl ImageMultisampling {
+    pub(crate) fn ash_samples(&self) -> ash::vk::SampleCountFlags {
+        match self {
+            ImageMultisampling::SamplesPerPixel1 => {
+                ash::vk::SampleCountFlags::TYPE_1
+            }
+            ImageMultisampling::SamplesPerPixel2 => {
+                ash::vk::SampleCountFlags::TYPE_2
+            },
+            ImageMultisampling::SamplesPerPixel4 => {
+                ash::vk::SampleCountFlags::TYPE_4
+            },
+            ImageMultisampling::SamplesPerPixel8 => {
+                ash::vk::SampleCountFlags::TYPE_8
+            },
+            ImageMultisampling::SamplesPerPixel16 => {
+                ash::vk::SampleCountFlags::TYPE_16
+            },
+            ImageMultisampling::SamplesPerPixel32 => {
+                ash::vk::SampleCountFlags::TYPE_32
+            },
+            ImageMultisampling::SamplesPerPixel64 => {
+                ash::vk::SampleCountFlags::TYPE_64
+            }
+        }
+    }
 }
 
 /**
@@ -435,7 +464,7 @@ impl ImageUsageSpecifier {
     }
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub enum ImageUsage {
     Managed(ImageUsageSpecifier),
     Unmanaged(u32),
@@ -697,7 +726,7 @@ impl ImageFormat {
     }
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct ImageFlagsCollection {
     mutable_format: bool,
     cube_compatible: bool,
@@ -722,7 +751,7 @@ impl ImageFlagsCollection {
     }
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub enum ImageFlags {
     Managed(ImageFlagsCollection),
     Unmanaged(u32),
@@ -750,7 +779,7 @@ impl ImageFlags {
     }
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub enum ImageTiling {
     Optimal,
     Linear,
@@ -767,11 +796,11 @@ impl ImageTiling {
     }
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct ConcreteImageDescriptor {
     img_dimensions: ImageDimensions,
     img_usage: ImageUsage,
-    img_multisampling: Option<ImageMultisampling>,
+    img_multisampling: ImageMultisampling,
     img_layers: u32,
     img_mip_levels: u32,
     img_format: ImageFormat,
@@ -804,18 +833,8 @@ impl ConcreteImageDescriptor {
         }
     }
 
-    pub(crate) fn ash_sample_count(&self) -> SampleCountFlags {
-        match &self.img_multisampling.clone() {
-            Some(ms) => match ms {
-                ImageMultisampling::SamplesPerPixel2 => SampleCountFlags::from_raw(0x00000002u32),
-                ImageMultisampling::SamplesPerPixel4 => SampleCountFlags::from_raw(0x00000004u32),
-                ImageMultisampling::SamplesPerPixel8 => SampleCountFlags::from_raw(0x00000008u32),
-                ImageMultisampling::SamplesPerPixel16 => SampleCountFlags::from_raw(0x00000010u32),
-                ImageMultisampling::SamplesPerPixel32 => SampleCountFlags::from_raw(0x00000020u32),
-                ImageMultisampling::SamplesPerPixel64 => SampleCountFlags::from_raw(0x00000040u32),
-            },
-            None => SampleCountFlags::from_raw(0x00000001u32),
-        }
+    pub(crate) fn ash_sample_count(&self) -> ash::vk::SampleCountFlags {
+        self.img_multisampling.ash_samples()
     }
 
     pub(crate) fn ash_extent_3d(&self) -> Extent3D {
@@ -825,7 +844,7 @@ impl ConcreteImageDescriptor {
     pub fn new(
         img_dimensions: ImageDimensions,
         img_usage: ImageUsage,
-        img_multisampling: Option<ImageMultisampling>,
+        img_multisampling: ImageMultisampling,
         img_layers: u32,
         img_mip_levels: u32,
         img_format: ImageFormat,
