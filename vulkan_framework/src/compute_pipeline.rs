@@ -55,11 +55,12 @@ impl ComputePipeline {
 
     pub fn new(
         pipeline_layout: Arc<PipelineLayout>,
-        shader: Arc<ComputeShader>,
-        shader_entry_name: Option<String>,
+        compute_shader: (Arc<ComputeShader>, Option<String>),
         debug_name: Option<&str>,
     ) -> VulkanResult<Arc<Self>> {
         let device = pipeline_layout.get_parent_device();
+
+        let (shader, shader_entry_name) = compute_shader;
 
         let name: &CStr = match shader_entry_name {
             Option::Some(_n) => {

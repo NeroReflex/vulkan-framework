@@ -356,8 +356,7 @@ fn main() {
 
                                             let compute_pipeline = match ComputePipeline::new(
                                                 compute_pipeline_layout.clone(),
-                                                compute_shader,
-                                                None,
+                                                (compute_shader, None),
                                                 Some("Example pipeline"),
                                             ) {
                                                 Ok(res) => {

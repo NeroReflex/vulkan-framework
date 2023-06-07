@@ -1,3 +1,5 @@
+use inline_spirv::*;
+
 use vulkan_framework::{
     device::*,
     image::{
@@ -14,8 +16,38 @@ use vulkan_framework::{
         CompositeAlphaSwapchainKHR, DeviceSurfaceInfo, PresentModeSwapchainKHR,
         SurfaceColorspaceSwapchainKHR, SurfaceTransformSwapchainKHR, SwapchainKHR,
     },
-    renderpass::{RenderPass, RenderSubPass, AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp}, swapchain_image::ImageSwapchainKHR, graphics_pipeline::GraphicsPipeline, pipeline_layout::PipelineLayout, shader_layout_binding::BindingDescriptor,
+    renderpass::{RenderPass, RenderSubPass, AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp}, swapchain_image::ImageSwapchainKHR, graphics_pipeline::{GraphicsPipeline, VertexInputBinding, VertexInputRate, VertexInputAttribute, AttributeType, Rasterizer, PolygonMode, CullMode, FrontFace}, pipeline_layout::PipelineLayout, shader_layout_binding::BindingDescriptor, vertex_shader::VertexShader, fragment_shader::FragmentShader,
 };
+
+const VERTEX_SPV: &[u32] = inline_spirv!(
+    r#"
+#version 450 core
+
+vec2 positions[3] = vec2[](
+    vec2(0.0, -0.5),
+    vec2(0.5, 0.5),
+    vec2(-0.5, 0.5)
+);
+
+void main() {
+    gl_Position = vec4(positions[gl_VertexIndex], 0.0, 1.0);
+}
+"#,
+    vert
+);
+
+const FRAGMENT_SPV: &[u32] = inline_spirv!(
+    r#"
+#version 450 core
+
+layout(location = 0) out vec4 outColor;
+
+void main() {
+    outColor = vec4(1.0, 0.0, 0.0, 1.0);
+}
+"#,
+    frag
+);
 
 fn main() {
     let mut instance_extensions = vec![String::from("VK_EXT_debug_utils")];
@@ -222,16 +254,44 @@ fn main() {
                 ).unwrap();
                 println!("Pipeline layout created!");
 
-                /*
+                let vertex_shader = VertexShader::new(
+                    dev.clone(),
+                    &[],
+                    &[],
+                    VERTEX_SPV
+                ).unwrap();
+
+                let fragment_shader = FragmentShader::new(
+                    dev.clone(),
+                    &[],
+                    &[],
+                    FRAGMENT_SPV
+                ).unwrap();
+                
                 let graphics_pipeline = GraphicsPipeline::new(
+                    renderpass,
+                    0,
+                    ImageMultisampling::SamplesPerPixel1,
+                    Image2DDimensions::new(WIDTH, HEIGHT),
                     pipeline_layout,
-                    vertex_shader,
-                    fragment_shader,
-                    shader_entry_name,
-                    debug_name
+                    &[
+                        VertexInputBinding::new(VertexInputRate::PerVertex, 0, &[VertexInputAttribute::new(0, 0, AttributeType::Vec4)])
+                    ],
+                    Rasterizer::new(
+                        PolygonMode::Fill,
+                        FrontFace::CounterClockwise,
+                        CullMode::None,
+                        false,
+                        0.0,
+                        None,
+                        0.0
+                    ),
+                    (vertex_shader, None),
+                    (fragment_shader, None),
+                    Some("triangle_pipeline_<3")
                 ).unwrap();
                 println!("Graphics pipeline created!");
-                */
+                
             }
             Err(err) => {
                 println!("Error creating sdl2 window: {}", err);
