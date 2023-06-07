@@ -40,9 +40,12 @@ impl<'a> DescriptorSetWriter<'a> {
         }
     }
 
-    pub(crate) fn ref_used_resources<'b>(&'a self) -> impl Iterator<Item = &'a DescriptorSetBoundResource>
+    pub(crate) fn ref_used_resources<'b>(
+        &'a self,
+    ) -> impl Iterator<Item = &'a DescriptorSetBoundResource>
     where
-        'b: 'a {
+        'b: 'a,
+    {
         self.used_resources.iter()
     }
 

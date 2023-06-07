@@ -3,13 +3,13 @@ use std::sync::Arc;
 
 use ash::vk::Offset2D;
 
+use crate::device::{Device, DeviceOwned};
+use crate::fragment_shader::FragmentShader;
 use crate::graphics_pipeline;
-use crate::image::{ImageMultisampling, Image2DDimensions, Image1DTrait, Image2DTrait};
+use crate::image::{Image1DTrait, Image2DDimensions, Image2DTrait, ImageMultisampling};
+use crate::instance::InstanceOwned;
 use crate::renderpass::RenderPass;
 use crate::vertex_shader::VertexShader;
-use crate::fragment_shader::FragmentShader;
-use crate::device::{Device, DeviceOwned};
-use crate::instance::InstanceOwned;
 
 use crate::pipeline_layout::{PipelineLayout, PipelineLayoutDependant};
 use crate::prelude::{VulkanError, VulkanResult};
@@ -64,7 +64,7 @@ impl AttributeType {
 pub struct VertexInputAttribute {
     location: u32,
     offset: u32,
-    attr_type: AttributeType
+    attr_type: AttributeType,
 }
 
 impl VertexInputAttribute {
@@ -90,15 +90,11 @@ impl VertexInputAttribute {
         self.offset
     }
 
-    pub fn new(
-        location: u32,
-        offset: u32,
-        attr_type: AttributeType
-    ) -> Self {
+    pub fn new(location: u32, offset: u32, attr_type: AttributeType) -> Self {
         Self {
             location,
             offset,
-            attr_type
+            attr_type,
         }
     }
 }
@@ -106,7 +102,7 @@ impl VertexInputAttribute {
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum VertexInputRate {
     PerInstance,
-    PerVertex
+    PerVertex,
 }
 
 impl VertexInputRate {
@@ -145,7 +141,7 @@ impl VertexInputBinding {
         Self {
             input_rate,
             stride,
-            attributes: attributes.iter().map(|ia| ia.clone()).collect()
+            attributes: attributes.iter().map(|ia| ia.clone()).collect(),
         }
     }
 }
@@ -153,7 +149,6 @@ impl VertexInputBinding {
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum CullMode {
     None,
-
 }
 
 impl CullMode {
@@ -183,7 +178,7 @@ pub struct Rasterizer {
     enable_depth_bias: bool,
     depth_bias_sonstant_factor: f32,
     depth_bias_clamp: Option<f32>,
-    depth_bias_slope_factor: f32
+    depth_bias_slope_factor: f32,
 }
 
 impl Rasterizer {
@@ -222,7 +217,7 @@ impl Rasterizer {
         enable_depth_bias: bool,
         depth_bias_sonstant_factor: f32,
         depth_bias_clamp: Option<f32>,
-        depth_bias_slope_factor: f32
+        depth_bias_slope_factor: f32,
     ) -> Self {
         Self {
             polygon_mode,
@@ -231,7 +226,7 @@ impl Rasterizer {
             enable_depth_bias,
             depth_bias_sonstant_factor,
             depth_bias_clamp,
-            depth_bias_slope_factor
+            depth_bias_slope_factor,
         }
     }
 }
@@ -302,8 +297,12 @@ impl GraphicsPipeline {
 
         let device = pipeline_layout.get_parent_device();
 
-        let mut vertex_binding_descriptions: smallvec::SmallVec<[ash::vk::VertexInputBindingDescription; 16]> = smallvec::smallvec![];
-        let mut vertex_attribute_descriptions: smallvec::SmallVec<[ash::vk::VertexInputAttributeDescription; 16]> = smallvec::smallvec![];
+        let mut vertex_binding_descriptions: smallvec::SmallVec<
+            [ash::vk::VertexInputBindingDescription; 16],
+        > = smallvec::smallvec![];
+        let mut vertex_attribute_descriptions: smallvec::SmallVec<
+            [ash::vk::VertexInputAttributeDescription; 16],
+        > = smallvec::smallvec![];
 
         for (binding_index, binding) in bindings.iter().enumerate() {
             vertex_binding_descriptions.push(
@@ -311,7 +310,7 @@ impl GraphicsPipeline {
                     .binding(binding_index as u32)
                     .input_rate(binding.input_rate().ash_input_rate())
                     .stride(binding.stride())
-                    .build()
+                    .build(),
             );
 
             for attribute_on_binding in binding.attributes() {
@@ -321,7 +320,7 @@ impl GraphicsPipeline {
                         .offset(attribute_on_binding.offset())
                         .location(attribute_on_binding.location())
                         .format(attribute_on_binding.ash_format())
-                        .build()
+                        .build(),
                 )
             }
         }
@@ -348,17 +347,19 @@ impl GraphicsPipeline {
             }
         };
 
-        let pipeline_shader_stage_create_info: smallvec::SmallVec<[ash::vk::PipelineShaderStageCreateInfo; 8]> = smallvec::smallvec![
+        let pipeline_shader_stage_create_info: smallvec::SmallVec<
+            [ash::vk::PipelineShaderStageCreateInfo; 8],
+        > = smallvec::smallvec![
             ash::vk::PipelineShaderStageCreateInfo::builder()
-                    .module(vertex_shader_module.ash_handle())
-                    .name(vertex_shader_entry_name)
-                    .stage(ash::vk::ShaderStageFlags::VERTEX)
-                    .build(),
+                .module(vertex_shader_module.ash_handle())
+                .name(vertex_shader_entry_name)
+                .stage(ash::vk::ShaderStageFlags::VERTEX)
+                .build(),
             ash::vk::PipelineShaderStageCreateInfo::builder()
-                    .module(fragment_shader_module.ash_handle())
-                    .name(fragment_shader_entry_name)
-                    .stage(ash::vk::ShaderStageFlags::FRAGMENT)
-                    .build()
+                .module(fragment_shader_module.ash_handle())
+                .name(fragment_shader_entry_name)
+                .stage(ash::vk::ShaderStageFlags::FRAGMENT)
+                .build()
         ];
 
         let vertex_input_state_create_info = ash::vk::PipelineVertexInputStateCreateInfo::builder()
@@ -382,7 +383,7 @@ impl GraphicsPipeline {
                 ash::vk::Extent2D::builder()
                     .width(dimensions.width())
                     .height(dimensions.height())
-                    .build()
+                    .build(),
             )
             .offset(ash::vk::Offset2D::builder().build())
             .build();
@@ -392,15 +393,16 @@ impl GraphicsPipeline {
             .scissors(&[scissor])
             .build();
 
-        let rasterization_state_create_info = ash::vk::PipelineRasterizationStateCreateInfo::builder()
-            .cull_mode(rasterizer.cull_mode().ash_flags())
-            .build();
+        let rasterization_state_create_info =
+            ash::vk::PipelineRasterizationStateCreateInfo::builder()
+                .cull_mode(rasterizer.cull_mode().ash_flags())
+                .build();
 
         let input_assembly_create_info = ash::vk::PipelineInputAssemblyStateCreateInfo::builder()
             .topology(ash::vk::PrimitiveTopology::TRIANGLE_LIST)
             .primitive_restart_enable(false)
             .build();
-            
+
         let create_info = ash::vk::GraphicsPipelineCreateInfo::builder()
             .layout(pipeline_layout.ash_handle())
             .render_pass(renderpass.ash_handle())
@@ -414,10 +416,10 @@ impl GraphicsPipeline {
             .build();
 
         match unsafe {
-                device.ash_handle().create_graphics_pipelines(
+            device.ash_handle().create_graphics_pipelines(
                 ash::vk::PipelineCache::null(),
                 &[create_info],
-                device.get_parent_instance().get_alloc_callbacks()
+                device.get_parent_instance().get_alloc_callbacks(),
             )
         } {
             Ok(pipelines) => {
@@ -472,21 +474,15 @@ impl GraphicsPipeline {
                     }
                 }
 
-                Ok(
-                    Arc::new(
-                        Self {
-                            device,
-                            renderpass,
-                            subpass_index,
-                            pipeline,
-                            pipeline_layout,
-                        }
-                    )
-                )
-            },
-            Err(err) => {
-                Err(VulkanError::Unspecified)
+                Ok(Arc::new(Self {
+                    device,
+                    renderpass,
+                    subpass_index,
+                    pipeline,
+                    pipeline_layout,
+                }))
             }
+            Err(err) => Err(VulkanError::Unspecified),
         }
     }
 }

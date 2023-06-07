@@ -2,21 +2,33 @@ use inline_spirv::*;
 
 use vulkan_framework::{
     device::*,
+    fragment_shader::FragmentShader,
+    graphics_pipeline::{
+        AttributeType, CullMode, FrontFace, GraphicsPipeline, PolygonMode, Rasterizer,
+        VertexInputAttribute, VertexInputBinding, VertexInputRate,
+    },
     image::{
         ConcreteImageDescriptor, Image, Image2DDimensions, ImageDimensions, ImageFlags,
-        ImageFormat, ImageTiling, ImageUsage, ImageUsageSpecifier, ImageMultisampling, ImageLayout, ImageLayoutSwapchainKHR,
+        ImageFormat, ImageLayout, ImageLayoutSwapchainKHR, ImageMultisampling, ImageTiling,
+        ImageUsage, ImageUsageSpecifier,
     },
     instance::*,
     memory_allocator::*,
     memory_heap::*,
     memory_pool::MemoryPool,
+    pipeline_layout::PipelineLayout,
     queue::*,
     queue_family::*,
+    renderpass::{
+        AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp, RenderPass, RenderSubPass,
+    },
+    shader_layout_binding::BindingDescriptor,
     swapchain::{
         CompositeAlphaSwapchainKHR, DeviceSurfaceInfo, PresentModeSwapchainKHR,
         SurfaceColorspaceSwapchainKHR, SurfaceTransformSwapchainKHR, SwapchainKHR,
     },
-    renderpass::{RenderPass, RenderSubPass, AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp}, swapchain_image::ImageSwapchainKHR, graphics_pipeline::{GraphicsPipeline, VertexInputBinding, VertexInputRate, VertexInputAttribute, AttributeType, Rasterizer, PolygonMode, CullMode, FrontFace}, pipeline_layout::PipelineLayout, shader_layout_binding::BindingDescriptor, vertex_shader::VertexShader, fragment_shader::FragmentShader,
+    swapchain_image::ImageSwapchainKHR,
+    vertex_shader::VertexShader,
 };
 
 const VERTEX_SPV: &[u32] = inline_spirv!(
@@ -231,14 +243,11 @@ fn main() {
                             AttachmentStoreOp::Store,
                         )*/
                     ],
-                    &[
-                        RenderSubPass::from(
-                            &[],&[0], None
-                        )
-                    ]
-                ).unwrap();
+                    &[RenderSubPass::from(&[], &[0], None)],
+                )
+                .unwrap();
                 println!("Renderpass created!");
-                
+
                 let pipeline_layout = PipelineLayout::new(
                     dev.clone(),
                     &[
@@ -250,33 +259,27 @@ fn main() {
                         )*/
                     ],
                     &[],
-                    Some("pipeline_layout")
-                ).unwrap();
+                    Some("pipeline_layout"),
+                )
+                .unwrap();
                 println!("Pipeline layout created!");
 
-                let vertex_shader = VertexShader::new(
-                    dev.clone(),
-                    &[],
-                    &[],
-                    VERTEX_SPV
-                ).unwrap();
+                let vertex_shader = VertexShader::new(dev.clone(), &[], &[], VERTEX_SPV).unwrap();
 
-                let fragment_shader = FragmentShader::new(
-                    dev.clone(),
-                    &[],
-                    &[],
-                    FRAGMENT_SPV
-                ).unwrap();
-                
+                let fragment_shader =
+                    FragmentShader::new(dev.clone(), &[], &[], FRAGMENT_SPV).unwrap();
+
                 let graphics_pipeline = GraphicsPipeline::new(
                     renderpass,
                     0,
                     ImageMultisampling::SamplesPerPixel1,
                     Image2DDimensions::new(WIDTH, HEIGHT),
                     pipeline_layout,
-                    &[
-                        VertexInputBinding::new(VertexInputRate::PerVertex, 0, &[VertexInputAttribute::new(0, 0, AttributeType::Vec4)])
-                    ],
+                    &[VertexInputBinding::new(
+                        VertexInputRate::PerVertex,
+                        0,
+                        &[VertexInputAttribute::new(0, 0, AttributeType::Vec4)],
+                    )],
                     Rasterizer::new(
                         PolygonMode::Fill,
                         FrontFace::CounterClockwise,
@@ -284,14 +287,14 @@ fn main() {
                         false,
                         0.0,
                         None,
-                        0.0
+                        0.0,
                     ),
                     (vertex_shader, None),
                     (fragment_shader, None),
-                    Some("triangle_pipeline_<3")
-                ).unwrap();
+                    Some("triangle_pipeline_<3"),
+                )
+                .unwrap();
                 println!("Graphics pipeline created!");
-                
             }
             Err(err) => {
                 println!("Error creating sdl2 window: {}", err);

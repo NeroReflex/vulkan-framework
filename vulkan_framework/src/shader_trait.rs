@@ -1,4 +1,4 @@
-use crate::{device::DeviceOwned};
+use crate::device::DeviceOwned;
 
 #[derive(Copy, Clone)]
 pub enum ShaderType {

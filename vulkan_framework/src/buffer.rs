@@ -31,8 +31,11 @@ pub struct BufferUsageFlagsAccelerationStructureKHR {
 impl BufferUsageFlagsAccelerationStructureKHR {
     pub fn from(flags: &[BufferUsageFlagAccelerationStructureKHR]) -> Self {
         Self {
-            acceleration_structure_storage: flags.contains(&BufferUsageFlagAccelerationStructureKHR::AccelerationStructureStorage),
-            acceleration_structure_build_input_read_only: flags.contains(&BufferUsageFlagAccelerationStructureKHR::AccelerationStructureBuildInputReadOnly),
+            acceleration_structure_storage: flags
+                .contains(&BufferUsageFlagAccelerationStructureKHR::AccelerationStructureStorage),
+            acceleration_structure_build_input_read_only: flags.contains(
+                &BufferUsageFlagAccelerationStructureKHR::AccelerationStructureBuildInputReadOnly,
+            ),
         }
     }
 
@@ -73,7 +76,8 @@ pub struct BufferUsageFlagsRayTracingPipelineKHR {
 impl BufferUsageFlagsRayTracingPipelineKHR {
     pub fn from(flags: &[BufferUsageFlagRayTracingPipelineKHR]) -> Self {
         Self {
-            shader_binding_table: flags.contains(&BufferUsageFlagRayTracingPipelineKHR::ShaderBindingTable)
+            shader_binding_table: flags
+                .contains(&BufferUsageFlagRayTracingPipelineKHR::ShaderBindingTable),
         }
     }
 
@@ -127,7 +131,7 @@ impl BufferUsageFlagsSpecifier {
     pub fn from(
         flags: &[BufferUsageFlag],
         acceleration_structure_flags: Option<&[BufferUsageFlagAccelerationStructureKHR]>,
-        ray_tracing_flags: Option<&[BufferUsageFlagRayTracingPipelineKHR]>
+        ray_tracing_flags: Option<&[BufferUsageFlagRayTracingPipelineKHR]>,
     ) -> Self {
         Self {
             transfer_src: flags.contains(&BufferUsageFlag::TransferSrc),
@@ -141,12 +145,12 @@ impl BufferUsageFlagsSpecifier {
             indirect_buffer: flags.contains(&BufferUsageFlag::IndirectBuffer),
             acceleration_structure: match acceleration_structure_flags {
                 Some(flags) => BufferUsageFlagsAccelerationStructureKHR::from(flags),
-                None => BufferUsageFlagsAccelerationStructureKHR::empty()
+                None => BufferUsageFlagsAccelerationStructureKHR::empty(),
             },
             ray_tracing: match ray_tracing_flags {
                 Some(flags) => BufferUsageFlagsRayTracingPipelineKHR::from(flags),
-                None => BufferUsageFlagsRayTracingPipelineKHR::empty()
-            }
+                None => BufferUsageFlagsRayTracingPipelineKHR::empty(),
+            },
         }
     }
 
@@ -217,11 +221,11 @@ impl BufferUsageFlagsSpecifier {
             indirect_buffer,
             acceleration_structure: match maybe_acceleration_structure {
                 Some(flags) => flags,
-                None => BufferUsageFlagsAccelerationStructureKHR::empty()
+                None => BufferUsageFlagsAccelerationStructureKHR::empty(),
             },
             ray_tracing: match maybe_ray_tracing {
                 Some(flags) => flags,
-                None => BufferUsageFlagsRayTracingPipelineKHR::empty()
+                None => BufferUsageFlagsRayTracingPipelineKHR::empty(),
             },
         }
     }

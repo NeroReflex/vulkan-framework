@@ -368,27 +368,13 @@ pub enum ImageMultisampling {
 impl ImageMultisampling {
     pub(crate) fn ash_samples(&self) -> ash::vk::SampleCountFlags {
         match self {
-            ImageMultisampling::SamplesPerPixel1 => {
-                ash::vk::SampleCountFlags::TYPE_1
-            }
-            ImageMultisampling::SamplesPerPixel2 => {
-                ash::vk::SampleCountFlags::TYPE_2
-            },
-            ImageMultisampling::SamplesPerPixel4 => {
-                ash::vk::SampleCountFlags::TYPE_4
-            },
-            ImageMultisampling::SamplesPerPixel8 => {
-                ash::vk::SampleCountFlags::TYPE_8
-            },
-            ImageMultisampling::SamplesPerPixel16 => {
-                ash::vk::SampleCountFlags::TYPE_16
-            },
-            ImageMultisampling::SamplesPerPixel32 => {
-                ash::vk::SampleCountFlags::TYPE_32
-            },
-            ImageMultisampling::SamplesPerPixel64 => {
-                ash::vk::SampleCountFlags::TYPE_64
-            }
+            ImageMultisampling::SamplesPerPixel1 => ash::vk::SampleCountFlags::TYPE_1,
+            ImageMultisampling::SamplesPerPixel2 => ash::vk::SampleCountFlags::TYPE_2,
+            ImageMultisampling::SamplesPerPixel4 => ash::vk::SampleCountFlags::TYPE_4,
+            ImageMultisampling::SamplesPerPixel8 => ash::vk::SampleCountFlags::TYPE_8,
+            ImageMultisampling::SamplesPerPixel16 => ash::vk::SampleCountFlags::TYPE_16,
+            ImageMultisampling::SamplesPerPixel32 => ash::vk::SampleCountFlags::TYPE_32,
+            ImageMultisampling::SamplesPerPixel64 => ash::vk::SampleCountFlags::TYPE_64,
         }
     }
 }

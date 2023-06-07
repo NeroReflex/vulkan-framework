@@ -1,6 +1,11 @@
 use std::sync::Arc;
 
-use crate::{device::{DeviceOwned, Device}, instance::InstanceOwned, prelude::{VulkanResult, VulkanError}, image::{ImageLayout, ImageFormat, ImageMultisampling}};
+use crate::{
+    device::{Device, DeviceOwned},
+    image::{ImageFormat, ImageLayout, ImageMultisampling},
+    instance::InstanceOwned,
+    prelude::{VulkanError, VulkanResult},
+};
 
 const MAX_NUMBER_OF_SUBPASSES_NOT_REQUIRING_HEAP_ALLOC: usize = 8;
 
@@ -8,7 +13,7 @@ const MAX_NUMBER_OF_SUBPASSES_NOT_REQUIRING_HEAP_ALLOC: usize = 8;
 pub enum AttachmentLoadOp {
     Load,
     Clear,
-    DontCare
+    DontCare,
 }
 
 impl AttachmentLoadOp {
@@ -24,14 +29,14 @@ impl AttachmentLoadOp {
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum AttachmentStoreOp {
     Store,
-    DontCare
+    DontCare,
 }
 
 impl AttachmentStoreOp {
     pub(crate) fn ash_op(&self) -> ash::vk::AttachmentStoreOp {
         match self {
             AttachmentStoreOp::Store => ash::vk::AttachmentStoreOp::STORE,
-            AttachmentStoreOp::DontCare => ash::vk::AttachmentStoreOp::DONT_CARE
+            AttachmentStoreOp::DontCare => ash::vk::AttachmentStoreOp::DONT_CARE,
         }
     }
 }
@@ -106,7 +111,7 @@ impl<'a> RenderSubPass<'a> {
 
 pub struct RenderPass {
     device: Arc<Device>,
-    renderpass: ash::vk::RenderPass
+    renderpass: ash::vk::RenderPass,
 }
 
 impl DeviceOwned for RenderPass {
@@ -117,7 +122,12 @@ impl DeviceOwned for RenderPass {
 
 impl Drop for RenderPass {
     fn drop(&mut self) {
-        unsafe { self.device.ash_handle().destroy_render_pass(self.renderpass, self.device.get_parent_instance().get_alloc_callbacks()) }
+        unsafe {
+            self.device.ash_handle().destroy_render_pass(
+                self.renderpass,
+                self.device.get_parent_instance().get_alloc_callbacks(),
+            )
+        }
     }
 }
 
@@ -136,46 +146,67 @@ impl RenderPass {
         subpasses: &[RenderSubPass<'a>],
         // TODO: subpass dependencies!!!
     ) -> VulkanResult<Arc<Self>> {
-        let attachment_descriptors = attachments.iter().map(|a| a.ash_description()).collect::<smallvec::SmallVec<[ash::vk::AttachmentDescription; 32]>>();
-        let mut subpass_definitions = smallvec::SmallVec::<[ash::vk::SubpassDescription; MAX_NUMBER_OF_SUBPASSES_NOT_REQUIRING_HEAP_ALLOC]>::with_capacity(subpasses.len());
-        let mut input_attachment_references_by_subpass = smallvec::SmallVec::<[smallvec::SmallVec::<[ash::vk::AttachmentReference; 8]>; MAX_NUMBER_OF_SUBPASSES_NOT_REQUIRING_HEAP_ALLOC]>::with_capacity(subpasses.len());
-        let mut output_color_attachment_references_by_subpass = smallvec::SmallVec::<[smallvec::SmallVec::<[ash::vk::AttachmentReference; 8]>; MAX_NUMBER_OF_SUBPASSES_NOT_REQUIRING_HEAP_ALLOC]>::with_capacity(subpasses.len());
-        let mut output_depth_stencil_attachment_references_by_subpass = smallvec::SmallVec::<[ash::vk::AttachmentReference; MAX_NUMBER_OF_SUBPASSES_NOT_REQUIRING_HEAP_ALLOC]>::with_capacity(subpasses.len());
+        let attachment_descriptors = attachments
+            .iter()
+            .map(|a| a.ash_description())
+            .collect::<smallvec::SmallVec<[ash::vk::AttachmentDescription; 32]>>(
+        );
+        let mut subpass_definitions = smallvec::SmallVec::<
+            [ash::vk::SubpassDescription; MAX_NUMBER_OF_SUBPASSES_NOT_REQUIRING_HEAP_ALLOC],
+        >::with_capacity(subpasses.len());
+        let mut input_attachment_references_by_subpass = smallvec::SmallVec::<
+            [smallvec::SmallVec<[ash::vk::AttachmentReference; 8]>;
+                MAX_NUMBER_OF_SUBPASSES_NOT_REQUIRING_HEAP_ALLOC],
+        >::with_capacity(subpasses.len());
+        let mut output_color_attachment_references_by_subpass =
+            smallvec::SmallVec::<
+                [smallvec::SmallVec<[ash::vk::AttachmentReference; 8]>;
+                    MAX_NUMBER_OF_SUBPASSES_NOT_REQUIRING_HEAP_ALLOC],
+            >::with_capacity(subpasses.len());
+        let mut output_depth_stencil_attachment_references_by_subpass =
+            smallvec::SmallVec::<
+                [ash::vk::AttachmentReference; MAX_NUMBER_OF_SUBPASSES_NOT_REQUIRING_HEAP_ALLOC],
+            >::with_capacity(subpasses.len());
 
         for subpass in subpasses.iter() {
-            
-            let mut color_attachment_of_subpass: smallvec::SmallVec::<[ash::vk::AttachmentReference; 8]> = smallvec::smallvec![];
+            let mut color_attachment_of_subpass: smallvec::SmallVec<
+                [ash::vk::AttachmentReference; 8],
+            > = smallvec::smallvec![];
             for color_attachment in subpass.output_color_attachment_indeces {
                 if *color_attachment as usize >= attachment_descriptors.len() {
-                    return Err(VulkanError::Unspecified)
+                    return Err(VulkanError::Unspecified);
                 }
 
                 color_attachment_of_subpass.push(
                     ash::vk::AttachmentReference::builder()
                         .attachment(*color_attachment)
                         .layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                        .build()
+                        .build(),
                 )
             }
             output_color_attachment_references_by_subpass.push(color_attachment_of_subpass);
 
-            let mut input_attachment_of_subpass: smallvec::SmallVec::<[ash::vk::AttachmentReference; 8]> = smallvec::smallvec![];
+            let mut input_attachment_of_subpass: smallvec::SmallVec<
+                [ash::vk::AttachmentReference; 8],
+            > = smallvec::smallvec![];
             for input_attachment in subpass.input_color_attachment_indeces {
                 if *input_attachment as usize >= attachment_descriptors.len() {
-                    return Err(VulkanError::Unspecified)
+                    return Err(VulkanError::Unspecified);
                 }
 
                 input_attachment_of_subpass.push(
                     ash::vk::AttachmentReference::builder()
                         .attachment(*input_attachment)
                         .layout(ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                        .build()
+                        .build(),
                 )
             }
             input_attachment_references_by_subpass.push(input_attachment_of_subpass);
 
             let mut subpass_uses_depth_stencil_attachment = false;
-            if let Some(depth_stencil_attachment_index) = subpass.output_depth_stencil_attachment_index {
+            if let Some(depth_stencil_attachment_index) =
+                subpass.output_depth_stencil_attachment_index
+            {
                 assert!((depth_stencil_attachment_index as usize) < attachment_descriptors.len());
 
                 subpass_uses_depth_stencil_attachment = true;
@@ -184,23 +215,34 @@ impl RenderPass {
                     ash::vk::AttachmentReference::builder()
                         .attachment(depth_stencil_attachment_index)
                         .layout(ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-                        .build()
+                        .build(),
                 )
             } else {
                 output_depth_stencil_attachment_references_by_subpass.push(
                     ash::vk::AttachmentReference::builder()
                         .attachment(0)
                         .layout(ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-                        .build()
+                        .build(),
                 )
             }
 
             let mut subpass_definition = ash::vk::SubpassDescription::builder()
                 .pipeline_bind_point(ash::vk::PipelineBindPoint::GRAPHICS)
-                .color_attachments(output_color_attachment_references_by_subpass[output_color_attachment_references_by_subpass.len() - 1].as_slice())
-                .input_attachments(input_attachment_references_by_subpass[input_attachment_references_by_subpass.len() - 1].as_slice());
+                .color_attachments(
+                    output_color_attachment_references_by_subpass
+                        [output_color_attachment_references_by_subpass.len() - 1]
+                        .as_slice(),
+                )
+                .input_attachments(
+                    input_attachment_references_by_subpass
+                        [input_attachment_references_by_subpass.len() - 1]
+                        .as_slice(),
+                );
             if subpass_uses_depth_stencil_attachment {
-                subpass_definition = subpass_definition.depth_stencil_attachment(&output_depth_stencil_attachment_references_by_subpass[output_depth_stencil_attachment_references_by_subpass.len() - 1]);
+                subpass_definition = subpass_definition.depth_stencil_attachment(
+                    &output_depth_stencil_attachment_references_by_subpass
+                        [output_depth_stencil_attachment_references_by_subpass.len() - 1],
+                );
             }
 
             subpass_definitions.push(subpass_definition.build())
@@ -211,16 +253,14 @@ impl RenderPass {
             .subpasses(subpass_definitions.as_slice())
             .build();
 
-        match unsafe { device.ash_handle().create_render_pass(&create_info, device.get_parent_instance().get_alloc_callbacks()) } {
-            Ok(renderpass) => {
-                Ok(Arc::new(Self {
-                    device,
-                    renderpass
-                }))
-            },
-            Err(err) => {
-                Err(VulkanError::Unspecified)
-            }
+        match unsafe {
+            device.ash_handle().create_render_pass(
+                &create_info,
+                device.get_parent_instance().get_alloc_callbacks(),
+            )
+        } {
+            Ok(renderpass) => Ok(Arc::new(Self { device, renderpass })),
+            Err(err) => Err(VulkanError::Unspecified),
         }
     }
 }
