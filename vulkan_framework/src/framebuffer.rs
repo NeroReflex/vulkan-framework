@@ -1,6 +1,13 @@
 use std::sync::Arc;
 
-use crate::{device::{Device, DeviceOwned}, instance::InstanceOwned, prelude::VulkanResult, renderpass::{RenderPass, RenderPassCompatible}, image_view::ImageView, image::{Image2DDimensions, Image1DTrait, Image2DTrait}};
+use crate::{
+    device::DeviceOwned,
+    image::{Image1DTrait, Image2DDimensions, Image2DTrait},
+    image_view::ImageView,
+    instance::InstanceOwned,
+    prelude::VulkanResult,
+    renderpass::{RenderPass, RenderPassCompatible},
+};
 
 pub trait FramebufferTrait: RenderPassCompatible {
     fn native_handle(&self) -> u64;
@@ -15,7 +22,7 @@ pub struct Framebuffer {
     framebuffer: ash::vk::Framebuffer,
     imageviews: smallvec::SmallVec<[Arc<ImageView>; 16]>,
     dimensions: Image2DDimensions,
-    layers: u32
+    layers: u32,
 }
 
 impl RenderPassCompatible for Framebuffer {
@@ -38,15 +45,16 @@ impl Drop for Framebuffer {
 }
 
 impl Framebuffer {
-    
-
     pub fn new(
         renderpass: Arc<RenderPass>,
         imageviews: &[Arc<ImageView>],
         dimensions: Image2DDimensions,
-        layers: u32
+        layers: u32,
     ) -> VulkanResult<Arc<Self>> {
-        let attachments = imageviews.iter().map(|iv| iv.ash_handle()).collect::<smallvec::SmallVec<[ash::vk::ImageView; 16]>>();
+        let attachments = imageviews
+            .iter()
+            .map(|iv| iv.ash_handle())
+            .collect::<smallvec::SmallVec<[ash::vk::ImageView; 16]>>();
 
         let create_info = ash::vk::FramebufferCreateInfo::builder()
             .flags(ash::vk::FramebufferCreateFlags::empty())
@@ -57,16 +65,28 @@ impl Framebuffer {
             .layers(layers)
             .build();
 
-        match unsafe { renderpass.get_parent_device().ash_handle().create_framebuffer(&create_info, renderpass.get_parent_device().get_parent_instance().get_alloc_callbacks()) } {
-            Ok(framebuffer) => {
-                Ok(Arc::new(Self {
-                    renderpass,
-                    framebuffer,
-                    imageviews: imageviews.iter().map(|iv| iv.clone()).collect::<smallvec::SmallVec<[Arc<ImageView>; 16]>>(),
-                    dimensions,
-                    layers
-                }))
-            },
+        match unsafe {
+            renderpass
+                .get_parent_device()
+                .ash_handle()
+                .create_framebuffer(
+                    &create_info,
+                    renderpass
+                        .get_parent_device()
+                        .get_parent_instance()
+                        .get_alloc_callbacks(),
+                )
+        } {
+            Ok(framebuffer) => Ok(Arc::new(Self {
+                renderpass,
+                framebuffer,
+                imageviews: imageviews
+                    .iter()
+                    .cloned()
+                    .collect::<smallvec::SmallVec<[Arc<ImageView>; 16]>>(),
+                dimensions,
+                layers,
+            })),
             Err(_err) => {
                 todo!()
             }
@@ -87,4 +107,3 @@ impl FramebufferTrait for Framebuffer {
         self.layers
     }
 }
-

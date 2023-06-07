@@ -204,7 +204,7 @@ fn main() {
                                             };
 
                                             let device_swapchain_info =
-                                                DeviceSurfaceInfo::new(device.clone(), sfc.clone())
+                                                DeviceSurfaceInfo::new(device.clone(), sfc)
                                                     .unwrap();
 
                                             let final_format = ImageFormat::b8g8r8a8_srgb;
@@ -238,7 +238,7 @@ fn main() {
                                             println!("Swapchain created!");
 
                                             let image = match Image::new(
-                                                stack_allocator.clone(),
+                                                stack_allocator,
                                                 ConcreteImageDescriptor::new(
                                                     ImageDimensions::Image2D {
                                                         extent: Image2DDimensions::new(1024, 1024),
@@ -689,7 +689,7 @@ fn main() {
                                                 )
                                                 .unwrap(),
                                                 PrimaryCommandBuffer::new(
-                                                    command_pool.clone(),
+                                                    command_pool,
                                                     Some("present_command_buffers[3]"),
                                                 )
                                                 .unwrap(),
@@ -700,7 +700,7 @@ fn main() {
                                             match queue.submit(
                                                 &[command_buffer],
                                                 &[],
-                                                &[semaphore.clone()],
+                                                &[semaphore],
                                                 fence,
                                             ) {
                                                 Ok(mut fence_waiter) => {

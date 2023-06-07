@@ -84,7 +84,7 @@ where
                     (size as usize) / size_of::<T>(),
                 );
 
-                let data = unsafe { (*slice).iter().map(|f| *f).collect::<Vec<T>>() };
+                let data = unsafe { (*slice).to_vec() };
 
                 unsafe { device.ash_handle().unmap_memory(self.memory) }
 

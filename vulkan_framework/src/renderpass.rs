@@ -260,7 +260,7 @@ impl RenderPass {
             )
         } {
             Ok(renderpass) => Ok(Arc::new(Self { device, renderpass })),
-            Err(err) => Err(VulkanError::Unspecified),
+            Err(_err) => Err(VulkanError::Unspecified),
         }
     }
 }

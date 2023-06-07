@@ -223,8 +223,8 @@ impl FenceWaiter {
         Self {
             fence: Some(fence),
             command_buffers: command_buffers
-                .into_iter()
-                .map(|cb| cb.clone())
+                .iter()
+                .cloned()
                 .collect::<smallvec::SmallVec<[Arc<dyn CommandBufferTrait>; 8]>>(),
         }
     }

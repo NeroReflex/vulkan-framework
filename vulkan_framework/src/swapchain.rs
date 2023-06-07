@@ -5,9 +5,7 @@ use ash::vk::Handle;
 use crate::{
     device::{Device, DeviceOwned},
     fence::Fence,
-    image::{
-        Image1DTrait, Image2DDimensions, Image2DTrait, ImageFormat, ImageUsage, ImageUsageSpecifier,
-    },
+    image::{Image1DTrait, Image2DDimensions, Image2DTrait, ImageFormat, ImageUsage},
     instance::InstanceOwned,
     prelude::{VulkanError, VulkanResult},
     queue::Queue,
@@ -197,19 +195,17 @@ impl DeviceSurfaceInfo {
                             surface_capabilities,
                             surface_present_modes: surface_present_modes
                                 .into_iter()
-                                .map(|val| val)
-                                .collect::<smallvec::SmallVec<[ash::vk::PresentModeKHR; 4]>>(),
+                                .collect::<smallvec::SmallVec<[ash::vk::PresentModeKHR; 4]>>(
+                            ),
                             surface_formats: surface_formats
                                 .into_iter()
-                                .map(|val| val)
-                                .collect::<smallvec::SmallVec<[ash::vk::SurfaceFormatKHR; 8]>>(
-                            ),
+                                .collect::<smallvec::SmallVec<[ash::vk::SurfaceFormatKHR; 8]>>(),
                         })
                     }
                     _ => Err(VulkanError::Unspecified),
                 }
             }
-            Nome => Err(VulkanError::Unspecified),
+            _Nome => Err(VulkanError::Unspecified),
         }
     }
 }
@@ -298,7 +294,7 @@ impl SwapchainKHR {
         match self.get_parent_device().ash_ext_swapchain_khr() {
             Option::Some(ext) => {
                 match unsafe { ext.queue_present(queue.ash_handle(), &present_info) } {
-                    Ok(suboptimal) => Ok(()),
+                    Ok(_suboptimal) => Ok(()),
                     Err(err) => Err(VulkanError::Vulkan(err.as_raw())),
                 }
             }
@@ -333,7 +329,7 @@ impl SwapchainKHR {
                         },
                     )
                 } {
-                    Ok((a, b)) => Ok(a),
+                    Ok((a, _b)) => Ok(a),
                     Err(err) => {
                         #[cfg(debug_assertions)]
                         {
@@ -443,11 +439,9 @@ impl SwapchainKHR {
                     }
                 }
             }
-            None => {
-                return Err(VulkanError::MissingExtension(String::from(
-                    "VK_KHR_swapchain",
-                )))
-            }
+            None => Err(VulkanError::MissingExtension(String::from(
+                "VK_KHR_swapchain",
+            ))),
         }
     }
 }

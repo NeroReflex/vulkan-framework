@@ -451,14 +451,14 @@ fn main() {
                                                     let path = std::path::Path::new("image.pfm");
                                                     let display = path.display();
 
-                                                    let mut file =
-                                                        match std::fs::File::create(&path) {
-                                                            Ok(f) => f,
-                                                            Err(why) => panic!(
-                                                                "couldn't open {}: {}",
-                                                                display, why
-                                                            ),
-                                                        };
+                                                    let mut file = match std::fs::File::create(path)
+                                                    {
+                                                        Ok(f) => f,
+                                                        Err(why) => panic!(
+                                                            "couldn't open {}: {}",
+                                                            display, why
+                                                        ),
+                                                    };
 
                                                     let rgb_data = image_raw_data
                                                         .iter()

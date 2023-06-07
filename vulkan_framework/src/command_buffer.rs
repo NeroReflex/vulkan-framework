@@ -4,20 +4,23 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use ash::vk::{Handle, ClearValue};
+use ash::vk::Handle;
 
 use crate::{
     command_pool::{CommandPool, CommandPoolOwned},
     device::DeviceOwned,
+    framebuffer::{Framebuffer, FramebufferTrait},
+    graphics_pipeline::GraphicsPipeline,
     image::{
-        ImageAspects, ImageDimensions, ImageLayout, ImageSubresourceLayers, ImageSubresourceRange,
-        ImageTrait, Image2DTrait, Image1DTrait,
+        Image1DTrait, Image2DTrait, ImageAspects, ImageDimensions, ImageLayout,
+        ImageSubresourceLayers, ImageSubresourceRange, ImageTrait,
     },
     instance::InstanceOwned,
     pipeline_layout::PipelineLayout,
     pipeline_stage::PipelineStages,
     prelude::{VulkanError, VulkanResult},
-    queue_family::QueueFamily, framebuffer::{Framebuffer, FramebufferTrait}, renderpass::RenderPassCompatible, graphics_pipeline::GraphicsPipeline,
+    queue_family::QueueFamily,
+    renderpass::RenderPassCompatible,
 };
 use crate::{
     compute_pipeline::ComputePipeline, descriptor_set::DescriptorSet, device::Device,
@@ -38,7 +41,7 @@ impl Eq for CommandBufferReferencedResource {}
 impl CommandBufferReferencedResource {
     pub fn hash(&self) -> u128 {
         match self {
-            Self::ComputePipeline(l0) => (0b0000u128 << 124u128) | (l0.native_handle() as u128),
+            Self::ComputePipeline(l0) => l0.native_handle() as u128,
             Self::DescriptorSet(l0) => (0b0001u128 << 124u128) | (l0.native_handle() as u128),
             Self::PipelineLayout(l0) => (0b0010u128 << 124u128) | (l0.native_handle() as u128),
             Self::Image(l0) => (0b0011u128 << 124u128) | (l0.native_handle() as u128),
@@ -243,12 +246,7 @@ impl AccessFlagsSpecifier {
             flags.contains(&AccessFlag::HostWrite),
             flags.contains(&AccessFlag::MemoryRead),
             flags.contains(&AccessFlag::MemoryWrite),
-            match acceleration_structure_flags {
-                Some(accel_structure_flags) => Some(AccessFlagsAccelerationStructureKHR::from(
-                    accel_structure_flags,
-                )),
-                None => None,
-            },
+            acceleration_structure_flags.map(AccessFlagsAccelerationStructureKHR::from),
         )
     }
 
@@ -469,7 +467,7 @@ impl ImageMemoryBarrier {
 pub enum ColorClearValues {
     Vec4(f32, f32, f32, f32),
     IVec4(i32, i32, i32, i32),
-    UVec4(u32, u32, u32, u32)
+    UVec4(u32, u32, u32, u32),
 }
 
 #[derive(Copy, Clone, PartialEq)]
@@ -478,23 +476,23 @@ pub struct ClearValues {
 }
 
 impl ClearValues {
-    pub fn new(
-        color: Option<ColorClearValues>,
-    ) -> Self {
-        Self {
-            color
-        }
+    pub fn new(color: Option<ColorClearValues>) -> Self {
+        Self { color }
     }
 
     pub(crate) fn ash_clear(&self) -> ash::vk::ClearValue {
         let mut result = ash::vk::ClearValue::default();
 
         match self.color {
-            Some(color) => {
-                match color {
-                    ColorClearValues::Vec4(r, g, b, a) => { result.color.float32 = [r, g, b, a]; },
-                    ColorClearValues::IVec4(r, g, b, a) => { result.color.int32 = [r, g, b, a]; },
-                    ColorClearValues::UVec4(r, g, b, a) => { result.color.uint32 = [r, g, b, a]; },
+            Some(color) => match color {
+                ColorClearValues::Vec4(r, g, b, a) => {
+                    result.color.float32 = [r, g, b, a];
+                }
+                ColorClearValues::IVec4(r, g, b, a) => {
+                    result.color.int32 = [r, g, b, a];
+                }
+                ColorClearValues::UVec4(r, g, b, a) => {
+                    result.color.uint32 = [r, g, b, a];
                 }
             },
             None => {}
@@ -530,10 +528,7 @@ impl<'a> CommandBufferRecorder<'a> {
         }
     }
 
-    pub fn bind_graphics_pipeline(
-        &mut self,
-        graphics_pipeline: Arc<GraphicsPipeline>,
-    ) {
+    pub fn bind_graphics_pipeline(&mut self, graphics_pipeline: Arc<GraphicsPipeline>) {
         unsafe {
             self.device.ash_handle().cmd_bind_pipeline(
                 self.command_buffer.ash_handle(),
@@ -548,11 +543,11 @@ impl<'a> CommandBufferRecorder<'a> {
             ));
     }
 
-    pub fn end_renderpass(
-        &mut self,
-    ) {
+    pub fn end_renderpass(&mut self) {
         unsafe {
-            self.device.ash_handle().cmd_end_render_pass(self.command_buffer.ash_handle())
+            self.device
+                .ash_handle()
+                .cmd_end_render_pass(self.command_buffer.ash_handle())
         }
     }
 
@@ -566,38 +561,34 @@ impl<'a> CommandBufferRecorder<'a> {
         framebuffer: Arc<Framebuffer>,
         clear_values: &[ClearValues],
     ) {
-        let ash_clear_values: smallvec::SmallVec<[ash::vk::ClearValue; 32]> = clear_values.iter().map(|cv| cv.ash_clear()).collect();
+        let ash_clear_values: smallvec::SmallVec<[ash::vk::ClearValue; 32]> =
+            clear_values.iter().map(|cv| cv.ash_clear()).collect();
 
-    
         let render_pass_begin_info = ash::vk::RenderPassBeginInfo::builder()
             .clear_values(ash_clear_values.as_slice())
             .framebuffer(ash::vk::Framebuffer::from_raw(framebuffer.native_handle()))
             .render_pass(framebuffer.get_parent_renderpass().ash_handle())
-            .render_area(ash::vk::Rect2D::builder()
-                .offset(
-                    ash::vk::Offset2D::builder()
-                        .x(0)
-                        .y(0)
-                        .build()
-                )
-                .extent(
-                    ash::vk::Extent2D::builder()
-                        .width(framebuffer.dimensions().width())
-                        .height(framebuffer.dimensions().height())
-                        .build()
-                )
-                .build()
+            .render_area(
+                ash::vk::Rect2D::builder()
+                    .offset(ash::vk::Offset2D::builder().x(0).y(0).build())
+                    .extent(
+                        ash::vk::Extent2D::builder()
+                            .width(framebuffer.dimensions().width())
+                            .height(framebuffer.dimensions().height())
+                            .build(),
+                    )
+                    .build(),
             )
             .build();
 
         self.used_resources
-            .insert(CommandBufferReferencedResource::Framebuffer(framebuffer.clone()));
+            .insert(CommandBufferReferencedResource::Framebuffer(framebuffer));
 
         unsafe {
             self.device.ash_handle().cmd_begin_render_pass(
                 self.command_buffer.ash_handle(),
                 &render_pass_begin_info,
-                ash::vk::SubpassContents::INLINE
+                ash::vk::SubpassContents::INLINE,
             )
         }
     }

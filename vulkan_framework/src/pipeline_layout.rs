@@ -123,8 +123,8 @@ impl PipelineLayout {
                 Ok(Arc::new(Self {
                     device,
                     pipeline_layout,
-                    layout_bindings: binding_descriptors.iter().map(|e| e.clone()).collect(),
-                    push_constant_ranges: constant_ranges.iter().map(|e| e.clone()).collect(),
+                    layout_bindings: binding_descriptors.iter().cloned().collect(),
+                    push_constant_ranges: constant_ranges.iter().cloned().collect(),
                 }))
             }
             Err(err) => {

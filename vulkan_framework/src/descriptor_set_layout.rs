@@ -5,7 +5,6 @@ use crate::{
     instance::InstanceOwned,
     prelude::{VulkanError, VulkanResult},
     shader_layout_binding::BindingDescriptor,
-    shader_trait::ShaderTrait,
 };
 
 pub struct DescriptorSetLayout {

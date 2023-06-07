@@ -3,34 +3,39 @@ use std::sync::Arc;
 use inline_spirv::*;
 
 use vulkan_framework::{
+    command_buffer::{ClearValues, ColorClearValues, CommandBufferRecorder, PrimaryCommandBuffer},
+    command_pool::CommandPool,
     device::*,
+    fence::{Fence, FenceWaiter},
     fragment_shader::FragmentShader,
+    framebuffer::Framebuffer,
     graphics_pipeline::{
-        AttributeType, CullMode, FrontFace, GraphicsPipeline, PolygonMode, Rasterizer,
-        VertexInputAttribute, VertexInputBinding, VertexInputRate, DepthConfiguration, DepthCompareOp,
+        CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline, PolygonMode,
+        Rasterizer,
     },
     image::{
-        ConcreteImageDescriptor, Image, Image2DDimensions, ImageDimensions, ImageFlags,
-        ImageFormat, ImageLayout, ImageLayoutSwapchainKHR, ImageMultisampling, ImageTiling,
+        Image2DDimensions, ImageFormat, ImageLayout, ImageLayoutSwapchainKHR, ImageMultisampling,
         ImageUsage, ImageUsageSpecifier,
     },
+    image_view::{ImageView, ImageViewType},
     instance::*,
     memory_allocator::*,
     memory_heap::*,
     memory_pool::MemoryPool,
     pipeline_layout::PipelineLayout,
+    pipeline_stage::{PipelineStage, PipelineStages},
     queue::*,
     queue_family::*,
     renderpass::{
         AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp, RenderPass, RenderSubPass,
     },
-    shader_layout_binding::BindingDescriptor,
+    semaphore::Semaphore,
     swapchain::{
         CompositeAlphaSwapchainKHR, DeviceSurfaceInfo, PresentModeSwapchainKHR,
         SurfaceColorspaceSwapchainKHR, SurfaceTransformSwapchainKHR, SwapchainKHR,
     },
     swapchain_image::ImageSwapchainKHR,
-    vertex_shader::VertexShader, semaphore::Semaphore, fence::{Fence, FenceWaiter}, command_pool::CommandPool, command_buffer::{PrimaryCommandBuffer, CommandBufferRecorder, ColorClearValues, ClearValues}, pipeline_stage::{PipelineStage, PipelineStages}, image_view::{ImageView, ImageViewAspect, RecognisedImageAspect, ImageViewType}, framebuffer::Framebuffer,
+    vertex_shader::VertexShader,
 };
 
 const VERTEX_SPV: &[u32] = inline_spirv!(
@@ -133,7 +138,7 @@ fn main() {
                 println!("Vulkan rendering surface created and registered successfully");
 
                 let dev = Device::new(
-                    instance.clone(),
+                    instance,
                     [ConcreteQueueFamilyDescriptor::new(
                         vec![
                             QueueFamilySupportedOperationType::Graphics,
@@ -168,7 +173,7 @@ fn main() {
                 .unwrap();
                 println!("Memory heap created! <3");
 
-                let default_allocator = MemoryPool::new(
+                let _default_allocator = MemoryPool::new(
                     memory_heap,
                     StackAllocator::new(
                         1024 * 1024 * 128, // 128MiB
@@ -176,8 +181,7 @@ fn main() {
                 )
                 .unwrap();
 
-                let device_swapchain_info =
-                    DeviceSurfaceInfo::new(dev.clone(), sfc.clone()).unwrap();
+                let device_swapchain_info = DeviceSurfaceInfo::new(dev.clone(), sfc).unwrap();
 
                 if !device_swapchain_info.present_mode_supported(&PresentModeSwapchainKHR::FIFO) {
                     panic!("Device does not support the most common present mode. LOL.");
@@ -219,53 +223,45 @@ fn main() {
                 let swapchain_images = ImageSwapchainKHR::extract(swapchain.clone()).unwrap();
                 println!("Swapchain images extracted!");
 
-                let image_available_semaphores = (0..swapchain_images_count).into_iter().map(|idx| {
-                    Semaphore::new(
-                        dev.clone(),
-                        false,
-                        Some("image_available_semaphores[...]"),
-                    ).unwrap()
-                }).collect::<Vec<Arc<Semaphore>>>();
+                let image_available_semaphores = (0..swapchain_images_count)
+                    .map(|_idx| {
+                        Semaphore::new(dev.clone(), false, Some("image_available_semaphores[...]"))
+                            .unwrap()
+                    })
+                    .collect::<Vec<Arc<Semaphore>>>();
 
-                let image_rendered_semaphores = (0..swapchain_images_count).into_iter().map(|idx| {
-                    Semaphore::new(
-                        dev.clone(),
-                        false,
-                        Some("image_rendered_semaphores[...]"),
-                    ).unwrap()
-                }).collect::<Vec<Arc<Semaphore>>>();
+                let image_rendered_semaphores = (0..swapchain_images_count)
+                    .map(|_idx| {
+                        Semaphore::new(dev.clone(), false, Some("image_rendered_semaphores[...]"))
+                            .unwrap()
+                    })
+                    .collect::<Vec<Arc<Semaphore>>>();
 
-                let swapchain_fences = (0..swapchain_images_count).into_iter().map(|idx| {
-                    Fence::new(
-                        dev.clone(),
-                        true,
-                        Some("swapchain_fences[...]"),
-                    ).unwrap()
-                }).collect::<Vec<Arc<Fence>>>();
+                let swapchain_fences = (0..swapchain_images_count)
+                    .map(|_idx| {
+                        Fence::new(dev.clone(), true, Some("swapchain_fences[...]")).unwrap()
+                    })
+                    .collect::<Vec<Arc<Fence>>>();
 
-                let mut swapchain_fence_waiters = (0..swapchain_images_count).into_iter().map(|idx| {
-                    FenceWaiter::from_fence(
-                        swapchain_fences[idx as usize].clone(),
-                    )
-                }).collect::<Vec<FenceWaiter>>();
+                let mut swapchain_fence_waiters = (0..swapchain_images_count)
+                    .map(|idx| FenceWaiter::from_fence(swapchain_fences[idx as usize].clone()))
+                    .collect::<Vec<FenceWaiter>>();
 
-                let command_pool = CommandPool::new(
-                    queue_family.clone(),
-                    Some("My command pool"),
-                ).unwrap();
+                let command_pool = CommandPool::new(queue_family, Some("My command pool")).unwrap();
 
-                let command_buffer = PrimaryCommandBuffer::new(
-                    command_pool.clone(),
-                    Some("my command buffer <3"),
-                ).unwrap();
+                let _command_buffer =
+                    PrimaryCommandBuffer::new(command_pool.clone(), Some("my command buffer <3"))
+                        .unwrap();
 
-                let present_command_buffers = (0..swapchain_images_count).into_iter().map(|idx| {
-                    PrimaryCommandBuffer::new(
-                        command_pool.clone(),
-                        Some("present_command_buffers[0]"),
-                    )
-                    .unwrap()
-                }).collect::<Vec<Arc<PrimaryCommandBuffer>>>();
+                let present_command_buffers = (0..swapchain_images_count)
+                    .map(|_idx| {
+                        PrimaryCommandBuffer::new(
+                            command_pool.clone(),
+                            Some("present_command_buffers[0]"),
+                        )
+                        .unwrap()
+                    })
+                    .collect::<Vec<Arc<PrimaryCommandBuffer>>>();
 
                 let renderpass = RenderPass::new(
                     dev.clone(),
@@ -316,14 +312,17 @@ fn main() {
 
                 let vertex_shader = VertexShader::new(dev.clone(), &[], &[], VERTEX_SPV).unwrap();
 
-                let fragment_shader =
-                    FragmentShader::new(dev.clone(), &[], &[], FRAGMENT_SPV).unwrap();
+                let fragment_shader = FragmentShader::new(dev, &[], &[], FRAGMENT_SPV).unwrap();
 
                 let graphics_pipeline = GraphicsPipeline::new(
                     renderpass.clone(),
                     0,
                     ImageMultisampling::SamplesPerPixel1,
-                    Some(DepthConfiguration::new(true, DepthCompareOp::Always, Some((0.0, 1.0)))),
+                    Some(DepthConfiguration::new(
+                        true,
+                        DepthCompareOp::Always,
+                        Some((0.0, 1.0)),
+                    )),
                     Image2DDimensions::new(WIDTH, HEIGHT),
                     pipeline_layout,
                     &[
@@ -346,45 +345,54 @@ fn main() {
                 .unwrap();
                 println!("Graphics pipeline created!");
 
-                let swapchain_image_views = swapchain_images.into_iter().map(|image_swapchain| {
-                    ImageView::new(
-                        image_swapchain.clone(),
-                        ImageViewType::Image2D,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        Some("swapchain_image_views[...]")
-                    ).unwrap()
-                }).collect::<Vec<Arc<ImageView>>>();
+                let swapchain_image_views = swapchain_images
+                    .into_iter()
+                    .map(|image_swapchain| {
+                        ImageView::new(
+                            image_swapchain,
+                            ImageViewType::Image2D,
+                            None,
+                            None,
+                            None,
+                            None,
+                            None,
+                            None,
+                            None,
+                            Some("swapchain_image_views[...]"),
+                        )
+                        .unwrap()
+                    })
+                    .collect::<Vec<Arc<ImageView>>>();
 
-                let swapchain_framebuffers = swapchain_image_views.iter().map(|iv| {
-                    Framebuffer::new(
-                        renderpass.clone(),
-                        &[iv.clone()],
-                        swapchain.images_extent(),
-                        1
-                    ).unwrap()
-                }).collect::<Vec<Arc<Framebuffer>>>();
+                let swapchain_framebuffers = swapchain_image_views
+                    .iter()
+                    .map(|iv| {
+                        Framebuffer::new(
+                            renderpass.clone(),
+                            &[iv.clone()],
+                            swapchain.images_extent(),
+                            1,
+                        )
+                        .unwrap()
+                    })
+                    .collect::<Vec<Arc<Framebuffer>>>();
 
                 let mut current_frame: usize = 0;
 
-            let mut event_pump =
-                    sdl_context.event_pump().unwrap();
+                let mut event_pump = sdl_context.event_pump().unwrap();
                 'running: loop {
                     for event in event_pump.poll_iter() {
                         match event {
-                            sdl2::event::Event::Quit {..} | sdl2::event::Event::KeyDown { keycode: Some(sdl2::keyboard::Keycode::Escape), .. } => {
+                            sdl2::event::Event::Quit { .. }
+                            | sdl2::event::Event::KeyDown {
+                                keycode: Some(sdl2::keyboard::Keycode::Escape),
+                                ..
+                            } => {
                                 for i in 0..(swapchain_images_count as usize) {
-                                    swapchain_fence_waiters[i]
-                                        .wait(u64::MAX)
-                                        .unwrap()
+                                    swapchain_fence_waiters[i].wait(u64::MAX).unwrap()
                                 }
-                                break 'running
-                            },
+                                break 'running;
+                            }
                             _ => {}
                         }
                     }
@@ -406,47 +414,49 @@ fn main() {
                         .wait(u64::MAX)
                         .unwrap();
 
-                    present_command_buffers[current_frame % (swapchain_images_count as usize)].record_commands(|recorder: &mut CommandBufferRecorder| {
-                        recorder.begin_renderpass(
-                            swapchain_framebuffers[current_frame % (swapchain_images_count as usize)].clone(),
-                            &[
-                                ClearValues::new(
-                                    Some(ColorClearValues::Vec4(0.0, 0.0, 0.0, 1.0))
-                                )
-                            ]
-                        );
+                    present_command_buffers[current_frame % (swapchain_images_count as usize)]
+                        .record_commands(|recorder: &mut CommandBufferRecorder| {
+                            recorder.begin_renderpass(
+                                swapchain_framebuffers
+                                    [current_frame % (swapchain_images_count as usize)]
+                                    .clone(),
+                                &[ClearValues::new(Some(ColorClearValues::Vec4(
+                                    0.0, 0.0, 0.0, 1.0,
+                                )))],
+                            );
 
-                        recorder.bind_graphics_pipeline(graphics_pipeline.clone());
+                            recorder.bind_graphics_pipeline(graphics_pipeline.clone());
 
-                        recorder.draw(0, 3, 0, 1);
+                            recorder.draw(0, 3, 0, 1);
 
-                        recorder.end_renderpass();
-                    }).unwrap();
-
-                    swapchain_fence_waiters
-                        [current_frame % (swapchain_images_count as usize)] = queue
-                        .submit(
-                            &[present_command_buffers
-                                [current_frame % (swapchain_images_count as usize)]
-                                .clone()],
-                            &[
-                                (
-                                    PipelineStages::from(
-                                        &[PipelineStage::FragmentShader], 
-                                        None, 
-                                        None, 
-                                        None
-                                    ),
-                                    image_available_semaphores[current_frame % (swapchain_images_count as usize)].clone()
-                                )
-                            ],
-                            &[image_rendered_semaphores
-                                [current_frame % (swapchain_images_count as usize)]
-                                .clone()],
-                            swapchain_fences[current_frame % (swapchain_images_count as usize)]
-                                .clone(),
-                        )
+                            recorder.end_renderpass();
+                        })
                         .unwrap();
+
+                    swapchain_fence_waiters[current_frame % (swapchain_images_count as usize)] =
+                        queue
+                            .submit(
+                                &[present_command_buffers
+                                    [current_frame % (swapchain_images_count as usize)]
+                                    .clone()],
+                                &[(
+                                    PipelineStages::from(
+                                        &[PipelineStage::FragmentShader],
+                                        None,
+                                        None,
+                                        None,
+                                    ),
+                                    image_available_semaphores
+                                        [current_frame % (swapchain_images_count as usize)]
+                                        .clone(),
+                                )],
+                                &[image_rendered_semaphores
+                                    [current_frame % (swapchain_images_count as usize)]
+                                    .clone()],
+                                swapchain_fences[current_frame % (swapchain_images_count as usize)]
+                                    .clone(),
+                            )
+                            .unwrap();
 
                     swapchain
                         .queue_present(
@@ -460,7 +470,6 @@ fn main() {
 
                     current_frame = swapchain_index as usize;
                 }
-                                                
             }
             Err(err) => {
                 println!("Error creating sdl2 window: {}", err);

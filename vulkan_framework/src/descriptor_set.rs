@@ -289,7 +289,7 @@ impl DescriptorSet {
                     layout,
                     bound_resources: Mutex::new(
                         (0..(max_idx + 1))
-                            .map(|idx| DescriptorSetBoundResource::None)
+                            .map(|_idx| DescriptorSetBoundResource::None)
                             .collect(),
                     ),
                 })),

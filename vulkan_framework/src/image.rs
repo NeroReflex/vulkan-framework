@@ -1,4 +1,4 @@
-use ash::vk::{Extent3D, ImageType, SampleCountFlags};
+use ash::vk::{Extent3D, ImageType};
 
 use crate::{
     device::{Device, DeviceOwned},
@@ -152,20 +152,14 @@ impl ImageSubresourceRange {
         maybe_base_array_layer: Option<u32>,
         maybe_array_layers_count: Option<u32>,
     ) -> Self {
-        let base_mip_level = match maybe_base_mip_level {
-            Option::Some(custom) => custom,
-            Option::None => 0,
-        };
+        let base_mip_level = maybe_base_mip_level.unwrap_or(0);
 
         let mip_levels_count = match maybe_mip_levels_count {
             Option::Some(custom) => custom,
             Option::None => image.mip_levels_count(),
         };
 
-        let base_array_layer = match maybe_base_array_layer {
-            Option::Some(custom) => custom,
-            Option::None => 0,
-        };
+        let base_array_layer = maybe_base_array_layer.unwrap_or(0);
 
         let array_layers_count = match maybe_array_layers_count {
             Option::Some(custom) => custom,
@@ -900,7 +894,7 @@ where
     }
 
     fn dimensions(&self) -> ImageDimensions {
-        self.descriptor.img_dimensions.clone()
+        self.descriptor.img_dimensions
     }
 
     fn layers_count(&self) -> u32 {

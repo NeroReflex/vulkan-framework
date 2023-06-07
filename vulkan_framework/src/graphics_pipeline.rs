@@ -1,11 +1,9 @@
 use std::ffi::CStr;
 use std::sync::Arc;
 
-use ash::vk::Offset2D;
-
 use crate::device::{Device, DeviceOwned};
 use crate::fragment_shader::FragmentShader;
-use crate::{graphics_pipeline, renderpass};
+
 use crate::image::{Image1DTrait, Image2DDimensions, Image2DTrait, ImageMultisampling};
 use crate::instance::InstanceOwned;
 use crate::renderpass::RenderPass;
@@ -141,7 +139,7 @@ impl VertexInputBinding {
         Self {
             input_rate,
             stride,
-            attributes: attributes.iter().map(|ia| ia.clone()).collect(),
+            attributes: attributes.iter().copied().collect(),
         }
     }
 }
@@ -151,7 +149,7 @@ pub enum CullMode {
     None,
     Front,
     Back,
-    FrontAndBack
+    FrontAndBack,
 }
 
 impl CullMode {
@@ -231,7 +229,7 @@ impl Rasterizer {
             polygon_mode,
             front_face,
             cull_mode,
-            depth_bias
+            depth_bias,
         }
     }
 }
@@ -245,7 +243,7 @@ pub enum DepthCompareOp {
     Greater,
     NotEqual,
     GreaterOrEqual,
-    Always
+    Always,
 }
 
 impl DepthCompareOp {
@@ -258,7 +256,7 @@ impl DepthCompareOp {
             DepthCompareOp::Greater => ash::vk::CompareOp::GREATER,
             DepthCompareOp::NotEqual => ash::vk::CompareOp::NOT_EQUAL,
             DepthCompareOp::GreaterOrEqual => ash::vk::CompareOp::GREATER_OR_EQUAL,
-            DepthCompareOp::Always => ash::vk::CompareOp::ALWAYS
+            DepthCompareOp::Always => ash::vk::CompareOp::ALWAYS,
         }
     }
 }
@@ -274,11 +272,11 @@ impl DepthConfiguration {
     pub fn write_enable(&self) -> bool {
         self.write_enable
     }
-    
+
     pub fn depth_compare(&self) -> DepthCompareOp {
         self.depth_compare
     }
-    
+
     pub fn bounds(&self) -> Option<(f32, f32)> {
         self.bounds
     }
@@ -460,7 +458,7 @@ impl GraphicsPipeline {
             .scissors(&[scissor])
             .build();
 
-        let mut rasterization_state_create_info_builder =
+        let rasterization_state_create_info_builder =
             ash::vk::PipelineRasterizationStateCreateInfo::builder()
                 .cull_mode(rasterizer.cull_mode().ash_flags())
                 .front_face(rasterizer.front_face().ash_flags())
@@ -479,19 +477,21 @@ impl GraphicsPipeline {
                     .depth_bias_enable(true)
                     .depth_clamp_enable(true)
                     .build()
-            },
-            None => {
-                rasterization_state_create_info_builder.build()
             }
+            None => rasterization_state_create_info_builder.build(),
         };
-        
+
         let input_assembly_create_info = ash::vk::PipelineInputAssemblyStateCreateInfo::builder()
             .topology(ash::vk::PrimitiveTopology::TRIANGLE_LIST)
             .primitive_restart_enable(false)
             .build();
 
-        let mut color_blend_attachment_state: smallvec::SmallVec<[ash::vk::PipelineColorBlendAttachmentState; 16]> = smallvec::smallvec![];
-        for _si in /*renderpass.getSubpassByIndex(subpassNumber).getColorAttachmentIndeces()*/ 0..1 {
+        let mut color_blend_attachment_state: smallvec::SmallVec<
+            [ash::vk::PipelineColorBlendAttachmentState; 16],
+        > = smallvec::smallvec![];
+        for _si in /*renderpass.getSubpassByIndex(subpassNumber).getColorAttachmentIndeces()*/
+            0..1
+        {
             color_blend_attachment_state.push(
                 ash::vk::PipelineColorBlendAttachmentState::builder()
                     .color_write_mask(ash::vk::ColorComponentFlags::RGBA)
@@ -502,7 +502,7 @@ impl GraphicsPipeline {
                     .src_alpha_blend_factor(ash::vk::BlendFactor::ONE)
                     .dst_alpha_blend_factor(ash::vk::BlendFactor::ONE)
                     .alpha_blend_op(ash::vk::BlendOp::ADD)
-                    .build()
+                    .build(),
             );
         }
 
@@ -512,8 +512,8 @@ impl GraphicsPipeline {
             .blend_constants([0.0, 0.0, 0.0, 0.0])
             .build();
 
-        let mut depth_stencil_state_create_info_builder = ash::vk::PipelineDepthStencilStateCreateInfo::builder()
-            .stencil_test_enable(false);
+        let mut depth_stencil_state_create_info_builder =
+            ash::vk::PipelineDepthStencilStateCreateInfo::builder().stencil_test_enable(false);
 
         let depth_stencil_state_create_info = match depth_configuration {
             Option::Some(depth_cfg) => {
@@ -521,27 +521,23 @@ impl GraphicsPipeline {
                     .depth_test_enable(true)
                     .depth_write_enable(depth_cfg.write_enable())
                     .depth_compare_op(depth_cfg.depth_compare().ash_flags());
-                    
-                    match depth_cfg.bounds() {
-                        Option::Some((min_depth_bounds, max_depth_bounds)) => {
-                            depth_stencil_state_create_info_builder
-                                .depth_bounds_test_enable(true)
-                                .max_depth_bounds(max_depth_bounds)
-                                .min_depth_bounds(min_depth_bounds)
-                                .build()
-                        },
-                        Option::None => {
-                            depth_stencil_state_create_info_builder
-                                .depth_bounds_test_enable(false)
-                                .build()
-                        }
+
+                match depth_cfg.bounds() {
+                    Option::Some((min_depth_bounds, max_depth_bounds)) => {
+                        depth_stencil_state_create_info_builder
+                            .depth_bounds_test_enable(true)
+                            .max_depth_bounds(max_depth_bounds)
+                            .min_depth_bounds(min_depth_bounds)
+                            .build()
                     }
-            },
-            Option::None => {
-                depth_stencil_state_create_info_builder
-                    .depth_test_enable(false)
-                    .build()
+                    Option::None => depth_stencil_state_create_info_builder
+                        .depth_bounds_test_enable(false)
+                        .build(),
+                }
             }
+            Option::None => depth_stencil_state_create_info_builder
+                .depth_test_enable(false)
+                .build(),
         };
 
         let create_info = ash::vk::GraphicsPipelineCreateInfo::builder()
@@ -626,7 +622,7 @@ impl GraphicsPipeline {
                     pipeline_layout,
                 }))
             }
-            Err(err) => Err(VulkanError::Unspecified),
+            Err(_err) => Err(VulkanError::Unspecified),
         }
     }
 }

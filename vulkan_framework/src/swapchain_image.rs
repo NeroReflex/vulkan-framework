@@ -64,14 +64,12 @@ impl ImageSwapchainKHR {
                             })
                         })
                         .collect::<smallvec::SmallVec<[Arc<Self>; 8]>>()),
-                    Err(_err) => return Err(VulkanError::Unspecified),
+                    Err(_err) => Err(VulkanError::Unspecified),
                 }
             }
-            Option::None => {
-                return Err(VulkanError::MissingExtension(String::from(
-                    "VK_KHR_swapchain",
-                )))
-            }
+            Option::None => Err(VulkanError::MissingExtension(String::from(
+                "VK_KHR_swapchain",
+            ))),
         }
     }
 }
