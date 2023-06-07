@@ -264,3 +264,7 @@ impl RenderPass {
         }
     }
 }
+
+pub trait RenderPassCompatible {
+    fn get_parent_renderpass(&self) -> Arc<RenderPass>;
+}

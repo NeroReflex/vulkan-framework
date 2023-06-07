@@ -169,7 +169,7 @@ impl PipelineStages {
             tessellation_evaluation_shader: stages
                 .contains(&PipelineStage::TessellationEvaluationShader),
             geometry_shader: stages.contains(&PipelineStage::GeometryShader),
-            fragment_shader: stages.contains(&PipelineStage::GeometryShader),
+            fragment_shader: stages.contains(&PipelineStage::FragmentShader),
             early_fragment_tests: stages.contains(&PipelineStage::EarlyFragmentTests),
             late_fragment_tests: stages.contains(&PipelineStage::LateFragmentTests),
             color_attachment_output: stages.contains(&PipelineStage::ColorAttachmentOutput),

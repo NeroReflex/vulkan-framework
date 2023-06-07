@@ -4,20 +4,20 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use ash::vk::Handle;
+use ash::vk::{Handle, ClearValue};
 
 use crate::{
     command_pool::{CommandPool, CommandPoolOwned},
     device::DeviceOwned,
     image::{
         ImageAspects, ImageDimensions, ImageLayout, ImageSubresourceLayers, ImageSubresourceRange,
-        ImageTrait,
+        ImageTrait, Image2DTrait, Image1DTrait,
     },
     instance::InstanceOwned,
     pipeline_layout::PipelineLayout,
     pipeline_stage::PipelineStages,
     prelude::{VulkanError, VulkanResult},
-    queue_family::QueueFamily,
+    queue_family::QueueFamily, framebuffer::{Framebuffer, FramebufferTrait}, renderpass::RenderPassCompatible, graphics_pipeline::GraphicsPipeline,
 };
 use crate::{
     compute_pipeline::ComputePipeline, descriptor_set::DescriptorSet, device::Device,
@@ -26,8 +26,10 @@ use crate::{
 
 enum CommandBufferReferencedResource {
     ComputePipeline(Arc<ComputePipeline>),
+    GraphicsPipeline(Arc<GraphicsPipeline>),
     DescriptorSet(Arc<DescriptorSet>),
     PipelineLayout(Arc<PipelineLayout>),
+    Framebuffer(Arc<dyn FramebufferTrait>),
     Image(Arc<dyn ImageTrait>),
 }
 
@@ -40,6 +42,8 @@ impl CommandBufferReferencedResource {
             Self::DescriptorSet(l0) => (0b0001u128 << 124u128) | (l0.native_handle() as u128),
             Self::PipelineLayout(l0) => (0b0010u128 << 124u128) | (l0.native_handle() as u128),
             Self::Image(l0) => (0b0011u128 << 124u128) | (l0.native_handle() as u128),
+            Self::Framebuffer(l0) => (0b0100u128 << 124u128) | (l0.native_handle() as u128),
+            Self::GraphicsPipeline(l0) => (0b0101u128 << 124u128) | (l0.native_handle() as u128),
         }
     }
 }
@@ -54,6 +58,12 @@ impl PartialEq for CommandBufferReferencedResource {
                 l0.native_handle() == r0.native_handle()
             }
             (Self::PipelineLayout(l0), Self::PipelineLayout(r0)) => {
+                l0.native_handle() == r0.native_handle()
+            }
+            (Self::GraphicsPipeline(l0), Self::GraphicsPipeline(r0)) => {
+                l0.native_handle() == r0.native_handle()
+            }
+            (Self::Framebuffer(l0), Self::Framebuffer(r0)) => {
                 l0.native_handle() == r0.native_handle()
             }
             (Self::Image(l0), Self::Image(r0)) => l0.native_handle() == r0.native_handle(),
@@ -463,6 +473,99 @@ pub struct CommandBufferRecorder<'a> {
 }
 
 impl<'a> CommandBufferRecorder<'a> {
+    pub fn draw(
+        &mut self,
+        first_vertex_index: u32,
+        vertex_count: u32,
+        first_instance_index: u32,
+        instance_count: u32,
+    ) {
+        unsafe {
+            self.device.ash_handle().cmd_draw(
+                self.command_buffer.ash_handle(),
+                vertex_count,
+                instance_count,
+                first_vertex_index,
+                first_instance_index,
+            )
+        }
+    }
+
+    pub fn bind_graphics_pipeline(
+        &mut self,
+        graphics_pipeline: Arc<GraphicsPipeline>,
+    ) {
+        unsafe {
+            self.device.ash_handle().cmd_bind_pipeline(
+                self.command_buffer.ash_handle(),
+                ash::vk::PipelineBindPoint::GRAPHICS,
+                graphics_pipeline.ash_handle(),
+            )
+        }
+
+        self.used_resources
+            .insert(CommandBufferReferencedResource::GraphicsPipeline(
+                graphics_pipeline,
+            ));
+    }
+
+    pub fn end_renderpass(
+        &mut self,
+    ) {
+        unsafe {
+            self.device.ash_handle().cmd_end_render_pass(self.command_buffer.ash_handle())
+        }
+    }
+
+    /**
+     * Corresponds to vkCmdBeginRenderpass, where the framebuffer is the provided one,
+     * the renderpass is the RenderPass that Framebuffer was created from and the render area
+     * is the whole area identified by the framebuffer
+     */
+    pub fn begin_renderpass(
+        &mut self,
+        framebuffer: Arc<Framebuffer>,
+        //clear_values: &[f32; 4],
+    ) {
+        let mut clear_values: smallvec::SmallVec<[ClearValue; 32]> = smallvec::smallvec![];
+
+        clear_values.push(
+            ash::vk::ClearValue::default()
+        );
+
+        let render_pass_begin_info = ash::vk::RenderPassBeginInfo::builder()
+            .clear_values(clear_values.as_slice())
+            .framebuffer(ash::vk::Framebuffer::from_raw(framebuffer.native_handle()))
+            .render_pass(framebuffer.get_parent_renderpass().ash_handle())
+            .render_area(ash::vk::Rect2D::builder()
+                .offset(
+                    ash::vk::Offset2D::builder()
+                        .x(0)
+                        .y(0)
+                        .build()
+                )
+                .extent(
+                    ash::vk::Extent2D::builder()
+                        .width(framebuffer.dimensions().width())
+                        .height(framebuffer.dimensions().height())
+                        .build()
+                )
+                .build()
+            )
+            .build();
+
+        self.used_resources
+            .insert(CommandBufferReferencedResource::Framebuffer(framebuffer.clone()));
+
+        unsafe {
+            self.device.ash_handle().cmd_begin_render_pass(
+                self.command_buffer.ash_handle(),
+                &render_pass_begin_info,
+                ash::vk::SubpassContents::INLINE
+            )
+        }
+    }
+
     pub fn copy_image(
         &mut self,
         src_layout: ImageLayout,

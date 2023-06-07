@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use inline_spirv::*;
 
 use vulkan_framework::{
@@ -28,7 +30,7 @@ use vulkan_framework::{
         SurfaceColorspaceSwapchainKHR, SurfaceTransformSwapchainKHR, SwapchainKHR,
     },
     swapchain_image::ImageSwapchainKHR,
-    vertex_shader::VertexShader,
+    vertex_shader::VertexShader, semaphore::Semaphore, fence::{Fence, FenceWaiter}, command_pool::CommandPool, command_buffer::{PrimaryCommandBuffer, CommandBufferRecorder}, pipeline_stage::{PipelineStage, PipelineStages}, image_view::{ImageView, ImageViewAspect, RecognisedImageAspect, ImageViewType}, framebuffer::Framebuffer,
 };
 
 const VERTEX_SPV: &[u32] = inline_spirv!(
@@ -217,6 +219,54 @@ fn main() {
                 let swapchain_images = ImageSwapchainKHR::extract(swapchain.clone()).unwrap();
                 println!("Swapchain images extracted!");
 
+                let image_available_semaphores = (0..swapchain_images_count).into_iter().map(|idx| {
+                    Semaphore::new(
+                        dev.clone(),
+                        false,
+                        Some("image_available_semaphores[...]"),
+                    ).unwrap()
+                }).collect::<Vec<Arc<Semaphore>>>();
+
+                let image_rendered_semaphores = (0..swapchain_images_count).into_iter().map(|idx| {
+                    Semaphore::new(
+                        dev.clone(),
+                        false,
+                        Some("image_rendered_semaphores[...]"),
+                    ).unwrap()
+                }).collect::<Vec<Arc<Semaphore>>>();
+
+                let swapchain_fences = (0..swapchain_images_count).into_iter().map(|idx| {
+                    Fence::new(
+                        dev.clone(),
+                        true,
+                        Some("swapchain_fences[...]"),
+                    ).unwrap()
+                }).collect::<Vec<Arc<Fence>>>();
+
+                let mut swapchain_fence_waiters = (0..swapchain_images_count).into_iter().map(|idx| {
+                    FenceWaiter::from_fence(
+                        swapchain_fences[idx as usize].clone(),
+                    )
+                }).collect::<Vec<FenceWaiter>>();
+
+                let command_pool = CommandPool::new(
+                    queue_family.clone(),
+                    Some("My command pool"),
+                ).unwrap();
+
+                let command_buffer = PrimaryCommandBuffer::new(
+                    command_pool.clone(),
+                    Some("my command buffer <3"),
+                ).unwrap();
+
+                let present_command_buffers = (0..swapchain_images_count).into_iter().map(|idx| {
+                    PrimaryCommandBuffer::new(
+                        command_pool.clone(),
+                        Some("present_command_buffers[0]"),
+                    )
+                    .unwrap()
+                }).collect::<Vec<Arc<PrimaryCommandBuffer>>>();
+
                 let renderpass = RenderPass::new(
                     dev.clone(),
                     &[
@@ -270,16 +320,18 @@ fn main() {
                     FragmentShader::new(dev.clone(), &[], &[], FRAGMENT_SPV).unwrap();
 
                 let graphics_pipeline = GraphicsPipeline::new(
-                    renderpass,
+                    renderpass.clone(),
                     0,
                     ImageMultisampling::SamplesPerPixel1,
                     Image2DDimensions::new(WIDTH, HEIGHT),
                     pipeline_layout,
-                    &[VertexInputBinding::new(
+                    &[
+                        /*VertexInputBinding::new(
                         VertexInputRate::PerVertex,
                         0,
                         &[VertexInputAttribute::new(0, 0, AttributeType::Vec4)],
-                    )],
+                        )*/
+                    ],
                     Rasterizer::new(
                         PolygonMode::Fill,
                         FrontFace::CounterClockwise,
@@ -295,6 +347,115 @@ fn main() {
                 )
                 .unwrap();
                 println!("Graphics pipeline created!");
+
+                let swapchain_image_views = swapchain_images.into_iter().map(|image_swapchain| {
+                    ImageView::new(
+                        image_swapchain.clone(),
+                        ImageViewType::Image2D,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        Some("swapchain_image_views[...]")
+                    ).unwrap()
+                }).collect::<Vec<Arc<ImageView>>>();
+
+                let swapchain_framebuffers = swapchain_image_views.iter().map(|iv| {
+                    Framebuffer::new(
+                        renderpass.clone(),
+                        &[iv.clone()],
+                        swapchain.images_extent(),
+                        1
+                    ).unwrap()
+                }).collect::<Vec<Arc<Framebuffer>>>();
+
+                let mut current_frame: usize = 0;
+
+            let mut event_pump =
+                    sdl_context.event_pump().unwrap();
+                'running: loop {
+                    for event in event_pump.poll_iter() {
+                        match event {
+                            sdl2::event::Event::Quit {..} | sdl2::event::Event::KeyDown { keycode: Some(sdl2::keyboard::Keycode::Escape), .. } => {
+                                for i in 0..4 {
+                                    swapchain_fence_waiters[i]
+                                        .wait(u64::MAX)
+                                        .unwrap()
+                                }
+                                break 'running
+                            },
+                            _ => {}
+                        }
+                    }
+
+                    let swapchain_index = swapchain
+                        .acquire_next_image_index(
+                            None,
+                            Some(
+                                image_available_semaphores
+                                    [current_frame % 4]
+                                    .clone(),
+                            ),
+                            None,
+                        )
+                        .unwrap();
+
+                    // wait for fence
+                    swapchain_fence_waiters[current_frame % 4]
+                        .wait(u64::MAX)
+                        .unwrap();
+
+                    present_command_buffers[current_frame % 4].record_commands(|recorder: &mut CommandBufferRecorder| {
+                        recorder.begin_renderpass(swapchain_framebuffers[current_frame % 4].clone());
+
+                        recorder.bind_graphics_pipeline(graphics_pipeline.clone());
+
+                        recorder.draw(0, 3, 0, 1);
+
+                        recorder.end_renderpass();
+                    }).unwrap();
+
+                    swapchain_fence_waiters
+                        [current_frame % 4] = queue
+                        .submit(
+                            &[present_command_buffers
+                                [current_frame % 4]
+                                .clone()],
+                            &[
+                                (
+                                    PipelineStages::from(
+                                        &[PipelineStage::FragmentShader], 
+                                        None, 
+                                        None, 
+                                        None
+                                    ),
+                                    image_available_semaphores[current_frame % 4].clone()
+                                )
+                            ],
+                            &[image_rendered_semaphores
+                                [current_frame % 4]
+                                .clone()],
+                            swapchain_fences[current_frame % 4]
+                                .clone(),
+                        )
+                        .unwrap();
+
+                    swapchain
+                        .queue_present(
+                            queue.clone(),
+                            swapchain_index,
+                            &[image_rendered_semaphores
+                                [current_frame % 4]
+                                .clone()],
+                        )
+                        .unwrap();
+
+                    current_frame = swapchain_index as usize;
+                }
+                                                
             }
             Err(err) => {
                 println!("Error creating sdl2 window: {}", err);

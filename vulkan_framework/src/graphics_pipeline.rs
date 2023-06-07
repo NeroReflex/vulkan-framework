@@ -5,7 +5,7 @@ use ash::vk::Offset2D;
 
 use crate::device::{Device, DeviceOwned};
 use crate::fragment_shader::FragmentShader;
-use crate::graphics_pipeline;
+use crate::{graphics_pipeline, renderpass};
 use crate::image::{Image1DTrait, Image2DDimensions, Image2DTrait, ImageMultisampling};
 use crate::instance::InstanceOwned;
 use crate::renderpass::RenderPass;
@@ -165,9 +165,26 @@ pub enum FrontFace {
     CounterClockwise,
 }
 
+impl FrontFace {
+    pub(crate) fn ash_flags(&self) -> ash::vk::FrontFace {
+        match self {
+            FrontFace::Clockwise => ash::vk::FrontFace::CLOCKWISE,
+            FrontFace::CounterClockwise => ash::vk::FrontFace::COUNTER_CLOCKWISE,
+        }
+    }
+}
+
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum PolygonMode {
     Fill,
+}
+
+impl PolygonMode {
+    pub(crate) fn ash_flags(&self) -> ash::vk::PolygonMode {
+        match self {
+            PolygonMode::Fill => ash::vk::PolygonMode::FILL,
+        }
+    }
 }
 
 #[derive(Copy, Clone, PartialEq)]
@@ -229,6 +246,10 @@ impl Rasterizer {
             depth_bias_slope_factor,
         }
     }
+}
+
+pub struct DepthStencilConfiguration {
+
 }
 
 pub struct GraphicsPipeline {
@@ -396,12 +417,41 @@ impl GraphicsPipeline {
         let rasterization_state_create_info =
             ash::vk::PipelineRasterizationStateCreateInfo::builder()
                 .cull_mode(rasterizer.cull_mode().ash_flags())
+                .front_face(rasterizer.front_face().ash_flags())
+                .front_face(rasterizer.front_face().ash_flags())
+                // TODO: complete this part
+                /*.depth_bias_enable(match rasterizer.depth_bias_clamp() {
+
+                })*/
                 .build();
 
         let input_assembly_create_info = ash::vk::PipelineInputAssemblyStateCreateInfo::builder()
             .topology(ash::vk::PrimitiveTopology::TRIANGLE_LIST)
             .primitive_restart_enable(false)
             .build();
+
+        let mut color_blend_attachment_state: smallvec::SmallVec<[ash::vk::PipelineColorBlendAttachmentState; 16]> = smallvec::smallvec![];
+        for _si in /*renderpass.getSubpassByIndex(subpassNumber).getColorAttachmentIndeces()*/ 0..1 {
+            color_blend_attachment_state.push(
+                ash::vk::PipelineColorBlendAttachmentState::builder()
+                    .blend_enable(false)
+                    .src_color_blend_factor(ash::vk::BlendFactor::ONE)
+                    .dst_color_blend_factor(ash::vk::BlendFactor::ONE)
+                    .color_blend_op(ash::vk::BlendOp::ADD)
+                    .src_alpha_blend_factor(ash::vk::BlendFactor::ONE)
+                    .dst_alpha_blend_factor(ash::vk::BlendFactor::ONE)
+                    .alpha_blend_op(ash::vk::BlendOp::ADD)
+                    .build()
+            );
+        }
+
+        let color_blend_state_create_info = ash::vk::PipelineColorBlendStateCreateInfo::builder()
+            .logic_op_enable(false)
+            .attachments(color_blend_attachment_state.as_slice())
+            .blend_constants([0.0, 0.0, 0.0, 0.0])
+            .build();
+
+        // TODO: depth stencil configuration
 
         let create_info = ash::vk::GraphicsPipelineCreateInfo::builder()
             .layout(pipeline_layout.ash_handle())
@@ -413,6 +463,7 @@ impl GraphicsPipeline {
             .rasterization_state(&rasterization_state_create_info)
             .stages(pipeline_shader_stage_create_info.as_slice())
             .input_assembly_state(&input_assembly_create_info)
+            .color_blend_state(&color_blend_state_create_info)
             .build();
 
         match unsafe {
