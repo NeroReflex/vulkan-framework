@@ -465,6 +465,45 @@ impl ImageMemoryBarrier {
     }
 }
 
+#[derive(Copy, Clone, PartialEq)]
+pub enum ColorClearValues {
+    Vec4(f32, f32, f32, f32),
+    IVec4(i32, i32, i32, i32),
+    UVec4(u32, u32, u32, u32)
+}
+
+#[derive(Copy, Clone, PartialEq)]
+pub struct ClearValues {
+    color: Option<ColorClearValues>,
+}
+
+impl ClearValues {
+    pub fn new(
+        color: Option<ColorClearValues>,
+    ) -> Self {
+        Self {
+            color
+        }
+    }
+
+    pub(crate) fn ash_clear(&self) -> ash::vk::ClearValue {
+        let mut result = ash::vk::ClearValue::default();
+
+        match self.color {
+            Some(color) => {
+                match color {
+                    ColorClearValues::Vec4(r, g, b, a) => { result.color.float32 = [r, g, b, a]; },
+                    ColorClearValues::IVec4(r, g, b, a) => { result.color.int32 = [r, g, b, a]; },
+                    ColorClearValues::UVec4(r, g, b, a) => { result.color.uint32 = [r, g, b, a]; },
+                }
+            },
+            None => {}
+        }
+
+        result
+    }
+}
+
 pub struct CommandBufferRecorder<'a> {
     device: Arc<Device>, // this field is repeated to speed-up execution, otherwise a ton of Arc<>.clone() will be performed
     command_buffer: &'a dyn CommandBufferCrateTrait,
@@ -525,16 +564,13 @@ impl<'a> CommandBufferRecorder<'a> {
     pub fn begin_renderpass(
         &mut self,
         framebuffer: Arc<Framebuffer>,
-        //clear_values: &[f32; 4],
+        clear_values: &[ClearValues],
     ) {
-        let mut clear_values: smallvec::SmallVec<[ClearValue; 32]> = smallvec::smallvec![];
+        let ash_clear_values: smallvec::SmallVec<[ash::vk::ClearValue; 32]> = clear_values.iter().map(|cv| cv.ash_clear()).collect();
 
-        clear_values.push(
-            ash::vk::ClearValue::default()
-        );
-
+    
         let render_pass_begin_info = ash::vk::RenderPassBeginInfo::builder()
-            .clear_values(clear_values.as_slice())
+            .clear_values(ash_clear_values.as_slice())
             .framebuffer(ash::vk::Framebuffer::from_raw(framebuffer.native_handle()))
             .render_pass(framebuffer.get_parent_renderpass().ash_handle())
             .render_area(ash::vk::Rect2D::builder()

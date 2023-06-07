@@ -7,7 +7,7 @@ use vulkan_framework::{
     fragment_shader::FragmentShader,
     graphics_pipeline::{
         AttributeType, CullMode, FrontFace, GraphicsPipeline, PolygonMode, Rasterizer,
-        VertexInputAttribute, VertexInputBinding, VertexInputRate,
+        VertexInputAttribute, VertexInputBinding, VertexInputRate, DepthConfiguration, DepthCompareOp,
     },
     image::{
         ConcreteImageDescriptor, Image, Image2DDimensions, ImageDimensions, ImageFlags,
@@ -30,7 +30,7 @@ use vulkan_framework::{
         SurfaceColorspaceSwapchainKHR, SurfaceTransformSwapchainKHR, SwapchainKHR,
     },
     swapchain_image::ImageSwapchainKHR,
-    vertex_shader::VertexShader, semaphore::Semaphore, fence::{Fence, FenceWaiter}, command_pool::CommandPool, command_buffer::{PrimaryCommandBuffer, CommandBufferRecorder}, pipeline_stage::{PipelineStage, PipelineStages}, image_view::{ImageView, ImageViewAspect, RecognisedImageAspect, ImageViewType}, framebuffer::Framebuffer,
+    vertex_shader::VertexShader, semaphore::Semaphore, fence::{Fence, FenceWaiter}, command_pool::CommandPool, command_buffer::{PrimaryCommandBuffer, CommandBufferRecorder, ColorClearValues, ClearValues}, pipeline_stage::{PipelineStage, PipelineStages}, image_view::{ImageView, ImageViewAspect, RecognisedImageAspect, ImageViewType}, framebuffer::Framebuffer,
 };
 
 const VERTEX_SPV: &[u32] = inline_spirv!(
@@ -323,6 +323,7 @@ fn main() {
                     renderpass.clone(),
                     0,
                     ImageMultisampling::SamplesPerPixel1,
+                    Some(DepthConfiguration::new(true, DepthCompareOp::Always, Some((0.0, 1.0)))),
                     Image2DDimensions::new(WIDTH, HEIGHT),
                     pipeline_layout,
                     &[
@@ -336,10 +337,7 @@ fn main() {
                         PolygonMode::Fill,
                         FrontFace::CounterClockwise,
                         CullMode::None,
-                        false,
-                        0.0,
                         None,
-                        0.0,
                     ),
                     (vertex_shader, None),
                     (fragment_shader, None),
@@ -380,7 +378,7 @@ fn main() {
                     for event in event_pump.poll_iter() {
                         match event {
                             sdl2::event::Event::Quit {..} | sdl2::event::Event::KeyDown { keycode: Some(sdl2::keyboard::Keycode::Escape), .. } => {
-                                for i in 0..4 {
+                                for i in 0..(swapchain_images_count as usize) {
                                     swapchain_fence_waiters[i]
                                         .wait(u64::MAX)
                                         .unwrap()
@@ -396,7 +394,7 @@ fn main() {
                             None,
                             Some(
                                 image_available_semaphores
-                                    [current_frame % 4]
+                                    [current_frame % (swapchain_images_count as usize)]
                                     .clone(),
                             ),
                             None,
@@ -404,12 +402,19 @@ fn main() {
                         .unwrap();
 
                     // wait for fence
-                    swapchain_fence_waiters[current_frame % 4]
+                    swapchain_fence_waiters[current_frame % (swapchain_images_count as usize)]
                         .wait(u64::MAX)
                         .unwrap();
 
-                    present_command_buffers[current_frame % 4].record_commands(|recorder: &mut CommandBufferRecorder| {
-                        recorder.begin_renderpass(swapchain_framebuffers[current_frame % 4].clone());
+                    present_command_buffers[current_frame % (swapchain_images_count as usize)].record_commands(|recorder: &mut CommandBufferRecorder| {
+                        recorder.begin_renderpass(
+                            swapchain_framebuffers[current_frame % (swapchain_images_count as usize)].clone(),
+                            &[
+                                ClearValues::new(
+                                    Some(ColorClearValues::Vec4(0.0, 0.0, 0.0, 1.0))
+                                )
+                            ]
+                        );
 
                         recorder.bind_graphics_pipeline(graphics_pipeline.clone());
 
@@ -419,10 +424,10 @@ fn main() {
                     }).unwrap();
 
                     swapchain_fence_waiters
-                        [current_frame % 4] = queue
+                        [current_frame % (swapchain_images_count as usize)] = queue
                         .submit(
                             &[present_command_buffers
-                                [current_frame % 4]
+                                [current_frame % (swapchain_images_count as usize)]
                                 .clone()],
                             &[
                                 (
@@ -432,13 +437,13 @@ fn main() {
                                         None, 
                                         None
                                     ),
-                                    image_available_semaphores[current_frame % 4].clone()
+                                    image_available_semaphores[current_frame % (swapchain_images_count as usize)].clone()
                                 )
                             ],
                             &[image_rendered_semaphores
-                                [current_frame % 4]
+                                [current_frame % (swapchain_images_count as usize)]
                                 .clone()],
-                            swapchain_fences[current_frame % 4]
+                            swapchain_fences[current_frame % (swapchain_images_count as usize)]
                                 .clone(),
                         )
                         .unwrap();
@@ -448,7 +453,7 @@ fn main() {
                             queue.clone(),
                             swapchain_index,
                             &[image_rendered_semaphores
-                                [current_frame % 4]
+                                [current_frame % (swapchain_images_count as usize)]
                                 .clone()],
                         )
                         .unwrap();
