@@ -27,7 +27,7 @@ use vulkan_framework::{
     queue::*,
     queue_family::*,
     renderpass::{
-        AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp, RenderPass, RenderSubPass,
+        AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp, RenderPass, RenderSubPassDescription,
     },
     semaphore::Semaphore,
     swapchain::{
@@ -289,7 +289,7 @@ fn main() {
                             AttachmentStoreOp::Store,
                         )*/
                     ],
-                    &[RenderSubPass::from(&[], &[0], None)],
+                    &[RenderSubPassDescription::new(&[], &[0], None)],
                 )
                 .unwrap();
                 println!("Renderpass created!");

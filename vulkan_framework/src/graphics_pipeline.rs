@@ -489,8 +489,7 @@ impl GraphicsPipeline {
         let mut color_blend_attachment_state: smallvec::SmallVec<
             [ash::vk::PipelineColorBlendAttachmentState; 16],
         > = smallvec::smallvec![];
-        for _si in /*renderpass.getSubpassByIndex(subpassNumber).getColorAttachmentIndeces()*/
-            0..1
+        for _si in 0..renderpass.get_subpass_description(subpass_index as usize).output_color_attachment_indeces_size()
         {
             color_blend_attachment_state.push(
                 ash::vk::PipelineColorBlendAttachmentState::builder()

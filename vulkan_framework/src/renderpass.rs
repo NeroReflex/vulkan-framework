@@ -41,6 +41,7 @@ impl AttachmentStoreOp {
     }
 }
 
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct AttachmentDescription {
     format: ImageFormat,
     samples: ImageMultisampling,
@@ -89,21 +90,46 @@ impl AttachmentDescription {
     }
 }
 
-pub struct RenderSubPass<'a> {
-    pub(crate) input_color_attachment_indeces: &'a [u32],
-    pub(crate) output_color_attachment_indeces: &'a [u32],
-    pub(crate) output_depth_stencil_attachment_index: Option<u32>,
+#[derive(Clone, PartialEq, Eq)]
+pub struct RenderSubPassDescription {
+    pub input_color_attachment_indeces: smallvec::SmallVec<[u32; 8]>,
+    pub output_color_attachment_indeces: smallvec::SmallVec<[u32; 24]>,
+    pub output_depth_stencil_attachment_index: Option<u32>,
 }
 
-impl<'a> RenderSubPass<'a> {
-    pub fn from(
-        input_color_attachment_indeces: &'a [u32],
-        output_color_attachment_indeces: &'a [u32],
+impl RenderSubPassDescription {
+    pub fn input_color_attachment_indeces<'a>(&'a self) -> impl Iterator<Item = &'a u32> {
+        self.input_color_attachment_indeces.iter()
+    }
+
+    pub fn input_color_attachment_indeces_size(&self) -> usize {
+        self.input_color_attachment_indeces.len()
+    }
+
+    pub fn output_color_attachment_indeces<'a>(&'a self) -> impl Iterator<Item = &'a u32> {
+        self.output_color_attachment_indeces.iter()
+    }
+
+    pub fn output_color_attachment_indeces_size(&self) -> usize {
+        self.output_color_attachment_indeces.len()
+    }
+
+    pub fn output_depth_stencil_attachment_index(&self) -> Option<u32> {
+        self.output_depth_stencil_attachment_index
+    }
+
+    pub fn output_depth_stencil_attachment_index_present(&self) -> bool {
+        self.output_depth_stencil_attachment_index.is_some()
+    }
+
+    pub fn new(
+        input_color_attachment_indeces: &[u32],
+        output_color_attachment_indeces: &[u32],
         output_depth_stencil_attachment_index: Option<u32>,
     ) -> Self {
         Self {
-            input_color_attachment_indeces,
-            output_color_attachment_indeces,
+            input_color_attachment_indeces: input_color_attachment_indeces.iter().cloned().collect(),
+            output_color_attachment_indeces: output_color_attachment_indeces.iter().cloned().collect(),
             output_depth_stencil_attachment_index,
         }
     }
@@ -112,6 +138,8 @@ impl<'a> RenderSubPass<'a> {
 pub struct RenderPass {
     device: Arc<Device>,
     renderpass: ash::vk::RenderPass,
+    attachments_description: smallvec::SmallVec<[AttachmentDescription; 32]>,
+    subpasses_description: smallvec::SmallVec<[RenderSubPassDescription; 32]>,
 }
 
 impl DeviceOwned for RenderPass {
@@ -136,17 +164,27 @@ impl RenderPass {
         ash::vk::Handle::as_raw(self.renderpass)
     }
 
+    pub fn get_subpass_description<'a>(&'a self, index: usize) -> &'a RenderSubPassDescription {
+        &self.subpasses_description[index]
+    }
+
     pub(crate) fn ash_handle(&self) -> ash::vk::RenderPass {
         self.renderpass
     }
 
-    pub fn new<'a>(
+    pub fn new(
         device: Arc<Device>,
-        attachments: &'a [AttachmentDescription],
-        subpasses: &[RenderSubPass<'a>],
+        attachments: &[AttachmentDescription],
+        subpasses: &[RenderSubPassDescription],
         // TODO: subpass dependencies!!!
     ) -> VulkanResult<Arc<Self>> {
-        let attachment_descriptors = attachments
+        let attachments_copy = attachments
+            .iter()
+            .cloned()
+            .collect::<smallvec::SmallVec<[AttachmentDescription; 32]>>(
+        );
+
+        let attachment_descriptors = attachments_copy
             .iter()
             .map(|a| a.ash_description())
             .collect::<smallvec::SmallVec<[ash::vk::AttachmentDescription; 32]>>(
@@ -172,8 +210,8 @@ impl RenderPass {
             let mut color_attachment_of_subpass: smallvec::SmallVec<
                 [ash::vk::AttachmentReference; 8],
             > = smallvec::smallvec![];
-            for color_attachment in subpass.output_color_attachment_indeces {
-                if *color_attachment as usize >= attachment_descriptors.len() {
+            for color_attachment in subpass.output_color_attachment_indeces() {
+                if (*color_attachment as usize) >= attachment_descriptors.len() {
                     return Err(VulkanError::Unspecified);
                 }
 
@@ -189,8 +227,8 @@ impl RenderPass {
             let mut input_attachment_of_subpass: smallvec::SmallVec<
                 [ash::vk::AttachmentReference; 8],
             > = smallvec::smallvec![];
-            for input_attachment in subpass.input_color_attachment_indeces {
-                if *input_attachment as usize >= attachment_descriptors.len() {
+            for input_attachment in subpass.input_color_attachment_indeces() {
+                if (*input_attachment as usize) >= attachment_descriptors.len() {
                     return Err(VulkanError::Unspecified);
                 }
 
@@ -259,7 +297,16 @@ impl RenderPass {
                 device.get_parent_instance().get_alloc_callbacks(),
             )
         } {
-            Ok(renderpass) => Ok(Arc::new(Self { device, renderpass })),
+            Ok(renderpass) => Ok(Arc::new(Self {
+                device,
+                renderpass,
+                attachments_description: attachments_copy,
+                subpasses_description: subpasses
+                .iter()
+                .cloned()
+                .collect(
+            )
+            })),
             Err(_err) => Err(VulkanError::Unspecified),
         }
     }
