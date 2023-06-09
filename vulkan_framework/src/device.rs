@@ -499,7 +499,6 @@ impl Device {
 
                             let mut device_create_info_builder = ash::vk::DeviceCreateInfo::builder()
                                 .queue_create_infos(selected_device.selected_queues.as_slice())
-                                .enabled_features(&selected_device.selected_device_features)
                                 .enabled_layer_names(layers_ptr.as_slice())
                                 .enabled_extension_names(extensions_ptr.as_slice());
 
@@ -524,7 +523,7 @@ impl Device {
                             let mut ray_tracing_pipeline_features = ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
                             
                             // Enable raytracing if required extensions have been requested
-                            {
+                            if instance.instance_vulkan_version() != InstanceAPIVersion::Version1_0 {
                                 if acceleration_structure_enabled {
                                     if ray_tracing_enabled {
                                         accel_structure_features.p_next = &mut ray_tracing_pipeline_features as *mut ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR as *mut std::ffi::c_void;
@@ -540,6 +539,8 @@ impl Device {
                                     instance.ash_handle().get_physical_device_features2(selected_device.selected_physical_device, &mut features2);
                                     device_create_info_builder = device_create_info_builder.push_next(&mut features2);
                                 }
+                            } else {
+                                device_create_info_builder = device_create_info_builder.enabled_features(&selected_device.selected_device_features);
                             }
 
                             let device_create_info = device_create_info_builder.build();

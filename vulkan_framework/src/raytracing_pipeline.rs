@@ -58,10 +58,22 @@ impl RaytracingPipeline {
         match device.ash_ext_raytracing_pipeline_khr() {
             Some(raytracing_ext) => {
                 let (raygen_shader, raygen_name) = raygen;
-
+                let raygen_name: &CStr = match raygen_name {
+                    Option::Some(_n) => {
+                        todo!()
+                    }
+                    Option::None => {
+                        unsafe { CStr::from_bytes_with_nul_unchecked(&[109u8, 97u8, 105u8, 110u8, 0u8]) }
+                        // main
+                    }
+                };
+                //ash::vk::PipelineShaderStageCreateInfo::builder()
+                
                 let stages_create_info: smallvec::SmallVec<[ash::vk::PipelineShaderStageCreateInfo; 8]> = smallvec::smallvec![
                     ash::vk::PipelineShaderStageCreateInfo::builder()
+                        .stage(ash::vk::ShaderStageFlags::RAYGEN_KHR)
                         .module(raygen_shader.ash_handle())
+                        .name(raygen_name)
                         .build()
                     
                 ];
