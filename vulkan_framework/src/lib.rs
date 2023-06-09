@@ -32,3 +32,5 @@ pub mod surface;
 pub mod swapchain;
 pub mod swapchain_image;
 pub mod vertex_shader;
+pub mod raytracing_pipeline;
+pub mod raygen_shader;

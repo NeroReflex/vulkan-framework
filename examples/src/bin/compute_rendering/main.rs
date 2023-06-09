@@ -237,7 +237,7 @@ fn main() {
                                             .unwrap();
                                             println!("Swapchain created!");
 
-                                            let image = match Image::new(
+                                            let image = Image::new(
                                                 stack_allocator,
                                                 ConcreteImageDescriptor::new(
                                                     ImageDimensions::Image2D {
@@ -256,16 +256,7 @@ fn main() {
                                                 ),
                                                 None,
                                                 Some("Test Image"),
-                                            ) {
-                                                Ok(img) => {
-                                                    println!("Image created");
-                                                    img
-                                                }
-                                                Err(_err) => {
-                                                    println!("Error creating image...");
-                                                    return;
-                                                }
-                                            };
+                                            ).unwrap();
 
                                             let image_view = match ImageView::new(
                                                 image.clone(),
@@ -336,54 +327,25 @@ fn main() {
                                                     }
                                                 };
 
-                                            let compute_pipeline_layout = match PipelineLayout::new(
+                                            let compute_pipeline_layout = PipelineLayout::new(
                                                 device.clone(),
                                                 &[descriptor_set_layout.clone()],
                                                 &[image_dimensions_shader_push_constant],
                                                 Some("Layout of Example pipeline"),
-                                            ) {
-                                                Ok(res) => {
-                                                    println!("Pipeline layout created");
-                                                    res
-                                                }
-                                                Err(_err) => {
-                                                    println!(
-                                                        "Error creating the pipeline layout..."
-                                                    );
-                                                    return;
-                                                }
-                                            };
+                                            ).unwrap();
 
-                                            let compute_pipeline = match ComputePipeline::new(
+                                            let compute_pipeline = ComputePipeline::new(
                                                 compute_pipeline_layout.clone(),
                                                 (compute_shader, None),
                                                 Some("Example pipeline"),
-                                            ) {
-                                                Ok(res) => {
-                                                    println!("Compute pipeline created");
-                                                    res
-                                                }
-                                                Err(_err) => {
-                                                    println!("Error creating the pipeline...");
-                                                    return;
-                                                }
-                                            };
+                                            ).unwrap();
 
-                                            let command_pool = match CommandPool::new(
+                                            let command_pool = CommandPool::new(
                                                 queue_family.clone(),
                                                 Some("My command pool"),
-                                            ) {
-                                                Ok(res) => {
-                                                    println!("Command Pool created");
-                                                    res
-                                                }
-                                                Err(_err) => {
-                                                    println!("Error creating the Command Pool...");
-                                                    return;
-                                                }
-                                            };
+                                            ).unwrap();
 
-                                            let descriptor_pool = match DescriptorPool::new(
+                                            let descriptor_pool = DescriptorPool::new(
                                                 device.clone(),
                                                 DescriptorPoolConcreteDescriptor::new(
                                                     DescriptorPoolSizesConcreteDescriptor::new(
@@ -392,50 +354,17 @@ fn main() {
                                                     1,
                                                 ),
                                                 Some("My descriptor pool"),
-                                            ) {
-                                                Ok(res) => {
-                                                    println!("Descriptor Pool created");
-                                                    res
-                                                }
-                                                Err(_err) => {
-                                                    println!(
-                                                        "Error creating the Descriptor Pool..."
-                                                    );
-                                                    return;
-                                                }
-                                            };
+                                            ).unwrap();
 
-                                            let descriptor_set = match DescriptorSet::new(
+                                            let descriptor_set = DescriptorSet::new(
                                                 descriptor_pool,
                                                 descriptor_set_layout,
-                                            ) {
-                                                Ok(res) => {
-                                                    println!("Descriptor Set created");
-                                                    res
-                                                }
-                                                Err(_err) => {
-                                                    println!(
-                                                        "Error creating the Descriptor Set..."
-                                                    );
-                                                    return;
-                                                }
-                                            };
+                                            ).unwrap();
 
-                                            let command_buffer = match PrimaryCommandBuffer::new(
+                                            let command_buffer = PrimaryCommandBuffer::new(
                                                 command_pool.clone(),
                                                 Some("my command buffer <3"),
-                                            ) {
-                                                Ok(res) => {
-                                                    println!("Primary Command Buffer created");
-                                                    res
-                                                }
-                                                Err(_err) => {
-                                                    println!(
-                                                "Error creating the Primary Command Buffer..."
-                                            );
-                                                    return;
-                                                }
-                                            };
+                                            ).unwrap();
 
                                             if let Err(_error) =
                                                 descriptor_set.bind_resources(|binder| {

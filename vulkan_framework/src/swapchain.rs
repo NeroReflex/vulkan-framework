@@ -205,7 +205,9 @@ impl DeviceSurfaceInfo {
                     _ => Err(VulkanError::Unspecified),
                 }
             }
-            _Nome => Err(VulkanError::Unspecified),
+            None => Err(VulkanError::MissingExtension(String::from(
+                "VK_KHR_swapchain",
+            ))),
         }
     }
 }

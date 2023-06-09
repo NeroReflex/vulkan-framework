@@ -16,6 +16,9 @@ pub trait DeviceOwned {
 
 struct DeviceExtensions {
     swapchain_khr_ext: Option<ash::extensions::khr::Swapchain>,
+    raytracing_pipeline_khr_ext: Option<ash::extensions::khr::RayTracingPipeline>,
+    raytracing_maintenance_khr_ext: Option<ash::extensions::khr::RayTracingMaintenance1>,
+    acceleration_structure_khr_ext: Option<ash::extensions::khr::AccelerationStructure>
 }
 
 struct DeviceData {
@@ -63,6 +66,18 @@ impl Device {
 
     pub(crate) fn ash_ext_swapchain_khr(&self) -> &Option<ash::extensions::khr::Swapchain> {
         &self.extensions.swapchain_khr_ext
+    }
+
+    pub(crate) fn ash_ext_raytracing_maintenance1_khr(&self) -> &Option<ash::extensions::khr::RayTracingMaintenance1> {
+        &self.extensions.raytracing_maintenance_khr_ext
+    }
+
+    pub(crate) fn ash_ext_raytracing_pipeline_khr(&self) -> &Option<ash::extensions::khr::RayTracingPipeline> {
+        &self.extensions.raytracing_pipeline_khr_ext
+    }
+
+    pub(crate) fn ash_ext_acceleration_structure_khr(&self) -> &Option<ash::extensions::khr::AccelerationStructure> {
+        &self.extensions.acceleration_structure_khr_ext
     }
 
     pub(crate) fn ash_physical_device_handle(&self) -> &ash::vk::PhysicalDevice {
@@ -482,13 +497,52 @@ impl Device {
                                 .map(|str| str.as_ptr())
                                 .collect::<Vec<*const c_char>>();
 
-                            let device_create_info = ash::vk::DeviceCreateInfo::builder()
+                            let mut device_create_info_builder = ash::vk::DeviceCreateInfo::builder()
                                 .queue_create_infos(selected_device.selected_queues.as_slice())
                                 .enabled_features(&selected_device.selected_device_features)
                                 .enabled_layer_names(layers_ptr.as_slice())
-                                .enabled_extension_names(extensions_ptr.as_slice())
-                                .build();
+                                .enabled_extension_names(extensions_ptr.as_slice());
 
+                            let acceleration_structure_enabled = device_extensions.iter().any(|ext| {
+                                ext.as_str()
+                                    == ash::extensions::khr::AccelerationStructure::name()
+                                        .to_str()
+                                        .unwrap_or("")
+                                }
+                            );
+
+                            let ray_tracing_enabled = device_extensions.iter().any(|ext| {
+                                ext.as_str()
+                                    == ash::extensions::khr::RayTracingPipeline::name()
+                                        .to_str()
+                                        .unwrap_or("")
+                                }
+                            );
+
+                            let mut features2 = ash::vk::PhysicalDeviceFeatures2::default();
+                            let mut accel_structure_features = ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
+                            let mut ray_tracing_pipeline_features = ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
+                            
+                            // Enable raytracing if required extensions have been requested
+                            {
+                                if acceleration_structure_enabled {
+                                    if ray_tracing_enabled {
+                                        accel_structure_features.p_next = &mut ray_tracing_pipeline_features as *mut ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR as *mut std::ffi::c_void;
+                                    }
+                                    
+                                    features2.p_next = &mut accel_structure_features as *mut ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR as *mut std::ffi::c_void;
+                                }
+
+                                if instance.instance_vulkan_version() == InstanceAPIVersion::Version1_0 {
+                                    device_create_info_builder = device_create_info_builder.enabled_features(&selected_device.selected_device_features);
+                                } else {
+
+                                    instance.ash_handle().get_physical_device_features2(selected_device.selected_physical_device, &mut features2);
+                                    device_create_info_builder = device_create_info_builder.push_next(&mut features2);
+                                }
+                            }
+
+                            let device_create_info = device_create_info_builder.build();
                             return match instance.ash_handle().create_device(
                                 selected_device.selected_physical_device.to_owned(),
                                 &device_create_info,
@@ -505,6 +559,44 @@ impl Device {
                                         }) {
                                             true => {
                                                 Option::Some(ash::extensions::khr::Swapchain::new(
+                                                    instance.ash_handle(),
+                                                    &device,
+                                                ))
+                                            }
+                                            false => Option::None,
+                                        };
+
+                                        let raytracing_pipeline_ext: Option<ash::extensions::khr::RayTracingPipeline> =
+                                        match ray_tracing_enabled {
+                                            true => {
+                                                Option::Some(ash::extensions::khr::RayTracingPipeline::new(
+                                                    instance.ash_handle(),
+                                                    &device,
+                                                ))
+                                            }
+                                            false => Option::None,
+                                        };
+
+                                        let acceleration_structure_ext: Option<ash::extensions::khr::AccelerationStructure> = 
+                                        match acceleration_structure_enabled {
+                                            true => {
+                                                Option::Some(ash::extensions::khr::AccelerationStructure::new(
+                                                    instance.ash_handle(),
+                                                    &device,
+                                                ))
+                                            }
+                                            false => Option::None,
+                                        };
+
+                                        let raytracing_maintenance_ext: Option<ash::extensions::khr::RayTracingMaintenance1> =
+                                        match device_extensions.iter().any(|ext| {
+                                            ext.as_str()
+                                                == ash::extensions::khr::RayTracingMaintenance1::name()
+                                                    .to_str()
+                                                    .unwrap_or("")
+                                        }) {
+                                            true => {
+                                                Option::Some(ash::extensions::khr::RayTracingMaintenance1::new(
                                                     instance.ash_handle(),
                                                     &device,
                                                 ))
@@ -565,6 +657,9 @@ impl Device {
                                         device,
                                         extensions: DeviceExtensions {
                                             swapchain_khr_ext: swapchain_ext,
+                                            raytracing_pipeline_khr_ext: raytracing_pipeline_ext,
+                                            raytracing_maintenance_khr_ext: raytracing_maintenance_ext,
+                                            acceleration_structure_khr_ext: acceleration_structure_ext
                                         },
                                         instance,
                                         physical_device: selected_device.selected_physical_device,

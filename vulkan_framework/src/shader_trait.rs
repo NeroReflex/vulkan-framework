@@ -1,11 +1,18 @@
 use crate::device::DeviceOwned;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub enum ShaderTypeRayTracingKHR {
+    RayGen,
+}
+
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub enum ShaderType {
     Compute,
     Vertex,
     Geometry,
     Fragment,
+
+    RayTracingKHR(ShaderTypeRayTracingKHR)
 }
 
 pub trait ShaderTrait: DeviceOwned {

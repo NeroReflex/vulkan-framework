@@ -1,11 +1,16 @@
-use crate::shader_trait::ShaderType;
+use crate::shader_trait::{ShaderType, ShaderTypeRayTracingKHR};
 
 #[derive(Copy, Clone)]
-pub struct ShaderStageAccessRayTracingKHR {}
+pub struct ShaderStageAccessRayTracingKHR {
+    rgen: bool
+}
 
 impl ShaderStageAccessRayTracingKHR {
     pub(crate) fn ash_stage_access_mask(&self) -> ash::vk::ShaderStageFlags {
-        ash::vk::ShaderStageFlags::empty()
+        match self.rgen {
+            true => ash::vk::ShaderStageFlags::RAYGEN_KHR,
+            false => ash::vk::ShaderStageFlags::empty()
+        }
     }
 }
 
@@ -25,7 +30,9 @@ impl ShaderStageAccess {
             vertex: false,
             geometry: false,
             fragment: false,
-            ray_tracing: ShaderStageAccessRayTracingKHR {},
+            ray_tracing: ShaderStageAccessRayTracingKHR {
+                rgen: false
+            },
         }
     }
 
@@ -35,6 +42,11 @@ impl ShaderStageAccess {
             ShaderType::Vertex => self.vertex,
             ShaderType::Geometry => self.geometry,
             ShaderType::Fragment => self.fragment,
+            ShaderType::RayTracingKHR(raytracing_khr) => {
+                match raytracing_khr {
+                    ShaderTypeRayTracingKHR::RayGen => self.ray_tracing.rgen
+                }
+            }
         }
     }
 
