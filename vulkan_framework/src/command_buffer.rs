@@ -13,14 +13,14 @@ use crate::{
     graphics_pipeline::GraphicsPipeline,
     image::{
         Image1DTrait, Image2DTrait, ImageAspects, ImageDimensions, ImageLayout,
-        ImageSubresourceLayers, ImageSubresourceRange, ImageTrait,
+        ImageSubresourceLayers, ImageSubresourceRange, ImageTrait, Image2DDimensions, Image3DDimensions, Image3DTrait,
     },
     instance::InstanceOwned,
     pipeline_layout::PipelineLayout,
     pipeline_stage::PipelineStages,
     prelude::{VulkanError, VulkanResult},
     queue_family::QueueFamily,
-    renderpass::RenderPassCompatible,
+    renderpass::RenderPassCompatible, raytracing_pipeline::RaytracingPipeline,
 };
 use crate::{
     compute_pipeline::ComputePipeline, descriptor_set::DescriptorSet, device::Device,
@@ -30,6 +30,7 @@ use crate::{
 enum CommandBufferReferencedResource {
     ComputePipeline(Arc<ComputePipeline>),
     GraphicsPipeline(Arc<GraphicsPipeline>),
+    RaytracingPipeline(Arc<RaytracingPipeline>),
     DescriptorSet(Arc<DescriptorSet>),
     PipelineLayout(Arc<PipelineLayout>),
     Framebuffer(Arc<dyn FramebufferTrait>),
@@ -47,6 +48,7 @@ impl CommandBufferReferencedResource {
             Self::Image(l0) => (0b0011u128 << 124u128) | (l0.native_handle() as u128),
             Self::Framebuffer(l0) => (0b0100u128 << 124u128) | (l0.native_handle() as u128),
             Self::GraphicsPipeline(l0) => (0b0101u128 << 124u128) | (l0.native_handle() as u128),
+            Self::RaytracingPipeline(l0) => (0b0110u128 << 124u128) | (l0.native_handle() as u128),
         }
     }
 }
@@ -64,6 +66,9 @@ impl PartialEq for CommandBufferReferencedResource {
                 l0.native_handle() == r0.native_handle()
             }
             (Self::GraphicsPipeline(l0), Self::GraphicsPipeline(r0)) => {
+                l0.native_handle() == r0.native_handle()
+            }
+            (Self::RaytracingPipeline(l0), Self::RaytracingPipeline(r0)) => {
                 l0.native_handle() == r0.native_handle()
             }
             (Self::Framebuffer(l0), Self::Framebuffer(r0)) => {
@@ -510,6 +515,85 @@ pub struct CommandBufferRecorder<'a> {
 }
 
 impl<'a> CommandBufferRecorder<'a> {
+    pub fn trace_rays(
+        &mut self,
+        dimensions: Image3DDimensions
+    ) {
+        // TODO: check if ray_tracing extension is enabled
+
+        match self.device.ash_ext_raytracing_pipeline_khr() {
+            Some(rt_ext) => {
+                unsafe {
+                    /*rt_ext.cmd_trace_rays(
+                        self.command_buffer.ash_handle(),
+                        raygen_shader_binding_tables,
+                        miss_shader_binding_tables,
+                        hit_shader_binding_tables,
+                        callable_shader_binding_tables,
+                        dimensions.width(),
+                        dimensions.height(),
+                        dimensions.depth()
+                    )*/
+                }
+            },
+            None => {
+                println!("Ray tracing pipeline is no enabled, nothing will happend.");
+            }
+        }
+    }
+
+    pub fn bind_ray_tracing_pipeline(
+        &mut self,
+        raytracing_pipeline: Arc<RaytracingPipeline>,
+    ) {
+        unsafe {
+            self.device.ash_handle().cmd_bind_pipeline(
+                self.command_buffer.ash_handle(),
+                ash::vk::PipelineBindPoint::RAY_TRACING_KHR,
+                raytracing_pipeline.ash_handle(),
+            )
+        }
+
+        self.used_resources
+            .insert(CommandBufferReferencedResource::RaytracingPipeline(
+                raytracing_pipeline,
+            ));
+    }
+
+    pub fn bind_descriptor_sets_for_ray_tracing_pipeline(
+        &mut self,
+        pipeline_layout: Arc<PipelineLayout>,
+        offset: u32,
+        descriptor_sets: &[Arc<DescriptorSet>],
+    ) {
+        // TODO: check if ray_tracing extension is enabled
+
+        let mut sets = Vec::<ash::vk::DescriptorSet>::new();
+
+        for ds in descriptor_sets.iter() {
+            self.used_resources
+                .insert(CommandBufferReferencedResource::DescriptorSet(ds.clone()));
+
+            sets.push(ds.ash_handle());
+        }
+
+        unsafe {
+            self.device.ash_handle().cmd_bind_descriptor_sets(
+                self.command_buffer.ash_handle(),
+                ash::vk::PipelineBindPoint::RAY_TRACING_KHR,
+                pipeline_layout.ash_handle(),
+                offset,
+                sets.as_slice(),
+                &[],
+            )
+        }
+
+        self.used_resources
+            .insert(CommandBufferReferencedResource::PipelineLayout(
+                pipeline_layout,
+            ));
+    }
+
     pub fn draw(
         &mut self,
         first_vertex_index: u32,
@@ -526,6 +610,38 @@ impl<'a> CommandBufferRecorder<'a> {
                 first_instance_index,
             )
         }
+    }
+
+    pub fn bind_descriptor_sets_for_graphics_pipeline(
+        &mut self,
+        pipeline_layout: Arc<PipelineLayout>,
+        offset: u32,
+        descriptor_sets: &[Arc<DescriptorSet>],
+    ) {
+        let mut sets = Vec::<ash::vk::DescriptorSet>::new();
+
+        for ds in descriptor_sets.iter() {
+            self.used_resources
+                .insert(CommandBufferReferencedResource::DescriptorSet(ds.clone()));
+
+            sets.push(ds.ash_handle());
+        }
+
+        unsafe {
+            self.device.ash_handle().cmd_bind_descriptor_sets(
+                self.command_buffer.ash_handle(),
+                ash::vk::PipelineBindPoint::GRAPHICS,
+                pipeline_layout.ash_handle(),
+                offset,
+                sets.as_slice(),
+                &[],
+            )
+        }
+
+        self.used_resources
+            .insert(CommandBufferReferencedResource::PipelineLayout(
+                pipeline_layout,
+            ));
     }
 
     pub fn bind_graphics_pipeline(&mut self, graphics_pipeline: Arc<GraphicsPipeline>) {
@@ -681,7 +797,7 @@ impl<'a> CommandBufferRecorder<'a> {
             ));
     }
 
-    pub fn bind_descriptor_sets(
+    pub fn bind_descriptor_sets_for_compute_pipeline(
         &mut self,
         pipeline_layout: Arc<PipelineLayout>,
         offset: u32,

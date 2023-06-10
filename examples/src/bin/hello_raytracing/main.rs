@@ -35,7 +35,7 @@ use vulkan_framework::{
         SurfaceColorspaceSwapchainKHR, SurfaceTransformSwapchainKHR, SwapchainKHR,
     },
     swapchain_image::ImageSwapchainKHR,
-    vertex_shader::VertexShader, raytracing_pipeline::RaytracingPipeline, raygen_shader::RaygenShader,
+    vertex_shader::VertexShader, raytracing_pipeline::RaytracingPipeline, raygen_shader::RaygenShader, miss_shader::MissShader, intersection_shader::IntersectionShader, any_hit_shader::AnyHitShader, closest_hit_shader::ClosestHitShader, callable_shader::CallableShader,
 };
 
 const RAYGEN_SPV: &[u32] = inline_spirv!(
@@ -74,6 +74,86 @@ void main() {
 }
 "#,
     glsl, rgen, vulkan1_2,
+    entry = "main"
+);
+
+const MISS_SPV: &[u32] = inline_spirv!(
+    r#"
+#version 460
+#extension GL_EXT_ray_tracing : require
+
+//layout(binding = 0, set = 0) uniform accelerationStructureEXT topLevelAS;
+//layout(binding = 1, set = 0) uniform image2D outputImage;
+
+void main() {
+    
+}
+"#,
+    glsl, rmiss, vulkan1_2,
+    entry = "main"
+);
+
+const AHIT_SPV: &[u32] = inline_spirv!(
+    r#"
+#version 460
+#extension GL_EXT_ray_tracing : require
+
+//layout(binding = 0, set = 0) uniform accelerationStructureEXT topLevelAS;
+//layout(binding = 1, set = 0) uniform image2D outputImage;
+
+void main() {
+    
+}
+"#,
+    glsl, rahit, vulkan1_2,
+    entry = "main"
+);
+
+const CHIT_SPV: &[u32] = inline_spirv!(
+    r#"
+#version 460
+#extension GL_EXT_ray_tracing : require
+
+//layout(binding = 0, set = 0) uniform accelerationStructureEXT topLevelAS;
+//layout(binding = 1, set = 0) uniform image2D outputImage;
+
+void main() {
+    
+}
+"#,
+    glsl, rchit, vulkan1_2,
+    entry = "main"
+);
+
+const CALLABLE_SPV: &[u32] = inline_spirv!(
+    r#"
+#version 460
+#extension GL_EXT_ray_tracing : require
+
+//layout(binding = 0, set = 0) uniform accelerationStructureEXT topLevelAS;
+//layout(binding = 1, set = 0) uniform image2D outputImage;
+
+void main() {
+    
+}
+"#,
+    glsl, rcall, vulkan1_2,
+    entry = "main"
+);
+
+const INTERSECTION_SPV: &[u32] = inline_spirv!(
+    r#"
+#version 460
+#extension GL_EXT_ray_tracing : require
+
+//layout(binding = 0, set = 0) uniform accelerationStructureEXT topLevelAS;
+//layout(binding = 1, set = 0) uniform image2D outputImage;
+
+void main() {
+    
+}
+"#,
+    glsl, rint, vulkan1_2,
     entry = "main"
 );
 
@@ -319,12 +399,23 @@ fn main() {
                     .collect::<Vec<Arc<ImageView>>>();
 
                 let raygen_shader = RaygenShader::new(dev.clone(), RAYGEN_SPV).unwrap();
+                let intersection_shader = IntersectionShader::new(dev.clone(), INTERSECTION_SPV).unwrap();
+                let miss_shader = MissShader::new(dev.clone(), MISS_SPV).unwrap();
+                let anyhit_shader = AnyHitShader::new(dev.clone(), AHIT_SPV).unwrap();
+                let closesthit_shader = ClosestHitShader::new(dev.clone(), CHIT_SPV).unwrap();
+                let callable_shader = CallableShader::new(dev.clone(), CALLABLE_SPV).unwrap();
 
                 let pipeline = RaytracingPipeline::new(
                     pipeline_layout.clone(),
+                    16,
                     (raygen_shader, None),
+                    (intersection_shader, None),
+                    (miss_shader, None),
+                    (anyhit_shader, None),
+                    (closesthit_shader, None),
+                    (callable_shader, None),
                     Some("raytracing_pipeline!")
-                );
+                ).unwrap();
 
                 let mut current_frame: usize = 0;
 
@@ -365,7 +456,7 @@ fn main() {
 
                     present_command_buffers[current_frame % (swapchain_images_count as usize)]
                         .record_commands(|recorder: &mut CommandBufferRecorder| {
-                            
+                            recorder.bind_ray_tracing_pipeline(pipeline.clone())
                         })
                         .unwrap();
 

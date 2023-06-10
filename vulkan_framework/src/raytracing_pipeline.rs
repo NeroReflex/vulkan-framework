@@ -1,10 +1,15 @@
 use std::ffi::CStr;
 use std::sync::Arc;
 
+use crate::any_hit_shader::AnyHitShader;
+use crate::callable_shader::CallableShader;
+use crate::closest_hit_shader::ClosestHitShader;
 use crate::compute_shader::ComputeShader;
 use crate::device::{Device, DeviceOwned};
 use crate::instance::InstanceOwned;
 
+use crate::intersection_shader::IntersectionShader;
+use crate::miss_shader::MissShader;
 use crate::pipeline_layout::{PipelineLayout, PipelineLayoutDependant};
 use crate::prelude::{VulkanError, VulkanResult};
 use crate::raygen_shader::RaygenShader;
@@ -14,6 +19,7 @@ pub struct RaytracingPipeline {
     device: Arc<Device>,
     pipeline_layout: Arc<PipelineLayout>,
     pipeline: ash::vk::Pipeline,
+    max_pipeline_ray_recursion_depth: u32,
 }
 
 impl PipelineLayoutDependant for RaytracingPipeline {
@@ -48,9 +54,19 @@ impl RaytracingPipeline {
         self.pipeline
     }
 
+    pub fn max_pipeline_ray_recursion_depth(&self) -> u32 {
+        self.max_pipeline_ray_recursion_depth
+    }
+
     pub fn new(
         pipeline_layout: Arc<PipelineLayout>,
+        max_pipeline_ray_recursion_depth: u32,
         raygen: (Arc<RaygenShader>, Option<String>),
+        intersection: (Arc<IntersectionShader>, Option<String>),
+        miss: (Arc<MissShader>, Option<String>),
+        anyhit: (Arc<AnyHitShader>, Option<String>),
+        closesthit: (Arc<ClosestHitShader>, Option<String>),
+        callable: (Arc<CallableShader>, Option<String>),
         debug_name: Option<&str>,
     ) -> VulkanResult<Arc<Self>> {
         let device = pipeline_layout.get_parent_device();
@@ -67,6 +83,62 @@ impl RaytracingPipeline {
                         // main
                     }
                 };
+
+                let (miss_shader, miss_name) = miss;
+                let miss_name: &CStr = match miss_name {
+                    Option::Some(_n) => {
+                        todo!()
+                    }
+                    Option::None => {
+                        unsafe { CStr::from_bytes_with_nul_unchecked(&[109u8, 97u8, 105u8, 110u8, 0u8]) }
+                        // main
+                    }
+                };
+
+                let (intersection_shader, intersection_name) = intersection;
+                let intersection_name: &CStr = match intersection_name {
+                    Option::Some(_n) => {
+                        todo!()
+                    }
+                    Option::None => {
+                        unsafe { CStr::from_bytes_with_nul_unchecked(&[109u8, 97u8, 105u8, 110u8, 0u8]) }
+                        // main
+                    }
+                };
+
+                let (anyhit_shader, anyhit_name) = anyhit;
+                let anyhit_name: &CStr = match anyhit_name {
+                    Option::Some(_n) => {
+                        todo!()
+                    }
+                    Option::None => {
+                        unsafe { CStr::from_bytes_with_nul_unchecked(&[109u8, 97u8, 105u8, 110u8, 0u8]) }
+                        // main
+                    }
+                };
+
+                let (closesthit_shader, closesthit_name) = closesthit;
+                let closesthit_name: &CStr = match closesthit_name {
+                    Option::Some(_n) => {
+                        todo!()
+                    }
+                    Option::None => {
+                        unsafe { CStr::from_bytes_with_nul_unchecked(&[109u8, 97u8, 105u8, 110u8, 0u8]) }
+                        // main
+                    }
+                };
+
+                let (callable_shader, callable_name) = callable;
+                let callable_name: &CStr = match callable_name {
+                    Option::Some(_n) => {
+                        todo!()
+                    }
+                    Option::None => {
+                        unsafe { CStr::from_bytes_with_nul_unchecked(&[109u8, 97u8, 105u8, 110u8, 0u8]) }
+                        // main
+                    }
+                };
+
                 //ash::vk::PipelineShaderStageCreateInfo::builder()
                 
                 let stages_create_info: smallvec::SmallVec<[ash::vk::PipelineShaderStageCreateInfo; 8]> = smallvec::smallvec![
@@ -74,13 +146,38 @@ impl RaytracingPipeline {
                         .stage(ash::vk::ShaderStageFlags::RAYGEN_KHR)
                         .module(raygen_shader.ash_handle())
                         .name(raygen_name)
-                        .build()
-                    
+                        .build(),
+                    ash::vk::PipelineShaderStageCreateInfo::builder()
+                        .stage(ash::vk::ShaderStageFlags::INTERSECTION_KHR)
+                        .module(intersection_shader.ash_handle())
+                        .name(intersection_name)
+                        .build(),
+                    ash::vk::PipelineShaderStageCreateInfo::builder()
+                        .stage(ash::vk::ShaderStageFlags::MISS_KHR)
+                        .module(miss_shader.ash_handle())
+                        .name(miss_name)
+                        .build(),
+                    ash::vk::PipelineShaderStageCreateInfo::builder()
+                        .stage(ash::vk::ShaderStageFlags::ANY_HIT_KHR)
+                        .module(anyhit_shader.ash_handle())
+                        .name(anyhit_name)
+                        .build(),
+                    ash::vk::PipelineShaderStageCreateInfo::builder()
+                        .stage(ash::vk::ShaderStageFlags::CLOSEST_HIT_KHR)
+                        .module(closesthit_shader.ash_handle())
+                        .name(closesthit_name)
+                        .build(),
+                    ash::vk::PipelineShaderStageCreateInfo::builder()
+                        .stage(ash::vk::ShaderStageFlags::CALLABLE_KHR)
+                        .module(callable_shader.ash_handle())
+                        .name(callable_name)
+                        .build(),
                 ];
 
                 let create_info = ash::vk::RayTracingPipelineCreateInfoKHR::builder()
                     .layout(pipeline_layout.ash_handle())
                     .stages(stages_create_info.as_slice())
+                    .max_pipeline_ray_recursion_depth(max_pipeline_ray_recursion_depth)
                     .build();
 
                 match unsafe {
@@ -146,7 +243,8 @@ impl RaytracingPipeline {
                         Ok(Arc::new(Self {
                             device,
                             pipeline_layout,
-                            pipeline
+                            pipeline,
+                            max_pipeline_ray_recursion_depth
                         }))
                     },
                     Err(_err) => {

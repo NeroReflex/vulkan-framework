@@ -419,7 +419,7 @@ fn main() {
                                                     compute_pipeline.clone(),
                                                 );
 
-                                                recorder.bind_descriptor_sets(
+                                                recorder.bind_descriptor_sets_for_compute_pipeline(
                                                     compute_pipeline_layout.clone(),
                                                     0,
                                                     descriptor_sets.as_slice(),

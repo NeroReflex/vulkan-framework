@@ -2,7 +2,12 @@ use crate::shader_trait::{ShaderType, ShaderTypeRayTracingKHR};
 
 #[derive(Copy, Clone)]
 pub struct ShaderStageAccessRayTracingKHR {
-    rgen: bool
+    rgen: bool,
+    miss: bool,
+    callable: bool,
+    closest_hit: bool,
+    any_hit: bool,
+    intersection: bool,
 }
 
 impl ShaderStageAccessRayTracingKHR {
@@ -31,7 +36,12 @@ impl ShaderStageAccess {
             geometry: false,
             fragment: false,
             ray_tracing: ShaderStageAccessRayTracingKHR {
-                rgen: false
+                rgen: false,
+                miss: false,
+                callable: false,
+                closest_hit: false,
+                any_hit: false,
+                intersection: false,
             },
         }
     }
@@ -44,7 +54,12 @@ impl ShaderStageAccess {
             ShaderType::Fragment => self.fragment,
             ShaderType::RayTracingKHR(raytracing_khr) => {
                 match raytracing_khr {
-                    ShaderTypeRayTracingKHR::RayGen => self.ray_tracing.rgen
+                    ShaderTypeRayTracingKHR::RayGen => self.ray_tracing.rgen,
+                    ShaderTypeRayTracingKHR::Miss => self.ray_tracing.miss,
+                    ShaderTypeRayTracingKHR::Callable => self.ray_tracing.callable,
+                    ShaderTypeRayTracingKHR::ClosestHit => self.ray_tracing.closest_hit,
+                    ShaderTypeRayTracingKHR::AnyHit => self.ray_tracing.any_hit,
+                    ShaderTypeRayTracingKHR::Intersection => self.ray_tracing.intersection,
                 }
             }
         }
