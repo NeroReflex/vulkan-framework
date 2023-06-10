@@ -38,6 +38,29 @@ pub struct RaytracingInfo {
     max_shader_group_stride: u32,
 }
 
+impl RaytracingInfo {
+    pub fn shader_group_handle_size(&self) -> u32 {
+        self.shader_group_handle_size
+    }
+
+    pub fn max_ray_dispatch_invocation_count(&self) -> u32 {
+        self.max_ray_dispatch_invocation_count
+    }
+
+    pub fn max_ray_hit_attribute_size(&self) -> u32 {
+        self.max_ray_hit_attribute_size
+    }
+
+    pub fn max_ray_recursion_depth(&self) -> u32 {
+        self.max_ray_recursion_depth
+    }
+
+    pub fn max_shader_group_stride(&self) -> u32 {
+        self.max_shader_group_stride
+    }
+
+}
+
 pub struct Device {
     //_name_bytes: Vec<u8>,
     required_family_collection: Mutex<Vec<Option<(u32, ConcreteQueueFamilyDescriptor)>>>,

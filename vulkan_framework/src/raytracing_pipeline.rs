@@ -71,6 +71,15 @@ impl RaytracingPipeline {
     ) -> VulkanResult<Arc<Self>> {
         let device = pipeline_layout.get_parent_device();
 
+        match device.ray_tracing_info() {
+            Some(info) => {
+                assert!(info.max_ray_recursion_depth() <= max_pipeline_ray_recursion_depth)
+            },
+            None => {
+                return Err(VulkanError::Unspecified)
+            }
+        }
+
         match device.ash_ext_raytracing_pipeline_khr() {
             Some(raytracing_ext) => {
                 let (raygen_shader, raygen_name) = raygen;

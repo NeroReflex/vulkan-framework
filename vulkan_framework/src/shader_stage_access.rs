@@ -1,6 +1,6 @@
 use crate::shader_trait::{ShaderType, ShaderTypeRayTracingKHR};
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct ShaderStageAccessRayTracingKHR {
     rgen: bool,
     miss: bool,
@@ -19,7 +19,7 @@ impl ShaderStageAccessRayTracingKHR {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct ShaderStageAccess {
     compute: bool,
     vertex: bool,
@@ -29,6 +29,49 @@ pub struct ShaderStageAccess {
 }
 
 impl ShaderStageAccess {
+    /*
+    // TODO: the proper way
+    pub fn from() -> Self {
+        Self {
+
+        }
+    }
+    */
+
+    pub fn raytracing() -> Self {
+        Self {
+            compute: false,
+            vertex: false,
+            geometry: false,
+            fragment: false,
+            ray_tracing: ShaderStageAccessRayTracingKHR {
+                rgen: true,
+                miss: true,
+                callable: true,
+                closest_hit: true,
+                any_hit: true,
+                intersection: true,
+            },
+        }
+    }
+
+    pub fn graphics() -> Self {
+        Self {
+            compute: false,
+            vertex: true,
+            geometry: true,
+            fragment: true,
+            ray_tracing: ShaderStageAccessRayTracingKHR {
+                rgen: false,
+                miss: false,
+                callable: false,
+                closest_hit: false,
+                any_hit: false,
+                intersection: false,
+            },
+        }
+    }
+
     pub fn compute() -> Self {
         Self {
             compute: true,
