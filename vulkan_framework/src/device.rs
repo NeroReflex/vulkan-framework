@@ -797,7 +797,7 @@ impl Device {
     pub(crate) fn search_adequate_heap(
         &self,
         current_requested_memory_heap_descriptor: &ConcreteMemoryHeapDescriptor,
-    ) -> Option<(u32, u32)> {
+    ) -> Option<(u32, u32, u32)> {
         let device_memory_properties = unsafe {
             self.get_parent_instance()
                 .ash_handle()
@@ -890,7 +890,7 @@ impl Device {
             }
 
             // If I'm here the previous search has find that the current heap is suitable...
-            return Some((heap_descriptor.heap_index, memory_type_index as u32));
+            return Some((heap_descriptor.heap_index, memory_type_index as u32, heap_descriptor.property_flags.as_raw()));
         }
         None
     }

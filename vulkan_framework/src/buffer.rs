@@ -4,7 +4,7 @@ use crate::{
     memory_allocator::{AllocationResult, MemoryAllocator},
     memory_heap::MemoryHeapOwned,
     memory_pool::{MemoryPool, MemoryPoolBacked},
-    prelude::{VulkanError, VulkanResult},
+    prelude::{VulkanError, VulkanResult, FrameworkError},
     queue_family::QueueFamily,
 };
 
@@ -312,8 +312,7 @@ impl Drop for Buffer
             )
         }
 
-        self.memory_pool
-            .dealloc(&mut self.reserved_memory_from_pool)
+        self.memory_pool.get_memory_allocator().dealloc(&mut self.reserved_memory_from_pool)
     }
 }
 
@@ -462,7 +461,11 @@ impl Buffer
                 requirements.memory_requirements
             };
 
-            match memory_pool.alloc(requirements) {
+            if !memory_pool.get_parent_memory_heap().check_memory_requirements_are_satified(requirements.memory_type_bits) {
+                return Err(VulkanError::Unspecified)
+            }
+
+            match memory_pool.get_memory_allocator().alloc(requirements.size, requirements.alignment) {
                 Some(reserved_memory_from_pool) => {
                     match device.ash_handle().bind_buffer_memory(
                         buffer,
