@@ -1,0 +1,3 @@
+- MemoryHeap is always created with something on pNext if a specific extension has been required: allow for simple usage in the same condition (or create a specialized type of MemoryPool)
+- Review all TODO(s) in the code
+- Write documentation
