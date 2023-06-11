@@ -26,8 +26,9 @@ pub enum MemoryHostCoherence {
 }
 
 /**
- * If DeviceOnly(None) is specified a memory heap with both VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
- * and VK_MEMORY_PROPERTY_PROTECTED_BIT is selected.
+ * If DeviceOnly(None) is specified the selected memory heap will have:
+ *  - VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT bit set
+ *  - VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT bit NOT set
  *
  * If HostLocal is specified a memory heap with at least VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
  * is selected, if HostLocal(None) is selected a heap that is NOT host-coherent will be selected,
@@ -68,6 +69,7 @@ pub struct MemoryHeap {
     descriptor: ConcreteMemoryHeapDescriptor,
     heap_index: u32,
     heap_type_index: u32,
+    heap_property_flags: u32,
 }
 
 pub trait MemoryHeapOwned {
@@ -87,6 +89,10 @@ impl Drop for MemoryHeap {
 }
 
 impl MemoryHeap {
+    pub fn is_host_mappable(&self) -> bool {
+        ash::vk::MemoryPropertyFlags::from_raw(self.heap_property_flags).contains(ash::vk::MemoryPropertyFlags::HOST_VISIBLE)
+    }
+
     pub fn heap_index(&self) -> u32 {
         self.heap_index
     }
@@ -103,16 +109,27 @@ impl MemoryHeap {
         self.heap_type_index
     }
 
+    pub fn check_memory_requirements_are_satified(
+        &self,
+        memory_type_bits: u32
+    ) -> bool {
+        // TODO: check if this heap satisfy memory requirements...
+        // memoryTypeBits is a bitmask and contains one bit set for every supported memory type for the resource. Bit i is set if and only if the memory type i in the VkPhysicalDeviceMemoryProperties structure for the physical device is supported for the resource.
+
+        true
+    }
+
     pub fn new(
         device: Arc<Device>,
         descriptor: ConcreteMemoryHeapDescriptor,
     ) -> VulkanResult<Arc<Self>> {
         match device.search_adequate_heap(&descriptor) {
-            Some((heap_index, heap_type_index)) => Ok(Arc::new(Self {
+            Some((heap_index, heap_type_index, heap_property_flags)) => Ok(Arc::new(Self {
                 device,
                 descriptor,
                 heap_index,
                 heap_type_index,
+                heap_property_flags,
             })),
             None => {
                 #[cfg(debug_assertions)]

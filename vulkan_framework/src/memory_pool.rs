@@ -53,6 +53,12 @@ impl MemoryPool
         ash::vk::Handle::as_raw(self.memory)
     }
 
+    pub fn get_memory_allocator(
+        &self,
+    ) -> Arc<dyn MemoryAllocator> {
+        self.allocator.clone()
+    }
+
     pub(crate) fn ash_handle(&self) -> ash::vk::DeviceMemory {
         self.memory
     }
@@ -62,6 +68,10 @@ impl MemoryPool
         T: Copy + Sized,
     {
         let device = self.get_parent_memory_heap().get_parent_device();
+
+        if !self.get_parent_memory_heap().is_host_mappable() {
+            return Err(VulkanError::Unspecified)
+        }
 
         match unsafe {
             device
@@ -94,6 +104,10 @@ impl MemoryPool
         T: Copy,
     {
         let device = self.get_parent_memory_heap().get_parent_device();
+
+        if !self.get_parent_memory_heap().is_host_mappable() {
+            return Err(VulkanError::Unspecified)
+        }
 
         match unsafe {
             device
@@ -191,26 +205,5 @@ impl MemoryPool
                 }
             }
         }
-    }
-
-    pub(crate) fn alloc(
-        &self,
-        memory_requirements: ash::vk::MemoryRequirements,
-    ) -> Option<AllocationResult> {
-        // TODO: check if this pool satisfy memory requirements...
-        if
-        /*(memory_requirements.memory_type_bits & todo!()) == memory_requirements.memory_type_bits*/
-        true {
-            // ...and if it does try to allocate the required memory
-            self.allocator
-                .alloc(memory_requirements.size, memory_requirements.alignment)
-        } else {
-            // ...if it does not inform the user that the allocation has simply failed
-            None
-        }
-    }
-
-    pub(crate) fn dealloc(&self, mem: &mut AllocationResult) {
-        self.allocator.dealloc(mem)
     }
 }
