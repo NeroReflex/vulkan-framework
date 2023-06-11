@@ -260,7 +260,7 @@ fn main() {
                                                 device.clone(),
                                                 DescriptorPoolConcreteDescriptor::new(
                                                     DescriptorPoolSizesConcreteDescriptor::new(
-                                                        0, 0, 1, 1, 0, 0, 0, 0, 0, None,
+                                                        0, 1, 0, 1, 0, 0, 0, 0, 0, None,
                                                     ),
                                                     2, // one for descriptor_set and one for renderquad_descriptor_set
                                                 ),
@@ -365,6 +365,14 @@ fn main() {
                                                 }
                                             };
 
+                                            let renderquad_sampler = vulkan_framework::sampler::Sampler::new(
+                                                device.clone(),
+                                                vulkan_framework::sampler::Filtering::Nearest,
+                                                vulkan_framework::sampler::Filtering::Nearest,
+                                                vulkan_framework::sampler::MipmapMode::ModeNearest,
+                                                0.0
+                                            ).unwrap();
+
                                             let renderquad_renderpass = vulkan_framework::renderpass::RenderPass::new(
                                                 device.clone(),
                                                 &[
@@ -400,7 +408,7 @@ fn main() {
                             
                                             let renderquad_texture_binding_descriptor = BindingDescriptor::new(
                                                 ShaderStageAccess::graphics(),
-                                                BindingType::Native(NativeBindingType::SampledImage),
+                                                BindingType::Native(NativeBindingType::CombinedImageSampler),
                                                 0,
                                                 1,
                                             );
@@ -425,13 +433,14 @@ fn main() {
                                                 descriptor_pool.clone(),
                                                 renderquad_descriptor_set_layout.clone(),
                                             ).unwrap();
-
+                                            
                                             renderquad_descriptor_set.bind_resources(|binder| {
-                                                binder.bind_storage_images(
+                                                binder.bind_combined_images_samplers(
                                                     0,
                                                     &[(
                                                         ImageLayout::General,
                                                         image_view.clone(),
+                                                        renderquad_sampler.clone(),
                                                     )],
                                                 )
                                             }).unwrap();
@@ -544,19 +553,15 @@ fn main() {
                                                 descriptor_set_layout,
                                             ).unwrap();
 
-                                            if let Err(_error) =
-                                                descriptor_set.bind_resources(|binder| {
-                                                    binder.bind_storage_images(
-                                                        0,
-                                                        &[(
-                                                            ImageLayout::General,
-                                                            image_view.clone(),
-                                                        )],
-                                                    )
-                                                })
-                                            {
-                                                panic!("error in binding resources");
-                                            }
+                                            descriptor_set.bind_resources(|binder| {
+                                                binder.bind_storage_images(
+                                                    0,
+                                                    &[(
+                                                        ImageLayout::General,
+                                                        image_view.clone(),
+                                                    )],
+                                                )
+                                            }).unwrap();
 
                                             let command_buffer = PrimaryCommandBuffer::new(
                                                 command_pool.clone(),
@@ -782,7 +787,10 @@ fn main() {
 
                                                     renderquad_descriptor_set.bind_resources(|renderquad_binder|
                                                         {
-                                                            renderquad_binder.bind_sampled_images(0, &[(renderquad_image_imput_format, image_view.clone())]);
+                                                            renderquad_binder.bind_combined_images_samplers(
+                                                                0,
+                                                                &[(renderquad_image_imput_format, image_view.clone(), renderquad_sampler.clone())]
+                                                            );
                                                         }
                                                     ).unwrap();
 

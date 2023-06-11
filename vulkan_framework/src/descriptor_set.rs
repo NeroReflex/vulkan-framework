@@ -10,7 +10,7 @@ use crate::{
     image::ImageLayout,
     image_view::ImageView,
     memory_allocator::MemoryAllocator,
-    prelude::{VulkanError, VulkanResult},
+    prelude::{VulkanError, VulkanResult}, sampler::Sampler,
 };
 
 pub struct DescriptorSetWriter<'a> {
@@ -49,6 +49,42 @@ impl<'a> DescriptorSetWriter<'a> {
         self.used_resources.iter()
     }
 
+    pub fn bind_combined_images_samplers(
+        &mut self,
+        first_layout_id: u32,
+        images: &[(ImageLayout, Arc<ImageView>, Arc<Sampler>)],
+    )
+    {
+        let descriptors: Vec<ash::vk::DescriptorImageInfo> = images
+            .iter()
+            .enumerate()
+            .map(|(index, image)| {
+                // TODO: assert usage has VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT bit set
+                let (image_layout, image_view, image_sampler) = image;
+
+                self.used_resources[(first_layout_id as usize) + index] =
+                    DescriptorSetBoundResource::CombinedImageViewSampler((image_view.clone(), image_sampler.clone()));
+
+                ash::vk::DescriptorImageInfo::builder()
+                    .image_view(image_view.ash_handle())
+                    .sampler(image_sampler.ash_native())
+                    .image_layout(image_layout.ash_layout())
+                    .build()
+            })
+            .collect();
+
+        self.images_writers.push(descriptors);
+
+        let descriptor_writes = ash::vk::WriteDescriptorSet::builder()
+            .dst_set(self.descriptor_set.ash_handle())
+            .dst_binding(first_layout_id)
+            .descriptor_type(ash::vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .image_info(self.images_writers[self.images_writers.len() - 1].as_slice())
+            .build();
+
+        self.writer.push(descriptor_writes);
+    }
+
     pub fn bind_sampled_images(
         &mut self,
         first_layout_id: u32,
@@ -84,14 +120,13 @@ impl<'a> DescriptorSetWriter<'a> {
         self.writer.push(descriptor_writes);
     }
 
-    pub fn bind_uniform_buffer<T>(
+    pub fn bind_uniform_buffer(
         &mut self,
         first_layout_id: u32,
         buffers: &[Arc<dyn BufferTrait>],
         offset: Option<u64>,
         size: Option<u64>,
-    ) where
-        T: Send + Sync + MemoryAllocator,
+    )
     {
         let descriptors: Vec<ash::vk::DescriptorBufferInfo> = buffers
             .iter()
@@ -125,14 +160,13 @@ impl<'a> DescriptorSetWriter<'a> {
         self.writer.push(descriptor_writes);
     }
 
-    pub fn bind_storage_buffers<T>(
+    pub fn bind_storage_buffers(
         &mut self,
         first_layout_id: u32,
         buffers: &[Arc<dyn BufferTrait>],
         offset: Option<u64>,
         size: Option<u64>,
-    ) where
-        T: Send + Sync + MemoryAllocator,
+    )
     {
         let descriptors: Vec<ash::vk::DescriptorBufferInfo> = buffers
             .iter()
@@ -204,6 +238,7 @@ impl<'a> DescriptorSetWriter<'a> {
 pub enum DescriptorSetBoundResource {
     None,
     Buffer(Arc<dyn BufferTrait>),
+    CombinedImageViewSampler((Arc<ImageView>, Arc<Sampler>)),
     ImageView(Arc<ImageView>),
 }
 
