@@ -258,13 +258,23 @@ impl BufferUsage {
     }
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct ConcreteBufferDescriptor {
     usage: BufferUsage,
     size: ash::vk::DeviceSize,
 }
 
 impl ConcreteBufferDescriptor {
+    pub fn new(
+        usage: BufferUsage,
+        size: u64
+    ) -> Self {
+        Self {
+            size: size as ash::vk::DeviceSize,
+            usage: usage
+        }
+    }
+
     pub(crate) fn ash_size(&self) -> ash::vk::DeviceSize {
         self.size as ash::vk::DeviceSize
     }
@@ -280,19 +290,15 @@ pub trait BufferTrait: Send + Sync + DeviceOwned {
     fn native_handle(&self) -> u64;
 }
 
-pub struct Buffer<Allocator>
-where
-    Allocator: MemoryAllocator + Send + Sync,
+pub struct Buffer
 {
-    memory_pool: Arc<MemoryPool<Allocator>>,
+    memory_pool: Arc<MemoryPool>,
     reserved_memory_from_pool: AllocationResult,
     descriptor: ConcreteBufferDescriptor,
     buffer: ash::vk::Buffer,
 }
 
-impl<Allocator> Drop for Buffer<Allocator>
-where
-    Allocator: MemoryAllocator + Send + Sync,
+impl Drop for Buffer
 {
     fn drop(&mut self) {
         let device = self
@@ -311,11 +317,9 @@ where
     }
 }
 
-impl<Allocator> MemoryPoolBacked<Allocator> for Buffer<Allocator>
-where
-    Allocator: MemoryAllocator + Send + Sync,
+impl MemoryPoolBacked for Buffer
 {
-    fn get_backing_memory_pool(&self) -> Arc<MemoryPool<Allocator>> {
+    fn get_backing_memory_pool(&self) -> Arc<MemoryPool> {
         self.memory_pool.clone()
     }
 
@@ -328,9 +332,7 @@ where
     }
 }
 
-impl<Allocator> DeviceOwned for Buffer<Allocator>
-where
-    Allocator: MemoryAllocator + Send + Sync,
+impl DeviceOwned for Buffer
 {
     fn get_parent_device(&self) -> Arc<Device> {
         self.memory_pool
@@ -339,9 +341,7 @@ where
     }
 }
 
-impl<Allocator> BufferTrait for Buffer<Allocator>
-where
-    Allocator: MemoryAllocator + Send + Sync,
+impl BufferTrait for Buffer
 {
     fn size(&self) -> u64 {
         self.descriptor.ash_size()
@@ -352,16 +352,14 @@ where
     }
 }
 
-impl<Allocator> Buffer<Allocator>
-where
-    Allocator: MemoryAllocator + Send + Sync,
+impl Buffer
 {
     pub(crate) fn ash_handle(&self) -> ash::vk::Buffer {
         self.buffer
     }
 
     pub fn new(
-        memory_pool: Arc<MemoryPool<Allocator>>,
+        memory_pool: Arc<MemoryPool>,
         descriptor: ConcreteBufferDescriptor,
         sharing: Option<&[std::sync::Weak<QueueFamily>]>,
         debug_name: Option<&str>,

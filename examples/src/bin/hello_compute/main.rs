@@ -1,4 +1,5 @@
 use std::io::Write;
+use std::sync::Arc;
 
 use inline_spirv::*;
 use vulkan_framework::command_buffer::AccessFlag;
@@ -127,10 +128,11 @@ fn main() {
                             ) {
                                 Ok(memory_heap) => {
                                     println!("Memory heap created! <3");
+                                    let memory_heap_size = memory_heap.total_size();
 
                                     let stack_allocator = match MemoryPool::new(
                                         memory_heap,
-                                        StackAllocator::new(1024 * 1024 * 1024),
+                                        Arc::new(StackAllocator::new(memory_heap_size)),
                                     ) {
                                         Ok(mem_pool) => {
                                             println!("Stack allocator created");
@@ -441,7 +443,7 @@ fn main() {
                                                 }
                                             }
 
-                                            match stack_allocator.clone_raw_data::<[f32; 4]>(
+                                            match stack_allocator.read_raw_data::<[f32; 4]>(
                                                 image.allocation_offset(),
                                                 image.allocation_size(),
                                             ) {

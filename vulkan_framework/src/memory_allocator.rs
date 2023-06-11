@@ -34,7 +34,7 @@ impl AllocationResult {
     }
 }
 
-pub trait MemoryAllocator {
+pub trait MemoryAllocator: Sync + Send {
     /**
      * Get the amount of memory managed by the current memory allocator.
      */

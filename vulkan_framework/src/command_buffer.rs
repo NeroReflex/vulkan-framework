@@ -20,7 +20,7 @@ use crate::{
     pipeline_stage::PipelineStages,
     prelude::{VulkanError, VulkanResult},
     queue_family::QueueFamily,
-    renderpass::RenderPassCompatible, raytracing_pipeline::RaytracingPipeline,
+    renderpass::RenderPassCompatible, raytracing_pipeline::RaytracingPipeline, binding_tables::RaytracingBindingTables, memory_allocator::MemoryAllocator,
 };
 use crate::{
     compute_pipeline::ComputePipeline, descriptor_set::DescriptorSet, device::Device,
@@ -517,23 +517,29 @@ pub struct CommandBufferRecorder<'a> {
 impl<'a> CommandBufferRecorder<'a> {
     pub fn trace_rays(
         &mut self,
+        binding_tables: Arc<RaytracingBindingTables>,
         dimensions: Image3DDimensions
     ) {
-        // TODO: check if ray_tracing extension is enabled
 
+        // check if ray_tracing extension is enabled
         match self.device.ash_ext_raytracing_pipeline_khr() {
             Some(rt_ext) => {
+                let raygen_shader_binding_tables = binding_tables.ash_raygen_strided();
+                let miss_shader_binding_tables = binding_tables.ash_miss_strided();
+                let hit_shader_binding_tables = binding_tables.ash_closesthit_strided();
+                let callable_shader_binding_tables = binding_tables.ash_callable_strided();
+
                 unsafe {
-                    /*rt_ext.cmd_trace_rays(
+                    rt_ext.cmd_trace_rays(
                         self.command_buffer.ash_handle(),
-                        raygen_shader_binding_tables,
-                        miss_shader_binding_tables,
-                        hit_shader_binding_tables,
-                        callable_shader_binding_tables,
+                        &raygen_shader_binding_tables,
+                        &miss_shader_binding_tables,
+                        &hit_shader_binding_tables,
+                        &callable_shader_binding_tables,
                         dimensions.width(),
                         dimensions.height(),
                         dimensions.depth()
-                    )*/
+                    )
                 }
             },
             None => {

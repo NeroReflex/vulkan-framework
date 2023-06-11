@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use inline_spirv::*;
 use vulkan_framework::command_buffer::AccessFlag;
 use vulkan_framework::command_buffer::AccessFlags;
@@ -188,10 +190,11 @@ fn main() {
                                     ) {
                                         Ok(memory_heap) => {
                                             println!("Memory heap created! <3");
+                                            let memory_heap_size = memory_heap.total_size();
 
                                             let stack_allocator = match MemoryPool::new(
                                                 memory_heap,
-                                                StackAllocator::new(1024 * 1024 * 1024),
+                                                Arc::new(StackAllocator::new(memory_heap_size)),
                                             ) {
                                                 Ok(mem_pool) => {
                                                     println!("Stack allocator created");

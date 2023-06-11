@@ -15,7 +15,7 @@ use vulkan_framework::{
     },
     image::{
         Image2DDimensions, ImageFormat, ImageLayout, ImageLayoutSwapchainKHR, ImageMultisampling,
-        ImageUsage, ImageUsageSpecifier,
+        ImageUsage, ImageUsageSpecifier, Image3DDimensions,
     },
     image_view::{ImageView, ImageViewType},
     instance::*,
@@ -35,7 +35,7 @@ use vulkan_framework::{
         SurfaceColorspaceSwapchainKHR, SurfaceTransformSwapchainKHR, SwapchainKHR,
     },
     swapchain_image::ImageSwapchainKHR,
-    vertex_shader::VertexShader, raytracing_pipeline::RaytracingPipeline, raygen_shader::RaygenShader, miss_shader::MissShader, intersection_shader::IntersectionShader, any_hit_shader::AnyHitShader, closest_hit_shader::ClosestHitShader, callable_shader::CallableShader,
+    vertex_shader::VertexShader, raytracing_pipeline::RaytracingPipeline, raygen_shader::RaygenShader, miss_shader::MissShader, intersection_shader::IntersectionShader, any_hit_shader::AnyHitShader, closest_hit_shader::ClosestHitShader, callable_shader::CallableShader, binding_tables::{required_memory_type, RaytracingBindingTables},
 };
 
 const RAYGEN_SPV: &[u32] = inline_spirv!(
@@ -263,21 +263,37 @@ fn main() {
                 let queue = Queue::new(queue_family.clone(), Some("best queua evah")).unwrap();
                 println!("Queue created successfully");
 
-                let memory_heap = MemoryHeap::new(
+                let device_local_memory_heap = MemoryHeap::new(
                     dev.clone(),
                     ConcreteMemoryHeapDescriptor::new(
                         MemoryType::DeviceLocal(None),
-                        1024 * 1024 * 1024 * 2, // 2GB of memory!
+                        1024 * 1024 * 128, // 128MiB of memory!
                     ),
                 )
                 .unwrap();
                 println!("Memory heap created! <3");
+                let main_heap_size = device_local_memory_heap.total_size();
 
-                let _default_allocator = MemoryPool::new(
-                    memory_heap,
-                    StackAllocator::new(
-                        1024 * 1024 * 128, // 128MiB
+                let device_local_default_allocator = MemoryPool::new(
+                    device_local_memory_heap,
+                    Arc::new(StackAllocator::new(main_heap_size)),
+                )
+                .unwrap();
+
+                let sbt_memory_heap = MemoryHeap::new(
+                    dev.clone(),
+                    ConcreteMemoryHeapDescriptor::new(
+                        required_memory_type(),
+                        1024 * 1024 * 32,
                     ),
+                )
+                .unwrap();
+                println!("Memory heap created! <3");
+                let main_heap_size = sbt_memory_heap.total_size();
+
+                let sbt_default_allocator = MemoryPool::new_with_device_address(
+                    sbt_memory_heap,
+                    Arc::new(StackAllocator::new(main_heap_size)),
                 )
                 .unwrap();
 
@@ -300,6 +316,8 @@ fn main() {
                     swapchain_images_count = device_swapchain_info.min_image_count();
                 }
 
+                let swapchain_extent = Image2DDimensions::new(WIDTH, HEIGHT);
+
                 let swapchain = SwapchainKHR::new(
                     &device_swapchain_info,
                     &[queue_family.clone()],
@@ -313,7 +331,7 @@ fn main() {
                     ImageUsage::Managed(ImageUsageSpecifier::new(
                         false, true, false, false, true, false, false, false,
                     )),
-                    Image2DDimensions::new(WIDTH, HEIGHT),
+                    swapchain_extent,
                     swapchain_images_count,
                     1,
                 )
@@ -379,7 +397,7 @@ fn main() {
                 .unwrap();
                 println!("Pipeline layout created!");
 
-                let swapchain_image_views = swapchain_images
+                let swapchain_image_views = swapchain_images.clone()
                     .into_iter()
                     .map(|image_swapchain| {
                         ImageView::new(
@@ -399,23 +417,30 @@ fn main() {
                     .collect::<Vec<Arc<ImageView>>>();
 
                 let raygen_shader = RaygenShader::new(dev.clone(), RAYGEN_SPV).unwrap();
-                let intersection_shader = IntersectionShader::new(dev.clone(), INTERSECTION_SPV).unwrap();
+                //let intersection_shader = IntersectionShader::new(dev.clone(), INTERSECTION_SPV).unwrap();
                 let miss_shader = MissShader::new(dev.clone(), MISS_SPV).unwrap();
-                let anyhit_shader = AnyHitShader::new(dev.clone(), AHIT_SPV).unwrap();
+                //let anyhit_shader = AnyHitShader::new(dev.clone(), AHIT_SPV).unwrap();
                 let closesthit_shader = ClosestHitShader::new(dev.clone(), CHIT_SPV).unwrap();
-                let callable_shader = CallableShader::new(dev.clone(), CALLABLE_SPV).unwrap();
+                //let callable_shader = CallableShader::new(dev.clone(), CALLABLE_SPV).unwrap();
 
                 let pipeline = RaytracingPipeline::new(
                     pipeline_layout.clone(),
                     16,
-                    (raygen_shader, None),
-                    (intersection_shader, None),
-                    (miss_shader, None),
-                    (anyhit_shader, None),
-                    (closesthit_shader, None),
-                    (callable_shader, None),
+                    raygen_shader,
+                    None,
+                    miss_shader,
+                    None,
+                    closesthit_shader,
+                    None,
                     Some("raytracing_pipeline!")
                 ).unwrap();
+
+                let shader_binding_tables = swapchain_images.clone()
+                    .into_iter()
+                    .map(|_image_swapchain| {
+                        RaytracingBindingTables::new(pipeline.clone(), sbt_default_allocator.clone()).unwrap()
+                    })
+                    .collect::<Vec<Arc<RaytracingBindingTables>>>();
 
                 let mut current_frame: usize = 0;
 
@@ -456,7 +481,12 @@ fn main() {
 
                     present_command_buffers[current_frame % (swapchain_images_count as usize)]
                         .record_commands(|recorder: &mut CommandBufferRecorder| {
-                            recorder.bind_ray_tracing_pipeline(pipeline.clone())
+                            recorder.bind_ray_tracing_pipeline(pipeline.clone());
+
+                            recorder.trace_rays(
+                                shader_binding_tables[current_frame % (swapchain_images_count as usize)].clone(),
+                                Image3DDimensions::from(swapchain_extent)
+                            );
                         })
                         .unwrap();
 

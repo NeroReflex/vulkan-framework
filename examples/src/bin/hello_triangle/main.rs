@@ -167,17 +167,16 @@ fn main() {
                     dev.clone(),
                     ConcreteMemoryHeapDescriptor::new(
                         MemoryType::DeviceLocal(None),
-                        1024 * 1024 * 1024 * 2, // 2GB of memory!
+                        1024 * 1024 * 128, // 128MiB of memory!
                     ),
                 )
                 .unwrap();
                 println!("Memory heap created! <3");
+                let memory_heap_size = memory_heap.total_size();
 
                 let _default_allocator = MemoryPool::new(
                     memory_heap,
-                    StackAllocator::new(
-                        1024 * 1024 * 128, // 128MiB
-                    ),
+                    Arc::new(StackAllocator::new(memory_heap_size)),
                 )
                 .unwrap();
 

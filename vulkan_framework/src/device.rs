@@ -36,6 +36,8 @@ pub struct RaytracingInfo {
     max_ray_hit_attribute_size: u32,
     max_ray_recursion_depth: u32,
     max_shader_group_stride: u32,
+    shader_group_base_alignment: u32,
+    shader_group_handle_alignment: u32,
 }
 
 impl RaytracingInfo {
@@ -59,6 +61,12 @@ impl RaytracingInfo {
         self.max_shader_group_stride
     }
 
+    pub fn shader_group_base_alignment(&self) -> u32 {
+        self.shader_group_base_alignment
+    }
+    pub fn shader_group_handle_alignment(&self) -> u32 {
+        self.shader_group_handle_alignment
+    }
 }
 
 pub struct Device {
@@ -557,16 +565,21 @@ impl Device {
                             let mut features2 = ash::vk::PhysicalDeviceFeatures2::default();
                             let mut accel_structure_features = ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
                             let mut ray_tracing_pipeline_features = ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
+                            let mut get_device_address_features = ash::vk::PhysicalDeviceBufferDeviceAddressFeatures::default();
                             
                             let mut properties2 = ash::vk::PhysicalDeviceProperties2::default();
                             let mut ray_tracing_pipeline_properties = ash::vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
-                            
+
                             // Enable raytracing if required extensions have been requested
                             if instance.instance_vulkan_version() != InstanceAPIVersion::Version1_0 {
                                 if acceleration_structure_enabled {
                                     if ray_tracing_enabled {
                                         properties2.p_next = &mut ray_tracing_pipeline_properties as *mut ash::vk::PhysicalDeviceRayTracingPipelinePropertiesKHR as *mut std::ffi::c_void;
                                         accel_structure_features.p_next = &mut ray_tracing_pipeline_features as *mut ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR as *mut std::ffi::c_void;
+                                    
+                                        if instance.instance_vulkan_version() != InstanceAPIVersion::Version1_1 {
+                                            ray_tracing_pipeline_features.p_next = &mut get_device_address_features as *mut ash::vk::PhysicalDeviceBufferDeviceAddressFeatures as *mut std::ffi::c_void;
+                                        }
                                     }
                                     
                                     features2.p_next = &mut accel_structure_features as *mut ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR as *mut std::ffi::c_void;
@@ -619,6 +632,8 @@ impl Device {
                                                 println!("    RayTracing max_ray_hit_attribute_size: {}", ray_tracing_pipeline_properties.max_ray_hit_attribute_size);
                                                 println!("    RayTracing max_ray_recursion_depth: {}", ray_tracing_pipeline_properties.max_ray_recursion_depth);
                                                 println!("    RayTracing max_shader_group_stride: {}", ray_tracing_pipeline_properties.max_shader_group_stride);
+                                                println!("    RayTracing shader_group_base_alignment: {}", ray_tracing_pipeline_properties.shader_group_base_alignment);
+                                                println!("    RayTracing shader_group_handle_alignment: {}", ray_tracing_pipeline_properties.shader_group_handle_alignment);
 
                                                 raytracing_info = Some(
                                                     RaytracingInfo {
@@ -627,6 +642,8 @@ impl Device {
                                                         max_ray_hit_attribute_size: ray_tracing_pipeline_properties.max_ray_hit_attribute_size,
                                                         max_ray_recursion_depth: ray_tracing_pipeline_properties.max_ray_recursion_depth,
                                                         max_shader_group_stride: ray_tracing_pipeline_properties.max_shader_group_stride,
+                                                        shader_group_base_alignment: ray_tracing_pipeline_properties.shader_group_base_alignment,
+                                                        shader_group_handle_alignment: ray_tracing_pipeline_properties.shader_group_handle_alignment
                                                     }
                                                 );
 

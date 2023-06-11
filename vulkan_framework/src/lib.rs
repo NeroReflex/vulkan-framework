@@ -40,3 +40,4 @@ pub mod any_hit_shader;
 pub mod intersection_shader;
 pub mod callable_shader;
 pub mod binding_tables;
+pub mod utils;

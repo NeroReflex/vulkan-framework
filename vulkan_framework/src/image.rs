@@ -291,6 +291,16 @@ pub struct Image3DDimensions {
     depth: u32,
 }
 
+impl From<Image2DDimensions> for Image3DDimensions {
+    fn from(value: Image2DDimensions) -> Self {
+        Self {
+            width: value.width,
+            height: value.height,
+            depth: 1
+        }
+    }
+}
+
 impl Image3DDimensions {
     pub fn new(width: u32, height: u32, depth: u32) -> Self {
         Self {
@@ -860,19 +870,15 @@ pub(crate) trait ImageOwned {
     fn get_parent_image(&self) -> Arc<dyn ImageTrait>;
 }
 
-pub struct Image<Allocator>
-where
-    Allocator: MemoryAllocator + Send + Sync,
+pub struct Image
 {
-    memory_pool: Arc<MemoryPool<Allocator>>,
+    memory_pool: Arc<MemoryPool>,
     reserved_memory_from_pool: AllocationResult,
     image: ash::vk::Image,
     descriptor: ConcreteImageDescriptor,
 }
 
-impl<Allocator> DeviceOwned for Image<Allocator>
-where
-    Allocator: MemoryAllocator + Send + Sync,
+impl DeviceOwned for Image
 {
     fn get_parent_device(&self) -> Arc<Device> {
         self.get_backing_memory_pool()
@@ -881,9 +887,7 @@ where
     }
 }
 
-impl<Allocator> ImageTrait for Image<Allocator>
-where
-    Allocator: MemoryAllocator + Send + Sync,
+impl ImageTrait for Image
 {
     fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.image)
@@ -906,9 +910,7 @@ where
     }
 }
 
-impl<Allocator> Image<Allocator>
-where
-    Allocator: MemoryAllocator + Send + Sync,
+impl Image
 {
     pub(crate) fn ash_native(&self) -> ash::vk::Image {
         self.image
@@ -934,7 +936,7 @@ where
      *
      */
     pub fn new(
-        memory_pool: Arc<MemoryPool<Allocator>>,
+        memory_pool: Arc<MemoryPool>,
         descriptor: ConcreteImageDescriptor,
         sharing: Option<&[std::sync::Weak<QueueFamily>]>,
         debug_name: Option<&str>,
@@ -1093,9 +1095,7 @@ where
     }
 }
 
-impl<Allocator> Drop for Image<Allocator>
-where
-    Allocator: MemoryAllocator + Send + Sync,
+impl Drop for Image
 {
     fn drop(&mut self) {
         let device = self
@@ -1115,11 +1115,9 @@ where
     }
 }
 
-impl<Allocator> MemoryPoolBacked<Allocator> for Image<Allocator>
-where
-    Allocator: MemoryAllocator + Send + Sync,
+impl MemoryPoolBacked for Image
 {
-    fn get_backing_memory_pool(&self) -> Arc<MemoryPool<Allocator>> {
+    fn get_backing_memory_pool(&self) -> Arc<MemoryPool> {
         self.memory_pool.clone()
     }
 

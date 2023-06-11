@@ -20,6 +20,8 @@ pub struct RaytracingPipeline {
     pipeline_layout: Arc<PipelineLayout>,
     pipeline: ash::vk::Pipeline,
     max_pipeline_ray_recursion_depth: u32,
+    shader_group_size: u32,
+    callable_shader_present: bool,
 }
 
 impl PipelineLayoutDependant for RaytracingPipeline {
@@ -46,6 +48,14 @@ impl Drop for RaytracingPipeline {
 }
 
 impl RaytracingPipeline {
+    pub fn callable_shader_present(&self) -> bool {
+        self.callable_shader_present
+    }
+
+    pub fn shader_group_size(&self) -> u32 {
+        self.shader_group_size
+    }
+
     pub fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.pipeline)
     }
@@ -61,19 +71,21 @@ impl RaytracingPipeline {
     pub fn new(
         pipeline_layout: Arc<PipelineLayout>,
         max_pipeline_ray_recursion_depth: u32,
-        raygen: (Arc<RaygenShader>, Option<String>),
-        intersection: (Arc<IntersectionShader>, Option<String>),
-        miss: (Arc<MissShader>, Option<String>),
-        anyhit: (Arc<AnyHitShader>, Option<String>),
-        closesthit: (Arc<ClosestHitShader>, Option<String>),
-        callable: (Arc<CallableShader>, Option<String>),
+        raygen_shader: Arc<RaygenShader>,
+        maybe_intersection_shader: Option<Arc<IntersectionShader>>,
+        miss_shader: Arc<MissShader>,
+        maybe_anyhit_shader: Option<Arc<AnyHitShader>>,
+        closesthit_shader: Arc<ClosestHitShader>,
+        maybe_callable_shader: Option<Arc<CallableShader>>,
         debug_name: Option<&str>,
     ) -> VulkanResult<Arc<Self>> {
         let device = pipeline_layout.get_parent_device();
 
+        let main_name = unsafe { CStr::from_bytes_with_nul_unchecked(&[109u8, 97u8, 105u8, 110u8, 0u8]) };
+
         match device.ray_tracing_info() {
             Some(info) => {
-                assert!(info.max_ray_recursion_depth() <= max_pipeline_ray_recursion_depth)
+                assert!(max_pipeline_ray_recursion_depth <= info.max_ray_recursion_depth())
             },
             None => {
                 return Err(VulkanError::Unspecified)
@@ -82,111 +94,152 @@ impl RaytracingPipeline {
 
         match device.ash_ext_raytracing_pipeline_khr() {
             Some(raytracing_ext) => {
-                let (raygen_shader, raygen_name) = raygen;
-                let raygen_name: &CStr = match raygen_name {
-                    Option::Some(_n) => {
-                        todo!()
-                    }
-                    Option::None => {
-                        unsafe { CStr::from_bytes_with_nul_unchecked(&[109u8, 97u8, 105u8, 110u8, 0u8]) }
-                        // main
-                    }
-                };
-
-                let (miss_shader, miss_name) = miss;
-                let miss_name: &CStr = match miss_name {
-                    Option::Some(_n) => {
-                        todo!()
-                    }
-                    Option::None => {
-                        unsafe { CStr::from_bytes_with_nul_unchecked(&[109u8, 97u8, 105u8, 110u8, 0u8]) }
-                        // main
-                    }
-                };
-
-                let (intersection_shader, intersection_name) = intersection;
-                let intersection_name: &CStr = match intersection_name {
-                    Option::Some(_n) => {
-                        todo!()
-                    }
-                    Option::None => {
-                        unsafe { CStr::from_bytes_with_nul_unchecked(&[109u8, 97u8, 105u8, 110u8, 0u8]) }
-                        // main
-                    }
-                };
-
-                let (anyhit_shader, anyhit_name) = anyhit;
-                let anyhit_name: &CStr = match anyhit_name {
-                    Option::Some(_n) => {
-                        todo!()
-                    }
-                    Option::None => {
-                        unsafe { CStr::from_bytes_with_nul_unchecked(&[109u8, 97u8, 105u8, 110u8, 0u8]) }
-                        // main
-                    }
-                };
-
-                let (closesthit_shader, closesthit_name) = closesthit;
-                let closesthit_name: &CStr = match closesthit_name {
-                    Option::Some(_n) => {
-                        todo!()
-                    }
-                    Option::None => {
-                        unsafe { CStr::from_bytes_with_nul_unchecked(&[109u8, 97u8, 105u8, 110u8, 0u8]) }
-                        // main
-                    }
-                };
-
-                let (callable_shader, callable_name) = callable;
-                let callable_name: &CStr = match callable_name {
-                    Option::Some(_n) => {
-                        todo!()
-                    }
-                    Option::None => {
-                        unsafe { CStr::from_bytes_with_nul_unchecked(&[109u8, 97u8, 105u8, 110u8, 0u8]) }
-                        // main
-                    }
-                };
-
                 //ash::vk::PipelineShaderStageCreateInfo::builder()
                 
-                let stages_create_info: smallvec::SmallVec<[ash::vk::PipelineShaderStageCreateInfo; 8]> = smallvec::smallvec![
-                    ash::vk::PipelineShaderStageCreateInfo::builder()
-                        .stage(ash::vk::ShaderStageFlags::RAYGEN_KHR)
-                        .module(raygen_shader.ash_handle())
-                        .name(raygen_name)
-                        .build(),
-                    ash::vk::PipelineShaderStageCreateInfo::builder()
-                        .stage(ash::vk::ShaderStageFlags::INTERSECTION_KHR)
-                        .module(intersection_shader.ash_handle())
-                        .name(intersection_name)
-                        .build(),
-                    ash::vk::PipelineShaderStageCreateInfo::builder()
-                        .stage(ash::vk::ShaderStageFlags::MISS_KHR)
-                        .module(miss_shader.ash_handle())
-                        .name(miss_name)
-                        .build(),
-                    ash::vk::PipelineShaderStageCreateInfo::builder()
-                        .stage(ash::vk::ShaderStageFlags::ANY_HIT_KHR)
-                        .module(anyhit_shader.ash_handle())
-                        .name(anyhit_name)
-                        .build(),
-                    ash::vk::PipelineShaderStageCreateInfo::builder()
-                        .stage(ash::vk::ShaderStageFlags::CLOSEST_HIT_KHR)
-                        .module(closesthit_shader.ash_handle())
-                        .name(closesthit_name)
-                        .build(),
-                    ash::vk::PipelineShaderStageCreateInfo::builder()
-                        .stage(ash::vk::ShaderStageFlags::CALLABLE_KHR)
-                        .module(callable_shader.ash_handle())
-                        .name(callable_name)
-                        .build(),
-                ];
+                let mut stages_create_info: smallvec::SmallVec<[ash::vk::PipelineShaderStageCreateInfo; 8]> = smallvec::smallvec![];
+                let mut shader_group_create_info: smallvec::SmallVec<[ash::vk::RayTracingShaderGroupCreateInfoKHR; 8]> = smallvec::smallvec![];
+
+                // VK_SHADER_UNUSED_KHR
+                let shader_unused_khr = !0u32;
+
+                // RayGen
+                {
+                    stages_create_info.push(
+                        ash::vk::PipelineShaderStageCreateInfo::builder()
+                            .stage(ash::vk::ShaderStageFlags::RAYGEN_KHR)
+                            .module(raygen_shader.ash_handle())
+                            .name(main_name)
+                            .build()
+                    );
+
+                    shader_group_create_info.push(
+                        ash::vk::RayTracingShaderGroupCreateInfoKHR::builder()
+                            .ty(ash::vk::RayTracingShaderGroupTypeKHR::GENERAL)
+                            .general_shader((stages_create_info.len() - 1) as u32)
+                            .closest_hit_shader(shader_unused_khr) 
+                            .closest_hit_shader(shader_unused_khr)
+                            .any_hit_shader(shader_unused_khr)
+                            .intersection_shader(shader_unused_khr)
+                            .build()
+                    );
+                }
+
+                // Miss
+                {
+                    stages_create_info.push(
+                        ash::vk::PipelineShaderStageCreateInfo::builder()
+                            .stage(ash::vk::ShaderStageFlags::MISS_KHR)
+                            .module(miss_shader.ash_handle())
+                            .name(main_name)
+                            .build()
+                    );
+
+                    shader_group_create_info.push(
+                        ash::vk::RayTracingShaderGroupCreateInfoKHR::builder()
+                            .ty(ash::vk::RayTracingShaderGroupTypeKHR::GENERAL)
+                            .general_shader((stages_create_info.len() - 1) as u32)
+                            .closest_hit_shader(shader_unused_khr) 
+                            .closest_hit_shader(shader_unused_khr)
+                            .any_hit_shader(shader_unused_khr)
+                            .intersection_shader(shader_unused_khr)
+                            .build()
+                    );
+                }
+
+                // ClosestHit
+                {
+                    stages_create_info.push(
+                        ash::vk::PipelineShaderStageCreateInfo::builder()
+                            .stage(ash::vk::ShaderStageFlags::CLOSEST_HIT_KHR)
+                            .module(closesthit_shader.ash_handle())
+                            .name(main_name)
+                            .build()
+                    );
+
+                    shader_group_create_info.push(
+                        ash::vk::RayTracingShaderGroupCreateInfoKHR::builder()
+                            .ty(ash::vk::RayTracingShaderGroupTypeKHR::GENERAL)
+                            .general_shader(shader_unused_khr)
+                            .closest_hit_shader((stages_create_info.len() - 1) as u32) 
+                            .closest_hit_shader(shader_unused_khr)
+                            .any_hit_shader(shader_unused_khr)
+                            .intersection_shader(shader_unused_khr)
+                            .build()
+                    );
+                }
+                
+                // Intersection
+                match &maybe_intersection_shader {
+                    Option::Some(intersection_shader) => {
+                        stages_create_info.push(
+                            ash::vk::PipelineShaderStageCreateInfo::builder()
+                                .stage(ash::vk::ShaderStageFlags::INTERSECTION_KHR)
+                                .module(intersection_shader.ash_handle())
+                                .name(main_name)
+                                .build()
+                        );
+
+                        shader_group_create_info.push(
+                            ash::vk::RayTracingShaderGroupCreateInfoKHR::builder()
+                                .ty(ash::vk::RayTracingShaderGroupTypeKHR::GENERAL)
+                                .general_shader(shader_unused_khr)
+                                .closest_hit_shader(shader_unused_khr) 
+                                .closest_hit_shader(shader_unused_khr)
+                                .any_hit_shader(shader_unused_khr)
+                                .intersection_shader((stages_create_info.len() - 1) as u32)
+                                .build()
+                        );
+                    },
+                    None => {}
+                }
+                
+                // AnyHit
+                match &maybe_anyhit_shader {
+                    Option::Some(anyhit_shader) => {
+                        stages_create_info.push(
+                            ash::vk::PipelineShaderStageCreateInfo::builder()
+                                .stage(ash::vk::ShaderStageFlags::INTERSECTION_KHR)
+                                .module(anyhit_shader.ash_handle())
+                                .name(main_name)
+                                .build()
+                        );
+
+                        shader_group_create_info.push(
+                            ash::vk::RayTracingShaderGroupCreateInfoKHR::builder()
+                                .ty(ash::vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP)
+                                .general_shader(shader_unused_khr)
+                                .closest_hit_shader(shader_unused_khr) 
+                                .closest_hit_shader(shader_unused_khr)
+                                .any_hit_shader((stages_create_info.len() - 1) as u32)
+                                .intersection_shader(shader_unused_khr)
+                                .build()
+                        );
+                    },
+                    None => {}
+                }
+
+                // Callable
+                let mut callable_shader_present = false;
+                match &maybe_callable_shader {
+                    Option::Some(callable_shader) => {
+                        callable_shader_present = true;
+
+                        stages_create_info.push(
+                            ash::vk::PipelineShaderStageCreateInfo::builder()
+                                .stage(ash::vk::ShaderStageFlags::CALLABLE_KHR)
+                                .module(callable_shader.ash_handle())
+                                .name(main_name)
+                                .build()
+                        );
+                    },
+                    None => {}
+                }
 
                 let create_info = ash::vk::RayTracingPipelineCreateInfoKHR::builder()
                     .layout(pipeline_layout.ash_handle())
                     .stages(stages_create_info.as_slice())
                     .max_pipeline_ray_recursion_depth(max_pipeline_ray_recursion_depth)
+                    .groups(shader_group_create_info.as_slice())
                     .build();
 
                 match unsafe {
@@ -253,7 +306,9 @@ impl RaytracingPipeline {
                             device,
                             pipeline_layout,
                             pipeline,
-                            max_pipeline_ray_recursion_depth
+                            max_pipeline_ray_recursion_depth,
+                            shader_group_size: shader_group_create_info.len() as u32,
+                            callable_shader_present
                         }))
                     },
                     Err(_err) => {

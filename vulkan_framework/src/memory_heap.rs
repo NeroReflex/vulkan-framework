@@ -20,7 +20,7 @@ impl MemoryHostVisibility {
     }
 }
 
-#[derive(Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub enum MemoryHostCoherence {
     Uncached, // host coherence is implemented via memory being uncached, as stated by vulkan specification: "uncached memory is always host coherent"
 }
@@ -33,7 +33,7 @@ pub enum MemoryHostCoherence {
  * is selected, if HostLocal(None) is selected a heap that is NOT host-coherent will be selected,
  * otherwise if Some(Uncached) is selected than a memory heap with VK_MEMORY_PROPERTY_HOST_CACHED_BIT unset.
  */
-#[derive(Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub enum MemoryType {
     //HostVisible({}),
     DeviceLocal(Option<MemoryHostVisibility>),
