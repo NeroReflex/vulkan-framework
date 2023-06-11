@@ -97,8 +97,12 @@ impl MemoryAllocator for StackAllocator {
             }
             let allocation_end = allocation_start + padding_to_respect_aligment + size;
 
+            if allocation_end > self.total_size {
+                return None
+            }
+
             match self.allocated_size.compare_exchange(allocation_start, allocation_end, Ordering::Acquire, Ordering::Acquire) {
-                Ok(prev) => {
+                Ok(_) => {
                     return Some(AllocationResult::new(
                         size,
                         alignment,
