@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use std::sync::{Mutex, atomic::{AtomicU64, Ordering}};
 
 pub struct AllocationResult {
     requested_size: u64,
@@ -66,14 +66,14 @@ pub trait MemoryAllocator: Sync + Send {
 
 pub struct StackAllocator {
     total_size: u64,
-    allocated_size: Mutex<u64>,
+    allocated_size: AtomicU64,
 }
 
 impl StackAllocator {
     pub fn new(total_size: u64) -> Self {
         Self {
             total_size,
-            allocated_size: Mutex::new(0),
+            allocated_size: AtomicU64::new(0),
         }
     }
 }
@@ -84,70 +84,44 @@ impl MemoryAllocator for StackAllocator {
     }
 
     fn alloc(&self, size: u64, alignment: u64) -> Option<AllocationResult> {
-        match self.allocated_size.lock() {
-            Ok(mut allocated_size_guard) => {
-                let allocation_start: u64 = *allocated_size_guard;
-                let allocated_number_of_aligned_blocks = allocation_start / alignment;
-                let mut padding_to_respect_aligment = ((allocated_number_of_aligned_blocks + 1)
-                    * alignment)
-                    - (allocated_number_of_aligned_blocks * alignment);
-                if padding_to_respect_aligment == alignment {
-                    padding_to_respect_aligment = 0;
-                }
+        let mut previous_allocation_end = 0;
 
-                let allocation_end = allocation_start + padding_to_respect_aligment + size;
-
-                match self.total_size >= allocation_end {
-                    true => {
-                        *allocated_size_guard += allocation_end - allocation_start;
-                        Some(AllocationResult::new(
-                            size,
-                            alignment,
-                            allocation_start + padding_to_respect_aligment,
-                            allocation_start,
-                            allocation_end,
-                        ))
-                    }
-                    false => None,
-                }
+        loop {
+            let allocation_start = previous_allocation_end;
+            let allocated_number_of_aligned_blocks = allocation_start / alignment;
+            let mut padding_to_respect_aligment = ((allocated_number_of_aligned_blocks + 1)
+                * alignment)
+                - (allocated_number_of_aligned_blocks * alignment);
+            if padding_to_respect_aligment == alignment {
+                padding_to_respect_aligment = 0;
             }
-            Err(err) => {
-                #[cfg(debug_assertions)]
-                {
-                    panic!("Error acquiring internal mutex: {}", err)
-                }
+            let allocation_end = allocation_start + padding_to_respect_aligment + size;
 
-                Option::None
+            match self.allocated_size.compare_exchange(allocation_start, allocation_end, Ordering::Acquire, Ordering::Acquire) {
+                Ok(prev) => {
+                    return Some(AllocationResult::new(
+                        size,
+                        alignment,
+                        allocation_start + padding_to_respect_aligment,
+                        allocation_start,
+                        allocation_end,
+                    ))
+                },
+                Err(current) => {
+                    previous_allocation_end = current
+                }
             }
         }
     }
 
     fn dealloc(&self, allocation_to_undo: &mut AllocationResult) {
-        match self.allocated_size.lock() {
-            Ok(mut allocated_size_guard) => {
-                let allocation_start: u64 = *allocated_size_guard;
-
-                if allocation_to_undo.allocation_end == allocation_start {
-                    *allocated_size_guard -=
-                        allocation_to_undo.allocation_end - allocation_to_undo.allocation_start;
-                } else {
-                    #[cfg(debug_assertions)]
-                    {
-                        panic!("This is a stack allocator and cannot handle out-of-order memory deallocations!")
-                    }
-                }
-
-                allocation_to_undo.allocation_end = 0;
-                allocation_to_undo.allocation_start = 0;
-                allocation_to_undo.requested_alignment = 0;
-                allocation_to_undo.requested_size = 0;
-                allocation_to_undo.resulting_address = 0;
-            }
-            Err(err) => {
-                #[cfg(debug_assertions)]
-                {
-                    println!("Error acquiring internal mutex: {}", err);
-                    panic!("Given memory will be lost forever");
+        loop {
+            match self.allocated_size.compare_exchange(allocation_to_undo.allocation_end, allocation_to_undo.allocation_start, Ordering::Acquire, Ordering::Acquire) {
+                Ok(_) => {
+                    break
+                },
+                Err(current) => {
+                    println!("Error in resource deallocation: out-of-order deallocation detected! I was expecting to deallocate memory that ends at address {}, instead the memory that ends at address {} has yet to be deallocated", allocation_to_undo.allocation_end, current);
                 }
             }
         }
