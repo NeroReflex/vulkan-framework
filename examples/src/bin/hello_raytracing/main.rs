@@ -560,7 +560,7 @@ fn main() {
                     .unwrap();
                     println!("Renderpass created!");
 
-                    let renderquad_image_imput_format = ImageLayout::ShaderReadOnlyOptimal;
+                    let renderquad_image_input_format = ImageLayout::ShaderReadOnlyOptimal;
     
                     let renderquad_texture_binding_descriptor = BindingDescriptor::new(
                         ShaderStageAccess::graphics(),
@@ -585,7 +585,6 @@ fn main() {
                     .unwrap();
                     println!("Pipeline layout created!");
 
-                    let renderquad_texture_layout = ImageLayout::ShaderReadOnlyOptimal;
                     let renderquad_descriptor_sets = (0..swapchain_images_count)
                     .map(|idx| {
                         let result = DescriptorSet::new(
@@ -597,7 +596,7 @@ fn main() {
                             binder.bind_combined_images_samplers(
                                 0,
                                 &[(
-                                    renderquad_texture_layout,
+                                    renderquad_image_input_format,
                                     rt_image_views[idx as usize].clone(),
                                     renderquad_sampler.clone(),
                                 )],
@@ -785,7 +784,7 @@ fn main() {
                                     None,
                                     None,
                                     rt_writer_img_layout,
-                                    renderquad_texture_layout,
+                                    renderquad_image_input_format,
                                     queue_family.clone(),
                                     queue_family.clone()
                                 )
