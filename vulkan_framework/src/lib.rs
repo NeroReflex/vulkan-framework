@@ -41,3 +41,4 @@ pub mod intersection_shader;
 pub mod callable_shader;
 pub mod binding_tables;
 pub mod utils;
+pub mod sampler;

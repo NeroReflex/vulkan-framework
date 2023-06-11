@@ -197,7 +197,7 @@ impl MemoryPool
         &self,
         memory_requirements: ash::vk::MemoryRequirements,
     ) -> Option<AllocationResult> {
-        // check if this pool satisfy memory requirements...
+        // TODO: check if this pool satisfy memory requirements...
         if
         /*(memory_requirements.memory_type_bits & todo!()) == memory_requirements.memory_type_bits*/
         true {

@@ -93,22 +93,6 @@ void main() {
     entry = "main"
 );
 
-const AHIT_SPV: &[u32] = inline_spirv!(
-    r#"
-#version 460
-#extension GL_EXT_ray_tracing : require
-
-//layout(binding = 0, set = 0) uniform accelerationStructureEXT topLevelAS;
-//layout(binding = 1, set = 0) uniform image2D outputImage;
-
-void main() {
-    
-}
-"#,
-    glsl, rahit, vulkan1_2,
-    entry = "main"
-);
-
 const CHIT_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
@@ -125,35 +109,54 @@ void main() {
     entry = "main"
 );
 
-const CALLABLE_SPV: &[u32] = inline_spirv!(
+const RENDERQUAD_VERTEX_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
-#extension GL_EXT_ray_tracing : require
 
-//layout(binding = 0, set = 0) uniform accelerationStructureEXT topLevelAS;
-//layout(binding = 1, set = 0) uniform image2D outputImage;
+layout (location = 0) out vec2 out_vTextureUV;
+
+const vec2 vQuadPosition[6] = {
+	vec2(-1, -1),
+	vec2(+1, -1),
+	vec2(-1, +1),
+	vec2(-1, +1),
+	vec2(+1, +1),
+	vec2(+1, -1),
+};
+
+const vec2 vUVCoordinates[6] = {
+    vec2(0, 0),
+	vec2(+1, 0),
+	vec2(0, +1),
+	vec2(0, +1),
+	vec2(0, +1),
+	vec2(+1, 0),
+};
 
 void main() {
-    
+    out_vTextureUV = vUVCoordinates[gl_VertexIndex];
+    gl_Position = vec4(vQuadPosition[gl_VertexIndex], 0.0, 1.0);
 }
 "#,
-    glsl, rcall, vulkan1_2,
+    glsl, vert, vulkan1_0,
     entry = "main"
 );
 
-const INTERSECTION_SPV: &[u32] = inline_spirv!(
+const RENDERQUAD_FRAG_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
-#extension GL_EXT_ray_tracing : require
 
-//layout(binding = 0, set = 0) uniform accelerationStructureEXT topLevelAS;
-//layout(binding = 1, set = 0) uniform image2D outputImage;
+layout (location = 0) in vec2 in_vTextureUV;
+
+layout(binding = 0, set = 0) uniform sampler2D src;
+
+layout(location = 0) out vec4 outColor;
 
 void main() {
-    
+    outColor = texture(src, in_vTextureUV);
 }
 "#,
-    glsl, rint, vulkan1_2,
+    glsl, frag, vulkan1_0,
     entry = "main"
 );
 

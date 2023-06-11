@@ -49,6 +49,41 @@ impl<'a> DescriptorSetWriter<'a> {
         self.used_resources.iter()
     }
 
+    pub fn bind_sampled_images(
+        &mut self,
+        first_layout_id: u32,
+        images: &[(ImageLayout, Arc<ImageView>)],
+    )
+    {
+        let descriptors: Vec<ash::vk::DescriptorImageInfo> = images
+            .iter()
+            .enumerate()
+            .map(|(index, image)| {
+                // TODO: assert usage has VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT bit set
+                let (image_layout, image_view) = image;
+
+                self.used_resources[(first_layout_id as usize) + index] =
+                    DescriptorSetBoundResource::ImageView(image_view.clone());
+
+                ash::vk::DescriptorImageInfo::builder()
+                    .image_view(image_view.ash_handle())
+                    .image_layout(image_layout.ash_layout())
+                    .build()
+            })
+            .collect();
+
+        self.images_writers.push(descriptors);
+
+        let descriptor_writes = ash::vk::WriteDescriptorSet::builder()
+            .dst_set(self.descriptor_set.ash_handle())
+            .dst_binding(first_layout_id)
+            .descriptor_type(ash::vk::DescriptorType::SAMPLED_IMAGE)
+            .image_info(self.images_writers[self.images_writers.len() - 1].as_slice())
+            .build();
+
+        self.writer.push(descriptor_writes);
+    }
+
     pub fn bind_uniform_buffer<T>(
         &mut self,
         first_layout_id: u32,
