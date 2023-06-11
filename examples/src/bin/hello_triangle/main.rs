@@ -77,8 +77,6 @@ fn main() {
     let device_extensions: Vec<String> = vec![String::from("VK_KHR_swapchain")];
     let device_layers: Vec<String> = vec![];
 
-    let stack_allocator_builder = StackAllocatorBuilder::new();
-
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
 
@@ -178,7 +176,7 @@ fn main() {
 
                 let _default_allocator = MemoryPool::new(
                     memory_heap,
-                    &stack_allocator_builder,
+                    Arc::new(StackAllocator::new(memory_heap_size)),
                 )
                 .unwrap();
 

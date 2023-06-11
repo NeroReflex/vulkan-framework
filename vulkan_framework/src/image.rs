@@ -1034,11 +1034,11 @@ impl Image
             }
         }
 
-        //unsafe {
+        unsafe {
             let requirements = if device.get_parent_instance().instance_vulkan_version()
                 == InstanceAPIVersion::Version1_0
             {
-                unsafe { device.ash_handle().get_image_memory_requirements(image) }
+                device.ash_handle().get_image_memory_requirements(image)
             } else {
                 let requirements_info = ash::vk::ImageMemoryRequirementsInfo2::builder()
                     .image(image)
@@ -1046,28 +1046,20 @@ impl Image
 
                 let mut requirements = ash::vk::MemoryRequirements2::default();
 
-                unsafe {
-                    device
-                        .ash_handle()
-                        .get_image_memory_requirements2(&requirements_info, &mut requirements);
-                }
+                device
+                    .ash_handle()
+                    .get_image_memory_requirements2(&requirements_info, &mut requirements);
 
                 requirements.memory_requirements
             };
 
-            if !memory_pool.get_parent_memory_heap().check_memory_requirements_are_satified(requirements.memory_type_bits) {
-                return Err(VulkanError::Unspecified)
-            }
-
-            match memory_pool.get_memory_allocator().alloc(requirements.size, requirements.alignment) {
+            match memory_pool.alloc(requirements) {
                 Some(reserved_memory_from_pool) => {
-                    match unsafe {
-                            device.ash_handle().bind_image_memory(
-                            image,
-                            memory_pool.ash_handle(),
-                            reserved_memory_from_pool.offset_in_pool(),
-                        )
-                    } {
+                    match device.ash_handle().bind_image_memory(
+                        image,
+                        memory_pool.ash_handle(),
+                        reserved_memory_from_pool.offset_in_pool(),
+                    ) {
                         Ok(_) => Ok(Arc::new(Self {
                             memory_pool,
                             reserved_memory_from_pool,
@@ -1076,12 +1068,10 @@ impl Image
                         })),
                         Err(err) => {
                             // the image will not let this function, destroy it or it will leak
-                            unsafe {
-                                device.ash_handle().destroy_image(
-                                    image,
-                                    device.get_parent_instance().get_alloc_callbacks(),
-                                )
-                            }
+                            device.ash_handle().destroy_image(
+                                image,
+                                device.get_parent_instance().get_alloc_callbacks(),
+                            );
 
                             #[cfg(debug_assertions)]
                             {
@@ -1094,16 +1084,14 @@ impl Image
                 }
                 None => {
                     // the image will not let this function, destroy it or it will leak
-                    unsafe {
-                        device
-                            .ash_handle()
-                            .destroy_image(image, device.get_parent_instance().get_alloc_callbacks());
-                    }
-                    
+                    device
+                        .ash_handle()
+                        .destroy_image(image, device.get_parent_instance().get_alloc_callbacks());
+
                     Err(VulkanError::Unspecified)
                 }
             }
-        //}
+        }
     }
 }
 
@@ -1122,7 +1110,8 @@ impl Drop for Image
             );
         }
 
-        self.memory_pool.get_memory_allocator().dealloc(&mut self.reserved_memory_from_pool)
+        self.memory_pool
+            .dealloc(&mut self.reserved_memory_from_pool)
     }
 }
 

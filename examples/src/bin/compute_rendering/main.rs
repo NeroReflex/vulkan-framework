@@ -49,7 +49,6 @@ use vulkan_framework::image_view::ImageView;
 use vulkan_framework::image_view::ImageViewType;
 use vulkan_framework::instance::*;
 use vulkan_framework::memory_allocator::StackAllocator;
-use vulkan_framework::memory_allocator::StackAllocatorBuilder;
 use vulkan_framework::memory_heap::ConcreteMemoryHeapDescriptor;
 use vulkan_framework::memory_heap::MemoryHeap;
 use vulkan_framework::memory_heap::MemoryHostVisibility;
@@ -167,8 +166,6 @@ fn main() {
     let device_extensions: Vec<String> = vec![String::from("VK_KHR_swapchain")];
     let device_layers: Vec<String> = vec![];
 
-    let stack_allocator_builder = StackAllocatorBuilder::new();
-
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
 
@@ -271,10 +268,11 @@ fn main() {
                                             ).unwrap();
 
                                             println!("Memory heap created! <3");
+                                            let memory_heap_size = memory_heap.total_size();
 
                                             let stack_allocator = match MemoryPool::new(
                                                 memory_heap,
-                                                &stack_allocator_builder,
+                                                Arc::new(StackAllocator::new(memory_heap_size)),
                                             ) {
                                                 Ok(mem_pool) => {
                                                     println!("Stack allocator created");

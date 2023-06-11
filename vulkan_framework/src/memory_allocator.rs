@@ -1,4 +1,4 @@
-use std::sync::{Mutex, Arc};
+use std::sync::Mutex;
 
 pub struct AllocationResult {
     requested_size: u64,
@@ -34,10 +34,6 @@ impl AllocationResult {
     }
 }
 
-pub trait MemoryAllocatorBuilder: Sync + Send {
-    fn build(&self, size: u64) -> Arc<dyn MemoryAllocator>;
-}
-
 pub trait MemoryAllocator: Sync + Send {
     /**
      * Get the amount of memory managed by the current memory allocator.
@@ -66,22 +62,6 @@ pub trait MemoryAllocator: Sync + Send {
      * However that is not really possible: drop cannot move out its members.
      */
     fn dealloc(&self, allocation: &mut AllocationResult);
-}
-
-pub struct StackAllocatorBuilder {
-
-}
-
-impl StackAllocatorBuilder {
-    pub fn new() -> Self {
-        Self { }
-    }
-}
-
-impl MemoryAllocatorBuilder for StackAllocatorBuilder {
-    fn build(&self, size: u64) -> Arc<dyn MemoryAllocator> {
-        Arc::new(StackAllocator::new(size))
-    }
 }
 
 pub struct StackAllocator {

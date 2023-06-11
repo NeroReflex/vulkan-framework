@@ -196,8 +196,6 @@ fn main() {
     ];
     let device_layers: Vec<String> = vec![];
 
-    let stack_allocator_builder = StackAllocatorBuilder::new();
-
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
 
@@ -293,10 +291,11 @@ fn main() {
                 )
                 .unwrap();
                 println!("Memory heap created! <3");
+                let main_heap_size = device_local_memory_heap.total_size();
 
                 let device_local_default_allocator = MemoryPool::new(
                     device_local_memory_heap,
-                    &stack_allocator_builder,
+                    Arc::new(StackAllocator::new(main_heap_size)),
                 )
                 .unwrap();
 
