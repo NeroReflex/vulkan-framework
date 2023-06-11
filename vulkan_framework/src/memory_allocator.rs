@@ -64,6 +64,132 @@ pub trait MemoryAllocator: Sync + Send {
     fn dealloc(&self, allocation: &mut AllocationResult);
 }
 
+pub struct DefaultAllocator {
+    management_array: Mutex<smallvec::SmallVec<[u8; 4096]>>,
+    total_size: u64,
+    block_size: u64,
+}
+
+impl DefaultAllocator {
+    pub fn new(total_size: u64) -> Self {
+        let mut block_size = 128u64;
+        let mut number_of_blocks = total_size / block_size;
+
+        loop {
+            if number_of_blocks < 4096 {
+                break
+            } 
+
+            block_size *= 2;
+            number_of_blocks = total_size / block_size;
+        }
+
+        println!("Managing {} blocks of {} bytes each", number_of_blocks, block_size);
+
+        Self {
+            management_array: Mutex::new((0..(number_of_blocks as usize)).map(|_idx| 0u8).collect::<smallvec::SmallVec<[u8; 4096]>>()),
+            total_size: number_of_blocks * block_size,
+            block_size: block_size
+        }
+    }
+}
+
+impl MemoryAllocator for DefaultAllocator {
+    fn total_size(&self) -> u64 {
+        self.total_size
+    }
+
+    fn alloc(&self, size: u64, alignment: u64) -> Option<AllocationResult> {
+        let required_number_of_blocks = 2 + (size / self.block_size);
+        let total_number_of_blocks = self.total_size / self.block_size;
+
+        if total_number_of_blocks < required_number_of_blocks {
+            panic!("Requested too much memory");
+        }
+
+        let last_useful_first_allocation_block = total_number_of_blocks - required_number_of_blocks;
+
+        match self.management_array.lock() {
+            Ok(mut lck) => {
+                
+                'find_first_block: for i in 0..last_useful_first_allocation_block {
+                    let next_aligned_start_addr = (((i * self.block_size) / alignment) + if ((i * self.block_size) % alignment) == 0 { 0 } else { 1 }) * alignment;
+
+
+                    let contains_aligned_start = next_aligned_start_addr >= (i * self.block_size) && (next_aligned_start_addr < ((i + 1u64) * self.block_size));
+
+                    if !contains_aligned_start {
+                        continue 'find_first_block
+                    }
+
+                    /*
+                    let aligned_starts_at_this_block = next_aligned_start_addr == (i * self.block_size);
+
+                    let required_number_of_blocks = match aligned_starts_at_this_block {
+                        true => required_number_of_blocks + 0,
+                        false => required_number_of_blocks + 1,
+                    };
+                    */
+
+                    // make sure the requested memory is free
+                    for j in i..(i + required_number_of_blocks) {
+                        if (*lck)[j as usize] != 0u8 {
+                            continue 'find_first_block
+                        }
+                    }
+
+                    // found a suitable set of blocks: set them as occupied and retun the allocated memory
+                    for j in i..(i + required_number_of_blocks) {
+                        (*lck)[j as usize] = 1u8
+                    }
+                    
+                    let allocation_start = next_aligned_start_addr;
+                    let allocation_end = (i * self.block_size) + (required_number_of_blocks * self.block_size);
+
+                    return Some(
+                        AllocationResult::new(
+                            size as u64,
+                            alignment as u64,
+                            next_aligned_start_addr,
+                            allocation_start,
+                            allocation_end
+                        )
+                    )
+                }
+
+                None
+            },
+            Err(_err) => {
+                None
+            }
+        }
+    }
+
+    fn dealloc(&self, allocation: &mut AllocationResult) {
+        let first_block = allocation.allocation_start / self.block_size;
+        let number_of_allocated_blocks = allocation.allocation_end / self.block_size;
+
+        if (first_block + number_of_allocated_blocks) > (self.total_size / self.block_size) {
+            panic!("Memory was not allocated from this pool! :O");
+        }
+
+        match self.management_array.lock() {
+            Ok(mut lck) => {
+                for i in first_block..number_of_allocated_blocks {
+                    if (*lck)[i as usize] != 1u8 {
+                        panic!("Memory was not allocated from this pool! :O");
+                    }
+                    
+                    (*lck)[i as usize] = 0u8;
+                }
+            },
+            Err(err) => {
+                println!("Error locking tha mutex: {}, memory will be lost", err);
+            }
+        }
+    }
+}
+
 pub struct StackAllocator {
     total_size: u64,
     allocated_size: AtomicU64,
@@ -89,12 +215,15 @@ impl MemoryAllocator for StackAllocator {
         loop {
             let allocation_start = previous_allocation_end;
             let allocated_number_of_aligned_blocks = allocation_start / alignment;
-            let mut padding_to_respect_aligment = ((allocated_number_of_aligned_blocks + 1)
+            let padding_to_respect_aligment = ((allocated_number_of_aligned_blocks + 1)
                 * alignment)
                 - (allocated_number_of_aligned_blocks * alignment);
-            if padding_to_respect_aligment == alignment {
-                padding_to_respect_aligment = 0;
-            }
+            let padding_to_respect_aligment = if padding_to_respect_aligment == alignment {
+                0
+            } else {
+                padding_to_respect_aligment
+            };
+
             let allocation_end = allocation_start + padding_to_respect_aligment + size;
 
             if allocation_end > self.total_size {

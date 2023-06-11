@@ -295,7 +295,7 @@ fn main() {
 
                 let device_local_default_allocator = MemoryPool::new(
                     device_local_memory_heap,
-                    Arc::new(StackAllocator::new(main_heap_size)),
+                    Arc::new(DefaultAllocator::new(main_heap_size)),
                 )
                 .unwrap();
 
@@ -312,7 +312,7 @@ fn main() {
 
                 let sbt_default_allocator = MemoryPool::new_with_device_address(
                     sbt_memory_heap,
-                    Arc::new(StackAllocator::new(main_heap_size)),
+                    Arc::new(DefaultAllocator::new(main_heap_size)),
                 )
                 .unwrap();
 
