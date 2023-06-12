@@ -938,11 +938,13 @@ impl Image {
         debug_name: Option<&str>,
     ) -> VulkanResult<Arc<Self>> {
         if descriptor.img_layers == 0 {
-            return Err(VulkanError::Unspecified);
+            return Err(VulkanError::Framework(FrameworkError::UserInput(Some(
+                format!("Error creating image: number of layers must be at least 1"),
+            ))));
         }
 
         if descriptor.img_mip_levels == 0 {
-            return Err(VulkanError::Unspecified);
+            return Err(VulkanError::Framework(FrameworkError::UserInput(Some(format!("Error creating image: number of mipmap levels must be at least 1 (the base one)")))));
         }
 
         let mut queue_family_indices = Vec::<u32>::new();

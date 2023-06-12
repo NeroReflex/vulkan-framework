@@ -47,7 +47,7 @@ impl Semaphore {
             match &device_native_handle {
                 Some(old_device) => {
                     if semaphore.native_handle() != old_device.native_handle() {
-                        return Err(VulkanError::Unspecified)
+                        return Err(...)
                     }
                 },
                 None => {
@@ -67,19 +67,15 @@ impl Semaphore {
                 return match wait_result {
                     Ok(_) => { Ok(()) },
                     Err(err) => {
-                        Err(VulkanError::Unspecified)
+                        Err(...)
                     }
                 }
             },
-            None => {Err(VulkanError::Unspecified)}
+            None => {Err(...)}
         }
     }*/
 
-    pub fn new(
-        device: Arc<Device>,
-        _starts_in_signaled_state: bool,
-        debug_name: Option<&str>,
-    ) -> VulkanResult<Arc<Self>> {
+    pub fn new(device: Arc<Device>, debug_name: Option<&str>) -> VulkanResult<Arc<Self>> {
         let create_info = ash::vk::SemaphoreCreateInfo::builder()
             .flags(ash::vk::SemaphoreCreateFlags::empty()) // At  the time of writing reserved for future use
             .build();
@@ -125,14 +121,10 @@ impl Semaphore {
 
                 Ok(Arc::new(Self { device, semaphore }))
             }
-            Err(err) => {
-                #[cfg(debug_assertions)]
-                {
-                    println!("Error creating the fence: {}", err);
-                }
-
-                Err(VulkanError::Unspecified)
-            }
+            Err(err) => Err(VulkanError::Vulkan(
+                err.as_raw(),
+                Some(format!("Error creating the fence: {}", err)),
+            )),
         }
     }
 }

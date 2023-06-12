@@ -4,7 +4,7 @@ use crate::{
     device::{Device, DeviceOwned},
     image::{ImageFormat, ImageLayout, ImageMultisampling},
     instance::InstanceOwned,
-    prelude::{VulkanError, VulkanResult, FrameworkError},
+    prelude::{FrameworkError, VulkanError, VulkanResult},
 };
 
 const MAX_NUMBER_OF_SUBPASSES_NOT_REQUIRING_HEAP_ALLOC: usize = 8;
@@ -223,7 +223,7 @@ impl RenderPass {
                 if (*color_attachment as usize) >= attachment_descriptors.len() {
                     return Err(VulkanError::Framework(FrameworkError::UserInput(Some(format!("Error creating the renderpass: in a subpass one color attachment is specified to be {}, but only {} attachments have beed defined",
                     (*color_attachment as usize), attachment_descriptors.len()
-                )))))
+                )))));
                 }
 
                 color_attachment_of_subpass.push(
@@ -242,7 +242,7 @@ impl RenderPass {
                 if (*input_attachment as usize) >= attachment_descriptors.len() {
                     return Err(VulkanError::Framework(FrameworkError::UserInput(Some(format!("Error creating the renderpass: in a subpass one input attachment is specified to be {}, but only {} attachments have beed defined",
                     (*input_attachment as usize), attachment_descriptors.len()
-                )))))
+                )))));
                 }
 
                 input_attachment_of_subpass.push(
@@ -316,7 +316,10 @@ impl RenderPass {
                 attachments_description: attachments_copy,
                 subpasses_description: subpasses.iter().cloned().collect(),
             })),
-            Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating renderpass: {}", err.to_string())))),
+            Err(err) => Err(VulkanError::Vulkan(
+                err.as_raw(),
+                Some(format!("Error creating renderpass: {}", err.to_string())),
+            )),
         }
     }
 }

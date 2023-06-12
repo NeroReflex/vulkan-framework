@@ -948,8 +948,13 @@ impl PrimaryCommandBuffer {
 
                                 Ok(())
                             }
-                            Err(err) => 
-                            Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error updating the command buffer: {}", err.to_string()))))
+                            Err(err) => Err(VulkanError::Vulkan(
+                                err.as_raw(),
+                                Some(format!(
+                                    "Error updating the command buffer: {}",
+                                    err.to_string()
+                                )),
+                            )),
                         }
                     }
                     Err(err) =>
@@ -1028,7 +1033,10 @@ impl PrimaryCommandBuffer {
                     resources_in_use: Mutex::new(HashSet::new()),
                 }))
             }
-            Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating the command buffer: {}", err))))
+            Err(err) => Err(VulkanError::Vulkan(
+                err.as_raw(),
+                Some(format!("Error creating the command buffer: {}", err)),
+            )),
         }
     }
 }

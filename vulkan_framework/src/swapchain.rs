@@ -170,12 +170,34 @@ impl DeviceSurfaceInfo {
                         surface.ash_handle().to_owned(),
                     )
                 };
+
+                if let Err(err) = surface_capabilities_result {
+                    return Err(VulkanError::Vulkan(
+                        err.as_raw(),
+                        Some(format!(
+                            "Error in fetching surface capabilities: {}",
+                            err.to_string()
+                        )),
+                    ));
+                }
+
                 let surface_present_modes_result = unsafe {
                     sfc_ext.get_physical_device_surface_present_modes(
                         device.ash_physical_device_handle().to_owned(),
                         surface.ash_handle().to_owned(),
                     )
                 };
+
+                if let Err(err) = surface_present_modes_result {
+                    return Err(VulkanError::Vulkan(
+                        err.as_raw(),
+                        Some(format!(
+                            "Error in fetching surface present modes: {}",
+                            err.to_string()
+                        )),
+                    ));
+                }
+
                 let surface_formats_result = unsafe {
                     sfc_ext.get_physical_device_surface_formats(
                         device.ash_physical_device_handle().to_owned(),
@@ -183,27 +205,31 @@ impl DeviceSurfaceInfo {
                     )
                 };
 
-                match (
-                    surface_capabilities_result,
-                    surface_present_modes_result,
-                    surface_formats_result,
-                ) {
-                    (Ok(surface_capabilities), Ok(surface_present_modes), Ok(surface_formats)) => {
-                        Ok(Self {
-                            device,
-                            surface,
-                            surface_capabilities,
-                            surface_present_modes: surface_present_modes
-                                .into_iter()
-                                .collect::<smallvec::SmallVec<[ash::vk::PresentModeKHR; 4]>>(
-                            ),
-                            surface_formats: surface_formats
-                                .into_iter()
-                                .collect::<smallvec::SmallVec<[ash::vk::SurfaceFormatKHR; 8]>>(),
-                        })
-                    }
-                    _ => Err(VulkanError::Unspecified),
+                if let Err(err) = surface_present_modes_result {
+                    return Err(VulkanError::Vulkan(
+                        err.as_raw(),
+                        Some(format!(
+                            "Error in fetching surface supported formats: {}",
+                            err.to_string()
+                        )),
+                    ));
                 }
+
+                let surface_capabilities = surface_capabilities_result.unwrap();
+                let surface_present_modes = surface_present_modes_result.unwrap();
+                let surface_formats = surface_formats_result.unwrap();
+
+                Ok(Self {
+                    device,
+                    surface,
+                    surface_capabilities,
+                    surface_present_modes: surface_present_modes
+                        .into_iter()
+                        .collect::<smallvec::SmallVec<[ash::vk::PresentModeKHR; 4]>>(),
+                    surface_formats: surface_formats
+                        .into_iter()
+                        .collect::<smallvec::SmallVec<[ash::vk::SurfaceFormatKHR; 8]>>(),
+                })
             }
             None => Err(VulkanError::MissingExtension(String::from(
                 "VK_KHR_swapchain",
@@ -275,7 +301,9 @@ impl SwapchainKHR {
         semaphores: &[Arc<Semaphore>],
     ) -> VulkanResult<()> {
         if self.get_parent_device() != queue.get_parent_queue_family().get_parent_device() {
-            return Err(VulkanError::Unspecified);
+            return Err(VulkanError::Framework(
+                crate::prelude::FrameworkError::ResourceFromIncompatibleDevice,
+            ));
         }
 
         let native_semaphores = semaphores
@@ -427,14 +455,10 @@ impl SwapchainKHR {
                             image_layers,
                         }))
                     }
-                    Err(err) => {
-                        #[cfg(debug_assertions)]
-                        {
-                            panic!("Error creating the swapchain: {}", err)
-                        }
-
-                        Err(VulkanError::Unspecified)
-                    }
+                    Err(err) => Err(VulkanError::Vulkan(
+                        err.as_raw(),
+                        Some(format!("Error creating the swapchain: {}", err)),
+                    )),
                 }
             }
             None => Err(VulkanError::MissingExtension(String::from(

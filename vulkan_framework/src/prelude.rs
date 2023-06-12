@@ -7,6 +7,7 @@ pub enum FrameworkError {
     UserInput(Option<String>),
     QueueFamilyUnavailable,
     NoSuitableDeviceFound,
+    ResourceFromIncompatibleDevice,
     Unknown(Option<String>),
 }
 

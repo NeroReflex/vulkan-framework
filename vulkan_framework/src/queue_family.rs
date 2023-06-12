@@ -82,8 +82,13 @@ impl QueueFamily {
                 created_queues: Mutex::new(0),
                 family_index: queue_family,
             })),
-            None => // if this error is generated than the queue family with this index has been already requested once
-                Err(VulkanError::Framework(FrameworkError::QueueFamilyUnavailable))
+            None =>
+            // if this error is generated than the queue family with this index has been already requested once
+            {
+                Err(VulkanError::Framework(
+                    FrameworkError::QueueFamilyUnavailable,
+                ))
+            }
         }
     }
 
@@ -98,8 +103,9 @@ impl QueueFamily {
                         Err(VulkanError::Framework(FrameworkError::UserInput(Some(format!("From this QueueFamily the number of created Queue(s) is {} out of a maximum supported number of {} has already been created.", created_queues_num, total_number_of_queues)))))
                 }
             }
-            Err(err) =>
-                Err(VulkanError::Framework(FrameworkError::Unknown(Some(format!("Error acquiring internal mutex: {}", err)))))
+            Err(err) => Err(VulkanError::Framework(FrameworkError::Unknown(Some(
+                format!("Error acquiring internal mutex: {}", err),
+            )))),
         }
     }
 }

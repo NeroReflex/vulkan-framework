@@ -50,8 +50,11 @@ impl Queue {
         fence: Arc<Fence>,
     ) -> VulkanResult<FenceWaiter> {
         if self.get_parent_queue_family().get_parent_device() != fence.get_parent_device() {
-            return Err(VulkanError::Unspecified);
+            return Err(VulkanError::Framework(
+                crate::prelude::FrameworkError::ResourceFromIncompatibleDevice,
+            ));
         }
+
         // TODO: assert queue.device == command_buffers.device
 
         let mut wait_sems: SmallVec<[ash::vk::Semaphore; 8]> = smallvec![];
@@ -100,11 +103,13 @@ impl Queue {
                 .queue_submit(self.ash_handle(), submits.as_slice(), fence.ash_handle())
         } {
             Ok(_) => Ok(FenceWaiter::new(fence, command_buffers)),
-            Err(err) =>
-                Err(VulkanError::Vulkan(err.as_raw(), Some(format!(
+            Err(err) => Err(VulkanError::Vulkan(
+                err.as_raw(),
+                Some(format!(
                     "Error submitting command buffers to the current queue: {}",
                     err
-                ))))
+                )),
+            )),
         }
     }
 
@@ -176,7 +181,7 @@ impl Queue {
                     queue,
                 }))
             }
-            Err(err) => Err(err)
+            Err(err) => Err(err),
         }
     }
 }

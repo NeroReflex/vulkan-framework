@@ -1,5 +1,5 @@
 use crate::memory_heap::{ConcreteMemoryHeapDescriptor, MemoryType};
-use crate::prelude::{VulkanError, VulkanResult, FrameworkError};
+use crate::prelude::{FrameworkError, VulkanError, VulkanResult};
 use crate::{instance::*, queue_family::*};
 
 use ash;
@@ -141,7 +141,10 @@ impl Device {
     pub fn wait_idle(&self) -> VulkanResult<()> {
         match unsafe { self.device.device_wait_idle() } {
             Ok(_) => Ok(()),
-            Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error waiting for device to be idle: {}", err))))
+            Err(err) => Err(VulkanError::Vulkan(
+                err.as_raw(),
+                Some(format!("Error waiting for device to be idle: {}", err)),
+            )),
         }
     }
 
@@ -299,18 +302,28 @@ impl Device {
     ) -> VulkanResult<Arc<Self>> {
         // queue cannot be capable of nothing...
         if queue_descriptors.is_empty() {
-            return Err(VulkanError::Framework(FrameworkError::UserInput(Some(format!("Error in queue search: no queue descriptor(s) have been specified")))));
+            return Err(VulkanError::Framework(FrameworkError::UserInput(Some(
+                format!("Error in queue search: no queue descriptor(s) have been specified"),
+            ))));
         }
 
         unsafe {
             match instance.ash_handle().enumerate_physical_devices() {
-                Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error enumerating physical devices: {}", err.to_string())))),
+                Err(err) => Err(VulkanError::Vulkan(
+                    err.as_raw(),
+                    Some(format!(
+                        "Error enumerating physical devices: {}",
+                        err.to_string()
+                    )),
+                )),
                 Ok(physical_devices) => {
                     let mut best_physical_device_score: i128 = -1;
                     let mut selected_physical_device: Option<DeviceData> = None;
 
                     if physical_devices.is_empty() {
-                        return Err(VulkanError::Framework(FrameworkError::NoSuitableDeviceFound))
+                        return Err(VulkanError::Framework(
+                            FrameworkError::NoSuitableDeviceFound,
+                        ));
                     }
 
                     'suitable_device_search: for phy_device in physical_devices.iter() {
@@ -795,10 +808,20 @@ impl Device {
                                         ray_tracing_info: raytracing_info,
                                     }))
                                 }
-                                Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating the logical device: {}", err.to_string())))),
+                                Err(err) => Err(VulkanError::Vulkan(
+                                    err.as_raw(),
+                                    Some(format!(
+                                        "Error creating the logical device: {}",
+                                        err.to_string()
+                                    )),
+                                )),
                             };
                         }
-                        None => return Err(VulkanError::Framework(FrameworkError::NoSuitableDeviceFound)),
+                        None => {
+                            return Err(VulkanError::Framework(
+                                FrameworkError::NoSuitableDeviceFound,
+                            ))
+                        }
                     }
                 }
             }

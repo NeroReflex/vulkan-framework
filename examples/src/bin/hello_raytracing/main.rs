@@ -447,15 +447,14 @@ fn main() {
 
                 let image_available_semaphores = (0..swapchain_images_count)
                     .map(|_idx| {
-                        Semaphore::new(dev.clone(), false, Some("image_available_semaphores[...]"))
+                        Semaphore::new(dev.clone(), Some("image_available_semaphores[...]"))
                             .unwrap()
                     })
                     .collect::<Vec<Arc<Semaphore>>>();
 
                 let image_rendered_semaphores = (0..swapchain_images_count)
                     .map(|_idx| {
-                        Semaphore::new(dev.clone(), false, Some("image_rendered_semaphores[...]"))
-                            .unwrap()
+                        Semaphore::new(dev.clone(), Some("image_rendered_semaphores[...]")).unwrap()
                     })
                     .collect::<Vec<Arc<Semaphore>>>();
 

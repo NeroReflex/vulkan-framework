@@ -41,7 +41,6 @@ use vulkan_framework::image::ImageLayoutSwapchainKHR;
 use vulkan_framework::image::ImageMultisampling;
 
 use vulkan_framework::image::ImageTiling;
-use vulkan_framework::image::ImageTrait;
 use vulkan_framework::image::ImageUsage;
 use vulkan_framework::image::ImageUsageSpecifier;
 use vulkan_framework::image_view::ImageView;
@@ -735,12 +734,9 @@ fn main() {
                                                     .unwrap();
                                             println!("Fence created");
 
-                                            let semaphore = Semaphore::new(
-                                                device.clone(),
-                                                false,
-                                                Some("MySemaphore"),
-                                            )
-                                            .unwrap();
+                                            let semaphore =
+                                                Semaphore::new(device.clone(), Some("MySemaphore"))
+                                                    .unwrap();
                                             println!("Semaphore created");
 
                                             let swapchain_images =
@@ -752,7 +748,6 @@ fn main() {
                                                 .map(|_idx| {
                                                     Semaphore::new(
                                                         device.clone(),
-                                                        false,
                                                         Some("image_available_semaphores[...]"),
                                                     )
                                                     .unwrap()
@@ -764,7 +759,6 @@ fn main() {
                                                 .map(|_idx| {
                                                     Semaphore::new(
                                                         device.clone(),
-                                                        false,
                                                         Some("image_rendered_semaphores[...]"),
                                                     )
                                                     .unwrap()

@@ -330,9 +330,11 @@ impl DescriptorSet {
         let (min_idx, max_idx) = layout.binding_range();
 
         if min_idx != 0 {
-            return Err(VulkanError::Framework(FrameworkError::UserInput(Some(format!("Error creating the descriptor set: bindings are not starting from zero")))))
+            return Err(VulkanError::Framework(FrameworkError::UserInput(Some(
+                format!("Error creating the descriptor set: bindings are not starting from zero"),
+            ))));
         }
-        
+
         let create_info = ash::vk::DescriptorSetAllocateInfo::builder()
             .descriptor_pool(pool.ash_handle())
             .set_layouts([layout.ash_handle()].as_slice())
@@ -353,9 +355,13 @@ impl DescriptorSet {
                         .collect(),
                 ),
             })),
-            Err(err) => {
-                Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating the descriptor set: {}", err.to_string()))))
-            }
+            Err(err) => Err(VulkanError::Vulkan(
+                err.as_raw(),
+                Some(format!(
+                    "Error creating the descriptor set: {}",
+                    err.to_string()
+                )),
+            )),
         }
     }
 }
