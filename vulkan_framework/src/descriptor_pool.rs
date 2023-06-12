@@ -328,14 +328,7 @@ impl DescriptorPool {
                     //lock_errored: AtomicI16::new(0i16),
                 }))
             }
-            Err(err) => {
-                #[cfg(debug_assertions)]
-                {
-                    panic!("Error creating the descriptor pool: {}", err)
-                }
-
-                Err(VulkanError::Unspecified)
-            }
+            Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating the descriptor pool: {}", err.to_string()))))
         }
     }
 }

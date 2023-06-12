@@ -94,16 +94,9 @@ impl ComputePipeline {
                 )
         } {
             Ok(pipelines) => {
+                assert_eq!(pipelines.len(), 1);
+                
                 let pipeline = pipelines[0];
-
-                if pipelines.len() != 1 {
-                    #[cfg(debug_assertions)]
-                    {
-                        panic!("Error creating the compute pipeline: expected 1 pipeline to be created, instead {} were created.", pipelines.len())
-                    }
-
-                    return Err(VulkanError::Unspecified);
-                }
 
                 let mut obj_name_bytes = vec![];
                 if let Some(ext) = device.get_parent_instance().get_debug_ext_extension() {
@@ -143,14 +136,7 @@ impl ComputePipeline {
                     pipeline,
                 }))
             }
-            Err((_, err)) => {
-                #[cfg(debug_assertions)]
-                {
-                    panic!("Error creating the compute pipeline: {}", err)
-                }
-
-                Err(VulkanError::Unspecified)
-            }
+            Err((_, err)) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating the compute pipeline: {}", err.to_string()))))
         }
     }
 }

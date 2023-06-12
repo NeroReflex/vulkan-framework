@@ -18,7 +18,7 @@ use crate::{
     instance::InstanceOwned,
     pipeline_layout::PipelineLayout,
     pipeline_stage::PipelineStages,
-    prelude::{VulkanError, VulkanResult},
+    prelude::{VulkanError, VulkanResult, FrameworkError},
     queue_family::QueueFamily,
     renderpass::RenderPassCompatible, raytracing_pipeline::RaytracingPipeline, binding_tables::RaytracingBindingTables, memory_allocator::MemoryAllocator,
 };
@@ -960,29 +960,13 @@ impl PrimaryCommandBuffer {
                             }
                         }
                     }
-                    Err(err) => {
-                        // TODO: the command buffer is in the previous state... A good one unless the error is DEVICE_LOST
-
-                        #[cfg(debug_assertions)]
-                        {
-                            panic!("Error opening the command buffer for writing: {}", err);
-                        }
-
-                        Err(VulkanError::Unspecified)
-                    }
+                    Err(err) => 
+                        // the command buffer is in the previous state... A good one unless the error is DEVICE_LOST
+                        Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error opening the command buffer for writing: {}", err.to_string()))))
                 }
             }
-            Err(err) => {
-                #[cfg(debug_assertions)]
-                {
-                    panic!(
-                        "Error opening the command buffer for writing: Error acquiring mutex: {}",
-                        err
-                    );
-                }
-
-                Err(VulkanError::Unspecified)
-            }
+            Err(err) => Err(VulkanError::Framework(FrameworkError::Unknown(Some(format!("Error opening the command buffer for writing: Error acquiring mutex: {}",
+                err.to_string())))))
         }
     }
 

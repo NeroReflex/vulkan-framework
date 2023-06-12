@@ -10,7 +10,7 @@ use crate::{
     image::ImageLayout,
     image_view::ImageView,
     memory_allocator::MemoryAllocator,
-    prelude::{VulkanError, VulkanResult}, sampler::Sampler,
+    prelude::{VulkanError, VulkanResult, FrameworkError}, sampler::Sampler,
 };
 
 pub struct DescriptorSetWriter<'a> {
@@ -310,14 +310,7 @@ impl DescriptorSet {
 
                 Ok(())
             }
-            Err(err) => {
-                #[cfg(debug_assertions)]
-                {
-                    panic!("Error acquiring the descriptor set mutex: {}", err)
-                }
-
-                Err(VulkanError::Unspecified)
-            }
+            Err(err) => Err(VulkanError::Framework(FrameworkError::Unknown(Some(format!("Error acquiring the descriptor set mutex: {}", err)))))
         }
     }
 

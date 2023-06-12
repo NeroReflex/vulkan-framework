@@ -293,14 +293,7 @@ impl ImageView {
                     subrange_layer_count,
                 }))
             }
-            Err(err) => {
-                #[cfg(debug_assertions)]
-                {
-                    panic!("Error creating the specified image view: {}", err)
-                }
-
-                Err(VulkanError::Unspecified)
-            }
+            Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating the image view: {}", err.to_string()))))
         }
     }
 }
