@@ -42,3 +42,4 @@ pub mod callable_shader;
 pub mod binding_tables;
 pub mod utils;
 pub mod sampler;
+pub mod acceleration_structure;

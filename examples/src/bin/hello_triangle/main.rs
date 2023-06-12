@@ -21,7 +21,7 @@ use vulkan_framework::{
     instance::*,
     memory_allocator::*,
     memory_heap::*,
-    memory_pool::MemoryPool,
+    memory_pool::{MemoryPool, MemoryPoolFeatures},
     pipeline_layout::PipelineLayout,
     pipeline_stage::{PipelineStage, PipelineStages},
     queue::*,
@@ -177,6 +177,7 @@ fn main() {
                 let _default_allocator = MemoryPool::new(
                     memory_heap,
                     Arc::new(StackAllocator::new(memory_heap_size)),
+                    MemoryPoolFeatures::from(&[])
                 )
                 .unwrap();
 

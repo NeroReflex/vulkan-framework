@@ -21,7 +21,7 @@ use vulkan_framework::{
     instance::*,
     memory_allocator::*,
     memory_heap::*,
-    memory_pool::MemoryPool,
+    memory_pool::{MemoryPool, MemoryPoolFeatures, MemoryPoolFeature},
     pipeline_layout::PipelineLayout,
     pipeline_stage::{PipelineStage, PipelineStages, PipelineStageRayTracingPipelineKHR},
     queue::*,
@@ -296,6 +296,7 @@ fn main() {
                 let device_local_default_allocator = MemoryPool::new(
                     device_local_memory_heap,
                     Arc::new(DefaultAllocator::new(main_heap_size)),
+                    MemoryPoolFeatures::from(&[])
                 )
                 .unwrap();
 
@@ -310,9 +311,10 @@ fn main() {
                 println!("Memory heap created! <3");
                 let main_heap_size = sbt_memory_heap.total_size();
 
-                let sbt_default_allocator = MemoryPool::new_with_device_address(
+                let sbt_default_allocator = MemoryPool::new(
                     sbt_memory_heap,
                     Arc::new(DefaultAllocator::new(main_heap_size)),
+                    MemoryPoolFeatures::from(&[MemoryPoolFeature::DeviceAddressable])
                 )
                 .unwrap();
 

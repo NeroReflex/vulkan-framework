@@ -65,14 +65,7 @@ impl MissShader {
                 //descriptor_bindings: descriptor_bindings.to_vec(),
                 module,
             })),
-            Err(err) => {
-                #[cfg(debug_assertions)]
-                {
-                    panic!("Error creating the descriptor set: {}", err)
-                }
-
-                Err(VulkanError::Unspecified)
-            }
+            Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating the miss shader: {}", err.to_string()))))
         }
     }
 }

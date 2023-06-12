@@ -297,7 +297,7 @@ impl SwapchainKHR {
             Option::Some(ext) => {
                 match unsafe { ext.queue_present(queue.ash_handle(), &present_info) } {
                     Ok(_suboptimal) => Ok(()),
-                    Err(err) => Err(VulkanError::Vulkan(err.as_raw())),
+                    Err(err) => Err(VulkanError::Vulkan(err.as_raw(), None)),
                 }
             }
             Option::None => Err(VulkanError::MissingExtension(String::from(
@@ -332,14 +332,7 @@ impl SwapchainKHR {
                     )
                 } {
                     Ok((a, _b)) => Ok(a),
-                    Err(err) => {
-                        #[cfg(debug_assertions)]
-                        {
-                            panic!("Error creating the swapchain: {}", err)
-                        }
-
-                        Err(VulkanError::Vulkan(err.as_raw()))
-                    }
+                    Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating the swapchain: {}", err.to_string()))))
                 }
             }
             Option::None => Err(VulkanError::MissingExtension(String::from(

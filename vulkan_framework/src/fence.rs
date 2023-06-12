@@ -46,7 +46,7 @@ impl Fence {
                 .reset_fences(&[self.fence])
         } {
             Ok(()) => Ok(()),
-            Err(err) => Err(VulkanError::Vulkan(err.as_raw())),
+            Err(err) => Err(VulkanError::Vulkan(err.as_raw(), None)),
         }
     }
 
@@ -76,7 +76,7 @@ impl Fence {
 
                 match reset_result {
                     Ok(_) => Ok(()),
-                    Err(err) => Err(VulkanError::Vulkan(err.as_raw())),
+                    Err(err) => Err(VulkanError::Vulkan(err.as_raw(), None)),
                 }
             }
             None => Err(VulkanError::Unspecified),
@@ -125,7 +125,7 @@ impl Fence {
 
                 match wait_result {
                     Ok(_) => Ok(()),
-                    Err(err) => Err(VulkanError::Vulkan(err.as_raw())),
+                    Err(err) => Err(VulkanError::Vulkan(err.as_raw(), None)),
                 }
             }
             None => Err(VulkanError::Unspecified),
@@ -170,21 +170,13 @@ impl Fence {
                                 .object_name(object_name)
                                 .build();
 
-                            match ext.set_debug_utils_object_name(
+                            if let Err(err) = ext.set_debug_utils_object_name(
                                 device.ash_handle().handle(),
                                 &dbg_info,
                             ) {
-                                Ok(_) => {
-                                    #[cfg(debug_assertions)]
-                                    {
-                                        println!("Queue Debug object name changed");
-                                    }
-                                }
-                                Err(err) => {
-                                    #[cfg(debug_assertions)]
-                                    {
-                                        panic!("Error setting the Debug name for the newly created Queue, will use handle. Error: {}", err)
-                                    }
+                                #[cfg(debug_assertions)]
+                                {
+                                    println!("Error setting the Debug name for the newly created Queue, will use handle. Error: {}", err)
                                 }
                             }
                         }

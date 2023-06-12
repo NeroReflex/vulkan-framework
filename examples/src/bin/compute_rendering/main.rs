@@ -54,6 +54,7 @@ use vulkan_framework::memory_heap::MemoryHeap;
 use vulkan_framework::memory_heap::MemoryHostVisibility;
 use vulkan_framework::memory_heap::MemoryType;
 use vulkan_framework::memory_pool::MemoryPool;
+use vulkan_framework::memory_pool::MemoryPoolFeatures;
 use vulkan_framework::pipeline_layout::PipelineLayout;
 use vulkan_framework::pipeline_stage::PipelineStage;
 use vulkan_framework::pipeline_stage::PipelineStages;
@@ -273,6 +274,7 @@ fn main() {
                                             let stack_allocator = match MemoryPool::new(
                                                 memory_heap,
                                                 Arc::new(StackAllocator::new(memory_heap_size)),
+                                                MemoryPoolFeatures::from(&[]),
                                             ) {
                                                 Ok(mem_pool) => {
                                                     println!("Stack allocator created");
@@ -775,7 +777,7 @@ fn main() {
                                                                 break 'wait_for_fence;
                                                             }
                                                             Err(err) => {
-                                                                if err.timeout() {
+                                                                if err.is_timeout() {
                                                                     continue 'wait_for_fence;
                                                                 }
 

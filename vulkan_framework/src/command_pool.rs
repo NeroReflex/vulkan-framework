@@ -83,21 +83,13 @@ impl CommandPool {
                                 .object_name(object_name)
                                 .build();
 
-                            match ext.set_debug_utils_object_name(
+                            if let Err(err) = ext.set_debug_utils_object_name(
                                 device.ash_handle().handle(),
                                 &dbg_info,
                             ) {
-                                Ok(_) => {
-                                    #[cfg(debug_assertions)]
-                                    {
-                                        println!("Command Pool Debug object name changed");
-                                    }
-                                }
-                                Err(err) => {
-                                    #[cfg(debug_assertions)]
-                                    {
-                                        panic!("Error setting the Debug name for the newly created Command Pool, will use handle. Error: {}", err)
-                                    }
+                                #[cfg(debug_assertions)]
+                                {
+                                    println!("Error setting the Debug name for the newly created Command Pool, will use handle. Error: {}", err)
                                 }
                             }
                         }

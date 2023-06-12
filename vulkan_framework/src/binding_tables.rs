@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{prelude::{VulkanResult, VulkanError}, raytracing_pipeline::RaytracingPipeline, device::DeviceOwned, memory_pool::{MemoryPool, MemoryPoolBacked}, memory_allocator::MemoryAllocator, utils, buffer::{Buffer, ConcreteBufferDescriptor, BufferUsage}, memory_heap::{MemoryHeapOwned, MemoryType, MemoryHostVisibility}};
+use crate::{prelude::{VulkanResult, VulkanError, FrameworkError}, raytracing_pipeline::RaytracingPipeline, device::DeviceOwned, memory_pool::{MemoryPool, MemoryPoolBacked}, memory_allocator::MemoryAllocator, utils, buffer::{Buffer, ConcreteBufferDescriptor, BufferUsage}, memory_heap::{MemoryHeapOwned, MemoryType, MemoryHostVisibility}};
 
 pub struct RaytracingBindingTables
 {
@@ -81,6 +81,11 @@ impl RaytracingBindingTables
         let required_memory_type = required_memory_type();
         let mem_type = memory_pool.get_parent_memory_heap().memory_type();
         assert!(mem_type == required_memory_type);
+
+        // this feature is required for raytracing to work at all
+        if !memory_pool.features().device_addressable() {
+            return Err(VulkanError::Framework(FrameworkError::Unknown(Some(String::from("Missing feature on MemoryPool: device_addressable need to be set")))))
+        }
 
         let device = raytracing_pipeline.get_parent_device();
 
@@ -198,7 +203,7 @@ impl RaytracingBindingTables
                                 )
                             },
                             Err(err) => {
-                                Err(VulkanError::Vulkan(err.as_raw()))
+                                Err(VulkanError::Vulkan(err.as_raw(), None))
                             }
                         }
                     },
@@ -208,7 +213,7 @@ impl RaytracingBindingTables
                 }
             },
             None => {
-                Err(VulkanError::Unspecified)
+                Err(VulkanError::MissingExtension(String::from("VK_KHR_ray_tracing_pipeline")))
             }
         }
     }

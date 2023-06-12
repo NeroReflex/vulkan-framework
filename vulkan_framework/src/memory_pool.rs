@@ -10,11 +10,42 @@ use crate::{
 
 use std::{mem::size_of, sync::Arc};
 
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum MemoryPoolFeature {
+    DeviceAddressable
+}
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub struct MemoryPoolFeatures {
+    device_addressable: bool
+}
+
+impl MemoryPoolFeatures {
+    pub fn device_addressable(&self) -> bool {
+        self.device_addressable
+    }
+
+    pub fn from(features: &[MemoryPoolFeature]) -> Self {
+        Self::new(
+            features.contains(&MemoryPoolFeature::DeviceAddressable)
+        )
+    }
+
+    pub fn new(
+        device_addressable: bool
+    ) -> Self {
+        Self {
+            device_addressable
+        }
+    }
+}
+
 pub struct MemoryPool
 {
     memory_heap: Arc<MemoryHeap>,
     allocator: Arc<dyn MemoryAllocator>,
     memory: ash::vk::DeviceMemory,
+    features: MemoryPoolFeatures,
 }
 
 impl MemoryHeapOwned for MemoryPool
@@ -58,6 +89,10 @@ impl MemoryPool
     ) -> Arc<dyn MemoryAllocator> {
         self.allocator.clone()
     }
+
+    pub fn features(&self) -> MemoryPoolFeatures {
+        self.features
+    } 
 
     pub(crate) fn ash_handle(&self) -> ash::vk::DeviceMemory {
         self.memory
@@ -137,11 +172,19 @@ impl MemoryPool
         }
     }
 
-    pub fn new_with_device_address(memory_heap: Arc<MemoryHeap>, allocator: Arc<dyn MemoryAllocator>) -> VulkanResult<Arc<Self>> {
+    pub fn new(
+        memory_heap: Arc<MemoryHeap>,
+        allocator: Arc<dyn MemoryAllocator>,
+        features: MemoryPoolFeatures,
+    ) -> VulkanResult<Arc<Self>> {
         let mut create_info = ash::vk::MemoryAllocateInfo::builder()
             .allocation_size(allocator.total_size())
             .memory_type_index(memory_heap.type_index())
             .build();
+
+        if allocator.total_size() < memory_heap.total_size() {
+            return Err(VulkanError::Unspecified)
+        }
 
         let device = memory_heap.get_parent_device();
 
@@ -150,41 +193,15 @@ impl MemoryPool
             .flags(ash::vk::MemoryAllocateFlags::DEVICE_ADDRESS)
             .build();
 
-        let instance_ver = device.get_parent_instance().instance_vulkan_version();
-        if (instance_ver != InstanceAPIVersion::Version1_0) && (instance_ver != InstanceAPIVersion::Version1_1) {
-            create_info.p_next = &mut memory_flags as *mut ash::vk::MemoryAllocateFlagsInfo as *mut std::ffi::c_void;
-        }
-
-        unsafe {
-            match device.ash_handle().allocate_memory(
-                &create_info,
-                device.get_parent_instance().get_alloc_callbacks(),
-            ) {
-                Ok(memory) => Ok(Arc::new(Self {
-                    memory_heap,
-                    allocator,
-                    memory,
-                })),
-                Err(err) => {
-                    #[cfg(debug_assertions)]
-                    {
-                        panic!("Error creating the memory pool: {}", err)
-                    }
-
-                    Err(VulkanError::Unspecified)
-                }
+        if features.device_addressable() {
+            let instance_ver = device.get_parent_instance().instance_vulkan_version();
+            if (instance_ver != InstanceAPIVersion::Version1_0) && (instance_ver != InstanceAPIVersion::Version1_1) {
+                create_info.p_next = &mut memory_flags as *mut ash::vk::MemoryAllocateFlagsInfo as *mut std::ffi::c_void;
+            } else {
+                return Err(VulkanError::Unspecified)
             }
         }
-    }
-
-    pub fn new(memory_heap: Arc<MemoryHeap>, allocator: Arc<dyn MemoryAllocator>) -> VulkanResult<Arc<Self>> {
-        let create_info = ash::vk::MemoryAllocateInfo::builder()
-            .allocation_size(allocator.total_size())
-            .memory_type_index(memory_heap.type_index())
-            .build();
-
-        let device = memory_heap.get_parent_device();
-
+        
         unsafe {
             match device.ash_handle().allocate_memory(
                 &create_info,
@@ -194,6 +211,7 @@ impl MemoryPool
                     memory_heap,
                     allocator,
                     memory,
+                    features,
                 })),
                 Err(err) => {
                     #[cfg(debug_assertions)]

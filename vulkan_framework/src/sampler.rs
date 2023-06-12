@@ -113,7 +113,7 @@ impl Sampler {
                 )
             },
             Err(err) => {
-                Err(VulkanError::Vulkan(err.as_raw()))
+                Err(VulkanError::Vulkan(err.as_raw(), None))
             }
         }
     }

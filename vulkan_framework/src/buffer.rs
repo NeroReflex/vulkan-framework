@@ -4,7 +4,7 @@ use crate::{
     memory_allocator::{AllocationResult, MemoryAllocator},
     memory_heap::MemoryHeapOwned,
     memory_pool::{MemoryPool, MemoryPoolBacked},
-    prelude::{VulkanError, VulkanResult},
+    prelude::{VulkanError, VulkanResult, FrameworkError},
     queue_family::QueueFamily,
 };
 
@@ -397,12 +397,7 @@ impl Buffer
         } {
             Ok(buffer) => buffer,
             Err(err) => {
-                #[cfg(debug_assertions)]
-                {
-                    panic!("Error creating the buffer: {}", err)
-                }
-
-                return Err(VulkanError::Unspecified);
+                return Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating the buffer: {}", err.to_string()))))
             }
         };
 
@@ -424,18 +419,10 @@ impl Buffer
                         .object_name(object_name)
                         .build();
 
-                    match ext.set_debug_utils_object_name(device.ash_handle().handle(), &dbg_info) {
-                        Ok(_) => {
-                            #[cfg(debug_assertions)]
-                            {
-                                println!("Queue Debug object name changed");
-                            }
-                        }
-                        Err(err) => {
-                            #[cfg(debug_assertions)]
-                            {
-                                panic!("Error setting the Debug name for the newly created Buffer, will use handle. Error: {}", err);
-                            }
+                    if let Err(err) = ext.set_debug_utils_object_name(device.ash_handle().handle(), &dbg_info) {
+                        #[cfg(debug_assertions)]
+                        {
+                            println!("Error setting the Debug name for the newly created Buffer, will use handle. Error: {}", err);
                         }
                     }
                 }
@@ -462,7 +449,7 @@ impl Buffer
             };
 
             if !memory_pool.get_parent_memory_heap().check_memory_requirements_are_satified(requirements.memory_type_bits) {
-                return Err(VulkanError::Unspecified)
+                return Err(VulkanError::Framework(FrameworkError::IncompatibleMemoryHeapType))
             }
 
             match memory_pool.get_memory_allocator().alloc(requirements.size, requirements.alignment) {
@@ -485,12 +472,7 @@ impl Buffer
                                 device.get_parent_instance().get_alloc_callbacks(),
                             );
 
-                            #[cfg(debug_assertions)]
-                            {
-                                panic!("Error allocating memory on the device: {}, probably this is due to an incorrect implementation of the memory allocation algorithm", err)
-                            }
-
-                            Err(VulkanError::Unspecified)
+                            Err(VulkanError::Vulkan(err.as_raw(), Some(String::from("Error allocating memory on the device: {}, probably this is due to an incorrect implementation of the memory allocation algorithm"))))
                         }
                     }
                 }
@@ -500,7 +482,7 @@ impl Buffer
                         .ash_handle()
                         .destroy_buffer(buffer, device.get_parent_instance().get_alloc_callbacks());
 
-                    Err(VulkanError::Unspecified)
+                    Err(VulkanError::Framework(FrameworkError::MallocFail))
                 }
             }
         }
