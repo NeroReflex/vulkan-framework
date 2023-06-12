@@ -948,14 +948,8 @@ impl PrimaryCommandBuffer {
 
                                 Ok(())
                             }
-                            Err(_err) => {
-                                #[cfg(debug_assertions)]
-                                {
-                                    panic!("Error creating the command buffer recorder: the command buffer already is in recording state!")
-                                }
-
-                                Err(VulkanError::Unspecified)
-                            }
+                            Err(err) => 
+                            Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error updating the command buffer: {}", err.to_string()))))
                         }
                     }
                     Err(err) =>
@@ -1034,14 +1028,7 @@ impl PrimaryCommandBuffer {
                     resources_in_use: Mutex::new(HashSet::new()),
                 }))
             }
-            Err(err) => {
-                #[cfg(debug_assertions)]
-                {
-                    panic!("Error creating the command buffer: {}", err)
-                }
-
-                Err(VulkanError::Unspecified)
-            }
+            Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating the command buffer: {}", err))))
         }
     }
 }

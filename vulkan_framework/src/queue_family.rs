@@ -2,6 +2,7 @@ use std::{ops::Deref, sync::Mutex};
 
 use std::sync::Arc;
 
+use crate::prelude::FrameworkError;
 use crate::{
     device::{Device, DeviceOwned},
     prelude::{VulkanError, VulkanResult},
@@ -81,47 +82,24 @@ impl QueueFamily {
                 created_queues: Mutex::new(0),
                 family_index: queue_family,
             })),
-            None => {
-                #[cfg(debug_assertions)]
-                {
-                    panic!("Something bad happened while moving out the queue family from the provided Device")
-                }
-
-                Err(VulkanError::Unspecified)
-            }
+            None => // if this error is generated than the queue family with this index has been already requested once
+                Err(VulkanError::Framework(FrameworkError::QueueFamilyUnavailable))
         }
     }
 
-    pub(crate) fn move_out_queue(&self) -> Option<(u32, f32)> {
+    pub(crate) fn move_out_queue(&self) -> VulkanResult<(u32, f32)> {
         match self.created_queues.lock() {
             Ok(created_queues) => {
                 let created_queues_num = *(created_queues.deref());
                 let total_number_of_queues = self.descriptor.queue_priorities.len();
                 match created_queues_num < total_number_of_queues as u64 {
-                    true => {
-                        let priority: f32 =
-                            self.descriptor.queue_priorities[created_queues_num as usize];
-
-                        Some((created_queues_num as u32, priority))
-                    }
-                    false => {
-                        #[cfg(debug_assertions)]
-                        {
-                            panic!("From this QueueFamily the number of created Queue(s) is {} out of a maximum supported number of {} has already been created.", created_queues_num, total_number_of_queues)
-                        }
-
-                        Option::None
-                    }
+                    true => Ok((created_queues_num as u32, self.descriptor.queue_priorities[created_queues_num as usize])),
+                    false =>
+                        Err(VulkanError::Framework(FrameworkError::UserInput(Some(format!("From this QueueFamily the number of created Queue(s) is {} out of a maximum supported number of {} has already been created.", created_queues_num, total_number_of_queues)))))
                 }
             }
-            Err(err) => {
-                #[cfg(debug_assertions)]
-                {
-                    panic!("Error acquiring internal mutex: {}", err)
-                }
-
-                Option::None
-            }
+            Err(err) =>
+                Err(VulkanError::Framework(FrameworkError::Unknown(Some(format!("Error acquiring internal mutex: {}", err)))))
         }
     }
 }

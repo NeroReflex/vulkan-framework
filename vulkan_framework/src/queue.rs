@@ -100,17 +100,11 @@ impl Queue {
                 .queue_submit(self.ash_handle(), submits.as_slice(), fence.ash_handle())
         } {
             Ok(_) => Ok(FenceWaiter::new(fence, command_buffers)),
-            Err(err) => {
-                #[cfg(debug_assertions)]
-                {
-                    panic!(
-                        "Error submitting command buffers to the current queue: {}",
-                        err
-                    );
-                }
-
-                Err(VulkanError::Unspecified)
-            }
+            Err(err) =>
+                Err(VulkanError::Vulkan(err.as_raw(), Some(format!(
+                    "Error submitting command buffers to the current queue: {}",
+                    err
+                ))))
         }
     }
 
@@ -131,7 +125,7 @@ impl Queue {
         debug_name: Option<&str>,
     ) -> VulkanResult<Arc<Self>> {
         match queue_family.move_out_queue() {
-            Some((queue_index, priority)) => {
+            Ok((queue_index, priority)) => {
                 let queue = unsafe {
                     queue_family
                         .get_parent_device()
@@ -182,14 +176,7 @@ impl Queue {
                     queue,
                 }))
             }
-            None => {
-                #[cfg(debug_assertions)]
-                {
-                    panic!("Something bad happened while moving out a queue from the provided QueueFamily");
-                }
-
-                Err(VulkanError::Unspecified)
-            }
+            Err(err) => Err(err)
         }
     }
 }

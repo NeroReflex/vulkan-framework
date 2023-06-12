@@ -330,41 +330,31 @@ impl DescriptorSet {
         let (min_idx, max_idx) = layout.binding_range();
 
         if min_idx != 0 {
-            #[cfg(debug_assertions)]
-            {
-                panic!("Error creating the descriptor set: bindings are not starting from zero")
-            }
+            return Err(VulkanError::Framework(FrameworkError::UserInput(Some(format!("Error creating the descriptor set: bindings are not starting from zero")))))
+        }
+        
+        let create_info = ash::vk::DescriptorSetAllocateInfo::builder()
+            .descriptor_pool(pool.ash_handle())
+            .set_layouts([layout.ash_handle()].as_slice())
+            .build();
 
-            Err(VulkanError::Unspecified)
-        } else {
-            let create_info = ash::vk::DescriptorSetAllocateInfo::builder()
-                .descriptor_pool(pool.ash_handle())
-                .set_layouts([layout.ash_handle()].as_slice())
-                .build();
-
-            match unsafe {
-                pool.get_parent_device()
-                    .ash_handle()
-                    .allocate_descriptor_sets(&create_info)
-            } {
-                Ok(descriptor_set) => Ok(Arc::new(Self {
-                    pool,
-                    descriptor_set: descriptor_set[0],
-                    layout,
-                    bound_resources: Mutex::new(
-                        (0..(max_idx + 1))
-                            .map(|_idx| DescriptorSetBoundResource::None)
-                            .collect(),
-                    ),
-                })),
-                Err(err) => {
-                    #[cfg(debug_assertions)]
-                    {
-                        panic!("Error creating the descriptor set: {}", err)
-                    }
-
-                    Err(VulkanError::Unspecified)
-                }
+        match unsafe {
+            pool.get_parent_device()
+                .ash_handle()
+                .allocate_descriptor_sets(&create_info)
+        } {
+            Ok(descriptor_set) => Ok(Arc::new(Self {
+                pool,
+                descriptor_set: descriptor_set[0],
+                layout,
+                bound_resources: Mutex::new(
+                    (0..(max_idx + 1))
+                        .map(|_idx| DescriptorSetBoundResource::None)
+                        .collect(),
+                ),
+            })),
+            Err(err) => {
+                Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating the descriptor set: {}", err.to_string()))))
             }
         }
     }

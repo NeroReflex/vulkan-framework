@@ -4,6 +4,9 @@ pub type VulkanResult<T> = Result<T, VulkanError>;
 pub enum FrameworkError {
     MallocFail,
     IncompatibleMemoryHeapType,
+    UserInput(Option<String>),
+    QueueFamilyUnavailable,
+    NoSuitableDeviceFound,
     Unknown(Option<String>),
 }
 

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::{
     device::{Device, DeviceOwned},
     instance::InstanceOwned,
-    prelude::{VulkanError, VulkanResult},
+    prelude::{VulkanError, VulkanResult, FrameworkError},
     shader_layout_binding::BindingDescriptor,
 };
 
@@ -99,12 +99,7 @@ impl DescriptorSetLayout {
         descriptors: &[Arc<BindingDescriptor>],
     ) -> VulkanResult<Arc<Self>> {
         if descriptors.is_empty() {
-            #[cfg(debug_assertions)]
-            {
-                panic!("Error creating the descriptor set layout: no binding descriptors specified")
-            }
-
-            return Err(VulkanError::Unspecified);
+            return Err(VulkanError::Framework(FrameworkError::Unknown(Some(format!("Error creating the descriptor set layout: no binding descriptors specified")))));
         }
 
         // a collection of VkDescriptorSetLayoutBinding

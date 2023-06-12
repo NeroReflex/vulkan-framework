@@ -4,7 +4,7 @@ use crate::{
     device::{Device, DeviceOwned},
     image::{ImageFormat, ImageLayout, ImageMultisampling},
     instance::InstanceOwned,
-    prelude::{VulkanError, VulkanResult},
+    prelude::{VulkanError, VulkanResult, FrameworkError},
 };
 
 const MAX_NUMBER_OF_SUBPASSES_NOT_REQUIRING_HEAP_ALLOC: usize = 8;
@@ -174,6 +174,10 @@ impl RenderPass {
         &self.subpasses_description[index]
     }
 
+    pub fn get_attachments_description(&self, index: usize) -> &AttachmentDescription {
+        &self.attachments_description[index]
+    }
+
     pub(crate) fn ash_handle(&self) -> ash::vk::RenderPass {
         self.renderpass
     }
@@ -217,7 +221,9 @@ impl RenderPass {
             > = smallvec::smallvec![];
             for color_attachment in subpass.output_color_attachment_indeces() {
                 if (*color_attachment as usize) >= attachment_descriptors.len() {
-                    return Err(VulkanError::Unspecified);
+                    return Err(VulkanError::Framework(FrameworkError::UserInput(Some(format!("Error creating the renderpass: in a subpass one color attachment is specified to be {}, but only {} attachments have beed defined",
+                    (*color_attachment as usize), attachment_descriptors.len()
+                )))))
                 }
 
                 color_attachment_of_subpass.push(
@@ -234,7 +240,9 @@ impl RenderPass {
             > = smallvec::smallvec![];
             for input_attachment in subpass.input_color_attachment_indeces() {
                 if (*input_attachment as usize) >= attachment_descriptors.len() {
-                    return Err(VulkanError::Unspecified);
+                    return Err(VulkanError::Framework(FrameworkError::UserInput(Some(format!("Error creating the renderpass: in a subpass one input attachment is specified to be {}, but only {} attachments have beed defined",
+                    (*input_attachment as usize), attachment_descriptors.len()
+                )))))
                 }
 
                 input_attachment_of_subpass.push(
@@ -308,7 +316,7 @@ impl RenderPass {
                 attachments_description: attachments_copy,
                 subpasses_description: subpasses.iter().cloned().collect(),
             })),
-            Err(_err) => Err(VulkanError::Unspecified),
+            Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating renderpass: {}", err.to_string())))),
         }
     }
 }
