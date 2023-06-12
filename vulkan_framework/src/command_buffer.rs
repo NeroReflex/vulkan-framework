@@ -7,20 +7,22 @@ use std::{
 use ash::vk::Handle;
 
 use crate::{
+    binding_tables::RaytracingBindingTables,
     command_pool::{CommandPool, CommandPoolOwned},
     device::DeviceOwned,
     framebuffer::{Framebuffer, FramebufferTrait},
     graphics_pipeline::GraphicsPipeline,
     image::{
-        Image1DTrait, Image2DTrait, ImageAspects, ImageDimensions, ImageLayout,
-        ImageSubresourceLayers, ImageSubresourceRange, ImageTrait, Image2DDimensions, Image3DDimensions, Image3DTrait,
+        Image1DTrait, Image2DTrait, Image3DDimensions, Image3DTrait, ImageAspects, ImageDimensions,
+        ImageLayout, ImageSubresourceLayers, ImageSubresourceRange, ImageTrait,
     },
     instance::InstanceOwned,
     pipeline_layout::PipelineLayout,
     pipeline_stage::PipelineStages,
-    prelude::{VulkanError, VulkanResult, FrameworkError},
+    prelude::{FrameworkError, VulkanError, VulkanResult},
     queue_family::QueueFamily,
-    renderpass::RenderPassCompatible, raytracing_pipeline::RaytracingPipeline, binding_tables::RaytracingBindingTables, memory_allocator::MemoryAllocator,
+    raytracing_pipeline::RaytracingPipeline,
+    renderpass::RenderPassCompatible,
 };
 use crate::{
     compute_pipeline::ComputePipeline, descriptor_set::DescriptorSet, device::Device,
@@ -518,9 +520,8 @@ impl<'a> CommandBufferRecorder<'a> {
     pub fn trace_rays(
         &mut self,
         binding_tables: Arc<RaytracingBindingTables>,
-        dimensions: Image3DDimensions
+        dimensions: Image3DDimensions,
     ) {
-
         // check if ray_tracing extension is enabled
         match self.device.ash_ext_raytracing_pipeline_khr() {
             Some(rt_ext) => {
@@ -538,20 +539,17 @@ impl<'a> CommandBufferRecorder<'a> {
                         &callable_shader_binding_tables,
                         dimensions.width(),
                         dimensions.height(),
-                        dimensions.depth()
+                        dimensions.depth(),
                     )
                 }
-            },
+            }
             None => {
                 println!("Ray tracing pipeline is no enabled, nothing will happend.");
             }
         }
     }
 
-    pub fn bind_ray_tracing_pipeline(
-        &mut self,
-        raytracing_pipeline: Arc<RaytracingPipeline>,
-    ) {
+    pub fn bind_ray_tracing_pipeline(&mut self, raytracing_pipeline: Arc<RaytracingPipeline>) {
         unsafe {
             self.device.ash_handle().cmd_bind_pipeline(
                 self.command_buffer.ash_handle(),
@@ -960,13 +958,25 @@ impl PrimaryCommandBuffer {
                             }
                         }
                     }
-                    Err(err) => 
-                        // the command buffer is in the previous state... A good one unless the error is DEVICE_LOST
-                        Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error opening the command buffer for writing: {}", err.to_string()))))
+                    Err(err) =>
+                    // the command buffer is in the previous state... A good one unless the error is DEVICE_LOST
+                    {
+                        Err(VulkanError::Vulkan(
+                            err.as_raw(),
+                            Some(format!(
+                                "Error opening the command buffer for writing: {}",
+                                err
+                            )),
+                        ))
+                    }
                 }
             }
-            Err(err) => Err(VulkanError::Framework(FrameworkError::Unknown(Some(format!("Error opening the command buffer for writing: Error acquiring mutex: {}",
-                err.to_string())))))
+            Err(err) => Err(VulkanError::Framework(FrameworkError::Unknown(Some(
+                format!(
+                    "Error opening the command buffer for writing: Error acquiring mutex: {}",
+                    err
+                ),
+            )))),
         }
     }
 

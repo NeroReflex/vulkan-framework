@@ -4,7 +4,7 @@ use crate::{
     memory_allocator::{AllocationResult, MemoryAllocator},
     memory_heap::MemoryHeapOwned,
     memory_pool::{MemoryPool, MemoryPoolBacked},
-    prelude::{VulkanError, VulkanResult, FrameworkError},
+    prelude::{FrameworkError, VulkanError, VulkanResult},
     queue_family::QueueFamily,
 };
 
@@ -265,13 +265,10 @@ pub struct ConcreteBufferDescriptor {
 }
 
 impl ConcreteBufferDescriptor {
-    pub fn new(
-        usage: BufferUsage,
-        size: u64
-    ) -> Self {
+    pub fn new(usage: BufferUsage, size: u64) -> Self {
         Self {
             size: size as ash::vk::DeviceSize,
-            usage: usage
+            usage,
         }
     }
 
@@ -290,16 +287,14 @@ pub trait BufferTrait: Send + Sync + DeviceOwned {
     fn native_handle(&self) -> u64;
 }
 
-pub struct Buffer
-{
+pub struct Buffer {
     memory_pool: Arc<MemoryPool>,
     reserved_memory_from_pool: AllocationResult,
     descriptor: ConcreteBufferDescriptor,
     buffer: ash::vk::Buffer,
 }
 
-impl Drop for Buffer
-{
+impl Drop for Buffer {
     fn drop(&mut self) {
         let device = self
             .memory_pool
@@ -312,12 +307,13 @@ impl Drop for Buffer
             )
         }
 
-        self.memory_pool.get_memory_allocator().dealloc(&mut self.reserved_memory_from_pool)
+        self.memory_pool
+            .get_memory_allocator()
+            .dealloc(&mut self.reserved_memory_from_pool)
     }
 }
 
-impl MemoryPoolBacked for Buffer
-{
+impl MemoryPoolBacked for Buffer {
     fn get_backing_memory_pool(&self) -> Arc<MemoryPool> {
         self.memory_pool.clone()
     }
@@ -331,8 +327,7 @@ impl MemoryPoolBacked for Buffer
     }
 }
 
-impl DeviceOwned for Buffer
-{
+impl DeviceOwned for Buffer {
     fn get_parent_device(&self) -> Arc<Device> {
         self.memory_pool
             .get_parent_memory_heap()
@@ -340,8 +335,7 @@ impl DeviceOwned for Buffer
     }
 }
 
-impl BufferTrait for Buffer
-{
+impl BufferTrait for Buffer {
     fn size(&self) -> u64 {
         self.descriptor.ash_size()
     }
@@ -351,8 +345,7 @@ impl BufferTrait for Buffer
     }
 }
 
-impl Buffer
-{
+impl Buffer {
     pub(crate) fn ash_handle(&self) -> ash::vk::Buffer {
         self.buffer
     }
@@ -397,7 +390,10 @@ impl Buffer
         } {
             Ok(buffer) => buffer,
             Err(err) => {
-                return Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating the buffer: {}", err.to_string()))))
+                return Err(VulkanError::Vulkan(
+                    err.as_raw(),
+                    Some(format!("Error creating the buffer: {}", err)),
+                ))
             }
         };
 
@@ -419,7 +415,9 @@ impl Buffer
                         .object_name(object_name)
                         .build();
 
-                    if let Err(err) = ext.set_debug_utils_object_name(device.ash_handle().handle(), &dbg_info) {
+                    if let Err(err) =
+                        ext.set_debug_utils_object_name(device.ash_handle().handle(), &dbg_info)
+                    {
                         #[cfg(debug_assertions)]
                         {
                             println!("Error setting the Debug name for the newly created Buffer, will use handle. Error: {}", err);
@@ -448,11 +446,19 @@ impl Buffer
                 requirements.memory_requirements
             };
 
-            if !memory_pool.get_parent_memory_heap().check_memory_requirements_are_satified(requirements.memory_type_bits) {
-                return Err(VulkanError::Framework(FrameworkError::IncompatibleMemoryHeapType))
+            if !memory_pool
+                .get_parent_memory_heap()
+                .check_memory_requirements_are_satified(requirements.memory_type_bits)
+            {
+                return Err(VulkanError::Framework(
+                    FrameworkError::IncompatibleMemoryHeapType,
+                ));
             }
 
-            match memory_pool.get_memory_allocator().alloc(requirements.size, requirements.alignment) {
+            match memory_pool
+                .get_memory_allocator()
+                .alloc(requirements.size, requirements.alignment)
+            {
                 Some(reserved_memory_from_pool) => {
                     match device.ash_handle().bind_buffer_memory(
                         buffer,

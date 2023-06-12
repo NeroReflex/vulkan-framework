@@ -14,7 +14,7 @@ impl ShaderStageAccessRayTracingKHR {
     pub(crate) fn ash_stage_access_mask(&self) -> ash::vk::ShaderStageFlags {
         match self.rgen {
             true => ash::vk::ShaderStageFlags::RAYGEN_KHR,
-            false => ash::vk::ShaderStageFlags::empty()
+            false => ash::vk::ShaderStageFlags::empty(),
         }
     }
 }
@@ -95,16 +95,14 @@ impl ShaderStageAccess {
             ShaderType::Vertex => self.vertex,
             ShaderType::Geometry => self.geometry,
             ShaderType::Fragment => self.fragment,
-            ShaderType::RayTracingKHR(raytracing_khr) => {
-                match raytracing_khr {
-                    ShaderTypeRayTracingKHR::RayGen => self.ray_tracing.rgen,
-                    ShaderTypeRayTracingKHR::Miss => self.ray_tracing.miss,
-                    ShaderTypeRayTracingKHR::Callable => self.ray_tracing.callable,
-                    ShaderTypeRayTracingKHR::ClosestHit => self.ray_tracing.closest_hit,
-                    ShaderTypeRayTracingKHR::AnyHit => self.ray_tracing.any_hit,
-                    ShaderTypeRayTracingKHR::Intersection => self.ray_tracing.intersection,
-                }
-            }
+            ShaderType::RayTracingKHR(raytracing_khr) => match raytracing_khr {
+                ShaderTypeRayTracingKHR::RayGen => self.ray_tracing.rgen,
+                ShaderTypeRayTracingKHR::Miss => self.ray_tracing.miss,
+                ShaderTypeRayTracingKHR::Callable => self.ray_tracing.callable,
+                ShaderTypeRayTracingKHR::ClosestHit => self.ray_tracing.closest_hit,
+                ShaderTypeRayTracingKHR::AnyHit => self.ray_tracing.any_hit,
+                ShaderTypeRayTracingKHR::Intersection => self.ray_tracing.intersection,
+            },
         }
     }
 

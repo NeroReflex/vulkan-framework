@@ -27,7 +27,8 @@ use vulkan_framework::{
     queue::*,
     queue_family::*,
     renderpass::{
-        AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp, RenderPass, RenderSubPassDescription,
+        AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp, RenderPass,
+        RenderSubPassDescription,
     },
     semaphore::Semaphore,
     swapchain::{
@@ -177,7 +178,7 @@ fn main() {
                 let _default_allocator = MemoryPool::new(
                     memory_heap,
                     Arc::new(StackAllocator::new(memory_heap_size)),
-                    MemoryPoolFeatures::from(&[])
+                    MemoryPoolFeatures::from(&[]),
                 )
                 .unwrap();
 

@@ -2,7 +2,7 @@ use ash::vk;
 
 use crate::{
     device::DeviceOwned,
-    instance::{InstanceOwned, InstanceAPIVersion},
+    instance::{InstanceAPIVersion, InstanceOwned},
     memory_allocator::*,
     memory_heap::{MemoryHeap, MemoryHeapOwned},
     prelude::{VulkanError, VulkanResult},
@@ -12,12 +12,12 @@ use std::{mem::size_of, sync::Arc};
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum MemoryPoolFeature {
-    DeviceAddressable
+    DeviceAddressable,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct MemoryPoolFeatures {
-    device_addressable: bool
+    device_addressable: bool,
 }
 
 impl MemoryPoolFeatures {
@@ -26,37 +26,28 @@ impl MemoryPoolFeatures {
     }
 
     pub fn from(features: &[MemoryPoolFeature]) -> Self {
-        Self::new(
-            features.contains(&MemoryPoolFeature::DeviceAddressable)
-        )
+        Self::new(features.contains(&MemoryPoolFeature::DeviceAddressable))
     }
 
-    pub fn new(
-        device_addressable: bool
-    ) -> Self {
-        Self {
-            device_addressable
-        }
+    pub fn new(device_addressable: bool) -> Self {
+        Self { device_addressable }
     }
 }
 
-pub struct MemoryPool
-{
+pub struct MemoryPool {
     memory_heap: Arc<MemoryHeap>,
     allocator: Arc<dyn MemoryAllocator>,
     memory: ash::vk::DeviceMemory,
     features: MemoryPoolFeatures,
 }
 
-impl MemoryHeapOwned for MemoryPool
-{
+impl MemoryHeapOwned for MemoryPool {
     fn get_parent_memory_heap(&self) -> Arc<crate::memory_heap::MemoryHeap> {
         self.memory_heap.clone()
     }
 }
 
-pub trait MemoryPoolBacked
-{
+pub trait MemoryPoolBacked {
     fn get_backing_memory_pool(&self) -> Arc<MemoryPool>;
 
     fn allocation_offset(&self) -> u64;
@@ -64,8 +55,7 @@ pub trait MemoryPoolBacked
     fn allocation_size(&self) -> u64;
 }
 
-impl Drop for MemoryPool
-{
+impl Drop for MemoryPool {
     fn drop(&mut self) {
         let memory_heap = self.get_parent_memory_heap();
         let device = memory_heap.get_parent_device();
@@ -78,21 +68,18 @@ impl Drop for MemoryPool
     }
 }
 
-impl MemoryPool
-{
+impl MemoryPool {
     pub fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.memory)
     }
 
-    pub fn get_memory_allocator(
-        &self,
-    ) -> Arc<dyn MemoryAllocator> {
+    pub fn get_memory_allocator(&self) -> Arc<dyn MemoryAllocator> {
         self.allocator.clone()
     }
 
     pub fn features(&self) -> MemoryPoolFeatures {
         self.features
-    } 
+    }
 
     pub(crate) fn ash_handle(&self) -> ash::vk::DeviceMemory {
         self.memory
@@ -105,18 +92,22 @@ impl MemoryPool
         let device = self.get_parent_memory_heap().get_parent_device();
 
         if !self.get_parent_memory_heap().is_host_mappable() {
-            return Err(VulkanError::Unspecified)
+            return Err(VulkanError::Unspecified);
         }
 
         match unsafe {
-            device
-                .ash_handle()
-                .map_memory(self.memory, offset, (src.len() + size_of::<T>()) as u64, vk::MemoryMapFlags::empty())
+            device.ash_handle().map_memory(
+                self.memory,
+                offset,
+                (src.len() + size_of::<T>()) as u64,
+                vk::MemoryMapFlags::empty(),
+            )
         } {
             Ok(ptr) => {
                 // copy raw from data to ptr
 
-                let mapped_typed_ptr = unsafe { std::slice::from_raw_parts_mut(ptr as *mut T, src.len())};
+                let mapped_typed_ptr =
+                    unsafe { std::slice::from_raw_parts_mut(ptr as *mut T, src.len()) };
                 mapped_typed_ptr.copy_from_slice(src);
 
                 unsafe { device.ash_handle().unmap_memory(self.memory) }
@@ -141,7 +132,7 @@ impl MemoryPool
         let device = self.get_parent_memory_heap().get_parent_device();
 
         if !self.get_parent_memory_heap().is_host_mappable() {
-            return Err(VulkanError::Unspecified)
+            return Err(VulkanError::Unspecified);
         }
 
         match unsafe {
@@ -183,7 +174,7 @@ impl MemoryPool
             .build();
 
         if allocator.total_size() < memory_heap.total_size() {
-            return Err(VulkanError::Unspecified)
+            return Err(VulkanError::Unspecified);
         }
 
         let device = memory_heap.get_parent_device();
@@ -195,13 +186,16 @@ impl MemoryPool
 
         if features.device_addressable() {
             let instance_ver = device.get_parent_instance().instance_vulkan_version();
-            if (instance_ver != InstanceAPIVersion::Version1_0) && (instance_ver != InstanceAPIVersion::Version1_1) {
-                create_info.p_next = &mut memory_flags as *mut ash::vk::MemoryAllocateFlagsInfo as *mut std::ffi::c_void;
+            if (instance_ver != InstanceAPIVersion::Version1_0)
+                && (instance_ver != InstanceAPIVersion::Version1_1)
+            {
+                create_info.p_next = &mut memory_flags as *mut ash::vk::MemoryAllocateFlagsInfo
+                    as *mut std::ffi::c_void;
             } else {
-                return Err(VulkanError::Unspecified)
+                return Err(VulkanError::Unspecified);
             }
         }
-        
+
         unsafe {
             match device.ash_handle().allocate_memory(
                 &create_info,

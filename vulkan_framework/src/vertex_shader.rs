@@ -48,28 +48,22 @@ impl PrivateShaderTrait for VertexShader {
 }
 
 impl VertexShader {
-    pub fn new<'a, 'b, 'c>(
+    pub fn new(
         device: Arc<Device>,
-        push_constant_ranges: &'a [Arc<PushConstanRange>],
-        descriptor_bindings: &'b [Arc<BindingDescriptor>],
-        code: &'c [u32],
+        push_constant_ranges: &[Arc<PushConstanRange>],
+        descriptor_bindings: &[Arc<BindingDescriptor>],
+        code: &[u32],
     ) -> VulkanResult<Arc<Self>> {
         for push_constant_range in push_constant_ranges.iter() {
-            assert_eq!(
-                push_constant_range
-                    .shader_access()
-                    .is_accessible_by(&ShaderType::Vertex),
-                true
-            );
+            assert!(push_constant_range
+                .shader_access()
+                .is_accessible_by(&ShaderType::Vertex));
         }
 
         for descriptor_set_layout_binding in descriptor_bindings.iter() {
-            assert_eq!(
-                descriptor_set_layout_binding
-                    .shader_access()
-                    .is_accessible_by(&ShaderType::Vertex),
-                true
-            );
+            assert!(descriptor_set_layout_binding
+                .shader_access()
+                .is_accessible_by(&ShaderType::Vertex));
         }
 
         let create_info = ash::vk::ShaderModuleCreateInfo::builder()
@@ -88,7 +82,10 @@ impl VertexShader {
                 //descriptor_bindings: descriptor_bindings.to_vec(),
                 module,
             })),
-            Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating the vertex shader: {}", err.to_string()))))
+            Err(err) => Err(VulkanError::Vulkan(
+                err.as_raw(),
+                Some(format!("Error creating the vertex shader: {}", err)),
+            )),
         }
     }
 }

@@ -6,7 +6,7 @@ use crate::{
     memory_allocator::{AllocationResult, MemoryAllocator},
     memory_heap::MemoryHeapOwned,
     memory_pool::{MemoryPool, MemoryPoolBacked},
-    prelude::{VulkanError, VulkanResult, FrameworkError},
+    prelude::{FrameworkError, VulkanError, VulkanResult},
     queue_family::QueueFamily,
 };
 
@@ -296,7 +296,7 @@ impl From<Image2DDimensions> for Image3DDimensions {
         Self {
             width: value.width,
             height: value.height,
-            depth: 1
+            depth: 1,
         }
     }
 }
@@ -870,16 +870,14 @@ pub(crate) trait ImageOwned {
     fn get_parent_image(&self) -> Arc<dyn ImageTrait>;
 }
 
-pub struct Image
-{
+pub struct Image {
     memory_pool: Arc<MemoryPool>,
     reserved_memory_from_pool: AllocationResult,
     image: ash::vk::Image,
     descriptor: ConcreteImageDescriptor,
 }
 
-impl DeviceOwned for Image
-{
+impl DeviceOwned for Image {
     fn get_parent_device(&self) -> Arc<Device> {
         self.get_backing_memory_pool()
             .get_parent_memory_heap()
@@ -887,8 +885,7 @@ impl DeviceOwned for Image
     }
 }
 
-impl ImageTrait for Image
-{
+impl ImageTrait for Image {
     fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.image)
     }
@@ -910,8 +907,7 @@ impl ImageTrait for Image
     }
 }
 
-impl Image
-{
+impl Image {
     pub(crate) fn ash_native(&self) -> ash::vk::Image {
         self.image
     }
@@ -1016,7 +1012,9 @@ impl Image
                         .object_name(object_name)
                         .build();
 
-                    if let Err(err) = ext.set_debug_utils_object_name(device.ash_handle().handle(), &dbg_info) {
+                    if let Err(err) =
+                        ext.set_debug_utils_object_name(device.ash_handle().handle(), &dbg_info)
+                    {
                         #[cfg(debug_assertions)]
                         {
                             println!("Error setting the Debug name for the newly created Image, will use handle. Error: {}", err)
@@ -1046,14 +1044,22 @@ impl Image
             requirements.memory_requirements
         };
 
-        if !memory_pool.get_parent_memory_heap().check_memory_requirements_are_satified(requirements.memory_type_bits) {
-            return Err(VulkanError::Framework(FrameworkError::IncompatibleMemoryHeapType))
+        if !memory_pool
+            .get_parent_memory_heap()
+            .check_memory_requirements_are_satified(requirements.memory_type_bits)
+        {
+            return Err(VulkanError::Framework(
+                FrameworkError::IncompatibleMemoryHeapType,
+            ));
         }
 
-        match memory_pool.get_memory_allocator().alloc(requirements.size, requirements.alignment) {
+        match memory_pool
+            .get_memory_allocator()
+            .alloc(requirements.size, requirements.alignment)
+        {
             Some(reserved_memory_from_pool) => {
                 match unsafe {
-                        device.ash_handle().bind_image_memory(
+                    device.ash_handle().bind_image_memory(
                         image,
                         memory_pool.ash_handle(),
                         reserved_memory_from_pool.offset_in_pool(),
@@ -1074,7 +1080,7 @@ impl Image
                             )
                         }
 
-                        Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error allocating memory on the device: {}, probably this is due to an incorrect implementation of the memory allocation algorithm", err.to_string()))))
+                        Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error allocating memory on the device: {}, probably this is due to an incorrect implementation of the memory allocation algorithm", err))))
                     }
                 }
             }
@@ -1085,15 +1091,14 @@ impl Image
                         .ash_handle()
                         .destroy_image(image, device.get_parent_instance().get_alloc_callbacks());
                 }
-                
+
                 Err(VulkanError::Framework(FrameworkError::MallocFail))
             }
         }
     }
 }
 
-impl Drop for Image
-{
+impl Drop for Image {
     fn drop(&mut self) {
         let device = self
             .memory_pool
@@ -1107,12 +1112,13 @@ impl Drop for Image
             );
         }
 
-        self.memory_pool.get_memory_allocator().dealloc(&mut self.reserved_memory_from_pool)
+        self.memory_pool
+            .get_memory_allocator()
+            .dealloc(&mut self.reserved_memory_from_pool)
     }
 }
 
-impl MemoryPoolBacked for Image
-{
+impl MemoryPoolBacked for Image {
     fn get_backing_memory_pool(&self) -> Arc<MemoryPool> {
         self.memory_pool.clone()
     }

@@ -49,7 +49,7 @@ pub struct ConcreteMemoryHeapDescriptor {
 
 impl ConcreteMemoryHeapDescriptor {
     pub fn memory_type(&self) -> MemoryType {
-        self.memory_type.clone()
+        self.memory_type
     }
 
     pub fn memory_minimum_size(&self) -> u64 {
@@ -90,7 +90,8 @@ impl Drop for MemoryHeap {
 
 impl MemoryHeap {
     pub fn is_host_mappable(&self) -> bool {
-        ash::vk::MemoryPropertyFlags::from_raw(self.heap_property_flags).contains(ash::vk::MemoryPropertyFlags::HOST_VISIBLE)
+        ash::vk::MemoryPropertyFlags::from_raw(self.heap_property_flags)
+            .contains(ash::vk::MemoryPropertyFlags::HOST_VISIBLE)
     }
 
     pub fn heap_index(&self) -> u32 {
@@ -98,7 +99,7 @@ impl MemoryHeap {
     }
 
     pub fn memory_type(&self) -> MemoryType {
-        self.descriptor.memory_type.clone()
+        self.descriptor.memory_type
     }
 
     pub fn total_size(&self) -> u64 {
@@ -109,10 +110,7 @@ impl MemoryHeap {
         self.heap_type_index
     }
 
-    pub fn check_memory_requirements_are_satified(
-        &self,
-        memory_type_bits: u32
-    ) -> bool {
+    pub fn check_memory_requirements_are_satified(&self, _memory_type_bits: u32) -> bool {
         // TODO: check if this heap satisfy memory requirements...
         // memoryTypeBits is a bitmask and contains one bit set for every supported memory type for the resource. Bit i is set if and only if the memory type i in the VkPhysicalDeviceMemoryProperties structure for the physical device is supported for the resource.
 

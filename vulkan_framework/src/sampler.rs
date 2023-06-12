@@ -1,13 +1,16 @@
 use std::sync::Arc;
 
-use crate::{device::{Device, DeviceOwned}, instance::InstanceOwned, prelude::{VulkanResult, VulkanError}};
-
+use crate::{
+    device::{Device, DeviceOwned},
+    instance::InstanceOwned,
+    prelude::{VulkanError, VulkanResult},
+};
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum Filtering {
     Nearest,
     Linear,
-    Cubic
+    Cubic,
 }
 
 impl Filtering {
@@ -17,13 +20,13 @@ impl Filtering {
             Filtering::Linear => ash::vk::Filter::LINEAR,
             Filtering::Nearest => ash::vk::Filter::NEAREST,
         }
-    } 
+    }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum MipmapMode {
     ModeNearest,
-    ModeLinear
+    ModeLinear,
 }
 
 impl MipmapMode {
@@ -32,7 +35,7 @@ impl MipmapMode {
             MipmapMode::ModeNearest => ash::vk::SamplerMipmapMode::NEAREST,
             MipmapMode::ModeLinear => ash::vk::SamplerMipmapMode::LINEAR,
         }
-    } 
+    }
 }
 
 pub struct Sampler {
@@ -53,7 +56,10 @@ impl DeviceOwned for Sampler {
 impl Drop for Sampler {
     fn drop(&mut self) {
         unsafe {
-            self.device.ash_handle().destroy_sampler(self.sampler, self.device.get_parent_instance().get_alloc_callbacks())
+            self.device.ash_handle().destroy_sampler(
+                self.sampler,
+                self.device.get_parent_instance().get_alloc_callbacks(),
+            )
         }
     }
 }
@@ -96,25 +102,20 @@ impl Sampler {
             .build();
 
         match unsafe {
-            device.ash_handle().create_sampler(&create_info, device.get_parent_instance().get_alloc_callbacks())
+            device.ash_handle().create_sampler(
+                &create_info,
+                device.get_parent_instance().get_alloc_callbacks(),
+            )
         } {
-            Ok(sampler) => {
-                Ok(
-                    Arc::new(
-                        Self {
-                            device,
-                            sampler,
-                            mag_filter,
-                            min_filter,
-                            mipmap_mode,
-                            max_anisotropy,
-                        }
-                    )
-                )
-            },
-            Err(err) => {
-                Err(VulkanError::Vulkan(err.as_raw(), None))
-            }
+            Ok(sampler) => Ok(Arc::new(Self {
+                device,
+                sampler,
+                mag_filter,
+                min_filter,
+                mipmap_mode,
+                max_anisotropy,
+            })),
+            Err(err) => Err(VulkanError::Vulkan(err.as_raw(), None)),
         }
     }
 }

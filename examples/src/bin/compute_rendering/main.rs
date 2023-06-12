@@ -32,15 +32,14 @@ use vulkan_framework::graphics_pipeline::Rasterizer;
 use vulkan_framework::image::ConcreteImageDescriptor;
 use vulkan_framework::image::Image;
 use vulkan_framework::image::Image2DDimensions;
-use vulkan_framework::image::ImageAspect;
-use vulkan_framework::image::ImageAspects;
+
 use vulkan_framework::image::ImageDimensions;
 use vulkan_framework::image::ImageFlags;
 use vulkan_framework::image::ImageFormat;
 use vulkan_framework::image::ImageLayout;
 use vulkan_framework::image::ImageLayoutSwapchainKHR;
 use vulkan_framework::image::ImageMultisampling;
-use vulkan_framework::image::ImageSubresourceLayers;
+
 use vulkan_framework::image::ImageTiling;
 use vulkan_framework::image::ImageTrait;
 use vulkan_framework::image::ImageUsage;
@@ -132,7 +131,9 @@ void main() {
     gl_Position = vec4(vQuadPosition[gl_VertexIndex], 0.0, 1.0);
 }
 "#,
-    glsl, vert, vulkan1_0,
+    glsl,
+    vert,
+    vulkan1_0,
     entry = "main"
 );
 
@@ -150,7 +151,9 @@ void main() {
     outColor = texture(src, in_vTextureUV);
 }
 "#,
-    glsl, frag, vulkan1_0,
+    glsl,
+    frag,
+    vulkan1_0,
     entry = "main"
 );
 
@@ -266,7 +269,8 @@ fn main() {
                                                     2, // one for descriptor_set and one for renderquad_descriptor_set
                                                 ),
                                                 Some("My descriptor pool"),
-                                            ).unwrap();
+                                            )
+                                            .unwrap();
 
                                             println!("Memory heap created! <3");
                                             let memory_heap_size = memory_heap.total_size();
@@ -286,25 +290,37 @@ fn main() {
                                                 }
                                             };
 
-                                            let swapchain_extent = Image2DDimensions::new(WIDTH, HEIGHT);
+                                            let swapchain_extent =
+                                                Image2DDimensions::new(WIDTH, HEIGHT);
 
-                                            let device_swapchain_info = DeviceSurfaceInfo::new(device.clone(), sfc).unwrap();
+                                            let device_swapchain_info =
+                                                DeviceSurfaceInfo::new(device.clone(), sfc)
+                                                    .unwrap();
 
-                                            if !device_swapchain_info.present_mode_supported(&PresentModeSwapchainKHR::FIFO) {
+                                            if !device_swapchain_info.present_mode_supported(
+                                                &PresentModeSwapchainKHR::FIFO,
+                                            ) {
                                                 panic!("Device does not support the most common present mode. LOL.");
                                             }
 
                                             let final_format = ImageFormat::b8g8r8a8_srgb;
-                                            let color_space = SurfaceColorspaceSwapchainKHR::SRGBNonlinear;
-                                            if !device_swapchain_info.format_supported(&color_space, &final_format) {
+                                            let color_space =
+                                                SurfaceColorspaceSwapchainKHR::SRGBNonlinear;
+                                            if !device_swapchain_info
+                                                .format_supported(&color_space, &final_format)
+                                            {
                                                 panic!("Device does not support the most common format. LOL.");
                                             }
 
-                                            let mut swapchain_images_count = device_swapchain_info.min_image_count() + 2;
+                                            let mut swapchain_images_count =
+                                                device_swapchain_info.min_image_count() + 2;
 
-                                            if !device_swapchain_info.image_count_supported(swapchain_images_count) {
+                                            if !device_swapchain_info
+                                                .image_count_supported(swapchain_images_count)
+                                            {
                                                 println!("Image count {} not supported (the maximum is {}), sticking with the minimum one: {}", swapchain_images_count, device_swapchain_info.max_image_count(), device_swapchain_info.min_image_count());
-                                                swapchain_images_count = device_swapchain_info.min_image_count();
+                                                swapchain_images_count =
+                                                    device_swapchain_info.min_image_count();
                                             }
 
                                             let swapchain = SwapchainKHR::new(
@@ -318,7 +334,8 @@ fn main() {
                                                 true,
                                                 final_format,
                                                 ImageUsage::Managed(ImageUsageSpecifier::new(
-                                                    false, false, false, false, true, false, false, false,
+                                                    false, false, false, false, true, false, false,
+                                                    false,
                                                 )),
                                                 swapchain_extent,
                                                 swapchain_images_count,
@@ -346,7 +363,8 @@ fn main() {
                                                 ),
                                                 None,
                                                 Some("Test Image"),
-                                            ).unwrap();
+                                            )
+                                            .unwrap();
 
                                             let image_view = match ImageView::new(
                                                 image.clone(),
@@ -375,56 +393,68 @@ fn main() {
                                                 0.0
                                             ).unwrap();
 
-                                            let renderquad_renderpass = vulkan_framework::renderpass::RenderPass::new(
-                                                device.clone(),
-                                                &[
-                                                    AttachmentDescription::new(
-                                                        final_format,
-                                                        ImageMultisampling::SamplesPerPixel1,
-                                                        ImageLayout::Undefined,
-                                                        ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
-                                                        AttachmentLoadOp::Clear,
-                                                        AttachmentStoreOp::Store,
-                                                        AttachmentLoadOp::Clear,
-                                                        AttachmentStoreOp::Store,
-                                                    ),
-                                                    /*
-                                                    // depth
-                                                    AttachmentDescription::new(
-                                                        final_format,
-                                                        ImageMultisampling::SamplesPerPixel1,
-                                                        ImageLayout::Undefined,
-                                                        ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
-                                                        AttachmentLoadOp::Clear,
-                                                        AttachmentStoreOp::Store,
-                                                        AttachmentLoadOp::Clear,
-                                                        AttachmentStoreOp::Store,
-                                                    )*/
-                                                ],
-                                                &[RenderSubPassDescription::new(&[], &[0], None)],
-                                            )
-                                            .unwrap();
+                                            let renderquad_renderpass =
+                                                vulkan_framework::renderpass::RenderPass::new(
+                                                    device.clone(),
+                                                    &[
+                                                        AttachmentDescription::new(
+                                                            final_format,
+                                                            ImageMultisampling::SamplesPerPixel1,
+                                                            ImageLayout::Undefined,
+                                                            ImageLayout::SwapchainKHR(
+                                                                ImageLayoutSwapchainKHR::PresentSrc,
+                                                            ),
+                                                            AttachmentLoadOp::Clear,
+                                                            AttachmentStoreOp::Store,
+                                                            AttachmentLoadOp::Clear,
+                                                            AttachmentStoreOp::Store,
+                                                        ),
+                                                        /*
+                                                        // depth
+                                                        AttachmentDescription::new(
+                                                            final_format,
+                                                            ImageMultisampling::SamplesPerPixel1,
+                                                            ImageLayout::Undefined,
+                                                            ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
+                                                            AttachmentLoadOp::Clear,
+                                                            AttachmentStoreOp::Store,
+                                                            AttachmentLoadOp::Clear,
+                                                            AttachmentStoreOp::Store,
+                                                        )*/
+                                                    ],
+                                                    &[RenderSubPassDescription::new(
+                                                        &[],
+                                                        &[0],
+                                                        None,
+                                                    )],
+                                                )
+                                                .unwrap();
                                             println!("Renderpass created!");
 
-                                            let renderquad_image_imput_format = ImageLayout::ShaderReadOnlyOptimal;
-                            
-                                            let renderquad_texture_binding_descriptor = BindingDescriptor::new(
-                                                ShaderStageAccess::graphics(),
-                                                BindingType::Native(NativeBindingType::CombinedImageSampler),
-                                                0,
-                                                1,
-                                            );
+                                            let renderquad_image_imput_format =
+                                                ImageLayout::ShaderReadOnlyOptimal;
 
-                                            let renderquad_descriptor_set_layout = DescriptorSetLayout::new(
-                                                device.clone(),
-                                                &[renderquad_texture_binding_descriptor.clone()],
-                                            ).unwrap();
+                                            let renderquad_texture_binding_descriptor =
+                                                BindingDescriptor::new(
+                                                    ShaderStageAccess::graphics(),
+                                                    BindingType::Native(
+                                                        NativeBindingType::CombinedImageSampler,
+                                                    ),
+                                                    0,
+                                                    1,
+                                                );
+
+                                            let renderquad_descriptor_set_layout =
+                                                DescriptorSetLayout::new(
+                                                    device.clone(),
+                                                    &[renderquad_texture_binding_descriptor
+                                                        .clone()],
+                                                )
+                                                .unwrap();
 
                                             let renderquad_pipeline_layout = PipelineLayout::new(
                                                 device.clone(),
-                                                &[
-                                                    renderquad_descriptor_set_layout.clone()
-                                                ],
+                                                &[renderquad_descriptor_set_layout.clone()],
                                                 &[],
                                                 Some("pipeline_layout"),
                                             )
@@ -433,53 +463,69 @@ fn main() {
 
                                             let renderquad_descriptor_set = DescriptorSet::new(
                                                 descriptor_pool.clone(),
-                                                renderquad_descriptor_set_layout.clone(),
-                                            ).unwrap();
-                                            
-                                            renderquad_descriptor_set.bind_resources(|binder| {
-                                                binder.bind_combined_images_samplers(
+                                                renderquad_descriptor_set_layout,
+                                            )
+                                            .unwrap();
+
+                                            renderquad_descriptor_set
+                                                .bind_resources(|binder| {
+                                                    binder.bind_combined_images_samplers(
+                                                        0,
+                                                        &[(
+                                                            ImageLayout::General,
+                                                            image_view.clone(),
+                                                            renderquad_sampler.clone(),
+                                                        )],
+                                                    )
+                                                })
+                                                .unwrap();
+
+                                            let renderquad_vertex_shader = VertexShader::new(
+                                                device.clone(),
+                                                &[],
+                                                &[renderquad_texture_binding_descriptor.clone()],
+                                                RENDERQUAD_VERTEX_SPV,
+                                            )
+                                            .unwrap();
+
+                                            let renderquad_fragment_shader = FragmentShader::new(
+                                                device.clone(),
+                                                &[],
+                                                &[renderquad_texture_binding_descriptor],
+                                                RENDERQUAD_FRAGMENT_SPV,
+                                            )
+                                            .unwrap();
+
+                                            let renderquad_graphics_pipeline =
+                                                GraphicsPipeline::new(
+                                                    renderquad_renderpass.clone(),
                                                     0,
-                                                    &[(
-                                                        ImageLayout::General,
-                                                        image_view.clone(),
-                                                        renderquad_sampler.clone(),
-                                                    )],
-                                                )
-                                            }).unwrap();
-                            
-                                            let renderquad_vertex_shader = VertexShader::new(device.clone(), &[], &[renderquad_texture_binding_descriptor.clone()], RENDERQUAD_VERTEX_SPV).unwrap();
-                            
-                                            let renderquad_fragment_shader = FragmentShader::new(device.clone(), &[], &[renderquad_texture_binding_descriptor.clone()], RENDERQUAD_FRAGMENT_SPV).unwrap();
-                            
-                                            let renderquad_graphics_pipeline = GraphicsPipeline::new(
-                                                renderquad_renderpass.clone(),
-                                                0,
-                                                ImageMultisampling::SamplesPerPixel1,
-                                                Some(DepthConfiguration::new(
-                                                    true,
-                                                    DepthCompareOp::Always,
-                                                    Some((0.0, 1.0)),
-                                                )),
-                                                Image2DDimensions::new(WIDTH, HEIGHT),
-                                                renderquad_pipeline_layout.clone(),
-                                                &[
+                                                    ImageMultisampling::SamplesPerPixel1,
+                                                    Some(DepthConfiguration::new(
+                                                        true,
+                                                        DepthCompareOp::Always,
+                                                        Some((0.0, 1.0)),
+                                                    )),
+                                                    Image2DDimensions::new(WIDTH, HEIGHT),
+                                                    renderquad_pipeline_layout.clone(),
+                                                    &[
                                                     /*VertexInputBinding::new(
                                                     VertexInputRate::PerVertex,
                                                     0,
                                                     &[VertexInputAttribute::new(0, 0, AttributeType::Vec4)],
                                                     )*/
                                                 ],
-                                                Rasterizer::new(
-                                                    PolygonMode::Fill,
-                                                    FrontFace::CounterClockwise,
-                                                    CullMode::None,
-                                                    None,
-                                                ),
-                                                (renderquad_vertex_shader, None),
-                                                (renderquad_fragment_shader, None),
-                                                Some("renderquad_pipeline"),
-                                            )
-                                            .unwrap();
+                                                    Rasterizer::new(
+                                                        PolygonMode::Fill,
+                                                        FrontFace::CounterClockwise,
+                                                        CullMode::None,
+                                                        None,
+                                                    ),
+                                                    (renderquad_vertex_shader, None),
+                                                    (renderquad_fragment_shader, None),
+                                                    Some("renderquad_pipeline"),
+                                                )
+                                                .unwrap();
                                             println!("Graphics pipeline created!");
 
                                             let resulting_image_shader_binding =
@@ -537,38 +583,45 @@ fn main() {
                                                 &[descriptor_set_layout.clone()],
                                                 &[image_dimensions_shader_push_constant],
                                                 Some("Layout of Example pipeline"),
-                                            ).unwrap();
+                                            )
+                                            .unwrap();
 
                                             let compute_pipeline = ComputePipeline::new(
                                                 compute_pipeline_layout.clone(),
                                                 (compute_shader, None),
                                                 Some("Example pipeline"),
-                                            ).unwrap();
+                                            )
+                                            .unwrap();
 
                                             let command_pool = CommandPool::new(
                                                 queue_family.clone(),
                                                 Some("My command pool"),
-                                            ).unwrap();
+                                            )
+                                            .unwrap();
 
                                             let descriptor_set = DescriptorSet::new(
-                                                descriptor_pool.clone(),
+                                                descriptor_pool,
                                                 descriptor_set_layout,
-                                            ).unwrap();
+                                            )
+                                            .unwrap();
 
-                                            descriptor_set.bind_resources(|binder| {
-                                                binder.bind_storage_images(
-                                                    0,
-                                                    &[(
-                                                        ImageLayout::General,
-                                                        image_view.clone(),
-                                                    )],
-                                                )
-                                            }).unwrap();
+                                            descriptor_set
+                                                .bind_resources(|binder| {
+                                                    binder.bind_storage_images(
+                                                        0,
+                                                        &[(
+                                                            ImageLayout::General,
+                                                            image_view.clone(),
+                                                        )],
+                                                    )
+                                                })
+                                                .unwrap();
 
                                             let command_buffer = PrimaryCommandBuffer::new(
                                                 command_pool.clone(),
                                                 Some("my command buffer <3"),
-                                            ).unwrap();
+                                            )
+                                            .unwrap();
 
                                             match command_buffer.record_commands(|recorder| {
                                                 recorder.image_barrier(ImageMemoryBarrier::new(
@@ -694,70 +747,93 @@ fn main() {
                                                 ImageSwapchainKHR::extract(swapchain.clone())
                                                     .unwrap();
 
-                                            let image_available_semaphores = (0..(swapchain_images_count)).into_iter().map(|idx|
-                                                Semaphore::new(
-                                                    device.clone(),
-                                                    false,
-                                                    Some("image_available_semaphores[...]"),
-                                                )
-                                                .unwrap()
-                                            ).collect::<Vec<Arc<Semaphore>>>();
+                                            let image_available_semaphores = (0
+                                                ..(swapchain_images_count))
+                                                .map(|_idx| {
+                                                    Semaphore::new(
+                                                        device.clone(),
+                                                        false,
+                                                        Some("image_available_semaphores[...]"),
+                                                    )
+                                                    .unwrap()
+                                                })
+                                                .collect::<Vec<Arc<Semaphore>>>();
 
-                                            let image_rendered_semaphores = (0..(swapchain_images_count)).into_iter().map(|idx|
-                                                Semaphore::new(
-                                                    device.clone(),
-                                                    false,
-                                                    Some("image_rendered_semaphores[...]"),
-                                                )
-                                                .unwrap()
-                                            ).collect::<Vec<Arc<Semaphore>>>();
+                                            let image_rendered_semaphores = (0
+                                                ..(swapchain_images_count))
+                                                .map(|_idx| {
+                                                    Semaphore::new(
+                                                        device.clone(),
+                                                        false,
+                                                        Some("image_rendered_semaphores[...]"),
+                                                    )
+                                                    .unwrap()
+                                                })
+                                                .collect::<Vec<Arc<Semaphore>>>();
 
-                                            let swapchain_fences = (0..(swapchain_images_count)).into_iter().map(|idx|
-                                                Fence::new(
-                                                    device.clone(),
-                                                    true,
-                                                    Some("swapchain_fences[...]"),
-                                                )
-                                                .unwrap()
-                                            ).collect::<Vec<Arc<Fence>>>();
-                                            
-                                            let mut swapchain_fence_waiters = (0..(swapchain_images_count)).into_iter().map(|idx|
-                                                FenceWaiter::from_fence(swapchain_fences[idx as usize].clone())
-                                            ).collect::<Vec<FenceWaiter>>();
+                                            let swapchain_fences = (0..(swapchain_images_count))
+                                                .map(|_idx| {
+                                                    Fence::new(
+                                                        device.clone(),
+                                                        true,
+                                                        Some("swapchain_fences[...]"),
+                                                    )
+                                                    .unwrap()
+                                                })
+                                                .collect::<Vec<Arc<Fence>>>();
 
-                                            let present_command_buffers = (0..(swapchain_images_count)).into_iter().map(|idx|
+                                            let mut swapchain_fence_waiters = (0
+                                                ..(swapchain_images_count))
+                                                .map(|idx| {
+                                                    FenceWaiter::from_fence(
+                                                        swapchain_fences[idx as usize].clone(),
+                                                    )
+                                                })
+                                                .collect::<Vec<FenceWaiter>>();
+
+                                            let present_command_buffers = (0
+                                                ..(swapchain_images_count))
+                                                .map(|_idx| {
                                                     PrimaryCommandBuffer::new(
                                                         command_pool.clone(),
-                                                        Some("present_command_buffers[...]")
+                                                        Some("present_command_buffers[...]"),
                                                     )
-                                                .unwrap()
-                                            ).collect::<Vec<Arc<PrimaryCommandBuffer>>>();
+                                                    .unwrap()
+                                                })
+                                                .collect::<Vec<Arc<PrimaryCommandBuffer>>>();
 
-                                            let swapchain_images_imageview = (0..(swapchain_images_count)).into_iter().map(|idx|
-                                                ImageView::new(
-                                                    swapchain_images[idx as usize].clone(),
-                                                    ImageViewType::Image2D,
-                                                    None,
-                                                    None,
-                                                    None,
-                                                    None,
-                                                    None,
-                                                    None,
-                                                    None,
-                                                    Some("swapchain_images_imageview[...]")
-                                                )
-                                                .unwrap()
-                                            ).collect::<Vec<Arc<ImageView>>>();
+                                            let swapchain_images_imageview = (0
+                                                ..(swapchain_images_count))
+                                                .map(|idx| {
+                                                    ImageView::new(
+                                                        swapchain_images[idx as usize].clone(),
+                                                        ImageViewType::Image2D,
+                                                        None,
+                                                        None,
+                                                        None,
+                                                        None,
+                                                        None,
+                                                        None,
+                                                        None,
+                                                        Some("swapchain_images_imageview[...]"),
+                                                    )
+                                                    .unwrap()
+                                                })
+                                                .collect::<Vec<Arc<ImageView>>>();
 
-                                            let rendequad_framebuffers = (0..(swapchain_images_count)).into_iter().map(|idx|
-                                                Framebuffer::new(
-                                                    renderquad_renderpass.clone(),
-                                                    &[swapchain_images_imageview[idx as usize].clone()],
-                                                    swapchain_extent,
-                                                    1
-                                                )
-                                                .unwrap()
-                                            ).collect::<Vec<Arc<Framebuffer>>>();
+                                            let rendequad_framebuffers = (0
+                                                ..(swapchain_images_count))
+                                                .map(|idx| {
+                                                    Framebuffer::new(
+                                                        renderquad_renderpass.clone(),
+                                                        &[swapchain_images_imageview[idx as usize]
+                                                            .clone()],
+                                                        swapchain_extent,
+                                                        1,
+                                                    )
+                                                    .unwrap()
+                                                })
+                                                .collect::<Vec<Arc<Framebuffer>>>();
 
                                             let mut current_frame: usize = 0;
 
@@ -786,14 +862,19 @@ fn main() {
                                                         }
                                                     }
 
-                                                    renderquad_descriptor_set.bind_resources(|renderquad_binder|
-                                                        {
-                                                            renderquad_binder.bind_combined_images_samplers(
+                                                    renderquad_descriptor_set
+                                                        .bind_resources(|renderquad_binder| {
+                                                            renderquad_binder
+                                                                .bind_combined_images_samplers(
                                                                 0,
-                                                                &[(renderquad_image_imput_format, image_view.clone(), renderquad_sampler.clone())]
+                                                                &[(
+                                                                    renderquad_image_imput_format,
+                                                                    image_view.clone(),
+                                                                    renderquad_sampler.clone(),
+                                                                )],
                                                             );
-                                                        }
-                                                    ).unwrap();
+                                                        })
+                                                        .unwrap();
 
                                                     let mut event_pump =
                                                         sdl_context.event_pump().unwrap();
@@ -823,9 +904,13 @@ fn main() {
                                                                 None,
                                                             )
                                                             .unwrap();
-                                                        println!("Swapchain image index {}", swapchain_index);
+                                                        println!(
+                                                            "Swapchain image index {}",
+                                                            swapchain_index
+                                                        );
                                                         // wait for fence
-                                                        swapchain_fence_waiters[current_frame % (swapchain_images_count as usize)]
+                                                        swapchain_fence_waiters[current_frame
+                                                            % (swapchain_images_count as usize)]
                                                             .wait(u64::MAX)
                                                             .unwrap();
 
@@ -876,7 +961,9 @@ fn main() {
                                                                 queue.clone(),
                                                                 swapchain_index,
                                                                 &[image_rendered_semaphores
-                                                                    [current_frame % (swapchain_images_count as usize)]
+                                                                    [current_frame
+                                                                        % (swapchain_images_count
+                                                                            as usize)]
                                                                     .clone()],
                                                             )
                                                             .unwrap();

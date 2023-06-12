@@ -7,7 +7,7 @@ pub enum ShaderTypeRayTracingKHR {
     Callable,
     ClosestHit,
     AnyHit,
-    Intersection
+    Intersection,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -17,7 +17,7 @@ pub enum ShaderType {
     Geometry,
     Fragment,
 
-    RayTracingKHR(ShaderTypeRayTracingKHR)
+    RayTracingKHR(ShaderTypeRayTracingKHR),
 }
 
 pub trait ShaderTrait: DeviceOwned {

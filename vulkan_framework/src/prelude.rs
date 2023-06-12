@@ -4,7 +4,7 @@ pub type VulkanResult<T> = Result<T, VulkanError>;
 pub enum FrameworkError {
     MallocFail,
     IncompatibleMemoryHeapType,
-    Unknown(Option<String>)
+    Unknown(Option<String>),
 }
 
 #[derive(Debug)]

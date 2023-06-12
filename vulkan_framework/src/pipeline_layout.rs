@@ -119,7 +119,13 @@ impl PipelineLayout {
                     push_constant_ranges: constant_ranges.iter().cloned().collect(),
                 }))
             }
-            Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating the pipeline layout shader: {}", err.to_string()))))
+            Err(err) => Err(VulkanError::Vulkan(
+                err.as_raw(),
+                Some(format!(
+                    "Error creating the pipeline layout shader: {}",
+                    err
+                )),
+            )),
         }
     }
 }

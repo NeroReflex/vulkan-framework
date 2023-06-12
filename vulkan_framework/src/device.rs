@@ -18,7 +18,7 @@ struct DeviceExtensions {
     swapchain_khr_ext: Option<ash::extensions::khr::Swapchain>,
     raytracing_pipeline_khr_ext: Option<ash::extensions::khr::RayTracingPipeline>,
     raytracing_maintenance_khr_ext: Option<ash::extensions::khr::RayTracingMaintenance1>,
-    acceleration_structure_khr_ext: Option<ash::extensions::khr::AccelerationStructure>
+    acceleration_structure_khr_ext: Option<ash::extensions::khr::AccelerationStructure>,
 }
 
 struct DeviceData {
@@ -76,7 +76,7 @@ pub struct Device {
     extensions: DeviceExtensions,
     device: ash::Device,
     physical_device: ash::vk::PhysicalDevice,
-    ray_tracing_info: Option<RaytracingInfo>
+    ray_tracing_info: Option<RaytracingInfo>,
 }
 
 impl PartialEq for Device {
@@ -108,15 +108,21 @@ impl Device {
         &self.extensions.swapchain_khr_ext
     }
 
-    pub(crate) fn ash_ext_raytracing_maintenance1_khr(&self) -> &Option<ash::extensions::khr::RayTracingMaintenance1> {
+    pub(crate) fn ash_ext_raytracing_maintenance1_khr(
+        &self,
+    ) -> &Option<ash::extensions::khr::RayTracingMaintenance1> {
         &self.extensions.raytracing_maintenance_khr_ext
     }
 
-    pub(crate) fn ash_ext_raytracing_pipeline_khr(&self) -> &Option<ash::extensions::khr::RayTracingPipeline> {
+    pub(crate) fn ash_ext_raytracing_pipeline_khr(
+        &self,
+    ) -> &Option<ash::extensions::khr::RayTracingPipeline> {
         &self.extensions.raytracing_pipeline_khr_ext
     }
 
-    pub(crate) fn ash_ext_acceleration_structure_khr(&self) -> &Option<ash::extensions::khr::AccelerationStructure> {
+    pub(crate) fn ash_ext_acceleration_structure_khr(
+        &self,
+    ) -> &Option<ash::extensions::khr::AccelerationStructure> {
         &self.extensions.acceleration_structure_khr_ext
     }
 
@@ -541,60 +547,79 @@ impl Device {
                                 .map(|str| str.as_ptr())
                                 .collect::<Vec<*const c_char>>();
 
-                            let mut device_create_info_builder = ash::vk::DeviceCreateInfo::builder()
-                                .queue_create_infos(selected_device.selected_queues.as_slice())
-                                .enabled_layer_names(layers_ptr.as_slice())
-                                .enabled_extension_names(extensions_ptr.as_slice());
+                            let mut device_create_info_builder =
+                                ash::vk::DeviceCreateInfo::builder()
+                                    .queue_create_infos(selected_device.selected_queues.as_slice())
+                                    .enabled_layer_names(layers_ptr.as_slice())
+                                    .enabled_extension_names(extensions_ptr.as_slice());
 
-                            let acceleration_structure_enabled = device_extensions.iter().any(|ext| {
-                                ext.as_str()
-                                    == ash::extensions::khr::AccelerationStructure::name()
-                                        .to_str()
-                                        .unwrap_or("")
-                                }
-                            );
+                            let acceleration_structure_enabled =
+                                device_extensions.iter().any(|ext| {
+                                    ext.as_str()
+                                        == ash::extensions::khr::AccelerationStructure::name()
+                                            .to_str()
+                                            .unwrap_or("")
+                                });
 
                             let ray_tracing_enabled = device_extensions.iter().any(|ext| {
                                 ext.as_str()
                                     == ash::extensions::khr::RayTracingPipeline::name()
                                         .to_str()
                                         .unwrap_or("")
-                                }
-                            );
+                            });
 
                             let mut features2 = ash::vk::PhysicalDeviceFeatures2::default();
-                            let mut accel_structure_features = ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
-                            let mut ray_tracing_pipeline_features = ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
-                            let mut get_device_address_features = ash::vk::PhysicalDeviceBufferDeviceAddressFeatures::default();
-                            
+                            let mut accel_structure_features =
+                                ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
+                            let mut ray_tracing_pipeline_features =
+                                ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
+                            let mut get_device_address_features =
+                                ash::vk::PhysicalDeviceBufferDeviceAddressFeatures::default();
+
                             let mut properties2 = ash::vk::PhysicalDeviceProperties2::default();
-                            let mut ray_tracing_pipeline_properties = ash::vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
+                            let mut ray_tracing_pipeline_properties =
+                                ash::vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
 
                             // Enable raytracing if required extensions have been requested
-                            if instance.instance_vulkan_version() != InstanceAPIVersion::Version1_0 {
+                            if instance.instance_vulkan_version() != InstanceAPIVersion::Version1_0
+                            {
                                 if acceleration_structure_enabled {
                                     if ray_tracing_enabled {
                                         properties2.p_next = &mut ray_tracing_pipeline_properties as *mut ash::vk::PhysicalDeviceRayTracingPipelinePropertiesKHR as *mut std::ffi::c_void;
                                         accel_structure_features.p_next = &mut ray_tracing_pipeline_features as *mut ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR as *mut std::ffi::c_void;
-                                    
-                                        if instance.instance_vulkan_version() != InstanceAPIVersion::Version1_1 {
+
+                                        if instance.instance_vulkan_version()
+                                            != InstanceAPIVersion::Version1_1
+                                        {
                                             ray_tracing_pipeline_features.p_next = &mut get_device_address_features as *mut ash::vk::PhysicalDeviceBufferDeviceAddressFeatures as *mut std::ffi::c_void;
                                         }
                                     }
-                                    
+
                                     features2.p_next = &mut accel_structure_features as *mut ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR as *mut std::ffi::c_void;
                                 }
 
-                                if instance.instance_vulkan_version() == InstanceAPIVersion::Version1_0 {
-                                    device_create_info_builder = device_create_info_builder.enabled_features(&selected_device.selected_device_features);
+                                if instance.instance_vulkan_version()
+                                    == InstanceAPIVersion::Version1_0
+                                {
+                                    device_create_info_builder = device_create_info_builder
+                                        .enabled_features(
+                                            &selected_device.selected_device_features,
+                                        );
                                 } else {
-
-                                    instance.ash_handle().get_physical_device_features2(selected_device.selected_physical_device, &mut features2);
-                                    instance.ash_handle().get_physical_device_properties2(selected_device.selected_physical_device, &mut properties2);
-                                    device_create_info_builder = device_create_info_builder.push_next(&mut features2);
+                                    instance.ash_handle().get_physical_device_features2(
+                                        selected_device.selected_physical_device,
+                                        &mut features2,
+                                    );
+                                    instance.ash_handle().get_physical_device_properties2(
+                                        selected_device.selected_physical_device,
+                                        &mut properties2,
+                                    );
+                                    device_create_info_builder =
+                                        device_create_info_builder.push_next(&mut features2);
                                 }
                             } else {
-                                device_create_info_builder = device_create_info_builder.enabled_features(&selected_device.selected_device_features);
+                                device_create_info_builder = device_create_info_builder
+                                    .enabled_features(&selected_device.selected_device_features);
                             }
 
                             let mut raytracing_info: Option<RaytracingInfo> = Option::None;
@@ -623,64 +648,105 @@ impl Device {
                                             false => Option::None,
                                         };
 
-                                        let raytracing_pipeline_ext: Option<ash::extensions::khr::RayTracingPipeline> =
-                                        match ray_tracing_enabled {
-                                            true => {
-                                                //ray_tracing_pipeline_properties.
-                                                println!("    RayTracing shader_group_handle_size: {}", ray_tracing_pipeline_properties.shader_group_handle_size);
-                                                println!("    RayTracing max_ray_dispatch_invocation_count: {}", ray_tracing_pipeline_properties.max_ray_dispatch_invocation_count);
-                                                println!("    RayTracing max_ray_hit_attribute_size: {}", ray_tracing_pipeline_properties.max_ray_hit_attribute_size);
-                                                println!("    RayTracing max_ray_recursion_depth: {}", ray_tracing_pipeline_properties.max_ray_recursion_depth);
-                                                println!("    RayTracing max_shader_group_stride: {}", ray_tracing_pipeline_properties.max_shader_group_stride);
-                                                println!("    RayTracing shader_group_base_alignment: {}", ray_tracing_pipeline_properties.shader_group_base_alignment);
-                                                println!("    RayTracing shader_group_handle_alignment: {}", ray_tracing_pipeline_properties.shader_group_handle_alignment);
+                                    let raytracing_pipeline_ext: Option<
+                                        ash::extensions::khr::RayTracingPipeline,
+                                    > = match ray_tracing_enabled {
+                                        true => {
+                                            //ray_tracing_pipeline_properties.
+                                            println!(
+                                                "    RayTracing shader_group_handle_size: {}",
+                                                ray_tracing_pipeline_properties
+                                                    .shader_group_handle_size
+                                            );
+                                            println!("    RayTracing max_ray_dispatch_invocation_count: {}", ray_tracing_pipeline_properties.max_ray_dispatch_invocation_count);
+                                            println!(
+                                                "    RayTracing max_ray_hit_attribute_size: {}",
+                                                ray_tracing_pipeline_properties
+                                                    .max_ray_hit_attribute_size
+                                            );
+                                            println!(
+                                                "    RayTracing max_ray_recursion_depth: {}",
+                                                ray_tracing_pipeline_properties
+                                                    .max_ray_recursion_depth
+                                            );
+                                            println!(
+                                                "    RayTracing max_shader_group_stride: {}",
+                                                ray_tracing_pipeline_properties
+                                                    .max_shader_group_stride
+                                            );
+                                            println!(
+                                                "    RayTracing shader_group_base_alignment: {}",
+                                                ray_tracing_pipeline_properties
+                                                    .shader_group_base_alignment
+                                            );
+                                            println!(
+                                                "    RayTracing shader_group_handle_alignment: {}",
+                                                ray_tracing_pipeline_properties
+                                                    .shader_group_handle_alignment
+                                            );
 
-                                                raytracing_info = Some(
-                                                    RaytracingInfo {
-                                                        shader_group_handle_size: ray_tracing_pipeline_properties.shader_group_handle_size,
-                                                        max_ray_dispatch_invocation_count: ray_tracing_pipeline_properties.max_ray_dispatch_invocation_count,
-                                                        max_ray_hit_attribute_size: ray_tracing_pipeline_properties.max_ray_hit_attribute_size,
-                                                        max_ray_recursion_depth: ray_tracing_pipeline_properties.max_ray_recursion_depth,
-                                                        max_shader_group_stride: ray_tracing_pipeline_properties.max_shader_group_stride,
-                                                        shader_group_base_alignment: ray_tracing_pipeline_properties.shader_group_base_alignment,
-                                                        shader_group_handle_alignment: ray_tracing_pipeline_properties.shader_group_handle_alignment
-                                                    }
-                                                );
+                                            raytracing_info = Some(RaytracingInfo {
+                                                shader_group_handle_size:
+                                                    ray_tracing_pipeline_properties
+                                                        .shader_group_handle_size,
+                                                max_ray_dispatch_invocation_count:
+                                                    ray_tracing_pipeline_properties
+                                                        .max_ray_dispatch_invocation_count,
+                                                max_ray_hit_attribute_size:
+                                                    ray_tracing_pipeline_properties
+                                                        .max_ray_hit_attribute_size,
+                                                max_ray_recursion_depth:
+                                                    ray_tracing_pipeline_properties
+                                                        .max_ray_recursion_depth,
+                                                max_shader_group_stride:
+                                                    ray_tracing_pipeline_properties
+                                                        .max_shader_group_stride,
+                                                shader_group_base_alignment:
+                                                    ray_tracing_pipeline_properties
+                                                        .shader_group_base_alignment,
+                                                shader_group_handle_alignment:
+                                                    ray_tracing_pipeline_properties
+                                                        .shader_group_handle_alignment,
+                                            });
 
-                                                Option::Some(ash::extensions::khr::RayTracingPipeline::new(
+                                            Option::Some(
+                                                ash::extensions::khr::RayTracingPipeline::new(
                                                     instance.ash_handle(),
                                                     &device,
-                                                ))
-                                            }
-                                            false => Option::None,
-                                        };
+                                                ),
+                                            )
+                                        }
+                                        false => Option::None,
+                                    };
 
-                                        let acceleration_structure_ext: Option<ash::extensions::khr::AccelerationStructure> = 
-                                        match acceleration_structure_enabled {
-                                            true => {
-                                                Option::Some(ash::extensions::khr::AccelerationStructure::new(
-                                                    instance.ash_handle(),
-                                                    &device,
-                                                ))
-                                            }
-                                            false => Option::None,
-                                        };
+                                    let acceleration_structure_ext: Option<
+                                        ash::extensions::khr::AccelerationStructure,
+                                    > = match acceleration_structure_enabled {
+                                        true => Option::Some(
+                                            ash::extensions::khr::AccelerationStructure::new(
+                                                instance.ash_handle(),
+                                                &device,
+                                            ),
+                                        ),
+                                        false => Option::None,
+                                    };
 
-                                        let raytracing_maintenance_ext: Option<ash::extensions::khr::RayTracingMaintenance1> =
-                                        match device_extensions.iter().any(|ext| {
-                                            ext.as_str()
-                                                == ash::extensions::khr::RayTracingMaintenance1::name()
-                                                    .to_str()
-                                                    .unwrap_or("")
-                                        }) {
-                                            true => {
-                                                Option::Some(ash::extensions::khr::RayTracingMaintenance1::new(
-                                                    instance.ash_handle(),
-                                                    &device,
-                                                ))
-                                            }
-                                            false => Option::None,
-                                        };
+                                    let raytracing_maintenance_ext: Option<
+                                        ash::extensions::khr::RayTracingMaintenance1,
+                                    > = match device_extensions.iter().any(|ext| {
+                                        ext.as_str()
+                                            == ash::extensions::khr::RayTracingMaintenance1::name()
+                                                .to_str()
+                                                .unwrap_or("")
+                                    }) {
+                                        true => Option::Some(
+                                            ash::extensions::khr::RayTracingMaintenance1::new(
+                                                instance.ash_handle(),
+                                                &device,
+                                            ),
+                                        ),
+                                        false => Option::None,
+                                    };
 
                                     let mut obj_name_bytes = vec![];
 
@@ -726,8 +792,10 @@ impl Device {
                                         extensions: DeviceExtensions {
                                             swapchain_khr_ext: swapchain_ext,
                                             raytracing_pipeline_khr_ext: raytracing_pipeline_ext,
-                                            raytracing_maintenance_khr_ext: raytracing_maintenance_ext,
-                                            acceleration_structure_khr_ext: acceleration_structure_ext,
+                                            raytracing_maintenance_khr_ext:
+                                                raytracing_maintenance_ext,
+                                            acceleration_structure_khr_ext:
+                                                acceleration_structure_ext,
                                         },
                                         instance,
                                         physical_device: selected_device.selected_physical_device,
@@ -880,7 +948,11 @@ impl Device {
             }
 
             // If I'm here the previous search has find that the current heap is suitable...
-            return Some((heap_descriptor.heap_index, memory_type_index as u32, heap_descriptor.property_flags.as_raw()));
+            return Some((
+                heap_descriptor.heap_index,
+                memory_type_index as u32,
+                heap_descriptor.property_flags.as_raw(),
+            ));
         }
         None
     }

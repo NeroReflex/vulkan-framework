@@ -47,11 +47,11 @@ impl PrivateShaderTrait for ComputeShader {
 }
 
 impl ComputeShader {
-    pub fn new<'a, 'b, 'c>(
+    pub fn new<'a, 'b>(
         device: Arc<Device>,
         //push_constant_ranges: &'a [Arc<PushConstanRange>],
         //descriptor_bindings: &'b [Arc<BindingDescriptor>],
-        code: &'c [u32],
+        code: &[u32],
     ) -> VulkanResult<Arc<Self>> {
         /*
         for push_constant_range in push_constant_ranges.iter() {
@@ -89,7 +89,10 @@ impl ComputeShader {
                 //descriptor_bindings: descriptor_bindings.to_vec(),
                 module,
             })),
-            Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating the compute shader: {}", err.to_string()))))
+            Err(err) => Err(VulkanError::Vulkan(
+                err.as_raw(),
+                Some(format!("Error creating the compute shader: {}", err)),
+            )),
         }
     }
 }

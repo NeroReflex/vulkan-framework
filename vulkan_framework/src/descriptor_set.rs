@@ -9,8 +9,8 @@ use crate::{
     device::DeviceOwned,
     image::ImageLayout,
     image_view::ImageView,
-    memory_allocator::MemoryAllocator,
-    prelude::{VulkanError, VulkanResult, FrameworkError}, sampler::Sampler,
+    prelude::{FrameworkError, VulkanError, VulkanResult},
+    sampler::Sampler,
 };
 
 pub struct DescriptorSetWriter<'a> {
@@ -53,8 +53,7 @@ impl<'a> DescriptorSetWriter<'a> {
         &mut self,
         first_layout_id: u32,
         images: &[(ImageLayout, Arc<ImageView>, Arc<Sampler>)],
-    )
-    {
+    ) {
         let descriptors: Vec<ash::vk::DescriptorImageInfo> = images
             .iter()
             .enumerate()
@@ -63,7 +62,10 @@ impl<'a> DescriptorSetWriter<'a> {
                 let (image_layout, image_view, image_sampler) = image;
 
                 self.used_resources[(first_layout_id as usize) + index] =
-                    DescriptorSetBoundResource::CombinedImageViewSampler((image_view.clone(), image_sampler.clone()));
+                    DescriptorSetBoundResource::CombinedImageViewSampler((
+                        image_view.clone(),
+                        image_sampler.clone(),
+                    ));
 
                 ash::vk::DescriptorImageInfo::builder()
                     .image_view(image_view.ash_handle())
@@ -89,8 +91,7 @@ impl<'a> DescriptorSetWriter<'a> {
         &mut self,
         first_layout_id: u32,
         images: &[(ImageLayout, Arc<ImageView>)],
-    )
-    {
+    ) {
         let descriptors: Vec<ash::vk::DescriptorImageInfo> = images
             .iter()
             .enumerate()
@@ -126,8 +127,7 @@ impl<'a> DescriptorSetWriter<'a> {
         buffers: &[Arc<dyn BufferTrait>],
         offset: Option<u64>,
         size: Option<u64>,
-    )
-    {
+    ) {
         let descriptors: Vec<ash::vk::DescriptorBufferInfo> = buffers
             .iter()
             .enumerate()
@@ -166,8 +166,7 @@ impl<'a> DescriptorSetWriter<'a> {
         buffers: &[Arc<dyn BufferTrait>],
         offset: Option<u64>,
         size: Option<u64>,
-    )
-    {
+    ) {
         let descriptors: Vec<ash::vk::DescriptorBufferInfo> = buffers
             .iter()
             .enumerate()
@@ -310,7 +309,9 @@ impl DescriptorSet {
 
                 Ok(())
             }
-            Err(err) => Err(VulkanError::Framework(FrameworkError::Unknown(Some(format!("Error acquiring the descriptor set mutex: {}", err)))))
+            Err(err) => Err(VulkanError::Framework(FrameworkError::Unknown(Some(
+                format!("Error acquiring the descriptor set mutex: {}", err),
+            )))),
         }
     }
 

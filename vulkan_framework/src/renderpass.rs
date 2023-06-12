@@ -98,7 +98,7 @@ pub struct RenderSubPassDescription {
 }
 
 impl RenderSubPassDescription {
-    pub fn input_color_attachment_indeces<'a>(&'a self) -> impl Iterator<Item = &'a u32> {
+    pub fn input_color_attachment_indeces(&self) -> impl Iterator<Item = &'_ u32> {
         self.input_color_attachment_indeces.iter()
     }
 
@@ -106,7 +106,7 @@ impl RenderSubPassDescription {
         self.input_color_attachment_indeces.len()
     }
 
-    pub fn output_color_attachment_indeces<'a>(&'a self) -> impl Iterator<Item = &'a u32> {
+    pub fn output_color_attachment_indeces(&self) -> impl Iterator<Item = &'_ u32> {
         self.output_color_attachment_indeces.iter()
     }
 
@@ -128,8 +128,14 @@ impl RenderSubPassDescription {
         output_depth_stencil_attachment_index: Option<u32>,
     ) -> Self {
         Self {
-            input_color_attachment_indeces: input_color_attachment_indeces.iter().cloned().collect(),
-            output_color_attachment_indeces: output_color_attachment_indeces.iter().cloned().collect(),
+            input_color_attachment_indeces: input_color_attachment_indeces
+                .iter()
+                .cloned()
+                .collect(),
+            output_color_attachment_indeces: output_color_attachment_indeces
+                .iter()
+                .cloned()
+                .collect(),
             output_depth_stencil_attachment_index,
         }
     }
@@ -164,7 +170,7 @@ impl RenderPass {
         ash::vk::Handle::as_raw(self.renderpass)
     }
 
-    pub fn get_subpass_description<'a>(&'a self, index: usize) -> &'a RenderSubPassDescription {
+    pub fn get_subpass_description(&self, index: usize) -> &RenderSubPassDescription {
         &self.subpasses_description[index]
     }
 
@@ -181,8 +187,7 @@ impl RenderPass {
         let attachments_copy = attachments
             .iter()
             .cloned()
-            .collect::<smallvec::SmallVec<[AttachmentDescription; 32]>>(
-        );
+            .collect::<smallvec::SmallVec<[AttachmentDescription; 32]>>();
 
         let attachment_descriptors = attachments_copy
             .iter()
@@ -301,11 +306,7 @@ impl RenderPass {
                 device,
                 renderpass,
                 attachments_description: attachments_copy,
-                subpasses_description: subpasses
-                .iter()
-                .cloned()
-                .collect(
-            )
+                subpasses_description: subpasses.iter().cloned().collect(),
             })),
             Err(_err) => Err(VulkanError::Unspecified),
         }

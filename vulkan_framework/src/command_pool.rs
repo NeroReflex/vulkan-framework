@@ -101,7 +101,10 @@ impl CommandPool {
                     command_pool,
                 }))
             }
-            Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating the command pool: {}", err.to_string()))))
+            Err(err) => Err(VulkanError::Vulkan(
+                err.as_raw(),
+                Some(format!("Error creating the command pool: {}", err)),
+            )),
         }
     }
 }

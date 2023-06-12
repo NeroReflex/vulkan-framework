@@ -127,7 +127,7 @@ impl VertexInputBinding {
         self.stride
     }
 
-    pub fn attributes<'a>(&'a self) -> impl Iterator<Item = &'a VertexInputAttribute> {
+    pub fn attributes(&self) -> impl Iterator<Item = &'_ VertexInputAttribute> {
         self.attributes.iter()
     }
 
@@ -489,7 +489,9 @@ impl GraphicsPipeline {
         let mut color_blend_attachment_state: smallvec::SmallVec<
             [ash::vk::PipelineColorBlendAttachmentState; 16],
         > = smallvec::smallvec![];
-        for _si in 0..renderpass.get_subpass_description(subpass_index as usize).output_color_attachment_indeces_size()
+        for _si in 0..renderpass
+            .get_subpass_description(subpass_index as usize)
+            .output_color_attachment_indeces_size()
         {
             color_blend_attachment_state.push(
                 ash::vk::PipelineColorBlendAttachmentState::builder()
@@ -606,7 +608,10 @@ impl GraphicsPipeline {
                     pipeline_layout,
                 }))
             }
-            Err((_, err)) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating the graphics pipeline: {}", err.to_string())))),
+            Err((_, err)) => Err(VulkanError::Vulkan(
+                err.as_raw(),
+                Some(format!("Error creating the graphics pipeline: {}", err)),
+            )),
         }
     }
 }

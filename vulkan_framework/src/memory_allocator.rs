@@ -1,4 +1,7 @@
-use std::sync::{Mutex, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex,
+};
 
 pub struct AllocationResult {
     requested_size: u64,
@@ -81,19 +84,26 @@ impl DefaultAllocator {
 
         loop {
             if number_of_blocks < 4096 {
-                break
-            } 
+                break;
+            }
 
             block_size *= 2;
             number_of_blocks = total_size / block_size;
         }
 
-        println!("Managing {} blocks of {} bytes each", number_of_blocks, block_size);
+        println!(
+            "Managing {} blocks of {} bytes each",
+            number_of_blocks, block_size
+        );
 
         Self {
-            management_array: Mutex::new((0..(number_of_blocks as usize)).map(|_idx| 0u8).collect::<smallvec::SmallVec<[u8; 4096]>>()),
+            management_array: Mutex::new(
+                (0..(number_of_blocks as usize))
+                    .map(|_idx| 0u8)
+                    .collect::<smallvec::SmallVec<[u8; 4096]>>(),
+            ),
             total_size: number_of_blocks * block_size,
-            block_size: block_size
+            block_size,
         }
     }
 }
@@ -115,15 +125,20 @@ impl MemoryAllocator for DefaultAllocator {
 
         match self.management_array.lock() {
             Ok(mut lck) => {
-                
                 'find_first_block: for i in 0..last_useful_first_allocation_block {
-                    let next_aligned_start_addr = (((i * self.block_size) / alignment) + if ((i * self.block_size) % alignment) == 0 { 0 } else { 1 }) * alignment;
+                    let next_aligned_start_addr = (((i * self.block_size) / alignment)
+                        + if ((i * self.block_size) % alignment) == 0 {
+                            0
+                        } else {
+                            1
+                        })
+                        * alignment;
 
-
-                    let contains_aligned_start = next_aligned_start_addr >= (i * self.block_size) && (next_aligned_start_addr < ((i + 1u64) * self.block_size));
+                    let contains_aligned_start = next_aligned_start_addr >= (i * self.block_size)
+                        && (next_aligned_start_addr < ((i + 1u64) * self.block_size));
 
                     if !contains_aligned_start {
-                        continue 'find_first_block
+                        continue 'find_first_block;
                     }
 
                     /*
@@ -138,7 +153,7 @@ impl MemoryAllocator for DefaultAllocator {
                     // make sure the requested memory is free
                     for j in i..(i + required_number_of_blocks) {
                         if (*lck)[j as usize] != 0u8 {
-                            continue 'find_first_block
+                            continue 'find_first_block;
                         }
                     }
 
@@ -146,26 +161,23 @@ impl MemoryAllocator for DefaultAllocator {
                     for j in i..(i + required_number_of_blocks) {
                         (*lck)[j as usize] = 1u8
                     }
-                    
-                    let allocation_start = next_aligned_start_addr;
-                    let allocation_end = (i * self.block_size) + (required_number_of_blocks * self.block_size);
 
-                    return Some(
-                        AllocationResult::new(
-                            size as u64,
-                            alignment as u64,
-                            next_aligned_start_addr,
-                            allocation_start,
-                            allocation_end
-                        )
-                    )
+                    let allocation_start = next_aligned_start_addr;
+                    let allocation_end =
+                        (i * self.block_size) + (required_number_of_blocks * self.block_size);
+
+                    return Some(AllocationResult::new(
+                        size,
+                        alignment,
+                        next_aligned_start_addr,
+                        allocation_start,
+                        allocation_end,
+                    ));
                 }
 
                 None
-            },
-            Err(_err) => {
-                None
             }
+            Err(_err) => None,
         }
     }
 
@@ -183,10 +195,10 @@ impl MemoryAllocator for DefaultAllocator {
                     if (*lck)[i as usize] != 1u8 {
                         panic!("Memory was not allocated from this pool! :O");
                     }
-                    
+
                     (*lck)[i as usize] = 0u8;
                 }
-            },
+            }
             Err(err) => {
                 println!("Error locking tha mutex: {}, memory will be lost", err);
             }
@@ -231,10 +243,15 @@ impl MemoryAllocator for StackAllocator {
             let allocation_end = allocation_start + padding_to_respect_aligment + size;
 
             if allocation_end > self.total_size {
-                return None
+                return None;
             }
 
-            match self.allocated_size.compare_exchange(allocation_start, allocation_end, Ordering::Acquire, Ordering::Acquire) {
+            match self.allocated_size.compare_exchange(
+                allocation_start,
+                allocation_end,
+                Ordering::Acquire,
+                Ordering::Acquire,
+            ) {
                 Ok(_) => {
                     return Some(AllocationResult::new(
                         size,
@@ -243,20 +260,21 @@ impl MemoryAllocator for StackAllocator {
                         allocation_start,
                         allocation_end,
                     ))
-                },
-                Err(current) => {
-                    previous_allocation_end = current
                 }
+                Err(current) => previous_allocation_end = current,
             }
         }
     }
 
     fn dealloc(&self, allocation_to_undo: &mut AllocationResult) {
         loop {
-            match self.allocated_size.compare_exchange(allocation_to_undo.allocation_end, allocation_to_undo.allocation_start, Ordering::Acquire, Ordering::Acquire) {
-                Ok(_) => {
-                    break
-                },
+            match self.allocated_size.compare_exchange(
+                allocation_to_undo.allocation_end,
+                allocation_to_undo.allocation_start,
+                Ordering::Acquire,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => break,
                 Err(current) => {
                     println!("Error in resource deallocation: out-of-order deallocation detected! I was expecting to deallocate memory that ends at address {}, instead the memory that ends at address {} has yet to be deallocated", allocation_to_undo.allocation_end, current);
                 }

@@ -45,10 +45,7 @@ impl PrivateShaderTrait for IntersectionShader {
 }
 
 impl IntersectionShader {
-    pub fn new<'a, 'b, 'c>(
-        device: Arc<Device>,
-        code: &'c [u32],
-    ) -> VulkanResult<Arc<Self>> {
+    pub fn new<'a, 'b>(device: Arc<Device>, code: &[u32]) -> VulkanResult<Arc<Self>> {
         let create_info = ash::vk::ShaderModuleCreateInfo::builder()
             .code(code)
             .build();
@@ -65,7 +62,10 @@ impl IntersectionShader {
                 //descriptor_bindings: descriptor_bindings.to_vec(),
                 module,
             })),
-            Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating the descriptor set: {}", err.to_string()))))
+            Err(err) => Err(VulkanError::Vulkan(
+                err.as_raw(),
+                Some(format!("Error creating the descriptor set: {}", err)),
+            )),
         }
     }
 }

@@ -95,7 +95,7 @@ impl ComputePipeline {
         } {
             Ok(pipelines) => {
                 assert_eq!(pipelines.len(), 1);
-                
+
                 let pipeline = pipelines[0];
 
                 let mut obj_name_bytes = vec![];
@@ -136,7 +136,10 @@ impl ComputePipeline {
                     pipeline,
                 }))
             }
-            Err((_, err)) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating the compute pipeline: {}", err.to_string()))))
+            Err((_, err)) => Err(VulkanError::Vulkan(
+                err.as_raw(),
+                Some(format!("Error creating the compute pipeline: {}", err)),
+            )),
         }
     }
 }

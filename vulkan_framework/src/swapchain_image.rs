@@ -64,7 +64,10 @@ impl ImageSwapchainKHR {
                             })
                         })
                         .collect::<smallvec::SmallVec<[Arc<Self>; 8]>>()),
-                    Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error fetching images from the swapchain: {}", err.to_string())))),
+                    Err(err) => Err(VulkanError::Vulkan(
+                        err.as_raw(),
+                        Some(format!("Error fetching images from the swapchain: {}", err)),
+                    )),
                 }
             }
             Option::None => Err(VulkanError::MissingExtension(String::from(

@@ -332,7 +332,10 @@ impl SwapchainKHR {
                     )
                 } {
                     Ok((a, _b)) => Ok(a),
-                    Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating the swapchain: {}", err.to_string()))))
+                    Err(err) => Err(VulkanError::Vulkan(
+                        err.as_raw(),
+                        Some(format!("Error creating the swapchain: {}", err)),
+                    )),
                 }
             }
             Option::None => Err(VulkanError::MissingExtension(String::from(

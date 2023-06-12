@@ -3,8 +3,14 @@ use std::sync::Arc;
 use inline_spirv::*;
 
 use vulkan_framework::{
-    command_buffer::{ClearValues, ColorClearValues, CommandBufferRecorder, PrimaryCommandBuffer, ImageMemoryBarrier, AccessFlags, AccessFlagsSpecifier, AccessFlag},
+    binding_tables::{required_memory_type, RaytracingBindingTables},
+    closest_hit_shader::ClosestHitShader,
+    command_buffer::{
+        AccessFlag, AccessFlags, AccessFlagsSpecifier, ClearValues, ColorClearValues,
+        CommandBufferRecorder, ImageMemoryBarrier, PrimaryCommandBuffer,
+    },
     command_pool::CommandPool,
+    descriptor_set_layout::DescriptorSetLayout,
     device::*,
     fence::{Fence, FenceWaiter},
     fragment_shader::FragmentShader,
@@ -14,34 +20,40 @@ use vulkan_framework::{
         Rasterizer,
     },
     image::{
-        Image2DDimensions, ImageFormat, ImageLayout, ImageLayoutSwapchainKHR, ImageMultisampling,
-        ImageUsage, ImageUsageSpecifier, Image3DDimensions, ImageFlags, ImageTiling, ImageDimensions, ConcreteImageDescriptor,
+        ConcreteImageDescriptor, Image2DDimensions, Image3DDimensions, ImageDimensions, ImageFlags,
+        ImageFormat, ImageLayout, ImageLayoutSwapchainKHR, ImageMultisampling, ImageTiling,
+        ImageUsage, ImageUsageSpecifier,
     },
     image_view::{ImageView, ImageViewType},
     instance::*,
     memory_allocator::*,
     memory_heap::*,
-    memory_pool::{MemoryPool, MemoryPoolFeatures, MemoryPoolFeature},
+    memory_pool::{MemoryPool, MemoryPoolFeature, MemoryPoolFeatures},
+    miss_shader::MissShader,
     pipeline_layout::PipelineLayout,
-    pipeline_stage::{PipelineStage, PipelineStages, PipelineStageRayTracingPipelineKHR},
+    pipeline_stage::{PipelineStage, PipelineStageRayTracingPipelineKHR, PipelineStages},
     queue::*,
     queue_family::*,
+    raygen_shader::RaygenShader,
+    raytracing_pipeline::RaytracingPipeline,
     renderpass::{
-        AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp, RenderPass, RenderSubPassDescription,
+        AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp, RenderSubPassDescription,
     },
     semaphore::Semaphore,
+    shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType},
+    shader_stage_access::ShaderStageAccess,
     swapchain::{
         CompositeAlphaSwapchainKHR, DeviceSurfaceInfo, PresentModeSwapchainKHR,
         SurfaceColorspaceSwapchainKHR, SurfaceTransformSwapchainKHR, SwapchainKHR,
     },
     swapchain_image::ImageSwapchainKHR,
-    vertex_shader::VertexShader, raytracing_pipeline::RaytracingPipeline, raygen_shader::RaygenShader, miss_shader::MissShader, intersection_shader::IntersectionShader, any_hit_shader::AnyHitShader, closest_hit_shader::ClosestHitShader, callable_shader::CallableShader, binding_tables::{required_memory_type, RaytracingBindingTables}, descriptor_set_layout::DescriptorSetLayout, shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType}, shader_stage_access::ShaderStageAccess,
+    vertex_shader::VertexShader,
 };
 
-use vulkan_framework::descriptor_set::DescriptorSet;
 use vulkan_framework::descriptor_pool::DescriptorPool;
 use vulkan_framework::descriptor_pool::DescriptorPoolConcreteDescriptor;
 use vulkan_framework::descriptor_pool::DescriptorPoolSizesConcreteDescriptor;
+use vulkan_framework::descriptor_set::DescriptorSet;
 
 const RAYGEN_SPV: &[u32] = inline_spirv!(
     r#"
@@ -88,7 +100,9 @@ void main() {
     */
 }
 "#,
-    glsl, rgen, vulkan1_2,
+    glsl,
+    rgen,
+    vulkan1_2,
     entry = "main"
 );
 
@@ -105,7 +119,9 @@ void main() {
     
 }
 "#,
-    glsl, rmiss, vulkan1_2,
+    glsl,
+    rmiss,
+    vulkan1_2,
     entry = "main"
 );
 
@@ -121,7 +137,9 @@ void main() {
     
 }
 "#,
-    glsl, rchit, vulkan1_2,
+    glsl,
+    rchit,
+    vulkan1_2,
     entry = "main"
 );
 
@@ -154,7 +172,9 @@ void main() {
     gl_Position = vec4(vQuadPosition[gl_VertexIndex], 0.0, 1.0);
 }
 "#,
-    glsl, vert, vulkan1_0,
+    glsl,
+    vert,
+    vulkan1_0,
     entry = "main"
 );
 
@@ -172,7 +192,9 @@ void main() {
     outColor = texture(src, in_vTextureUV);
 }
 "#,
-    glsl, frag, vulkan1_0,
+    glsl,
+    frag,
+    vulkan1_0,
     entry = "main"
 );
 
@@ -187,7 +209,6 @@ fn main() {
         String::from("VK_KHR_acceleration_structure"),
         String::from("VK_KHR_ray_tracing_maintenance1"),
         String::from("VK_KHR_ray_tracing_pipeline"),
-
         String::from("VK_KHR_buffer_device_address"),
         String::from("VK_KHR_deferred_host_operations"),
         String::from("VK_EXT_descriptor_indexing"),
@@ -296,16 +317,13 @@ fn main() {
                 let device_local_default_allocator = MemoryPool::new(
                     device_local_memory_heap,
                     Arc::new(DefaultAllocator::new(main_heap_size)),
-                    MemoryPoolFeatures::from(&[])
+                    MemoryPoolFeatures::from(&[]),
                 )
                 .unwrap();
 
                 let sbt_memory_heap = MemoryHeap::new(
                     dev.clone(),
-                    ConcreteMemoryHeapDescriptor::new(
-                        required_memory_type(),
-                        1024 * 1024 * 32,
-                    ),
+                    ConcreteMemoryHeapDescriptor::new(required_memory_type(), 1024 * 1024 * 32),
                 )
                 .unwrap();
                 println!("Memory heap created! <3");
@@ -314,7 +332,7 @@ fn main() {
                 let sbt_default_allocator = MemoryPool::new(
                     sbt_memory_heap,
                     Arc::new(DefaultAllocator::new(main_heap_size)),
-                    MemoryPoolFeatures::from(&[MemoryPoolFeature::DeviceAddressable])
+                    MemoryPoolFeatures::from(&[MemoryPoolFeature::DeviceAddressable]),
                 )
                 .unwrap();
 
@@ -360,44 +378,48 @@ fn main() {
                 println!("Swapchain created!");
 
                 let rt_images = (0..swapchain_images_count)
-                .map(|_idx| {
-                    vulkan_framework::image::Image::new(
-                        device_local_default_allocator.clone(),
-                        ConcreteImageDescriptor::new(
-                            ImageDimensions::Image2D {
-                                extent: swapchain_extent,
-                            },
-                            ImageUsage::Managed(ImageUsageSpecifier::new(
-                                false, false, true, true, false, false,
-                                false, false,
-                            )),
-                            ImageMultisampling::SamplesPerPixel1,
-                            1,
-                            1,
-                            ImageFormat::r32g32b32a32_sfloat,
-                            ImageFlags::empty(),
-                            ImageTiling::Optimal,
-                        ),
-                        None,
-                        Some("Test Image"),
-                    ).unwrap()
-                })
-                .collect::<Vec<Arc<vulkan_framework::image::Image>>>();
+                    .map(|_idx| {
+                        vulkan_framework::image::Image::new(
+                            device_local_default_allocator.clone(),
+                            ConcreteImageDescriptor::new(
+                                ImageDimensions::Image2D {
+                                    extent: swapchain_extent,
+                                },
+                                ImageUsage::Managed(ImageUsageSpecifier::new(
+                                    false, false, true, true, false, false, false, false,
+                                )),
+                                ImageMultisampling::SamplesPerPixel1,
+                                1,
+                                1,
+                                ImageFormat::r32g32b32a32_sfloat,
+                                ImageFlags::empty(),
+                                ImageTiling::Optimal,
+                            ),
+                            None,
+                            Some("Test Image"),
+                        )
+                        .unwrap()
+                    })
+                    .collect::<Vec<Arc<vulkan_framework::image::Image>>>();
 
-                let rt_image_views = rt_images.iter().map(|rt_img| {
-                    ImageView::new(
-                        rt_img.clone(),
-                        ImageViewType::Image2D,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None
-                    ).unwrap()
-                }).collect::<Vec<Arc<ImageView>>>();
+                let rt_image_views = rt_images
+                    .iter()
+                    .map(|rt_img| {
+                        ImageView::new(
+                            rt_img.clone(),
+                            ImageViewType::Image2D,
+                            None,
+                            None,
+                            None,
+                            None,
+                            None,
+                            None,
+                            None,
+                            None,
+                        )
+                        .unwrap()
+                    })
+                    .collect::<Vec<Arc<ImageView>>>();
 
                 let swapchain_images = ImageSwapchainKHR::extract(swapchain.clone()).unwrap();
                 println!("Swapchain images extracted!");
@@ -407,9 +429,9 @@ fn main() {
                     DescriptorPoolConcreteDescriptor::new(
                         DescriptorPoolSizesConcreteDescriptor::new(
                             0,
-                            1 * swapchain_images_count,
+                            swapchain_images_count,
                             0,
-                            1 * swapchain_images_count,
+                            swapchain_images_count,
                             0,
                             0,
                             0,
@@ -420,8 +442,8 @@ fn main() {
                         2 * swapchain_images_count, // one for descriptor_set and one for renderquad_descriptor_set
                     ),
                     Some("My descriptor pool"),
-                ).unwrap();
-            
+                )
+                .unwrap();
 
                 let image_available_semaphores = (0..swapchain_images_count)
                     .map(|_idx| {
@@ -447,7 +469,8 @@ fn main() {
                     .map(|idx| FenceWaiter::from_fence(swapchain_fences[idx as usize].clone()))
                     .collect::<Vec<FenceWaiter>>();
 
-                let command_pool = CommandPool::new(queue_family.clone(), Some("My command pool")).unwrap();
+                let command_pool =
+                    CommandPool::new(queue_family.clone(), Some("My command pool")).unwrap();
 
                 let present_command_buffers = (0..swapchain_images_count)
                     .map(|_idx| {
@@ -463,48 +486,46 @@ fn main() {
                     ShaderStageAccess::raytracing(),
                     BindingType::Native(NativeBindingType::StorageImage),
                     0,
-                    1
+                    1,
                 );
 
                 let rt_writer_img_layout = ImageLayout::General;
 
-                let rt_descriptor_set_layout = DescriptorSetLayout::new(
-                    dev.clone(),
-                    &[rt_output_image_descriptor]
-                ).unwrap();
+                let rt_descriptor_set_layout =
+                    DescriptorSetLayout::new(dev.clone(), &[rt_output_image_descriptor]).unwrap();
 
                 let rt_descriptor_sets = (0..swapchain_images_count)
-                .map(|idx| {
-                    let result = DescriptorSet::new(
-                        descriptor_pool.clone(),
-                        rt_descriptor_set_layout.clone(),
-                    ).unwrap();
+                    .map(|idx| {
+                        let result = DescriptorSet::new(
+                            descriptor_pool.clone(),
+                            rt_descriptor_set_layout.clone(),
+                        )
+                        .unwrap();
 
-                    result.bind_resources(|binder| {
-                        binder.bind_storage_images(0, &[
-                            (
-                                rt_writer_img_layout,
-                                rt_image_views[idx as usize].clone()
-                            )
-                        ]);
-                    }).unwrap();
+                        result
+                            .bind_resources(|binder| {
+                                binder.bind_storage_images(
+                                    0,
+                                    &[(rt_writer_img_layout, rt_image_views[idx as usize].clone())],
+                                );
+                            })
+                            .unwrap();
 
-                    result
-                })
-                .collect::<Vec<Arc<DescriptorSet>>>();
+                        result
+                    })
+                    .collect::<Vec<Arc<DescriptorSet>>>();
 
                 let pipeline_layout = PipelineLayout::new(
                     dev.clone(),
-                    &[
-                        rt_descriptor_set_layout.clone()
-                    ],
+                    &[rt_descriptor_set_layout],
                     &[],
                     Some("pipeline_layout"),
                 )
                 .unwrap();
                 println!("Pipeline layout created!");
 
-                let swapchain_image_views = swapchain_images.clone()
+                let swapchain_image_views = swapchain_images
+                    .clone()
                     .into_iter()
                     .map(|image_swapchain| {
                         ImageView::new(
@@ -523,142 +544,159 @@ fn main() {
                     })
                     .collect::<Vec<Arc<ImageView>>>();
 
-                    let renderquad_sampler = vulkan_framework::sampler::Sampler::new(
-                        dev.clone(),
-                        vulkan_framework::sampler::Filtering::Nearest,
-                        vulkan_framework::sampler::Filtering::Nearest,
-                        vulkan_framework::sampler::MipmapMode::ModeNearest,
-                        0.0
-                    ).unwrap();
+                let renderquad_sampler = vulkan_framework::sampler::Sampler::new(
+                    dev.clone(),
+                    vulkan_framework::sampler::Filtering::Nearest,
+                    vulkan_framework::sampler::Filtering::Nearest,
+                    vulkan_framework::sampler::MipmapMode::ModeNearest,
+                    0.0,
+                )
+                .unwrap();
 
-                    let renderquad_renderpass = vulkan_framework::renderpass::RenderPass::new(
-                        dev.clone(),
-                        &[
-                            AttachmentDescription::new(
-                                final_format,
-                                ImageMultisampling::SamplesPerPixel1,
-                                ImageLayout::Undefined,
-                                ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
-                                AttachmentLoadOp::Clear,
-                                AttachmentStoreOp::Store,
-                                AttachmentLoadOp::Clear,
-                                AttachmentStoreOp::Store,
-                            ),
-                            /*
-                            // depth
-                            AttachmentDescription::new(
-                                final_format,
-                                ImageMultisampling::SamplesPerPixel1,
-                                ImageLayout::Undefined,
-                                ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
-                                AttachmentLoadOp::Clear,
-                                AttachmentStoreOp::Store,
-                                AttachmentLoadOp::Clear,
-                                AttachmentStoreOp::Store,
-                            )*/
-                        ],
-                        &[RenderSubPassDescription::new(&[], &[0], None)],
-                    )
-                    .unwrap();
-                    println!("Renderpass created!");
+                let renderquad_renderpass = vulkan_framework::renderpass::RenderPass::new(
+                    dev.clone(),
+                    &[
+                        AttachmentDescription::new(
+                            final_format,
+                            ImageMultisampling::SamplesPerPixel1,
+                            ImageLayout::Undefined,
+                            ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
+                            AttachmentLoadOp::Clear,
+                            AttachmentStoreOp::Store,
+                            AttachmentLoadOp::Clear,
+                            AttachmentStoreOp::Store,
+                        ),
+                        /*
+                        // depth
+                        AttachmentDescription::new(
+                            final_format,
+                            ImageMultisampling::SamplesPerPixel1,
+                            ImageLayout::Undefined,
+                            ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
+                            AttachmentLoadOp::Clear,
+                            AttachmentStoreOp::Store,
+                            AttachmentLoadOp::Clear,
+                            AttachmentStoreOp::Store,
+                        )*/
+                    ],
+                    &[RenderSubPassDescription::new(&[], &[0], None)],
+                )
+                .unwrap();
+                println!("Renderpass created!");
 
-                    let renderquad_image_input_format = ImageLayout::ShaderReadOnlyOptimal;
-    
-                    let renderquad_texture_binding_descriptor = BindingDescriptor::new(
-                        ShaderStageAccess::graphics(),
-                        BindingType::Native(NativeBindingType::CombinedImageSampler),
-                        0,
-                        1,
-                    );
+                let renderquad_image_input_format = ImageLayout::ShaderReadOnlyOptimal;
 
-                    let renderquad_descriptor_set_layout = DescriptorSetLayout::new(
-                        dev.clone(),
-                        &[renderquad_texture_binding_descriptor.clone()],
-                    ).unwrap();
+                let renderquad_texture_binding_descriptor = BindingDescriptor::new(
+                    ShaderStageAccess::graphics(),
+                    BindingType::Native(NativeBindingType::CombinedImageSampler),
+                    0,
+                    1,
+                );
 
-                    let renderquad_pipeline_layout = PipelineLayout::new(
-                        dev.clone(),
-                        &[
-                            renderquad_descriptor_set_layout.clone()
-                        ],
-                        &[],
-                        Some("pipeline_layout"),
-                    )
-                    .unwrap();
-                    println!("Pipeline layout created!");
+                let renderquad_descriptor_set_layout = DescriptorSetLayout::new(
+                    dev.clone(),
+                    &[renderquad_texture_binding_descriptor.clone()],
+                )
+                .unwrap();
 
-                    let renderquad_descriptor_sets = (0..swapchain_images_count)
+                let renderquad_pipeline_layout = PipelineLayout::new(
+                    dev.clone(),
+                    &[renderquad_descriptor_set_layout.clone()],
+                    &[],
+                    Some("pipeline_layout"),
+                )
+                .unwrap();
+                println!("Pipeline layout created!");
+
+                let renderquad_descriptor_sets = (0..swapchain_images_count)
                     .map(|idx| {
                         let result = DescriptorSet::new(
                             descriptor_pool.clone(),
                             renderquad_descriptor_set_layout.clone(),
-                        ).unwrap();
-    
-                        result.bind_resources(|binder| {
-                            binder.bind_combined_images_samplers(
-                                0,
-                                &[(
-                                    renderquad_image_input_format,
-                                    rt_image_views[idx as usize].clone(),
-                                    renderquad_sampler.clone(),
-                                )],
-                            )
-                        }).unwrap();
-    
+                        )
+                        .unwrap();
+
+                        result
+                            .bind_resources(|binder| {
+                                binder.bind_combined_images_samplers(
+                                    0,
+                                    &[(
+                                        renderquad_image_input_format,
+                                        rt_image_views[idx as usize].clone(),
+                                        renderquad_sampler.clone(),
+                                    )],
+                                )
+                            })
+                            .unwrap();
+
                         result
                     })
                     .collect::<Vec<Arc<DescriptorSet>>>();
-    
-                    let renderquad_vertex_shader = VertexShader::new(dev.clone(), &[], &[renderquad_texture_binding_descriptor.clone()], RENDERQUAD_VERTEX_SPV).unwrap();
-    
-                    let renderquad_fragment_shader = FragmentShader::new(dev.clone(), &[], &[renderquad_texture_binding_descriptor.clone()], RENDERQUAD_FRAGMENT_SPV).unwrap();
-    
-                    let renderquad_graphics_pipeline = GraphicsPipeline::new(
-                        renderquad_renderpass.clone(),
-                        0,
-                        ImageMultisampling::SamplesPerPixel1,
-                        Some(DepthConfiguration::new(
-                            true,
-                            DepthCompareOp::Always,
-                            Some((0.0, 1.0)),
-                        )),
-                        Image2DDimensions::new(WIDTH, HEIGHT),
-                        renderquad_pipeline_layout.clone(),
-                        &[
+
+                let renderquad_vertex_shader = VertexShader::new(
+                    dev.clone(),
+                    &[],
+                    &[renderquad_texture_binding_descriptor.clone()],
+                    RENDERQUAD_VERTEX_SPV,
+                )
+                .unwrap();
+
+                let renderquad_fragment_shader = FragmentShader::new(
+                    dev.clone(),
+                    &[],
+                    &[renderquad_texture_binding_descriptor],
+                    RENDERQUAD_FRAGMENT_SPV,
+                )
+                .unwrap();
+
+                let renderquad_graphics_pipeline = GraphicsPipeline::new(
+                    renderquad_renderpass.clone(),
+                    0,
+                    ImageMultisampling::SamplesPerPixel1,
+                    Some(DepthConfiguration::new(
+                        true,
+                        DepthCompareOp::Always,
+                        Some((0.0, 1.0)),
+                    )),
+                    Image2DDimensions::new(WIDTH, HEIGHT),
+                    renderquad_pipeline_layout.clone(),
+                    &[
                             /*VertexInputBinding::new(
                             VertexInputRate::PerVertex,
                             0,
                             &[VertexInputAttribute::new(0, 0, AttributeType::Vec4)],
                             )*/
                         ],
-                        Rasterizer::new(
-                            PolygonMode::Fill,
-                            FrontFace::CounterClockwise,
-                            CullMode::None,
-                            None,
-                        ),
-                        (renderquad_vertex_shader, None),
-                        (renderquad_fragment_shader, None),
-                        Some("renderquad_pipeline"),
-                    )
-                    .unwrap();
-                    println!("Graphics pipeline created!");
+                    Rasterizer::new(
+                        PolygonMode::Fill,
+                        FrontFace::CounterClockwise,
+                        CullMode::None,
+                        None,
+                    ),
+                    (renderquad_vertex_shader, None),
+                    (renderquad_fragment_shader, None),
+                    Some("renderquad_pipeline"),
+                )
+                .unwrap();
+                println!("Graphics pipeline created!");
 
-                let rendequad_framebuffers = (0..(swapchain_images_count)).into_iter().map(|idx|
-                    Framebuffer::new(
-                        renderquad_renderpass.clone(),
-                        &[swapchain_image_views[idx as usize].clone()],
-                        swapchain_extent,
-                        1
-                    )
-                    .unwrap()
-                ).collect::<Vec<Arc<Framebuffer>>>();
+                let rendequad_framebuffers = (0..(swapchain_images_count))
+                    .map(|idx| {
+                        Framebuffer::new(
+                            renderquad_renderpass.clone(),
+                            &[swapchain_image_views[idx as usize].clone()],
+                            swapchain_extent,
+                            1,
+                        )
+                        .unwrap()
+                    })
+                    .collect::<Vec<Arc<Framebuffer>>>();
 
                 let raygen_shader = RaygenShader::new(dev.clone(), RAYGEN_SPV).unwrap();
                 //let intersection_shader = IntersectionShader::new(dev.clone(), INTERSECTION_SPV).unwrap();
                 let miss_shader = MissShader::new(dev.clone(), MISS_SPV).unwrap();
                 //let anyhit_shader = AnyHitShader::new(dev.clone(), AHIT_SPV).unwrap();
-                let closesthit_shader = ClosestHitShader::new(dev.clone(), CHIT_SPV).unwrap();
+                let closesthit_shader = ClosestHitShader::new(dev, CHIT_SPV).unwrap();
                 //let callable_shader = CallableShader::new(dev.clone(), CALLABLE_SPV).unwrap();
 
                 let pipeline = RaytracingPipeline::new(
@@ -670,13 +708,18 @@ fn main() {
                     None,
                     closesthit_shader,
                     None,
-                    Some("raytracing_pipeline!")
-                ).unwrap();
+                    Some("raytracing_pipeline!"),
+                )
+                .unwrap();
 
-                let shader_binding_tables = swapchain_images.clone()
+                let shader_binding_tables = swapchain_images
                     .into_iter()
                     .map(|_image_swapchain| {
-                        RaytracingBindingTables::new(pipeline.clone(), sbt_default_allocator.clone()).unwrap()
+                        RaytracingBindingTables::new(
+                            pipeline.clone(),
+                            sbt_default_allocator.clone(),
+                        )
+                        .unwrap()
                     })
                     .collect::<Vec<Arc<RaytracingBindingTables>>>();
 
@@ -720,87 +763,97 @@ fn main() {
                     present_command_buffers[current_frame % (swapchain_images_count as usize)]
                         .record_commands(|recorder: &mut CommandBufferRecorder| {
                             // TODO: HERE transition the image layout from UNDEFINED to GENERAL so that ray tracing pipeline can write to it
-                            recorder.image_barrier(
-                                ImageMemoryBarrier::new(
-                                    PipelineStages::from(
-                                        &[PipelineStage::TopOfPipe],
-                                        None,
-                                        None,
-                                        None
-                                    ),
-                                    AccessFlags::Unmanaged(0),
-                                    PipelineStages::from(
-                                        &[],
-                                        None,
-                                        None,
-                                        Some(&[PipelineStageRayTracingPipelineKHR::RayTracingShader])
-                                    ),
-                                    AccessFlags::Managed(AccessFlagsSpecifier::from(&[AccessFlag::ShaderWrite], None)),
-                                    rt_images[current_frame % (swapchain_images_count as usize)].clone(),
+                            recorder.image_barrier(ImageMemoryBarrier::new(
+                                PipelineStages::from(&[PipelineStage::TopOfPipe], None, None, None),
+                                AccessFlags::Unmanaged(0),
+                                PipelineStages::from(
+                                    &[],
                                     None,
                                     None,
+                                    Some(&[PipelineStageRayTracingPipelineKHR::RayTracingShader]),
+                                ),
+                                AccessFlags::Managed(AccessFlagsSpecifier::from(
+                                    &[AccessFlag::ShaderWrite],
                                     None,
-                                    None,
-                                    None,
-                                    ImageLayout::Undefined,
-                                    rt_writer_img_layout,
-                                    queue_family.clone(),
-                                    queue_family.clone()
-                                )
-                            );
+                                )),
+                                rt_images[current_frame % (swapchain_images_count as usize)]
+                                    .clone(),
+                                None,
+                                None,
+                                None,
+                                None,
+                                None,
+                                ImageLayout::Undefined,
+                                rt_writer_img_layout,
+                                queue_family.clone(),
+                                queue_family.clone(),
+                            ));
 
                             recorder.bind_ray_tracing_pipeline(pipeline.clone());
                             recorder.bind_descriptor_sets_for_ray_tracing_pipeline(
                                 pipeline_layout.clone(),
                                 0,
-                                &[rt_descriptor_sets[current_frame % (swapchain_images_count as usize)].clone()]
+                                &[rt_descriptor_sets
+                                    [current_frame % (swapchain_images_count as usize)]
+                                    .clone()],
                             );
                             recorder.trace_rays(
-                                shader_binding_tables[current_frame % (swapchain_images_count as usize)].clone(),
-                                Image3DDimensions::from(swapchain_extent)
+                                shader_binding_tables
+                                    [current_frame % (swapchain_images_count as usize)]
+                                    .clone(),
+                                Image3DDimensions::from(swapchain_extent),
                             );
 
                             // HERE wait for the ray tracing pipeline to transition image layout from GENERAL to renderquad_texture_layout
-                            recorder.image_barrier(
-                                ImageMemoryBarrier::new(
-                                    PipelineStages::from(
-                                        &[],
-                                        None,
-                                        None,
-                                        Some(&[PipelineStageRayTracingPipelineKHR::RayTracingShader])
-                                    ),
-                                    AccessFlags::Managed(AccessFlagsSpecifier::from(&[AccessFlag::ShaderWrite], None)),
-                                    
-                                    PipelineStages::from(
-                                        &[PipelineStage::FragmentShader],
-                                        None,
-                                        None,
-                                        None
-                                    ),
-                                    AccessFlags::Managed(AccessFlagsSpecifier::from(&[AccessFlag::ShaderRead], None)),
-                                    
-                                    rt_images[current_frame % (swapchain_images_count as usize)].clone(),
+                            recorder.image_barrier(ImageMemoryBarrier::new(
+                                PipelineStages::from(
+                                    &[],
+                                    None,
+                                    None,
+                                    Some(&[PipelineStageRayTracingPipelineKHR::RayTracingShader]),
+                                ),
+                                AccessFlags::Managed(AccessFlagsSpecifier::from(
+                                    &[AccessFlag::ShaderWrite],
+                                    None,
+                                )),
+                                PipelineStages::from(
+                                    &[PipelineStage::FragmentShader],
                                     None,
                                     None,
                                     None,
+                                ),
+                                AccessFlags::Managed(AccessFlagsSpecifier::from(
+                                    &[AccessFlag::ShaderRead],
                                     None,
-                                    None,
-                                    rt_writer_img_layout,
-                                    renderquad_image_input_format,
-                                    queue_family.clone(),
-                                    queue_family.clone()
-                                )
-                            );
+                                )),
+                                rt_images[current_frame % (swapchain_images_count as usize)]
+                                    .clone(),
+                                None,
+                                None,
+                                None,
+                                None,
+                                None,
+                                rt_writer_img_layout,
+                                renderquad_image_input_format,
+                                queue_family.clone(),
+                                queue_family.clone(),
+                            ));
 
                             recorder.begin_renderpass(
-                                rendequad_framebuffers[current_frame % (swapchain_images_count as usize)].clone(),
-                                &[ClearValues::new(Some(ColorClearValues::Vec4(1.0, 1.0, 1.0, 1.0)))]
+                                rendequad_framebuffers
+                                    [current_frame % (swapchain_images_count as usize)]
+                                    .clone(),
+                                &[ClearValues::new(Some(ColorClearValues::Vec4(
+                                    1.0, 1.0, 1.0, 1.0,
+                                )))],
                             );
                             recorder.bind_graphics_pipeline(renderquad_graphics_pipeline.clone());
                             recorder.bind_descriptor_sets_for_graphics_pipeline(
                                 renderquad_pipeline_layout.clone(),
                                 0,
-                                &[renderquad_descriptor_sets[current_frame % (swapchain_images_count as usize)].clone()]
+                                &[renderquad_descriptor_sets
+                                    [current_frame % (swapchain_images_count as usize)]
+                                    .clone()],
                             );
                             recorder.draw(0, 6, 0, 1);
 

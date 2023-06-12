@@ -293,7 +293,10 @@ impl ImageView {
                     subrange_layer_count,
                 }))
             }
-            Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating the image view: {}", err.to_string()))))
+            Err(err) => Err(VulkanError::Vulkan(
+                err.as_raw(),
+                Some(format!("Error creating the image view: {}", err)),
+            )),
         }
     }
 }
