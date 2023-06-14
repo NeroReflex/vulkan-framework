@@ -950,10 +950,7 @@ impl PrimaryCommandBuffer {
                             }
                             Err(err) => Err(VulkanError::Vulkan(
                                 err.as_raw(),
-                                Some(format!(
-                                    "Error updating the command buffer: {}",
-                                    err.to_string()
-                                )),
+                                Some(format!("Error updating the command buffer: {}", err)),
                             )),
                         }
                     }

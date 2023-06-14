@@ -331,7 +331,8 @@ impl DescriptorSet {
 
         if min_idx != 0 {
             return Err(VulkanError::Framework(FrameworkError::UserInput(Some(
-                format!("Error creating the descriptor set: bindings are not starting from zero"),
+                "Error creating the descriptor set: bindings are not starting from zero"
+                    .to_string(),
             ))));
         }
 
@@ -357,10 +358,7 @@ impl DescriptorSet {
             })),
             Err(err) => Err(VulkanError::Vulkan(
                 err.as_raw(),
-                Some(format!(
-                    "Error creating the descriptor set: {}",
-                    err.to_string()
-                )),
+                Some(format!("Error creating the descriptor set: {}", err)),
             )),
         }
     }

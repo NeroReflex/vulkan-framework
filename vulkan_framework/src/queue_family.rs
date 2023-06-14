@@ -82,7 +82,7 @@ impl QueueFamily {
                 created_queues: Mutex::new(0),
                 family_index: queue_family,
             })),
-            Err(err) => Err(err)
+            Err(err) => Err(err),
         }
     }
 

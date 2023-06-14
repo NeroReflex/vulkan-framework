@@ -876,8 +876,8 @@ fn main() {
                                                         for event in event_pump.poll_iter() {
                                                             match event {
                                                                 sdl2::event::Event::Quit {..} | sdl2::event::Event::KeyDown { keycode: Some(sdl2::keyboard::Keycode::Escape), .. } => {
-                                                                    for i in 0..(swapchain_images_count as usize) {
-                                                                        swapchain_fence_waiters[i]
+                                                                    for fence_waiter in swapchain_fence_waiters.iter_mut() {
+                                                                        fence_waiter
                                                                             .wait(u64::MAX)
                                                                             .unwrap()
                                                                     }

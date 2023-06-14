@@ -318,7 +318,7 @@ impl RenderPass {
             })),
             Err(err) => Err(VulkanError::Vulkan(
                 err.as_raw(),
-                Some(format!("Error creating renderpass: {}", err.to_string())),
+                Some(format!("Error creating renderpass: {}", err)),
             )),
         }
     }

@@ -303,7 +303,7 @@ impl Device {
         // queue cannot be capable of nothing...
         if queue_descriptors.is_empty() {
             return Err(VulkanError::Framework(FrameworkError::UserInput(Some(
-                format!("Error in queue search: no queue descriptor(s) have been specified"),
+                "Error in queue search: no queue descriptor(s) have been specified".to_string(),
             ))));
         }
 
@@ -311,10 +311,7 @@ impl Device {
             match instance.ash_handle().enumerate_physical_devices() {
                 Err(err) => Err(VulkanError::Vulkan(
                     err.as_raw(),
-                    Some(format!(
-                        "Error enumerating physical devices: {}",
-                        err.to_string()
-                    )),
+                    Some(format!("Error enumerating physical devices: {}", err)),
                 )),
                 Ok(physical_devices) => {
                     let mut best_physical_device_score: i128 = -1;
@@ -810,18 +807,13 @@ impl Device {
                                 }
                                 Err(err) => Err(VulkanError::Vulkan(
                                     err.as_raw(),
-                                    Some(format!(
-                                        "Error creating the logical device: {}",
-                                        err.to_string()
-                                    )),
+                                    Some(format!("Error creating the logical device: {}", err)),
                                 )),
                             };
                         }
-                        None => {
-                            return Err(VulkanError::Framework(
-                                FrameworkError::NoSuitableDeviceFound,
-                            ))
-                        }
+                        None => Err(VulkanError::Framework(
+                            FrameworkError::NoSuitableDeviceFound,
+                        )),
                     }
                 }
             }

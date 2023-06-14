@@ -100,9 +100,8 @@ impl DescriptorSetLayout {
     ) -> VulkanResult<Arc<Self>> {
         if descriptors.is_empty() {
             return Err(VulkanError::Framework(FrameworkError::Unknown(Some(
-                format!(
-                    "Error creating the descriptor set layout: no binding descriptors specified"
-                ),
+                "Error creating the descriptor set layout: no binding descriptors specified"
+                    .to_string(),
             ))));
         }
 

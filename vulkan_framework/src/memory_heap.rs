@@ -1,6 +1,6 @@
 use crate::{
     device::{Device, DeviceOwned},
-    prelude::{VulkanError, VulkanResult, FrameworkError},
+    prelude::{FrameworkError, VulkanError, VulkanResult},
 };
 
 use std::sync::Arc;
@@ -129,9 +129,9 @@ impl MemoryHeap {
                 heap_type_index,
                 heap_property_flags,
             })),
-            None => 
-                Err(VulkanError::Framework(FrameworkError::NoSuitableMemoryHeapFound))
-            
+            None => Err(VulkanError::Framework(
+                FrameworkError::NoSuitableMemoryHeapFound,
+            )),
         }
     }
 }

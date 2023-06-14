@@ -1,4 +1,4 @@
-use crate::prelude::{VulkanError, VulkanResult, FrameworkError};
+use crate::prelude::{FrameworkError, VulkanError, VulkanResult};
 
 use std::os::raw::c_char;
 use std::string::String;
@@ -48,7 +48,7 @@ impl Drop for Instance {
 
 impl Instance {
     pub fn instance_vulkan_version(&self) -> InstanceAPIVersion {
-        self.version.clone()
+        self.version
     }
 
     pub(crate) fn get_debug_ext_extension(&self) -> Option<&ash::extensions::ext::DebugUtils> {
@@ -225,11 +225,13 @@ impl Instance {
                             surface_khr_ext: surface_ext,
                             debug_ext_ext: debug_ext,
                         },
-                        version: api_version.clone(),
+                        version: *api_version,
                     }));
                 }
 
-                return Err(VulkanError::Framework(FrameworkError::CannotCreateVulkanInstance))
+                return Err(VulkanError::Framework(
+                    FrameworkError::CannotCreateVulkanInstance,
+                ));
             }
 
             Err(VulkanError::Framework(FrameworkError::CannotLoadVulkan))

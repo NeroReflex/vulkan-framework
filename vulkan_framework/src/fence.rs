@@ -4,7 +4,7 @@ use crate::{
     command_buffer::CommandBufferTrait,
     device::{Device, DeviceOwned},
     instance::InstanceOwned,
-    prelude::{VulkanError, VulkanResult, FrameworkError},
+    prelude::{FrameworkError, VulkanError, VulkanResult},
 };
 
 pub struct Fence {
@@ -60,7 +60,9 @@ impl Fence {
             match &device {
                 Some(old_device) => {
                     if fence.native_handle() != old_device.native_handle() {
-                        return Err(VulkanError::Framework(FrameworkError::ResourceFromIncompatibleDevice));
+                        return Err(VulkanError::Framework(
+                            FrameworkError::ResourceFromIncompatibleDevice,
+                        ));
                     }
                 }
                 None => device = Some(fence.device.clone()),
@@ -102,7 +104,9 @@ impl Fence {
             match &device {
                 Some(old_device) => {
                     if fence.native_handle() != old_device.native_handle() {
-                        return Err(VulkanError::Framework(FrameworkError::ResourceFromIncompatibleDevice));
+                        return Err(VulkanError::Framework(
+                            FrameworkError::ResourceFromIncompatibleDevice,
+                        ));
                     }
                 }
                 None => device = Some(fence.device.clone()),
@@ -187,7 +191,10 @@ impl Fence {
 
                 Ok(Arc::new(Self { device, fence }))
             }
-            Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating the fence: {}", err))))
+            Err(err) => Err(VulkanError::Vulkan(
+                err.as_raw(),
+                Some(format!("Error creating the fence: {}", err)),
+            )),
         }
     }
 }

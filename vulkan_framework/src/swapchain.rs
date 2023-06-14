@@ -174,10 +174,7 @@ impl DeviceSurfaceInfo {
                 if let Err(err) = surface_capabilities_result {
                     return Err(VulkanError::Vulkan(
                         err.as_raw(),
-                        Some(format!(
-                            "Error in fetching surface capabilities: {}",
-                            err.to_string()
-                        )),
+                        Some(format!("Error in fetching surface capabilities: {}", err)),
                     ));
                 }
 
@@ -191,10 +188,7 @@ impl DeviceSurfaceInfo {
                 if let Err(err) = surface_present_modes_result {
                     return Err(VulkanError::Vulkan(
                         err.as_raw(),
-                        Some(format!(
-                            "Error in fetching surface present modes: {}",
-                            err.to_string()
-                        )),
+                        Some(format!("Error in fetching surface present modes: {}", err)),
                     ));
                 }
 
@@ -210,7 +204,7 @@ impl DeviceSurfaceInfo {
                         err.as_raw(),
                         Some(format!(
                             "Error in fetching surface supported formats: {}",
-                            err.to_string()
+                            err
                         )),
                     ));
                 }

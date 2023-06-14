@@ -88,7 +88,7 @@ impl RaytracingPipeline {
             Some(info) => {
                 assert!(max_pipeline_ray_recursion_depth <= info.max_ray_recursion_depth())
             }
-            None => return Err(VulkanError::Framework(crate::prelude::FrameworkError::Unknown(Some(format!("Raytracing supported features are not available, probably due to a framework bug"))))),
+            None => return Err(VulkanError::Framework(crate::prelude::FrameworkError::Unknown(Some("Raytracing supported features are not available, probably due to a framework bug".to_string())))),
         }
 
         match device.ash_ext_raytracing_pipeline_khr() {
@@ -299,7 +299,10 @@ impl RaytracingPipeline {
                             callable_shader_present,
                         }))
                     }
-                    Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating the raytracing pipeline: {}", err.to_string())))),
+                    Err(err) => Err(VulkanError::Vulkan(
+                        err.as_raw(),
+                        Some(format!("Error creating the raytracing pipeline: {}", err)),
+                    )),
                 }
             }
             None => Err(VulkanError::MissingExtension(String::from(

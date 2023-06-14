@@ -939,12 +939,15 @@ impl Image {
     ) -> VulkanResult<Arc<Self>> {
         if descriptor.img_layers == 0 {
             return Err(VulkanError::Framework(FrameworkError::UserInput(Some(
-                format!("Error creating image: number of layers must be at least 1"),
+                "Error creating image: number of layers must be at least 1".to_string(),
             ))));
         }
 
         if descriptor.img_mip_levels == 0 {
-            return Err(VulkanError::Framework(FrameworkError::UserInput(Some(format!("Error creating image: number of mipmap levels must be at least 1 (the base one)")))));
+            return Err(VulkanError::Framework(FrameworkError::UserInput(Some(
+                "Error creating image: number of mipmap levels must be at least 1 (the base one)"
+                    .to_string(),
+            ))));
         }
 
         let mut queue_family_indices = Vec::<u32>::new();
@@ -985,7 +988,12 @@ impl Image {
                 device.get_parent_instance().get_alloc_callbacks(),
             ) {
                 Ok(image) => image,
-                Err(err) => return Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating the image: {}", err.to_string()))))
+                Err(err) => {
+                    return Err(VulkanError::Vulkan(
+                        err.as_raw(),
+                        Some(format!("Error creating the image: {}", err)),
+                    ))
+                }
             }
         };
 

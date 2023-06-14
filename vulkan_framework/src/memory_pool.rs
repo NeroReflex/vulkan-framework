@@ -92,7 +92,9 @@ impl MemoryPool {
         let device = self.get_parent_memory_heap().get_parent_device();
 
         if !self.get_parent_memory_heap().is_host_mappable() {
-            return Err(VulkanError::Framework(crate::prelude::FrameworkError::MapMemoryError))
+            return Err(VulkanError::Framework(
+                crate::prelude::FrameworkError::MapMemoryError,
+            ));
         }
 
         match unsafe {
@@ -114,8 +116,10 @@ impl MemoryPool {
 
                 Ok(())
             }
-            Err(err) => 
-                Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error in mapping memory: {}", err.to_string()))))
+            Err(err) => Err(VulkanError::Vulkan(
+                err.as_raw(),
+                Some(format!("Error in mapping memory: {}", err)),
+            )),
         }
     }
 
@@ -126,7 +130,9 @@ impl MemoryPool {
         let device = self.get_parent_memory_heap().get_parent_device();
 
         if !self.get_parent_memory_heap().is_host_mappable() {
-            return Err(VulkanError::Framework(crate::prelude::FrameworkError::MapMemoryError))
+            return Err(VulkanError::Framework(
+                crate::prelude::FrameworkError::MapMemoryError,
+            ));
         }
 
         match unsafe {
@@ -146,7 +152,10 @@ impl MemoryPool {
 
                 Ok(data)
             }
-            Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error in mapping memory: {}", err.to_string()))))
+            Err(err) => Err(VulkanError::Vulkan(
+                err.as_raw(),
+                Some(format!("Error in mapping memory: {}", err)),
+            )),
         }
     }
 
@@ -179,7 +188,12 @@ impl MemoryPool {
                 create_info.p_next = &mut memory_flags as *mut ash::vk::MemoryAllocateFlagsInfo
                     as *mut std::ffi::c_void;
             } else {
-                return Err(VulkanError::Framework(crate::prelude::FrameworkError::IncompatibleInstanceVersion(instance_ver, InstanceAPIVersion::Version1_2)));
+                return Err(VulkanError::Framework(
+                    crate::prelude::FrameworkError::IncompatibleInstanceVersion(
+                        instance_ver,
+                        InstanceAPIVersion::Version1_2,
+                    ),
+                ));
             }
         }
 
@@ -194,7 +208,10 @@ impl MemoryPool {
                     memory,
                     features,
                 })),
-                Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating the memory pool: {}", err.to_string()))))
+                Err(err) => Err(VulkanError::Vulkan(
+                    err.as_raw(),
+                    Some(format!("Error creating the memory pool: {}", err)),
+                )),
             }
         }
     }
