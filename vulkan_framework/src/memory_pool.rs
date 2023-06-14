@@ -92,7 +92,7 @@ impl MemoryPool {
         let device = self.get_parent_memory_heap().get_parent_device();
 
         if !self.get_parent_memory_heap().is_host_mappable() {
-            return Err(VulkanError::Unspecified);
+            return Err(VulkanError::Framework(crate::prelude::FrameworkError::MapMemoryError))
         }
 
         match unsafe {
@@ -115,7 +115,7 @@ impl MemoryPool {
                 Ok(())
             }
             Err(err) => 
-                Err(VulkanError::Framework(crate::prelude::FrameworkError::MapMemoryError(err.as_raw())))
+                Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error in mapping memory: {}", err.to_string()))))
         }
     }
 
@@ -126,7 +126,7 @@ impl MemoryPool {
         let device = self.get_parent_memory_heap().get_parent_device();
 
         if !self.get_parent_memory_heap().is_host_mappable() {
-            return Err(VulkanError::Unspecified);
+            return Err(VulkanError::Framework(crate::prelude::FrameworkError::MapMemoryError))
         }
 
         match unsafe {
@@ -146,7 +146,7 @@ impl MemoryPool {
 
                 Ok(data)
             }
-            Err(err) => Err(VulkanError::Framework(crate::prelude::FrameworkError::MapMemoryError(err.as_raw())))
+            Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error in mapping memory: {}", err.to_string()))))
         }
     }
 
@@ -160,8 +160,8 @@ impl MemoryPool {
             .memory_type_index(memory_heap.type_index())
             .build();
 
-        if allocator.total_size() < memory_heap.total_size() {
-            return Err(VulkanError::Unspecified);
+        if allocator.total_size() > memory_heap.total_size() {
+            return Err(VulkanError::Framework(crate::prelude::FrameworkError::UserInput(Some(format!("Unsuitable memory heap: the given allocator will manage {} bytes, but the selected memory heap only has {} bytes available", allocator.total_size(), memory_heap.total_size())))));
         }
 
         let device = memory_heap.get_parent_device();
@@ -179,7 +179,7 @@ impl MemoryPool {
                 create_info.p_next = &mut memory_flags as *mut ash::vk::MemoryAllocateFlagsInfo
                     as *mut std::ffi::c_void;
             } else {
-                return Err(VulkanError::Unspecified);
+                return Err(VulkanError::Framework(crate::prelude::FrameworkError::IncompatibleInstanceVersion(instance_ver, InstanceAPIVersion::Version1_2)));
             }
         }
 
@@ -194,14 +194,7 @@ impl MemoryPool {
                     memory,
                     features,
                 })),
-                Err(err) => {
-                    #[cfg(debug_assertions)]
-                    {
-                        panic!("Error creating the memory pool: {}", err)
-                    }
-
-                    Err(VulkanError::Unspecified)
-                }
+                Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating the memory pool: {}", err.to_string()))))
             }
         }
     }

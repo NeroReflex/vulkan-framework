@@ -124,16 +124,15 @@ fn main() {
                                 device.clone(),
                                 ConcreteMemoryHeapDescriptor::new(
                                     MemoryType::DeviceLocal(Some(MemoryHostVisibility::new(false))),
-                                    1024 * 1024 * 512,
+                                    1024 * 1024 * 512, // Memory heap with at least 512MiB of memory
                                 ),
                             ) {
                                 Ok(memory_heap) => {
                                     println!("Memory heap created! <3");
-                                    let memory_heap_size = memory_heap.total_size();
 
                                     let stack_allocator = match MemoryPool::new(
                                         memory_heap,
-                                        Arc::new(StackAllocator::new(memory_heap_size)),
+                                        Arc::new(StackAllocator::new(1024 * 1024 * 128)), // of the 512MiB of the heap this memory pool will manage 128MiB
                                         MemoryPoolFeatures::from(&[]),
                                     ) {
                                         Ok(mem_pool) => {

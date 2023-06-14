@@ -3,7 +3,7 @@ use ash::vk::{Extent3D, ImageType};
 use crate::{
     device::{Device, DeviceOwned},
     instance::{InstanceAPIVersion, InstanceOwned},
-    memory_allocator::{AllocationResult, MemoryAllocator},
+    memory_allocator::AllocationResult,
     memory_heap::MemoryHeapOwned,
     memory_pool::{MemoryPool, MemoryPoolBacked},
     prelude::{FrameworkError, VulkanError, VulkanResult},

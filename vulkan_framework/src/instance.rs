@@ -6,7 +6,7 @@ use std::vec::Vec;
 
 use std::sync::Arc;
 
-#[derive(Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum InstanceAPIVersion {
     Version1_0,
     Version1_1,

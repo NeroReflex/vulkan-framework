@@ -4,7 +4,7 @@ use crate::{
     command_buffer::CommandBufferTrait,
     device::{Device, DeviceOwned},
     instance::InstanceOwned,
-    prelude::{VulkanError, VulkanResult},
+    prelude::{VulkanError, VulkanResult, FrameworkError},
 };
 
 pub struct Fence {
@@ -54,22 +54,22 @@ impl Fence {
      * This function accepts fences that have been created from the same device.
      */
     pub fn reset_fences(fences: &[Arc<Self>]) -> VulkanResult<()> {
-        let mut device_native_handle: Option<Arc<Device>> = None;
+        let mut device: Option<Arc<Device>> = None;
         let mut native_fences = Vec::<ash::vk::Fence>::new();
         for fence in fences {
-            match &device_native_handle {
+            match &device {
                 Some(old_device) => {
                     if fence.native_handle() != old_device.native_handle() {
-                        return Err(VulkanError::Unspecified);
+                        return Err(VulkanError::Framework(FrameworkError::ResourceFromIncompatibleDevice));
                     }
                 }
-                None => device_native_handle = Some(fence.device.clone()),
+                None => device = Some(fence.device.clone()),
             }
 
             native_fences.push(fence.fence)
         }
 
-        match device_native_handle {
+        match device {
             Some(device) => {
                 let reset_result =
                     unsafe { device.ash_handle().reset_fences(native_fences.as_ref()) };
@@ -79,7 +79,8 @@ impl Fence {
                     Err(err) => Err(VulkanError::Vulkan(err.as_raw(), None)),
                 }
             }
-            None => Err(VulkanError::Unspecified),
+            // list of fences are simply empty
+            None => Ok(()),
         }
     }
 
@@ -95,22 +96,22 @@ impl Fence {
         wait_target: FenceWaitFor,
         device_timeout_ns: u64,
     ) -> VulkanResult<()> {
-        let mut device_native_handle: Option<Arc<Device>> = None;
+        let mut device: Option<Arc<Device>> = None;
         let mut native_fences = smallvec::SmallVec::<[ash::vk::Fence; 4]>::new();
         for fence in fences {
-            match &device_native_handle {
+            match &device {
                 Some(old_device) => {
                     if fence.native_handle() != old_device.native_handle() {
-                        return Err(VulkanError::Unspecified);
+                        return Err(VulkanError::Framework(FrameworkError::ResourceFromIncompatibleDevice));
                     }
                 }
-                None => device_native_handle = Some(fence.device.clone()),
+                None => device = Some(fence.device.clone()),
             }
 
             native_fences.push(fence.fence)
         }
 
-        match device_native_handle {
+        match device {
             Some(device) => {
                 let wait_result = unsafe {
                     device.ash_handle().wait_for_fences(
@@ -128,7 +129,8 @@ impl Fence {
                     Err(err) => Err(VulkanError::Vulkan(err.as_raw(), None)),
                 }
             }
-            None => Err(VulkanError::Unspecified),
+            // No fences to wait for
+            None => Ok(()),
         }
     }
 
@@ -185,14 +187,7 @@ impl Fence {
 
                 Ok(Arc::new(Self { device, fence }))
             }
-            Err(err) => {
-                #[cfg(debug_assertions)]
-                {
-                    println!("Error creating the fence: {}", err);
-                }
-
-                Err(VulkanError::Unspecified)
-            }
+            Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating the fence: {}", err))))
         }
     }
 }

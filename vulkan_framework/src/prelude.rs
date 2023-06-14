@@ -1,3 +1,5 @@
+use crate::instance::InstanceAPIVersion;
+
 pub type VulkanResult<T> = Result<T, VulkanError>;
 
 #[derive(Debug)]
@@ -11,7 +13,8 @@ pub enum FrameworkError {
     ResourceFromIncompatibleDevice,
     CannotLoadVulkan,
     CannotCreateVulkanInstance,
-    MapMemoryError(i32),
+    MapMemoryError,
+    IncompatibleInstanceVersion(InstanceAPIVersion, InstanceAPIVersion),
     Unknown(Option<String>),
 }
 
@@ -20,7 +23,6 @@ pub enum VulkanError {
     Framework(FrameworkError),
     Vulkan(i32, Option<String>),
     MissingExtension(String),
-    Unspecified,
 }
 
 impl VulkanError {
