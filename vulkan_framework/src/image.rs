@@ -908,13 +908,17 @@ impl ImageTrait for Image {
 }
 
 impl Image {
+    /*
     pub(crate) fn ash_native(&self) -> ash::vk::Image {
         self.image
     }
+    */
 
+    /*
     pub(crate) fn ash_format(&self) -> ash::vk::Format {
         self.descriptor.ash_format()
     }
+    */
 
     pub fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.image)

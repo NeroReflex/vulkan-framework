@@ -298,6 +298,7 @@ pub struct GraphicsPipeline {
     device: Arc<Device>,
     renderpass: Arc<RenderPass>,
     depth_configuration: Option<DepthConfiguration>,
+    rasterizer: Rasterizer,
     subpass_index: u32,
     pipeline_layout: Arc<PipelineLayout>,
     pipeline: ash::vk::Pipeline,
@@ -333,6 +334,17 @@ impl Drop for GraphicsPipeline {
 }*/
 
 impl GraphicsPipeline {
+    pub fn renderpass(&self) ->  Arc<RenderPass> {
+        self.renderpass.clone()
+    }
+
+    pub fn depth_configuration(&self) ->  Option<DepthConfiguration> {
+        self.depth_configuration
+    }
+    pub fn rasterizer(&self) -> Rasterizer {
+        self.rasterizer
+    }
+
     pub fn subpass_index(&self) -> u32 {
         self.subpass_index
     }
@@ -607,6 +619,7 @@ impl GraphicsPipeline {
                     depth_configuration,
                     pipeline,
                     pipeline_layout,
+                    rasterizer,
                 }))
             }
             Err((_, err)) => Err(VulkanError::Vulkan(

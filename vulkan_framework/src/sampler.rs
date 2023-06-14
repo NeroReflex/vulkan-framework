@@ -65,6 +65,19 @@ impl Drop for Sampler {
 }
 
 impl Sampler {
+    pub fn mag_filter(&self) -> Filtering {
+        self.mag_filter
+    }
+
+    pub fn min_filter(&self) -> Filtering {
+        self.min_filter
+    }
+
+    pub fn mipmap_mode(&self) -> MipmapMode {
+        self.mipmap_mode
+    }
+
+
     pub fn max_anisotropy(&self) -> f32 {
         self.max_anisotropy
     }
