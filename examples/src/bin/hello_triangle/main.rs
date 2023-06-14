@@ -388,8 +388,8 @@ fn main() {
                                 keycode: Some(sdl2::keyboard::Keycode::Escape),
                                 ..
                             } => {
-                                for i in 0..(swapchain_images_count as usize) {
-                                    swapchain_fence_waiters[i].wait(u64::MAX).unwrap()
+                                for fence_waiter in swapchain_fence_waiters.iter_mut() {
+                                    fence_waiter.wait(u64::MAX).unwrap()
                                 }
                                 break 'running;
                             }

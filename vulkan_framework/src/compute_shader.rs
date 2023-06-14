@@ -47,7 +47,7 @@ impl PrivateShaderTrait for ComputeShader {
 }
 
 impl ComputeShader {
-    pub fn new<'a, 'b>(
+    pub fn new(
         device: Arc<Device>,
         //push_constant_ranges: &'a [Arc<PushConstanRange>],
         //descriptor_bindings: &'b [Arc<BindingDescriptor>],

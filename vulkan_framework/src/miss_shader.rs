@@ -45,7 +45,7 @@ impl PrivateShaderTrait for MissShader {
 }
 
 impl MissShader {
-    pub fn new<'a, 'b>(device: Arc<Device>, code: &[u32]) -> VulkanResult<Arc<Self>> {
+    pub fn new(device: Arc<Device>, code: &[u32]) -> VulkanResult<Arc<Self>> {
         let create_info = ash::vk::ShaderModuleCreateInfo::builder()
             .code(code)
             .build();
