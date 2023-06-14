@@ -88,7 +88,7 @@ impl RaytracingPipeline {
             Some(info) => {
                 assert!(max_pipeline_ray_recursion_depth <= info.max_ray_recursion_depth())
             }
-            None => return Err(VulkanError::Unspecified),
+            None => return Err(VulkanError::Framework(crate::prelude::FrameworkError::Unknown(Some(format!("Raytracing supported features are not available, probably due to a framework bug"))))),
         }
 
         match device.ash_ext_raytracing_pipeline_khr() {
@@ -254,16 +254,9 @@ impl RaytracingPipeline {
                     )
                 } {
                     Ok(pipelines) => {
+                        assert_eq!(pipelines.len(), 1);
+
                         let pipeline = pipelines[0];
-
-                        if pipelines.len() != 1 {
-                            #[cfg(debug_assertions)]
-                            {
-                                panic!("Error creating the compute pipeline: expected 1 pipeline to be created, instead {} were created.", pipelines.len())
-                            }
-
-                            return Err(VulkanError::Unspecified);
-                        }
 
                         let mut obj_name_bytes = vec![];
                         if let Some(ext) = device.get_parent_instance().get_debug_ext_extension() {
@@ -306,7 +299,7 @@ impl RaytracingPipeline {
                             callable_shader_present,
                         }))
                     }
-                    Err(_err) => Err(VulkanError::Unspecified),
+                    Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating the raytracing pipeline: {}", err.to_string())))),
                 }
             }
             None => Err(VulkanError::MissingExtension(String::from(

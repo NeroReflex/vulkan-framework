@@ -241,7 +241,7 @@ impl Device {
                         None => {
                             #[cfg(debug_assertions)]
                             {
-                                panic!("SurfaceKHR extension not available, have you forgotten to specify it on instance creation?")
+                                println!("SurfaceKHR extension not available, have you forgotten to specify it on instance creation?")
                             }
                             return None;
                         }
@@ -831,40 +831,27 @@ impl Device {
     pub(crate) fn move_out_queue_family(
         &self,
         index: usize,
-    ) -> Option<(u32, ConcreteQueueFamilyDescriptor)> {
+    ) -> VulkanResult<(u32, ConcreteQueueFamilyDescriptor)> {
         match self.required_family_collection.lock() {
             Ok(mut collection) => match collection.len() > index {
                 true => match collection[index].to_owned() {
                     Some(cose) => {
                         collection[index] = None;
-                        Some(cose)
+                        Ok(cose)
                     }
-                    None => {
-                        #[cfg(debug_assertions)]
-                        {
-                            panic!("The queue family with index {} has already been created once and there can only be one QueueFamily for requested queue capabilies.", index)
-                        }
-
-                        Option::None
-                    }
+                    None => Err(VulkanError::Framework(
+                            FrameworkError::UserInput(Some(format!("The queue family with index {} has already been created once and there can only be one QueueFamily for requested queue capabilies.", index))),
+                        ))
                 },
-                false => {
-                    #[cfg(debug_assertions)]
-                    {
-                        panic!("A queue family with index {} does not exists, at device creation time only {} queue families were requested.", index, collection.len())
-                    }
-
-                    Option::None
-                }
+                false =>
+                    Err(VulkanError::Framework(
+                        FrameworkError::UserInput(Some(format!("A queue family with index {} does not exists, at device creation time only {} queue families were requested.", index, collection.len()))),
+                    ))
             },
-            Err(err) => {
-                #[cfg(debug_assertions)]
-                {
-                    panic!("Error acquiring internal mutex: {}", err)
-                }
-
-                Option::None
-            }
+            Err(err) =>
+                Err(VulkanError::Framework(
+                    FrameworkError::Unknown(Some(format!("Error acquiring internal mutex: {}", err))),
+                ))
         }
     }
 

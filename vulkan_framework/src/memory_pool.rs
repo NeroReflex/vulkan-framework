@@ -114,14 +114,8 @@ impl MemoryPool {
 
                 Ok(())
             }
-            Err(err) => {
-                #[cfg(debug_assertions)]
-                {
-                    panic!("Error mapping the memory: {}", err)
-                }
-
-                Err(VulkanError::Unspecified)
-            }
+            Err(err) => 
+                Err(VulkanError::Framework(crate::prelude::FrameworkError::MapMemoryError(err.as_raw())))
         }
     }
 
@@ -152,14 +146,7 @@ impl MemoryPool {
 
                 Ok(data)
             }
-            Err(err) => {
-                #[cfg(debug_assertions)]
-                {
-                    panic!("Error mapping the memory: {}", err)
-                }
-
-                Err(VulkanError::Unspecified)
-            }
+            Err(err) => Err(VulkanError::Framework(crate::prelude::FrameworkError::MapMemoryError(err.as_raw())))
         }
     }
 

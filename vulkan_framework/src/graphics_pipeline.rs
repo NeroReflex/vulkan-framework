@@ -463,6 +463,7 @@ impl GraphicsPipeline {
                 .cull_mode(rasterizer.cull_mode().ash_flags())
                 .front_face(rasterizer.front_face().ash_flags())
                 .front_face(rasterizer.front_face().ash_flags())
+                .polygon_mode(rasterizer.polygon_mode().ash_flags())
                 .rasterizer_discard_enable(false)
                 .depth_bias_enable(false)
                 .depth_clamp_enable(false)

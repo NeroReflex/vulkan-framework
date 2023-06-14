@@ -76,19 +76,13 @@ impl QueueFamily {
 
     pub fn new(device: Arc<Device>, index_of_required_queue: usize) -> VulkanResult<Arc<Self>> {
         match device.move_out_queue_family(index_of_required_queue) {
-            Some((queue_family, descriptor)) => Ok(Arc::new(Self {
+            Ok((queue_family, descriptor)) => Ok(Arc::new(Self {
                 device: device.clone(),
                 descriptor,
                 created_queues: Mutex::new(0),
                 family_index: queue_family,
             })),
-            None =>
-            // if this error is generated than the queue family with this index has been already requested once
-            {
-                Err(VulkanError::Framework(
-                    FrameworkError::QueueFamilyUnavailable,
-                ))
-            }
+            Err(err) => Err(err)
         }
     }
 

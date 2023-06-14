@@ -1,7 +1,6 @@
 use ash::vk::{Handle, ImageAspectFlags};
 
 use crate::{
-    device::DeviceOwned,
     image::*,
     instance::InstanceOwned,
     prelude::{VulkanError, VulkanResult},

@@ -5,9 +5,13 @@ pub enum FrameworkError {
     MallocFail,
     IncompatibleMemoryHeapType,
     UserInput(Option<String>),
-    QueueFamilyUnavailable,
+    //QueueFamilyUnavailable,
     NoSuitableDeviceFound,
+    NoSuitableMemoryHeapFound,
     ResourceFromIncompatibleDevice,
+    CannotLoadVulkan,
+    CannotCreateVulkanInstance,
+    MapMemoryError(i32),
     Unknown(Option<String>),
 }
 

@@ -76,7 +76,7 @@ impl DescriptorSetLayout {
                 }
                 Option::Some(dev) => {
                     if dev != &shader.get_parent_device() {
-                        return Err(VulkanError::Unspecified);
+                        return Err(VulkanError::_);
                     }
                 }
             }
@@ -88,7 +88,7 @@ impl DescriptorSetLayout {
 
         let dev = match maybe_device {
             Option::Some(device) => device,
-            Option::None => return Err(VulkanError::Unspecified),
+            Option::None => return Err(VulkanError::_),
         };
 
         Self::new(dev, bindings.as_slice())

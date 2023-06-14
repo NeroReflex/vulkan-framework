@@ -985,14 +985,7 @@ impl Image {
                 device.get_parent_instance().get_alloc_callbacks(),
             ) {
                 Ok(image) => image,
-                Err(err) => {
-                    #[cfg(debug_assertions)]
-                    {
-                        panic!("Error creating the image: {}", err)
-                    }
-
-                    return Err(VulkanError::Unspecified);
-                }
+                Err(err) => return Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error creating the image: {}", err.to_string()))))
             }
         };
 

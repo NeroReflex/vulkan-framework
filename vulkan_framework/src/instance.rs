@@ -1,4 +1,4 @@
-use crate::prelude::{VulkanError, VulkanResult};
+use crate::prelude::{VulkanError, VulkanResult, FrameworkError};
 
 use std::os::raw::c_char;
 use std::string::String;
@@ -229,10 +229,10 @@ impl Instance {
                     }));
                 }
 
-                return Err(VulkanError::Unspecified);
+                return Err(VulkanError::Framework(FrameworkError::CannotCreateVulkanInstance))
             }
 
-            Err(VulkanError::Unspecified)
+            Err(VulkanError::Framework(FrameworkError::CannotLoadVulkan))
         }
     }
 }
