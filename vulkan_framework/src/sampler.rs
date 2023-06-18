@@ -77,7 +77,6 @@ impl Sampler {
         self.mipmap_mode
     }
 
-
     pub fn max_anisotropy(&self) -> f32 {
         self.max_anisotropy
     }

@@ -3,6 +3,11 @@ use std::sync::Arc;
 use inline_spirv::*;
 
 use vulkan_framework::{
+    buffer::{Buffer, ConcreteBufferDescriptor, BufferUsage},
+    acceleration_structure::{
+        BottomLevelAccelerationStructure, BottomLevelAccelerationStructureBuilder,
+        DeviceScratchBuffer, HostScratchBuffer,
+    },
     binding_tables::{required_memory_type, RaytracingBindingTables},
     closest_hit_shader::ClosestHitShader,
     command_buffer::{
@@ -28,7 +33,7 @@ use vulkan_framework::{
     instance::*,
     memory_allocator::*,
     memory_heap::*,
-    memory_pool::{MemoryPool, MemoryPoolFeature, MemoryPoolFeatures},
+    memory_pool::{MemoryPool, MemoryPoolFeature, MemoryPoolFeatures, MemoryPoolBacked},
     miss_shader::MissShader,
     pipeline_layout::PipelineLayout,
     pipeline_stage::{PipelineStage, PipelineStageRayTracingPipelineKHR, PipelineStages},
@@ -47,7 +52,7 @@ use vulkan_framework::{
         SurfaceColorspaceSwapchainKHR, SurfaceTransformSwapchainKHR, SwapchainKHR,
     },
     swapchain_image::ImageSwapchainKHR,
-    vertex_shader::VertexShader,
+    vertex_shader::VertexShader, prelude::VulkanError,
 };
 
 use vulkan_framework::descriptor_pool::DescriptorPool;
@@ -198,6 +203,18 @@ void main() {
     entry = "main"
 );
 
+const INSTANCE_DATA: [f32; 12] = [
+    1.0, 0.0, 0.0, 0.0,
+    0.0, 1.0, 0.0, 0.0,
+    0.0, 0.0, 1.0, 0.0,
+];
+const VERTEX_INDEX: [u32; 3] = [0, 1, 2, ];
+const VERTEX_DATA: [f32; 9] = [
+    0.0, 0.0, 0.0,
+    0.8, 0.0, 0.0,
+    0.0, 0.8, 0.0,
+];
+
 fn main() {
     let mut instance_extensions = vec![String::from("VK_EXT_debug_utils")];
     let engine_name = String::from("None");
@@ -312,26 +329,24 @@ fn main() {
                 )
                 .unwrap();
                 println!("Memory heap created! <3");
-                let main_heap_size = device_local_memory_heap.total_size();
 
                 let device_local_default_allocator = MemoryPool::new(
                     device_local_memory_heap,
-                    Arc::new(DefaultAllocator::new(main_heap_size)),
+                    Arc::new(DefaultAllocator::new(1024 * 1024 * 128)),
                     MemoryPoolFeatures::from(&[]),
                 )
                 .unwrap();
 
-                let sbt_memory_heap = MemoryHeap::new(
+                let raytracing_memory_heap = MemoryHeap::new(
                     dev.clone(),
-                    ConcreteMemoryHeapDescriptor::new(required_memory_type(), 1024 * 1024 * 32),
+                    ConcreteMemoryHeapDescriptor::new(required_memory_type(), 1024 * 1024 * 128),
                 )
                 .unwrap();
                 println!("Memory heap created! <3");
-                let main_heap_size = sbt_memory_heap.total_size();
 
-                let sbt_default_allocator = MemoryPool::new(
-                    sbt_memory_heap,
-                    Arc::new(DefaultAllocator::new(main_heap_size)),
+                let raytracing_allocator = MemoryPool::new(
+                    raytracing_memory_heap.clone(),
+                    Arc::new(DefaultAllocator::new(1024 * 1024 * 128)),
                     MemoryPoolFeatures::from(&[MemoryPoolFeature::DeviceAddressable]),
                 )
                 .unwrap();
@@ -695,7 +710,7 @@ fn main() {
                 //let intersection_shader = IntersectionShader::new(dev.clone(), INTERSECTION_SPV).unwrap();
                 let miss_shader = MissShader::new(dev.clone(), MISS_SPV).unwrap();
                 //let anyhit_shader = AnyHitShader::new(dev.clone(), AHIT_SPV).unwrap();
-                let closesthit_shader = ClosestHitShader::new(dev, CHIT_SPV).unwrap();
+                let closesthit_shader = ClosestHitShader::new(dev.clone(), CHIT_SPV).unwrap();
                 //let callable_shader = CallableShader::new(dev.clone(), CALLABLE_SPV).unwrap();
 
                 let pipeline = RaytracingPipeline::new(
@@ -714,13 +729,122 @@ fn main() {
                 let shader_binding_tables = swapchain_images
                     .into_iter()
                     .map(|_image_swapchain| {
-                        RaytracingBindingTables::new(
-                            pipeline.clone(),
-                            sbt_default_allocator.clone(),
-                        )
-                        .unwrap()
+                        RaytracingBindingTables::new(pipeline.clone(), raytracing_allocator.clone())
+                            .unwrap()
                     })
                     .collect::<Vec<Arc<RaytracingBindingTables>>>();
+
+                let blas_builder = BottomLevelAccelerationStructureBuilder::new(
+                    dev.clone(),
+                    32,
+                    (std::mem::size_of::<f32>() as u64) * 3u64,
+                    vulkan_framework::graphics_pipeline::AttributeType::Vec3,
+                    vulkan_framework::acceleration_structure::AllowedBuildingDevice::HostAndDevice,
+                )
+                .unwrap();
+
+                let scratch_buffer = DeviceScratchBuffer::new(
+                    raytracing_allocator.clone(),
+                    blas_builder.build_scratch_buffer_size(),
+                ).unwrap();
+
+                let vertex_buffer = Buffer::new(
+                    raytracing_allocator.clone(),
+                    ConcreteBufferDescriptor::new(
+                        BufferUsage::Unmanaged(
+                                (
+                                    ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR |
+                                    ash::vk::BufferUsageFlags::VERTEX_BUFFER |
+                                    ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                                ).as_raw()
+                            ),
+                            (core::mem::size_of::<f32>() as u64) * 3u64
+                        ),
+                        None,
+                        None
+                ).unwrap();
+
+                let instance_buffer = Buffer::new(
+                    raytracing_allocator.clone(),
+                    ConcreteBufferDescriptor::new(
+                        BufferUsage::Unmanaged(
+                                (
+                                    ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR |
+                                    ash::vk::BufferUsageFlags::INDEX_BUFFER |
+                                    ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                                ).as_raw()
+                            ),
+                            (core::mem::size_of::<u32>() as u64) * 3u64
+                        ),
+                        None,
+                        None
+                ).unwrap();
+
+                let transform_buffer = Buffer::new(
+                    raytracing_allocator.clone(),
+                    ConcreteBufferDescriptor::new(
+                        BufferUsage::Unmanaged(
+                                (
+                                    ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR |
+                                    ash::vk::BufferUsageFlags::INDEX_BUFFER |
+                                    ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                                ).as_raw()
+                            ),
+                            (core::mem::size_of::<[f32; 12]>() as u64) * 1u64
+                        ),
+                        None,
+                        None
+                ).unwrap();
+
+                raytracing_allocator.write_raw_data(instance_buffer.allocation_offset(), VERTEX_INDEX.as_slice()).unwrap();
+                raytracing_allocator.write_raw_data(vertex_buffer.allocation_offset(), VERTEX_DATA.as_slice()).unwrap();
+                raytracing_allocator.write_raw_data(transform_buffer.allocation_offset(), INSTANCE_DATA.as_slice()).unwrap();
+
+                let blas = BottomLevelAccelerationStructure::new(
+                    raytracing_allocator.clone(),
+                    blas_builder.clone(),
+                )
+                .unwrap();
+
+                // PUNTO DI INTERESE
+                let tlas_building = PrimaryCommandBuffer::new(command_pool.clone(), Some("AS_Builder")).unwrap();
+                tlas_building.record_commands(|cmd|
+                    {
+                        cmd.build_blas(
+                            blas.clone(),
+                            instance_buffer.clone(),
+                            vertex_buffer.clone(),
+                            transform_buffer.clone(),
+                            scratch_buffer.clone(),
+                            0,
+                            3,
+                            0,
+                            0
+                        );
+                    }).unwrap();
+                let tlas_building_fence = Fence::new(dev.clone(), false, Some("tlas_building_fence")).unwrap();
+                let mut waiter = queue.submit(
+                    &[tlas_building.clone()],
+                    &[],
+                    &[],
+                    tlas_building_fence
+                ).unwrap();
+
+                loop {
+                    match waiter.wait(100) {
+                        Ok(_) => {
+                            break;
+                        },
+                        Err(err) => {
+                            if err.is_timeout() {
+                                continue;
+                            }
+
+                            panic!("{}", err)
+                        }
+                    }
+                }
+                
 
                 let mut current_frame: usize = 0;
 
@@ -761,6 +885,8 @@ fn main() {
 
                     present_command_buffers[current_frame % (swapchain_images_count as usize)]
                         .record_commands(|recorder: &mut CommandBufferRecorder| {
+                            
+
                             // TODO: HERE transition the image layout from UNDEFINED to GENERAL so that ray tracing pipeline can write to it
                             recorder.image_barrier(ImageMemoryBarrier::new(
                                 PipelineStages::from(&[PipelineStage::TopOfPipe], None, None, None),

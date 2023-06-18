@@ -334,11 +334,11 @@ impl Drop for GraphicsPipeline {
 }*/
 
 impl GraphicsPipeline {
-    pub fn renderpass(&self) ->  Arc<RenderPass> {
+    pub fn renderpass(&self) -> Arc<RenderPass> {
         self.renderpass.clone()
     }
 
-    pub fn depth_configuration(&self) ->  Option<DepthConfiguration> {
+    pub fn depth_configuration(&self) -> Option<DepthConfiguration> {
         self.depth_configuration
     }
     pub fn rasterizer(&self) -> Rasterizer {
