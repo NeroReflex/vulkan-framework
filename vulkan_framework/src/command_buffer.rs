@@ -521,8 +521,8 @@ impl<'a> CommandBufferRecorder<'a> {
     pub fn build_blas(
         &mut self,
         blas: Arc<BottomLevelAccelerationStructure>,
-        instance_buffer: Arc<Buffer>,
-        geometry_buffer: Arc<Buffer>,
+        index_buffer: Arc<Buffer>,
+        vertex_buffer: Arc<Buffer>,
         transform_buffer: Arc<Buffer>,
         scratch_buffer: Arc<DeviceScratchBuffer>,
         primitive_offset: u32,
@@ -533,20 +533,20 @@ impl<'a> CommandBufferRecorder<'a> {
         // TODO: this should be an Error UserInput
         assert!(blas.builder().allowed_building_devices() != AllowedBuildingDevice::HostOnly);
 
-        let gometry_info = ash::vk::BufferDeviceAddressInfo::builder().buffer(geometry_buffer.ash_handle());
-        let geometry_buffer_device_addr = unsafe {
-            geometry_buffer
+        let vertex_info = ash::vk::BufferDeviceAddressInfo::builder().buffer(vertex_buffer.ash_handle());
+        let vertex_buffer_device_addr = unsafe {
+            vertex_buffer
                 .get_parent_device()
                 .ash_handle()
-                .get_buffer_device_address(&gometry_info)
+                .get_buffer_device_address(&vertex_info)
         };
 
-        let instance_info = ash::vk::BufferDeviceAddressInfo::builder().buffer(instance_buffer.ash_handle());
-        let instance_buffer_device_addr = unsafe {
-            instance_buffer
+        let index_info = ash::vk::BufferDeviceAddressInfo::builder().buffer(index_buffer.ash_handle());
+        let index_buffer_device_addr = unsafe {
+            index_buffer
                 .get_parent_device()
                 .ash_handle()
-                .get_buffer_device_address(&instance_info)
+                .get_buffer_device_address(&index_info)
         };
 
         let transform_info = ash::vk::BufferDeviceAddressInfo::builder().buffer(transform_buffer.ash_handle());
@@ -575,13 +575,13 @@ impl<'a> CommandBufferRecorder<'a> {
                                             .vertex_format(unsafe { geometry.geometry.triangles.vertex_format })
                                             .vertex_stride(unsafe { geometry.geometry.triangles.vertex_stride })
                                             .vertex_data(ash::vk::DeviceOrHostAddressConstKHR {
-                                                device_address: geometry_buffer_device_addr
+                                                device_address: vertex_buffer_device_addr
                                             }) //
                                             .transform_data(ash::vk::DeviceOrHostAddressConstKHR {
                                                 device_address: transform_buffer_device_addr
                                             }) // mat4
                                             .index_data(ash::vk::DeviceOrHostAddressConstKHR {
-                                                device_address: instance_buffer_device_addr
+                                                device_address: index_buffer_device_addr
                                             }) // [u32]
                                             .build()
                                     }

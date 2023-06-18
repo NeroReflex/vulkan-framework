@@ -715,7 +715,7 @@ fn main() {
 
                 let pipeline = RaytracingPipeline::new(
                     pipeline_layout.clone(),
-                    16,
+                    1,
                     raygen_shader,
                     None,
                     miss_shader,
@@ -758,13 +758,13 @@ fn main() {
                                     ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                                 ).as_raw()
                             ),
-                            (core::mem::size_of::<f32>() as u64) * 3u64
+                            (core::mem::size_of::<[f32; 3]>() as u64) * 3u64
                         ),
                         None,
                         None
                 ).unwrap();
 
-                let instance_buffer = Buffer::new(
+                let index_buffer = Buffer::new(
                     raytracing_allocator.clone(),
                     ConcreteBufferDescriptor::new(
                         BufferUsage::Unmanaged(
@@ -796,7 +796,7 @@ fn main() {
                         None
                 ).unwrap();
 
-                raytracing_allocator.write_raw_data(instance_buffer.allocation_offset(), VERTEX_INDEX.as_slice()).unwrap();
+                raytracing_allocator.write_raw_data(index_buffer.allocation_offset(), VERTEX_INDEX.as_slice()).unwrap();
                 raytracing_allocator.write_raw_data(vertex_buffer.allocation_offset(), VERTEX_DATA.as_slice()).unwrap();
                 raytracing_allocator.write_raw_data(transform_buffer.allocation_offset(), INSTANCE_DATA.as_slice()).unwrap();
 
@@ -812,12 +812,12 @@ fn main() {
                     {
                         cmd.build_blas(
                             blas.clone(),
-                            instance_buffer.clone(),
+                            index_buffer.clone(),
                             vertex_buffer.clone(),
                             transform_buffer.clone(),
                             scratch_buffer.clone(),
                             0,
-                            3,
+                            1,
                             0,
                             0
                         );
@@ -837,6 +837,7 @@ fn main() {
                         },
                         Err(err) => {
                             if err.is_timeout() {
+                                //println!("TIMEOUT");
                                 continue;
                             }
 

@@ -247,7 +247,7 @@ impl BottomLevelAccelerationStructure {
         self.builder.clone()
     }
 
-    pub fn build(&self, scratch_buffer: Arc<HostScratchBuffer>) -> VulkanResult<()> {
+    /*pub fn build(&self, scratch_buffer: Arc<HostScratchBuffer>) -> VulkanResult<()> {
         let allowed_building_devices = self.builder.allowed_building_devices();
         if allowed_building_devices == AllowedBuildingDevice::DeviceOnly {
             // TODO: error
@@ -259,7 +259,7 @@ impl BottomLevelAccelerationStructure {
             .ash_ext_acceleration_structure_khr()
         {
             Some(as_ext) => {
-                let (mut geometries, geometry_info) = self.builder.ash_structures();
+                let (/*mut*/ geometries, geometry_info) = self.builder.ash_structures();
 
                 /*for geometry in geometries.iter_mut() {
 
@@ -301,7 +301,7 @@ impl BottomLevelAccelerationStructure {
                 "VK_KHR_acceleration_structure",
             ))),
         }
-    }
+    }*/
 
     pub fn new(
         memory_pool: Arc<MemoryPool>,
@@ -339,7 +339,6 @@ impl BottomLevelAccelerationStructure {
 
                 };*/
 
-                let allowed_building_devices = builder.allowed_building_devices();
                 let (geometries, geometry_info) = builder.ash_structures();
                 let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::builder()
                     .geometries(geometries.as_slice())
@@ -351,14 +350,6 @@ impl BottomLevelAccelerationStructure {
 
                 match device.ash_ext_acceleration_structure_khr() {
                     Some(as_ext) => {
-                        let _build_sizes = unsafe {
-                            as_ext.get_acceleration_structure_build_sizes(
-                                allowed_building_devices.ash_flags(),
-                                &geometry_info,
-                                &[128],
-                            )
-                        };
-
                         // If deviceAddress is not zero, createFlags must include VK_ACCELERATION_STRUCTURE_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT_KHR
                         let create_info = ash::vk::AccelerationStructureCreateInfoKHR::builder()
                             .buffer(buffer.ash_handle())
