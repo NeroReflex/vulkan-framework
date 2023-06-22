@@ -29,25 +29,20 @@ impl AllowedBuildingDevice {
     }
 }
 
-pub struct BottomLevelAccelerationStructureBuilder {
+pub struct TopLevelAccelerationStructureBuilder {
     device: Arc<Device>,
 
-    geometries: smallvec::SmallVec<[ash::vk::AccelerationStructureGeometryKHR; 1]>,
+    geometries: smallvec::SmallVec<[ash::vk::AccelerationStructureGeometryKHR; 32]>,
     geometry_info: ash::vk::AccelerationStructureBuildGeometryInfoKHR,
 
-    max_vertices: u32,
-    vertex_format: AttributeType,
     allowed_building_devices: AllowedBuildingDevice,
     acceleration_structure_size: u64,
     build_scratch_buffer_size: u64,
     update_scratch_buffer_size: u64,
 }
 
-impl BottomLevelAccelerationStructureBuilder {
-    pub fn vertex_format(&self) -> AttributeType {
-        self.vertex_format
-    }
-
+impl TopLevelAccelerationStructureBuilder {
+    
     pub fn acceleration_structure_size(&self) -> u64 {
         self.acceleration_structure_size
     }
@@ -63,7 +58,7 @@ impl BottomLevelAccelerationStructureBuilder {
     pub(crate) fn ash_structures(
         &self,
     ) -> (
-        smallvec::SmallVec<[ash::vk::AccelerationStructureGeometryKHR; 1]>,
+        smallvec::SmallVec<[ash::vk::AccelerationStructureGeometryKHR; 32]>,
         ash::vk::AccelerationStructureBuildGeometryInfoKHR,
     ) {
         let geometries = self.geometries.clone();
@@ -82,22 +77,26 @@ impl BottomLevelAccelerationStructureBuilder {
 
     pub fn new(
         device: Arc<Device>,
-        max_vertices: u32,
+        max_blas: u32,
+        
+        
         vertex_stride: u64,
         vertex_format: AttributeType,
         allowed_building_devices: AllowedBuildingDevice,
     ) -> VulkanResult<Arc<Self>> {
-        let geometries = smallvec::smallvec![ash::vk::AccelerationStructureGeometryKHR::builder()
-            .geometry_type(ash::vk::GeometryTypeKHR::TRIANGLES)
-            .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
-                triangles: ash::vk::AccelerationStructureGeometryTrianglesDataKHR::builder()
-                    .index_type(ash::vk::IndexType::UINT32)
-                    .max_vertex(max_vertices)
-                    .vertex_format(vertex_format.ash_format())
-                    .vertex_stride(vertex_stride)
-                    .build(),
-            })
-            .build()];
+        let geometries = (0..max_blas).into_iter().map(|idx| {
+            ash::vk::AccelerationStructureGeometryKHR::builder()
+                .geometry_type(ash::vk::GeometryTypeKHR::INSTANCES)
+                .flags(ash::vk::GeometryFlagsKHR::OPAQUE)
+                .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
+                    instances: ash::vk::AccelerationStructureGeometryInstancesDataKHR::builder()
+                        .array_of_pointers(false)
+                        
+                        .build()
+                })
+                .build()
+        }).collect::<smallvec::SmallVec<[ash::vk::AccelerationStructureGeometryKHR; 32]>>();
+
 
         // From vulkan specs: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
         // The srcAccelerationStructure, dstAccelerationStructure, and mode members of pBuildInfo are ignored.
@@ -107,7 +106,7 @@ impl BottomLevelAccelerationStructureBuilder {
         let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::builder()
             .geometries(geometries.as_slice())
             .flags(ash::vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
-            .ty(ash::vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL)
+            .ty(ash::vk::AccelerationStructureTypeKHR::TOP_LEVEL)
             .build();
 
         match device.ash_ext_acceleration_structure_khr() {
@@ -116,7 +115,7 @@ impl BottomLevelAccelerationStructureBuilder {
                     as_ext.get_acceleration_structure_build_sizes(
                         allowed_building_devices.ash_flags(),
                         &geometry_info,
-                        &[max_vertices],
+                        &[max_blas],
                     )
                 };
 
@@ -129,8 +128,7 @@ impl BottomLevelAccelerationStructureBuilder {
                     device,
                     geometries,
                     geometry_info,
-                    max_vertices,
-                    vertex_format,
+                    
                     allowed_building_devices,
                     acceleration_structure_size: build_sizes.acceleration_structure_size,
                     build_scratch_buffer_size: build_sizes.build_scratch_size,
@@ -231,21 +229,203 @@ impl HostScratchBuffer {
     }
 }
 
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub struct BottomLevelTrianglesGroupDecl {
+    max_triangles: u32,
+    vertex_stride: u64,
+    vertex_format: AttributeType,
+}
+
+impl BottomLevelTrianglesGroupDecl {
+    pub fn new(
+        max_triangles: u32,
+        vertex_stride: u64,
+        vertex_format: AttributeType,
+    ) -> Self {
+        Self {
+            max_triangles,
+            vertex_stride,
+            vertex_format,
+        }
+    }
+
+    pub fn max_triangles(&self) -> u32 {
+        self.max_triangles
+    }
+
+    pub fn max_vertices(&self) -> u32 {
+        self.max_triangles() * 3u32
+    }
+
+    pub fn vertex_stride(&self) -> u64 {
+        self.vertex_stride
+    }
+
+    pub fn vertex_format(&self) -> AttributeType {
+        self.vertex_format
+    }
+
+    pub(crate) fn ash_geometry(&self) -> ash::vk::AccelerationStructureGeometryKHR {
+        ash::vk::AccelerationStructureGeometryKHR::builder()
+            // TODO: .flags()
+            .geometry_type(ash::vk::GeometryTypeKHR::TRIANGLES)
+            .geometry(
+                ash::vk::AccelerationStructureGeometryDataKHR {
+                    triangles: ash::vk::AccelerationStructureGeometryTrianglesDataKHR::builder()
+                        .index_type(ash::vk::IndexType::UINT32)
+                        .max_vertex(self.max_vertices())
+                        .vertex_format(self.vertex_format.ash_format())
+                        .vertex_stride(self.vertex_stride)
+                        .build(),
+                }
+            )
+            .build()
+    }
+}
+
+pub struct BottomLevelTrianglesGroupData {
+    decl: BottomLevelTrianglesGroupDecl,
+
+    index_buffer: Arc<Buffer>,
+    vertex_buffer: Arc<Buffer>,
+    transform_buffer: Arc<Buffer>,
+    
+    primitive_offset: u32,
+    primitive_count: u32,
+    first_vertex: u32,
+    transform_offset: u32,
+}
+
+impl BottomLevelTrianglesGroupData {
+    pub fn new(
+        decl: BottomLevelTrianglesGroupDecl,
+        index_buffer: Arc<Buffer>,
+        vertex_buffer: Arc<Buffer>,
+        transform_buffer: Arc<Buffer>,
+        primitive_offset: u32,
+        primitive_count: u32,
+        first_vertex: u32,
+        transform_offset: u32,
+    ) -> Self {
+        Self {
+            decl,
+            index_buffer,
+            vertex_buffer,
+            transform_buffer,
+            primitive_offset,
+            primitive_count,
+            first_vertex,
+            transform_offset,
+        }
+    }
+
+    pub fn decl(&self) -> BottomLevelTrianglesGroupDecl {
+        self.decl
+    }
+
+    pub fn index_buffer(&self) -> Arc<Buffer> {
+        self.index_buffer.clone()
+    }
+
+    pub fn vertex_buffer(&self) -> Arc<Buffer> {
+        self.vertex_buffer.clone()
+    }
+
+    pub fn transform_buffer(&self) -> Arc<Buffer> {
+        self.transform_buffer.clone()
+    }
+
+    pub fn primitive_offset(&self) -> u32 {
+        self.primitive_offset
+    }
+
+    pub fn primitive_count(&self) -> u32 {
+        self.primitive_count
+    }
+
+    pub fn first_vertex(&self) -> u32 {
+        self.first_vertex
+    }
+
+    pub fn transform_offset(&self) -> u32 {
+        self.transform_offset
+    }
+}
+
 pub struct BottomLevelAccelerationStructure {
     handle: ash::vk::AccelerationStructureKHR,
     buffer: Arc<Buffer>,
     buffer_device_addr: u64,
-    builder: Arc<BottomLevelAccelerationStructureBuilder>,
+    //builder: Arc<BottomLevelAccelerationStructureBuilder>,
 }
 
 impl BottomLevelAccelerationStructure {
+    /*
+     * This function allows the user to estimate a minimum size for provided geometry info.
+     * 
+     * If the operation is successful the tuple returned will be:
+     *   - BLAS (minimum) size
+     *   - BLAS build (minimum) scratch buffer size
+     *   - BLAS update (minimum) scratch buffer size
+     */
+    pub fn query_minimum_sizes(
+        device: Arc<Device>,
+        allowed_building_devices: AllowedBuildingDevice,
+        geometries_decl: &[BottomLevelTrianglesGroupDecl]
+    ) -> VulkanResult<(u64, u64, u64)> {
+        let geometries = geometries_decl.iter().map(|g| g.ash_geometry()).collect::<Vec<ash::vk::AccelerationStructureGeometryKHR>>();
+        let max_primitives_count = geometries_decl.iter().map(|g| g.max_triangles()).collect::<Vec<u32>>();
+
+        // From vulkan specs: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
+        // The srcAccelerationStructure, dstAccelerationStructure, and mode members of pBuildInfo are ignored.
+        // Any VkDeviceOrHostAddressKHR members of pBuildInfo are ignored by this command,
+        // except that the hostAddress member of VkAccelerationStructureGeometryTrianglesDataKHR::transformData
+        // will be examined to check if it is NULL.
+        let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::builder()
+            .geometries(geometries.as_slice())
+            .flags(ash::vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
+            .ty(ash::vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL)
+            .build();
+
+        match device.ash_ext_acceleration_structure_khr() {
+            Some(as_ext) => {
+                let build_sizes = unsafe {
+                    as_ext.get_acceleration_structure_build_sizes(
+                        allowed_building_devices.ash_flags(),
+                        &geometry_info,
+                        max_primitives_count.as_slice(),
+                    )
+                };
+
+                Ok(
+                    (
+                        build_sizes.acceleration_structure_size,
+                        build_sizes.build_scratch_size,
+                        build_sizes.update_scratch_size,
+                    )
+                )
+            }
+            None => Err(VulkanError::MissingExtension(String::from(
+                "VK_KHR_acceleration_structure",
+            ))),
+        }
+    }
+    
     pub(crate) fn ash_handle(&self) -> ash::vk::AccelerationStructureKHR {
         self.handle
     }
 
-    pub fn builder(&self) -> Arc<BottomLevelAccelerationStructureBuilder> {
-        self.builder.clone()
+    pub fn buffer_device_addr(&self) -> u64 {
+        self.buffer_device_addr
     }
+
+    pub fn buffer_size(&self) -> u64 {
+        self.buffer.size()
+    }
+
+    //pub fn builder(&self) -> Arc<BottomLevelAccelerationStructureBuilder> {
+    //    self.builder.clone()
+    //}
 
     /*pub fn build(&self, scratch_buffer: Arc<HostScratchBuffer>) -> VulkanResult<()> {
         let allowed_building_devices = self.builder.allowed_building_devices();
@@ -305,7 +485,8 @@ impl BottomLevelAccelerationStructure {
 
     pub fn new(
         memory_pool: Arc<MemoryPool>,
-        builder: Arc<BottomLevelAccelerationStructureBuilder>,
+        //builder: Arc<BottomLevelAccelerationStructureBuilder>,
+        buffer_size: u64
     ) -> VulkanResult<Arc<Self>> {
         let device = memory_pool.get_parent_memory_heap().get_parent_device();
 
@@ -324,7 +505,7 @@ impl BottomLevelAccelerationStructure {
                         | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
                         .as_raw(),
                 ),
-                builder.acceleration_structure_size(),
+                buffer_size,
             ),
             None,
             None,
@@ -339,23 +520,14 @@ impl BottomLevelAccelerationStructure {
 
                 };*/
 
-                let (geometries, geometry_info) = builder.ash_structures();
-                let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::builder()
-                    .geometries(geometries.as_slice())
-                    .flags(geometry_info.flags)
-                    .ty(geometry_info.ty)
-                    .mode(ash::vk::BuildAccelerationStructureModeKHR::BUILD)
-                    .src_acceleration_structure(ash::vk::AccelerationStructureKHR::null())
-                    .build();
-
                 match device.ash_ext_acceleration_structure_khr() {
                     Some(as_ext) => {
                         // If deviceAddress is not zero, createFlags must include VK_ACCELERATION_STRUCTURE_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT_KHR
                         let create_info = ash::vk::AccelerationStructureCreateInfoKHR::builder()
                             .buffer(buffer.ash_handle())
                             .offset(0)
-                            .size(builder.acceleration_structure_size())
-                            .ty(geometry_info.ty)
+                            .size(buffer.size())
+                            .ty(ash::vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL)
                             .create_flags(ash::vk::AccelerationStructureCreateFlagsKHR::empty())
                             //.device_address(buffer_device_addr)
                             .build();
@@ -370,7 +542,6 @@ impl BottomLevelAccelerationStructure {
                                 handle,
                                 buffer,
                                 buffer_device_addr,
-                                builder,
                             })),
                             Err(err) => Err(VulkanError::Vulkan(
                                 err.as_raw(),

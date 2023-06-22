@@ -7,7 +7,7 @@ use std::{
 use ash::vk::Handle;
 
 use crate::{
-    acceleration_structure::{BottomLevelAccelerationStructure, DeviceScratchBuffer, AllowedBuildingDevice},
+    acceleration_structure::{BottomLevelAccelerationStructure, DeviceScratchBuffer, AllowedBuildingDevice, BottomLevelTrianglesGroupData},
     binding_tables::RaytracingBindingTables,
     command_pool::{CommandPool, CommandPoolOwned},
     device::DeviceOwned,
@@ -521,116 +521,103 @@ impl<'a> CommandBufferRecorder<'a> {
     pub fn build_blas(
         &mut self,
         blas: Arc<BottomLevelAccelerationStructure>,
-        index_buffer: Arc<Buffer>,
-        vertex_buffer: Arc<Buffer>,
-        transform_buffer: Arc<Buffer>,
         scratch_buffer: Arc<DeviceScratchBuffer>,
-        primitive_offset: u32,
-        primitive_count: u32,
-        first_vertex: u32,
-        transform_offset: u32,
+        geometry_data: &[BottomLevelTrianglesGroupData],
     ) {
         // TODO: this should be an Error UserInput
-        assert!(blas.builder().allowed_building_devices() != AllowedBuildingDevice::HostOnly);
+        //assert!(blas.builder().allowed_building_devices() != AllowedBuildingDevice::HostOnly);
 
-        let vertex_info = ash::vk::BufferDeviceAddressInfo::builder().buffer(vertex_buffer.ash_handle());
-        let vertex_buffer_device_addr = unsafe {
-            vertex_buffer
-                .get_parent_device()
-                .ash_handle()
-                .get_buffer_device_address(&vertex_info)
-        };
+        let mut geometries: Vec<ash::vk::AccelerationStructureGeometryKHR> = vec![];
+        let mut max_primitives_count: Vec<u32> = vec![];
+        let mut range_infos: Vec<Vec<ash::vk::AccelerationStructureBuildRangeInfoKHR>> = vec![];
 
-        let index_info = ash::vk::BufferDeviceAddressInfo::builder().buffer(index_buffer.ash_handle());
-        let index_buffer_device_addr = unsafe {
-            index_buffer
-                .get_parent_device()
-                .ash_handle()
-                .get_buffer_device_address(&index_info)
-        };
+        for g in geometry_data.iter() {
+            // TODO: assert from same device
 
-        let transform_info = ash::vk::BufferDeviceAddressInfo::builder().buffer(transform_buffer.ash_handle());
-        let transform_buffer_device_addr = unsafe {
-            transform_buffer
-                .get_parent_device()
-                .ash_handle()
-                .get_buffer_device_address(&transform_info)
-        };
+            let vertex_info = ash::vk::BufferDeviceAddressInfo::builder().buffer(g.vertex_buffer().ash_handle());
+            let vertex_buffer_device_addr = unsafe {
+                self.device
+                    .ash_handle()
+                    .get_buffer_device_address(&vertex_info)
+            };
+
+            let index_info = ash::vk::BufferDeviceAddressInfo::builder().buffer(g.index_buffer().ash_handle());
+            let index_buffer_device_addr = unsafe {
+                self.device
+                    .ash_handle()
+                    .get_buffer_device_address(&index_info)
+            };
+
+            let transform_info: ash::vk::BufferDeviceAddressInfoBuilder<'_> = ash::vk::BufferDeviceAddressInfo::builder().buffer(g.transform_buffer().ash_handle());
+            let transform_buffer_device_addr = unsafe {
+                self.device
+                    .ash_handle()
+                    .get_buffer_device_address(&transform_info)
+            };
+            
+            geometries.push(ash::vk::AccelerationStructureGeometryKHR::builder()
+            // TODO: .flags()
+            .geometry_type(ash::vk::GeometryTypeKHR::TRIANGLES)
+            .geometry(
+                ash::vk::AccelerationStructureGeometryDataKHR {
+                    triangles: ash::vk::AccelerationStructureGeometryTrianglesDataKHR::builder()
+                        .index_type(unsafe { ash::vk::IndexType::UINT32 })
+                        .max_vertex(unsafe { g.decl().max_vertices() })
+                        .vertex_format(unsafe { g.decl().vertex_format().ash_format() })
+                        .vertex_stride(unsafe { g.decl().vertex_stride() })
+                        .vertex_data(ash::vk::DeviceOrHostAddressConstKHR {
+                            device_address: vertex_buffer_device_addr
+                        }) //
+                        .transform_data(ash::vk::DeviceOrHostAddressConstKHR {
+                            device_address: transform_buffer_device_addr
+                        }) // mat4
+                        .index_data(ash::vk::DeviceOrHostAddressConstKHR {
+                            device_address: index_buffer_device_addr
+                        }) // [u32]
+                        .build()
+                }
+            )
+            .build());
+
+            range_infos.push(
+                vec![
+                    ash::vk::AccelerationStructureBuildRangeInfoKHR::builder()
+                            .primitive_offset(g.primitive_offset())
+                            .primitive_count(g.primitive_count())
+                            .first_vertex(g.first_vertex())
+                            .transform_offset(g.transform_offset())
+                            .build()
+                ]
+            );
+
+            max_primitives_count.push(g.decl().max_triangles());
+        }
+
+        // From vulkan specs: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
+        // The srcAccelerationStructure, dstAccelerationStructure, and mode members of pBuildInfo are ignored.
+        // Any VkDeviceOrHostAddressKHR members of pBuildInfo are ignored by this command,
+        // except that the hostAddress member of VkAccelerationStructureGeometryTrianglesDataKHR::transformData
+        // will be examined to check if it is NULL.
+        let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::builder()
+            .geometries(geometries.as_slice())
+            .flags(ash::vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
+            .ty(ash::vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL)
+            .mode(ash::vk::BuildAccelerationStructureModeKHR::BUILD)
+            .src_acceleration_structure(ash::vk::AccelerationStructureKHR::null())
+            .dst_acceleration_structure(blas.ash_handle())
+            .scratch_data(scratch_buffer.addr())
+            .build();
+
+        let ranges_collection: Vec<&[ash::vk::AccelerationStructureBuildRangeInfoKHR]> = range_infos.iter().map(|r| r.as_slice()).collect();
 
         // check if ray_tracing extension is enabled
         match self.device.ash_ext_acceleration_structure_khr() {
             Some(rt_ext) => {
-                let (geometries, geometry_info) = blas.builder().ash_structures();
-                let geometries = geometries.iter().map(|geometry| {
-                    let mut builder = ash::vk::AccelerationStructureGeometryKHR::builder()
-                        .geometry_type(geometry.geometry_type);
-                        
-                        match geometry.geometry_type {
-                            ash::vk::GeometryTypeKHR::TRIANGLES => {
-                                builder = builder.geometry(
-                                    ash::vk::AccelerationStructureGeometryDataKHR {
-                                        triangles: ash::vk::AccelerationStructureGeometryTrianglesDataKHR::builder()
-                                            .index_type(unsafe { geometry.geometry.triangles.index_type })
-                                            .max_vertex(unsafe { geometry.geometry.triangles.max_vertex })
-                                            .vertex_format(unsafe { geometry.geometry.triangles.vertex_format })
-                                            .vertex_stride(unsafe { geometry.geometry.triangles.vertex_stride })
-                                            .vertex_data(ash::vk::DeviceOrHostAddressConstKHR {
-                                                device_address: vertex_buffer_device_addr
-                                            }) //
-                                            .transform_data(ash::vk::DeviceOrHostAddressConstKHR {
-                                                device_address: transform_buffer_device_addr
-                                            }) // mat4
-                                            .index_data(ash::vk::DeviceOrHostAddressConstKHR {
-                                                device_address: index_buffer_device_addr
-                                            }) // [u32]
-                                            .build()
-                                    }
-                                );
-                            },
-
-                            _ => {
-                                assert_eq!(true, false)
-                            }
-                        }
-                        
-                        builder.build()
-                }).collect::<smallvec::SmallVec<[ash::vk::AccelerationStructureGeometryKHR; 1]>>();
-
-                /*for geometry in geometries.iter_mut() {
-
-                }*/
-
-                let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::builder()
-                    .geometries(geometries.as_slice())
-                    .flags(geometry_info.flags)
-                    .ty(geometry_info.ty)
-                    .mode(ash::vk::BuildAccelerationStructureModeKHR::BUILD)
-                    .src_acceleration_structure(ash::vk::AccelerationStructureKHR::null())
-                    .dst_acceleration_structure(blas.ash_handle())
-                    .scratch_data(scratch_buffer.addr())
-                    .build();
-
-                    
-
-
-                let range_infos: smallvec::SmallVec<
-                    [ash::vk::AccelerationStructureBuildRangeInfoKHR; 1],
-                > = smallvec::smallvec![
-                    ash::vk::AccelerationStructureBuildRangeInfoKHR::builder()
-                        .primitive_offset(primitive_offset)
-                        .primitive_count(primitive_count)
-                        .first_vertex(first_vertex)
-                        .transform_offset(transform_offset)
-                        .build()
-                ];
-
-                let range_info_0 = range_infos.as_slice();
-
                 unsafe {
                     rt_ext.cmd_build_acceleration_structures(
                         self.command_buffer.ash_handle(),
                         &[geometry_info],
-                        &[range_info_0]
+                        ranges_collection.as_slice()
                     )
                 }
             }

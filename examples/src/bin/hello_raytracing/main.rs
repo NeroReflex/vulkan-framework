@@ -5,8 +5,8 @@ use inline_spirv::*;
 use vulkan_framework::{
     buffer::{Buffer, ConcreteBufferDescriptor, BufferUsage},
     acceleration_structure::{
-        BottomLevelAccelerationStructure, BottomLevelAccelerationStructureBuilder,
-        DeviceScratchBuffer, HostScratchBuffer,
+        BottomLevelAccelerationStructure,
+        DeviceScratchBuffer, HostScratchBuffer, AllowedBuildingDevice, BottomLevelTrianglesGroupDecl, BottomLevelTrianglesGroupData,
     },
     binding_tables::{required_memory_type, RaytracingBindingTables},
     closest_hit_shader::ClosestHitShader,
@@ -22,7 +22,7 @@ use vulkan_framework::{
     framebuffer::Framebuffer,
     graphics_pipeline::{
         CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline, PolygonMode,
-        Rasterizer,
+        Rasterizer, AttributeType,
     },
     image::{
         ConcreteImageDescriptor, Image2DDimensions, Image3DDimensions, ImageDimensions, ImageFlags,
@@ -734,18 +734,21 @@ fn main() {
                     })
                     .collect::<Vec<Arc<RaytracingBindingTables>>>();
 
-                let blas_builder = BottomLevelAccelerationStructureBuilder::new(
-                    dev.clone(),
-                    32,
+                let triangle_decl = BottomLevelTrianglesGroupDecl::new(
+                    1,
                     (std::mem::size_of::<f32>() as u64) * 3u64,
-                    vulkan_framework::graphics_pipeline::AttributeType::Vec3,
-                    vulkan_framework::acceleration_structure::AllowedBuildingDevice::HostAndDevice,
-                )
-                .unwrap();
+                    AttributeType::Vec3
+                );
+
+                let blas_estimated_sizes = BottomLevelAccelerationStructure::query_minimum_sizes(
+                    dev.clone(),
+                    AllowedBuildingDevice::DeviceOnly,
+                    &[triangle_decl]
+                ).unwrap();
 
                 let scratch_buffer = DeviceScratchBuffer::new(
                     raytracing_allocator.clone(),
-                    blas_builder.build_scratch_buffer_size(),
+                    blas_estimated_sizes.1,
                 ).unwrap();
 
                 let vertex_buffer = Buffer::new(
@@ -802,7 +805,7 @@ fn main() {
 
                 let blas = BottomLevelAccelerationStructure::new(
                     raytracing_allocator.clone(),
-                    blas_builder.clone(),
+                    blas_estimated_sizes.0,
                 )
                 .unwrap();
 
@@ -812,14 +815,19 @@ fn main() {
                     {
                         cmd.build_blas(
                             blas.clone(),
-                            index_buffer.clone(),
-                            vertex_buffer.clone(),
-                            transform_buffer.clone(),
                             scratch_buffer.clone(),
-                            0,
-                            1,
-                            0,
-                            0
+                            &[
+                                BottomLevelTrianglesGroupData::new(
+                                    triangle_decl,
+                                    index_buffer.clone(),
+                                    vertex_buffer.clone(),
+                                    transform_buffer.clone(),
+                                    0,
+                                    1,
+                                    0,
+                                    0
+                                )
+                            ],
                         );
                     }).unwrap();
                 let tlas_building_fence = Fence::new(dev.clone(), false, Some("tlas_building_fence")).unwrap();
