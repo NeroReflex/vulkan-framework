@@ -132,8 +132,10 @@ uniform layout(binding=0, set = 0, rgba32f) writeonly image2D someImage;
 
 //layout(binding = 0, set = 1) uniform accelerationStructureEXT topLevelAS;
 
+layout(location = 0) rayPayloadInEXT vec3 hitValue;
+
 void main() {
-    
+    hitValue = vec3(0.0, 0.0, 0.2);
 }
 "#,
     glsl,
@@ -146,12 +148,17 @@ const CHIT_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
 #extension GL_EXT_ray_tracing : require
+#extension GL_EXT_nonuniform_qualifier : enable
+
+layout(location = 0) rayPayloadInEXT vec3 hitValue;
+hitAttributeEXT vec2 attribs;
 
 //layout(binding = 0, set = 0) uniform accelerationStructureEXT topLevelAS;
 //layout(binding = 1, set = 0) uniform image2D outputImage;
 
 void main() {
-    
+    const vec3 barycentricCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
+    hitValue = barycentricCoords;
 }
 "#,
     glsl,
