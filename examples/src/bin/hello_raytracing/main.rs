@@ -3,12 +3,13 @@ use std::sync::Arc;
 use inline_spirv::*;
 
 use vulkan_framework::{
-    buffer::{Buffer, ConcreteBufferDescriptor, BufferUsage},
     acceleration_structure::{
-        BottomLevelAccelerationStructure,
-        DeviceScratchBuffer, HostScratchBuffer, AllowedBuildingDevice, BottomLevelTrianglesGroupDecl, BottomLevelTrianglesGroupData,
+        AllowedBuildingDevice, BottomLevelAccelerationStructure, BottomLevelTrianglesGroupData,
+        BottomLevelTrianglesGroupDecl, DeviceScratchBuffer, HostScratchBuffer,
+        TopLevelAccelerationStructure, TopLevelBLASGroupData, TopLevelBLASGroupDecl,
     },
     binding_tables::{required_memory_type, RaytracingBindingTables},
+    buffer::{Buffer, BufferUsage, ConcreteBufferDescriptor},
     closest_hit_shader::ClosestHitShader,
     command_buffer::{
         AccessFlag, AccessFlags, AccessFlagsSpecifier, ClearValues, ColorClearValues,
@@ -21,8 +22,8 @@ use vulkan_framework::{
     fragment_shader::FragmentShader,
     framebuffer::Framebuffer,
     graphics_pipeline::{
-        CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline, PolygonMode,
-        Rasterizer, AttributeType,
+        AttributeType, CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline,
+        PolygonMode, Rasterizer,
     },
     image::{
         ConcreteImageDescriptor, Image2DDimensions, Image3DDimensions, ImageDimensions, ImageFlags,
@@ -33,10 +34,11 @@ use vulkan_framework::{
     instance::*,
     memory_allocator::*,
     memory_heap::*,
-    memory_pool::{MemoryPool, MemoryPoolFeature, MemoryPoolFeatures, MemoryPoolBacked},
+    memory_pool::{MemoryPool, MemoryPoolBacked, MemoryPoolFeature, MemoryPoolFeatures},
     miss_shader::MissShader,
     pipeline_layout::PipelineLayout,
     pipeline_stage::{PipelineStage, PipelineStageRayTracingPipelineKHR, PipelineStages},
+    prelude::VulkanError,
     queue::*,
     queue_family::*,
     raygen_shader::RaygenShader,
@@ -45,14 +47,14 @@ use vulkan_framework::{
         AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp, RenderSubPassDescription,
     },
     semaphore::Semaphore,
-    shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType},
+    shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType, AccelerationStructureBindingType},
     shader_stage_access::ShaderStageAccess,
     swapchain::{
         CompositeAlphaSwapchainKHR, DeviceSurfaceInfo, PresentModeSwapchainKHR,
         SurfaceColorspaceSwapchainKHR, SurfaceTransformSwapchainKHR, SwapchainKHR,
     },
     swapchain_image::ImageSwapchainKHR,
-    vertex_shader::VertexShader, prelude::VulkanError,
+    vertex_shader::VertexShader, descriptor_pool::DescriptorPoolSizesAcceletarionStructureKHR,
 };
 
 use vulkan_framework::descriptor_pool::DescriptorPool;
@@ -67,12 +69,15 @@ const RAYGEN_SPV: &[u32] = inline_spirv!(
 
 uniform layout(binding=0, set = 0, rgba32f) writeonly image2D outputImage;
 
-//layout(binding = 0, set = 1) uniform accelerationStructureEXT topLevelAS;
+layout(binding = 0, set = 1) uniform accelerationStructureEXT topLevelAS;
 
 void main() {
     const vec2 resolution = vec2(imageSize(outputImage));
 
     ivec2 pixelCoords = ivec2(gl_LaunchIDEXT.xy);
+
+
+    
 
     vec4 output_color = vec4(1.0, 0.0, 0.0, 0.0);
 
@@ -203,17 +208,9 @@ void main() {
     entry = "main"
 );
 
-const INSTANCE_DATA: [f32; 12] = [
-    1.0, 0.0, 0.0, 0.0,
-    0.0, 1.0, 0.0, 0.0,
-    0.0, 0.0, 1.0, 0.0,
-];
-const VERTEX_INDEX: [u32; 3] = [0, 1, 2, ];
-const VERTEX_DATA: [f32; 9] = [
-    0.0, 0.0, 0.0,
-    0.8, 0.0, 0.0,
-    0.0, 0.8, 0.0,
-];
+const INSTANCE_DATA: [f32; 12] = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+const VERTEX_INDEX: [u32; 3] = [0, 1, 2];
+const VERTEX_DATA: [f32; 9] = [0.0, 0.0, 0.0, 0.8, 0.0, 0.0, 0.0, 0.8, 0.0];
 
 fn main() {
     let mut instance_extensions = vec![String::from("VK_EXT_debug_utils")];
@@ -452,7 +449,7 @@ fn main() {
                             0,
                             0,
                             0,
-                            None,
+                            Some(DescriptorPoolSizesAcceletarionStructureKHR::new(1 * swapchain_images_count)),
                         ),
                         2 * swapchain_images_count, // one for descriptor_set and one for renderquad_descriptor_set
                     ),
@@ -503,35 +500,21 @@ fn main() {
                     1,
                 );
 
+                let rt_acceleration_structure_descriptor = BindingDescriptor::new(
+                    ShaderStageAccess::raytracing(),
+                    BindingType::AccelerationStructure(AccelerationStructureBindingType::AccelerationStructure),
+                    1,
+                    1
+                );
+
                 let rt_writer_img_layout = ImageLayout::General;
 
                 let rt_descriptor_set_layout =
-                    DescriptorSetLayout::new(dev.clone(), &[rt_output_image_descriptor]).unwrap();
-
-                let rt_descriptor_sets = (0..swapchain_images_count)
-                    .map(|idx| {
-                        let result = DescriptorSet::new(
-                            descriptor_pool.clone(),
-                            rt_descriptor_set_layout.clone(),
-                        )
-                        .unwrap();
-
-                        result
-                            .bind_resources(|binder| {
-                                binder.bind_storage_images(
-                                    0,
-                                    &[(rt_writer_img_layout, rt_image_views[idx as usize].clone())],
-                                );
-                            })
-                            .unwrap();
-
-                        result
-                    })
-                    .collect::<Vec<Arc<DescriptorSet>>>();
+                    DescriptorSetLayout::new(dev.clone(), &[rt_output_image_descriptor, rt_acceleration_structure_descriptor]).unwrap();
 
                 let pipeline_layout = PipelineLayout::new(
                     dev.clone(),
-                    &[rt_descriptor_set_layout],
+                    &[rt_descriptor_set_layout.clone()],
                     &[],
                     Some("pipeline_layout"),
                 )
@@ -737,19 +720,24 @@ fn main() {
                 let triangle_decl = BottomLevelTrianglesGroupDecl::new(
                     1,
                     (std::mem::size_of::<f32>() as u64) * 3u64,
-                    AttributeType::Vec3
+                    AttributeType::Vec3,
                 );
+
+                let blas_decl = TopLevelBLASGroupDecl::new();
 
                 let blas_estimated_sizes = BottomLevelAccelerationStructure::query_minimum_sizes(
                     dev.clone(),
                     AllowedBuildingDevice::DeviceOnly,
-                    &[triangle_decl]
-                ).unwrap();
+                    &[triangle_decl],
+                )
+                .unwrap();
 
-                let scratch_buffer = DeviceScratchBuffer::new(
-                    raytracing_allocator.clone(),
-                    blas_estimated_sizes.1,
-                ).unwrap();
+                let tlas_estimated_sizes = TopLevelAccelerationStructure::query_minimum_sizes(
+                    dev.clone(),
+                    AllowedBuildingDevice::DeviceOnly,
+                    &[blas_decl],
+                )
+                .unwrap();
 
                 let vertex_buffer = Buffer::new(
                     raytracing_allocator.clone(),
@@ -799,50 +787,69 @@ fn main() {
                         None
                 ).unwrap();
 
-                raytracing_allocator.write_raw_data(index_buffer.allocation_offset(), VERTEX_INDEX.as_slice()).unwrap();
-                raytracing_allocator.write_raw_data(vertex_buffer.allocation_offset(), VERTEX_DATA.as_slice()).unwrap();
-                raytracing_allocator.write_raw_data(transform_buffer.allocation_offset(), INSTANCE_DATA.as_slice()).unwrap();
-
                 let blas = BottomLevelAccelerationStructure::new(
                     raytracing_allocator.clone(),
                     blas_estimated_sizes.0,
                 )
                 .unwrap();
 
+                raytracing_allocator
+                    .write_raw_data(index_buffer.allocation_offset(), VERTEX_INDEX.as_slice())
+                    .unwrap();
+                raytracing_allocator
+                    .write_raw_data(vertex_buffer.allocation_offset(), VERTEX_DATA.as_slice())
+                    .unwrap();
+                raytracing_allocator
+                    .write_raw_data(
+                        transform_buffer.allocation_offset(),
+                        INSTANCE_DATA.as_slice(),
+                    )
+                    .unwrap();
+
+                let tlas = TopLevelAccelerationStructure::new(
+                    raytracing_allocator.clone(),
+                    tlas_estimated_sizes.0,
+                )
+                .unwrap();
+
+                let scratch_buffer = DeviceScratchBuffer::new(
+                    raytracing_allocator.clone(),
+                    u64::max(blas_estimated_sizes.1, tlas_estimated_sizes.1),
+                )
+                .unwrap();
+
                 // PUNTO DI INTERESE
-                let tlas_building = PrimaryCommandBuffer::new(command_pool.clone(), Some("AS_Builder")).unwrap();
-                tlas_building.record_commands(|cmd|
-                    {
+                let blas_building =
+                    PrimaryCommandBuffer::new(command_pool.clone(), Some("BLAS_Builder")).unwrap();
+                blas_building
+                    .record_commands(|cmd| {
                         cmd.build_blas(
                             blas.clone(),
                             scratch_buffer.clone(),
-                            &[
-                                BottomLevelTrianglesGroupData::new(
-                                    triangle_decl,
-                                    index_buffer.clone(),
-                                    vertex_buffer.clone(),
-                                    transform_buffer.clone(),
-                                    0,
-                                    1,
-                                    0,
-                                    0
-                                )
-                            ],
+                            &[BottomLevelTrianglesGroupData::new(
+                                triangle_decl,
+                                index_buffer.clone(),
+                                vertex_buffer.clone(),
+                                transform_buffer.clone(),
+                                0,
+                                1,
+                                0,
+                                0,
+                            )],
                         );
-                    }).unwrap();
-                let tlas_building_fence = Fence::new(dev.clone(), false, Some("tlas_building_fence")).unwrap();
-                let mut waiter = queue.submit(
-                    &[tlas_building.clone()],
-                    &[],
-                    &[],
-                    tlas_building_fence
-                ).unwrap();
+                    })
+                    .unwrap();
+                let blas_building_fence =
+                    Fence::new(dev.clone(), false, Some("blas_building_fence")).unwrap();
+                let mut waiter = queue
+                    .submit(&[blas_building.clone()], &[], &[], blas_building_fence)
+                    .unwrap();
 
                 loop {
                     match waiter.wait(100) {
                         Ok(_) => {
                             break;
-                        },
+                        }
                         Err(err) => {
                             if err.is_timeout() {
                                 //println!("TIMEOUT");
@@ -853,7 +860,104 @@ fn main() {
                         }
                     }
                 }
-                
+
+                let blas_instances_buffer = Buffer::new(
+                    raytracing_allocator.clone(),
+                    ConcreteBufferDescriptor::new(
+                        BufferUsage::Unmanaged(
+                                (
+                                    ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR |
+                                    ash::vk::BufferUsageFlags::INDEX_BUFFER |
+                                    ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                                ).as_raw()
+                            ),
+                            core::mem::size_of::<ash::vk::AccelerationStructureInstanceKHR>() as u64
+                        ),
+                        None,
+                        None
+                ).unwrap();
+
+                let a = ash::vk::AccelerationStructureInstanceKHR {
+                    transform: ash::vk::TransformMatrixKHR {
+                        matrix: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
+                    },
+                    instance_shader_binding_table_record_offset_and_flags: ash::vk::Packed24_8::new(24, 8),
+                    instance_custom_index_and_mask: ash::vk::Packed24_8::new(24, 8),
+                    acceleration_structure_reference: ash::vk::AccelerationStructureReferenceKHR {
+                        device_handle: blas.device_addr()
+                    }
+                };
+
+                raytracing_allocator
+                    .write_raw_data(
+                        blas_instances_buffer.allocation_offset(),
+                        &[a]
+                    )
+                    .unwrap();
+
+                let tlas_building =
+                    PrimaryCommandBuffer::new(command_pool.clone(), Some("TLAS_Builder")).unwrap();
+                tlas_building
+                    .record_commands(|cmd| {
+                        cmd.build_tlas(
+                            tlas.clone(),
+                            scratch_buffer.clone(),
+                            &[TopLevelBLASGroupData::new(
+                                blas_decl,
+                                blas_instances_buffer.clone(),
+                                0,
+                                1,
+                                0,
+                                0,
+                            )],
+                        )
+                    })
+                    .unwrap();
+                let tlas_building_fence =
+                    Fence::new(dev.clone(), false, Some("tlas_building_fence")).unwrap();
+                let mut waiter = queue
+                    .submit(&[tlas_building.clone()], &[], &[], tlas_building_fence)
+                    .unwrap();
+
+                loop {
+                    match waiter.wait(100) {
+                        Ok(_) => {
+                            break;
+                        }
+                        Err(err) => {
+                            if err.is_timeout() {
+                                //println!("TIMEOUT");
+                                continue;
+                            }
+
+                            panic!("{}", err)
+                        }
+                    }
+                }
+
+                let rt_descriptor_sets = (0..swapchain_images_count)
+                    .map(|idx| {
+                        let result = DescriptorSet::new(
+                            descriptor_pool.clone(),
+                            rt_descriptor_set_layout.clone(),
+                        )
+                        .unwrap();
+
+                        result
+                            .bind_resources(|binder| {
+                                binder.bind_storage_images(
+                                    0,
+                                    &[(rt_writer_img_layout, rt_image_views[idx as usize].clone())],
+                                );
+
+                                binder.bind_tlas(1, &[tlas.clone()]);
+                            })
+                            .unwrap();
+
+                        result
+                    })
+                    .collect::<Vec<Arc<DescriptorSet>>>();
+
 
                 let mut current_frame: usize = 0;
 
@@ -894,8 +998,6 @@ fn main() {
 
                     present_command_buffers[current_frame % (swapchain_images_count as usize)]
                         .record_commands(|recorder: &mut CommandBufferRecorder| {
-                            
-
                             // TODO: HERE transition the image layout from UNDEFINED to GENERAL so that ray tracing pipeline can write to it
                             recorder.image_barrier(ImageMemoryBarrier::new(
                                 PipelineStages::from(&[PipelineStage::TopOfPipe], None, None, None),

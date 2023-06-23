@@ -34,26 +34,37 @@ impl Display for VulkanError {
                 write!(f, "Framework error");
                 match error {
                     FrameworkError::MallocFail => write!(f, " MallocFail"),
-                    FrameworkError::IncompatibleMemoryHeapType => write!(f, " IncompatibleMemoryHeapType"),
+                    FrameworkError::IncompatibleMemoryHeapType => {
+                        write!(f, " IncompatibleMemoryHeapType")
+                    }
                     FrameworkError::UserInput(maybe_details) => write!(f, " UserInput"),
                     FrameworkError::NoSuitableDeviceFound => write!(f, " NoSuitableDeviceFound"),
-                    FrameworkError::NoSuitableMemoryHeapFound => write!(f, " NoSuitableMemoryHeapFound"),
-                    FrameworkError::ResourceFromIncompatibleDevice => write!(f, " ResourceFromIncompatibleDevice"),
+                    FrameworkError::NoSuitableMemoryHeapFound => {
+                        write!(f, " NoSuitableMemoryHeapFound")
+                    }
+                    FrameworkError::ResourceFromIncompatibleDevice => {
+                        write!(f, " ResourceFromIncompatibleDevice")
+                    }
                     FrameworkError::CannotLoadVulkan => write!(f, " CannotLoadVulkan"),
-                    FrameworkError::CannotCreateVulkanInstance => write!(f, " CannotCreateVulkanInstance"),
+                    FrameworkError::CannotCreateVulkanInstance => {
+                        write!(f, " CannotCreateVulkanInstance")
+                    }
                     FrameworkError::MapMemoryError => write!(f, " MapMemoryError"),
-                    FrameworkError::IncompatibleInstanceVersion(current_version, wanted_version) => write!(f, " IncompatibleInstanceVersion"),
+                    FrameworkError::IncompatibleInstanceVersion(
+                        current_version,
+                        wanted_version,
+                    ) => write!(f, " IncompatibleInstanceVersion"),
                     FrameworkError::Unknown(details) => write!(f, " Unknown"),
                 }
-            },
+            }
             VulkanError::Vulkan(code, maybe_str) => {
                 write!(f, "Vulkan error ({})", code);
                 match maybe_str {
                     Some(str) => write!(f, ": {}", str),
-                    None => write!(f, "")
+                    None => write!(f, ""),
                 }
-            },
-            VulkanError::MissingExtension(name) => write!(f, "Missing vulkan extension: {}", name)
+            }
+            VulkanError::MissingExtension(name) => write!(f, "Missing vulkan extension: {}", name),
         }
     }
 }

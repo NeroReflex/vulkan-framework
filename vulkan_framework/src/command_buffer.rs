@@ -7,8 +7,12 @@ use std::{
 use ash::vk::Handle;
 
 use crate::{
-    acceleration_structure::{BottomLevelAccelerationStructure, DeviceScratchBuffer, AllowedBuildingDevice, BottomLevelTrianglesGroupData},
+    acceleration_structure::{
+        AllowedBuildingDevice, BottomLevelAccelerationStructure, BottomLevelTrianglesGroupData,
+        DeviceScratchBuffer, TopLevelAccelerationStructure, TopLevelBLASGroupData,
+    },
     binding_tables::RaytracingBindingTables,
+    buffer::Buffer,
     command_pool::{CommandPool, CommandPoolOwned},
     device::DeviceOwned,
     framebuffer::{Framebuffer, FramebufferTrait},
@@ -23,7 +27,7 @@ use crate::{
     prelude::{FrameworkError, VulkanError, VulkanResult},
     queue_family::QueueFamily,
     raytracing_pipeline::RaytracingPipeline,
-    renderpass::RenderPassCompatible, buffer::Buffer,
+    renderpass::RenderPassCompatible,
 };
 use crate::{
     compute_pipeline::ComputePipeline, descriptor_set::DescriptorSet, device::Device,
@@ -518,6 +522,93 @@ pub struct CommandBufferRecorder<'a> {
 }
 
 impl<'a> CommandBufferRecorder<'a> {
+    pub fn build_tlas(
+        &mut self,
+        tlas: Arc<TopLevelAccelerationStructure>,
+        scratch_buffer: Arc<DeviceScratchBuffer>,
+        geometry_data: &[TopLevelBLASGroupData],
+    ) {
+        // TODO: this should be an Error UserInput
+        //assert!(blas.builder().allowed_building_devices() != AllowedBuildingDevice::HostOnly);
+
+        let mut geometries: Vec<ash::vk::AccelerationStructureGeometryKHR> = vec![];
+        let mut max_primitives_count: Vec<u32> = vec![];
+        let mut range_infos: Vec<Vec<ash::vk::AccelerationStructureBuildRangeInfoKHR>> = vec![];
+
+        for g in geometry_data.iter() {
+            // TODO: assert from same device
+
+            let instances_info =
+                ash::vk::BufferDeviceAddressInfo::builder().buffer(g.instances_buffer().ash_handle());
+            let instances_buffer_device_addr = unsafe {
+                self.device
+                    .ash_handle()
+                    .get_buffer_device_address(&instances_info)
+            };
+
+            let data_addr = ash::vk::DeviceOrHostAddressConstKHR {
+                device_address: instances_buffer_device_addr,
+            };
+
+            geometries.push(
+                ash::vk::AccelerationStructureGeometryKHR::builder()
+                    // TODO: .flags()
+                    .geometry_type(ash::vk::GeometryTypeKHR::INSTANCES)
+                    .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
+                        instances: ash::vk::AccelerationStructureGeometryInstancesDataKHR::builder(
+                        )
+                        .array_of_pointers(g.decl().array_of_pointers())
+                        .data(data_addr)
+                        .build(),
+                    })
+                    .build(),
+            );
+
+            range_infos.push(vec![
+                ash::vk::AccelerationStructureBuildRangeInfoKHR::builder()
+                    .primitive_offset(g.primitive_offset())
+                    .primitive_count(g.primitive_count())
+                    .first_vertex(g.first_vertex())
+                    .transform_offset(g.transform_offset())
+                    .build(),
+            ]);
+
+            max_primitives_count.push(1);
+        }
+
+        // From vulkan specs: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
+        // The srcAccelerationStructure, dstAccelerationStructure, and mode members of pBuildInfo are ignored.
+        // Any VkDeviceOrHostAddressKHR members of pBuildInfo are ignored by this command,
+        // except that the hostAddress member of VkAccelerationStructureGeometryTrianglesDataKHR::transformData
+        // will be examined to check if it is NULL.
+        let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::builder()
+            .geometries(geometries.as_slice())
+            .flags(ash::vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
+            .ty(ash::vk::AccelerationStructureTypeKHR::TOP_LEVEL)
+            .mode(ash::vk::BuildAccelerationStructureModeKHR::BUILD)
+            .src_acceleration_structure(ash::vk::AccelerationStructureKHR::null())
+            .dst_acceleration_structure(tlas.ash_handle())
+            .scratch_data(scratch_buffer.addr())
+            .build();
+
+        let ranges_collection: Vec<&[ash::vk::AccelerationStructureBuildRangeInfoKHR]> =
+            range_infos.iter().map(|r| r.as_slice()).collect();
+
+        // check if ray_tracing extension is enabled
+        match self.device.ash_ext_acceleration_structure_khr() {
+            Some(rt_ext) => unsafe {
+                rt_ext.cmd_build_acceleration_structures(
+                    self.command_buffer.ash_handle(),
+                    &[geometry_info],
+                    ranges_collection.as_slice(),
+                )
+            },
+            None => {
+                println!("Ray tracing pipeline is not enabled, nothing will happend.");
+            }
+        }
+    }
+
     pub fn build_blas(
         &mut self,
         blas: Arc<BottomLevelAccelerationStructure>,
@@ -534,61 +625,64 @@ impl<'a> CommandBufferRecorder<'a> {
         for g in geometry_data.iter() {
             // TODO: assert from same device
 
-            let vertex_info = ash::vk::BufferDeviceAddressInfo::builder().buffer(g.vertex_buffer().ash_handle());
+            let vertex_info =
+                ash::vk::BufferDeviceAddressInfo::builder().buffer(g.vertex_buffer().ash_handle());
             let vertex_buffer_device_addr = unsafe {
                 self.device
                     .ash_handle()
                     .get_buffer_device_address(&vertex_info)
             };
 
-            let index_info = ash::vk::BufferDeviceAddressInfo::builder().buffer(g.index_buffer().ash_handle());
+            let index_info =
+                ash::vk::BufferDeviceAddressInfo::builder().buffer(g.index_buffer().ash_handle());
             let index_buffer_device_addr = unsafe {
                 self.device
                     .ash_handle()
                     .get_buffer_device_address(&index_info)
             };
 
-            let transform_info: ash::vk::BufferDeviceAddressInfoBuilder<'_> = ash::vk::BufferDeviceAddressInfo::builder().buffer(g.transform_buffer().ash_handle());
+            let transform_info: ash::vk::BufferDeviceAddressInfoBuilder<'_> =
+                ash::vk::BufferDeviceAddressInfo::builder()
+                    .buffer(g.transform_buffer().ash_handle());
             let transform_buffer_device_addr = unsafe {
                 self.device
                     .ash_handle()
                     .get_buffer_device_address(&transform_info)
             };
-            
-            geometries.push(ash::vk::AccelerationStructureGeometryKHR::builder()
-            // TODO: .flags()
-            .geometry_type(ash::vk::GeometryTypeKHR::TRIANGLES)
-            .geometry(
-                ash::vk::AccelerationStructureGeometryDataKHR {
-                    triangles: ash::vk::AccelerationStructureGeometryTrianglesDataKHR::builder()
+
+            geometries.push(
+                ash::vk::AccelerationStructureGeometryKHR::builder()
+                    // TODO: .flags()
+                    .geometry_type(ash::vk::GeometryTypeKHR::TRIANGLES)
+                    .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
+                        triangles: ash::vk::AccelerationStructureGeometryTrianglesDataKHR::builder(
+                        )
                         .index_type(unsafe { ash::vk::IndexType::UINT32 })
                         .max_vertex(unsafe { g.decl().max_vertices() })
                         .vertex_format(unsafe { g.decl().vertex_format().ash_format() })
                         .vertex_stride(unsafe { g.decl().vertex_stride() })
                         .vertex_data(ash::vk::DeviceOrHostAddressConstKHR {
-                            device_address: vertex_buffer_device_addr
+                            device_address: vertex_buffer_device_addr,
                         }) //
                         .transform_data(ash::vk::DeviceOrHostAddressConstKHR {
-                            device_address: transform_buffer_device_addr
+                            device_address: transform_buffer_device_addr,
                         }) // mat4
                         .index_data(ash::vk::DeviceOrHostAddressConstKHR {
-                            device_address: index_buffer_device_addr
+                            device_address: index_buffer_device_addr,
                         }) // [u32]
-                        .build()
-                }
-            )
-            .build());
-
-            range_infos.push(
-                vec![
-                    ash::vk::AccelerationStructureBuildRangeInfoKHR::builder()
-                            .primitive_offset(g.primitive_offset())
-                            .primitive_count(g.primitive_count())
-                            .first_vertex(g.first_vertex())
-                            .transform_offset(g.transform_offset())
-                            .build()
-                ]
+                        .build(),
+                    })
+                    .build(),
             );
+
+            range_infos.push(vec![
+                ash::vk::AccelerationStructureBuildRangeInfoKHR::builder()
+                    .primitive_offset(g.primitive_offset())
+                    .primitive_count(g.primitive_count())
+                    .first_vertex(g.first_vertex())
+                    .transform_offset(g.transform_offset())
+                    .build(),
+            ]);
 
             max_primitives_count.push(g.decl().max_triangles());
         }
@@ -608,19 +702,18 @@ impl<'a> CommandBufferRecorder<'a> {
             .scratch_data(scratch_buffer.addr())
             .build();
 
-        let ranges_collection: Vec<&[ash::vk::AccelerationStructureBuildRangeInfoKHR]> = range_infos.iter().map(|r| r.as_slice()).collect();
+        let ranges_collection: Vec<&[ash::vk::AccelerationStructureBuildRangeInfoKHR]> =
+            range_infos.iter().map(|r| r.as_slice()).collect();
 
         // check if ray_tracing extension is enabled
         match self.device.ash_ext_acceleration_structure_khr() {
-            Some(rt_ext) => {
-                unsafe {
-                    rt_ext.cmd_build_acceleration_structures(
-                        self.command_buffer.ash_handle(),
-                        &[geometry_info],
-                        ranges_collection.as_slice()
-                    )
-                }
-            }
+            Some(rt_ext) => unsafe {
+                rt_ext.cmd_build_acceleration_structures(
+                    self.command_buffer.ash_handle(),
+                    &[geometry_info],
+                    ranges_collection.as_slice(),
+                )
+            },
             None => {
                 println!("Ray tracing pipeline is not enabled, nothing will happend.");
             }
