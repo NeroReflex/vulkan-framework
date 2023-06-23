@@ -67,7 +67,7 @@ use vulkan_framework::semaphore::Semaphore;
 use vulkan_framework::shader_layout_binding::BindingDescriptor;
 use vulkan_framework::shader_layout_binding::BindingType;
 use vulkan_framework::shader_layout_binding::NativeBindingType;
-use vulkan_framework::shader_stage_access::ShaderStageAccess;
+use vulkan_framework::shader_stage_access::ShaderStagesAccess;
 use vulkan_framework::swapchain::CompositeAlphaSwapchainKHR;
 use vulkan_framework::swapchain::DeviceSurfaceInfo;
 use vulkan_framework::swapchain::PresentModeSwapchainKHR;
@@ -435,7 +435,7 @@ fn main() {
 
                                             let renderquad_texture_binding_descriptor =
                                                 BindingDescriptor::new(
-                                                    ShaderStageAccess::graphics(),
+                                                    ShaderStagesAccess::graphics(),
                                                     BindingType::Native(
                                                         NativeBindingType::CombinedImageSampler,
                                                     ),
@@ -529,7 +529,7 @@ fn main() {
 
                                             let resulting_image_shader_binding =
                                                 BindingDescriptor::new(
-                                                    ShaderStageAccess::compute(),
+                                                    ShaderStagesAccess::compute(),
                                                     BindingType::Native(
                                                         NativeBindingType::StorageImage,
                                                     ),
@@ -541,7 +541,7 @@ fn main() {
                                                 PushConstanRange::new(
                                                     0,
                                                     8,
-                                                    ShaderStageAccess::compute(),
+                                                    ShaderStagesAccess::compute(),
                                                 );
 
                                             let compute_shader = match ComputeShader::new(

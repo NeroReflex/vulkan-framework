@@ -47,7 +47,7 @@ use vulkan_framework::queue_family::*;
 use vulkan_framework::shader_layout_binding::BindingDescriptor;
 use vulkan_framework::shader_layout_binding::BindingType;
 use vulkan_framework::shader_layout_binding::NativeBindingType;
-use vulkan_framework::shader_stage_access::ShaderStageAccess;
+use vulkan_framework::shader_stage_access::ShaderStagesAccess;
 
 const COMPUTE_SPV: &[u32] = inline_spirv!(
     r#"
@@ -201,14 +201,14 @@ fn main() {
                                     };
 
                                     let resulting_image_shader_binding = BindingDescriptor::new(
-                                        ShaderStageAccess::compute(),
+                                        ShaderStagesAccess::compute(),
                                         BindingType::Native(NativeBindingType::StorageImage),
                                         0,
                                         1,
                                     );
 
                                     let image_dimensions_shader_push_constant =
-                                        PushConstanRange::new(0, 8, ShaderStageAccess::compute());
+                                        PushConstanRange::new(0, 8, ShaderStagesAccess::compute());
 
                                     let compute_shader = match ComputeShader::new(
                                         device.clone(),

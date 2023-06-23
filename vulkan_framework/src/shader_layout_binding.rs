@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::shader_stage_access::ShaderStageAccess;
+use crate::shader_stage_access::ShaderStagesAccess;
 
 #[derive(Copy, Clone)]
 pub enum NativeBindingType {
@@ -64,14 +64,14 @@ impl BindingType {
 
 #[derive(Copy, Clone)]
 pub struct BindingDescriptor {
-    shader_access: ShaderStageAccess,
+    shader_access: ShaderStagesAccess,
     binding_type: BindingType,
     binding_point: u32,
     binding_count: u32,
 }
 
 impl BindingDescriptor {
-    pub fn shader_access(&self) -> ShaderStageAccess {
+    pub fn shader_access(&self) -> ShaderStagesAccess {
         self.shader_access
     }
 
@@ -89,7 +89,7 @@ impl BindingDescriptor {
     }
 
     pub fn new(
-        shader_access: ShaderStageAccess,
+        shader_access: ShaderStagesAccess,
         binding_type: BindingType,
         binding_point: u32,
         binding_count: u32,

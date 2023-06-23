@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use crate::shader_stage_access::ShaderStageAccess;
+use crate::shader_stage_access::ShaderStagesAccess;
 
 pub struct PushConstanRange {
     offset: u32,
     size: u32,
-    shader_access: ShaderStageAccess,
+    shader_access: ShaderStagesAccess,
 }
 
 impl PushConstanRange {
@@ -17,11 +17,11 @@ impl PushConstanRange {
             .build()
     }
 
-    pub fn shader_access(&self) -> ShaderStageAccess {
+    pub fn shader_access(&self) -> ShaderStagesAccess {
         self.shader_access
     }
 
-    pub fn new(offset: u32, size: u32, shader_access: ShaderStageAccess) -> Arc<Self> {
+    pub fn new(offset: u32, size: u32, shader_access: ShaderStagesAccess) -> Arc<Self> {
         Arc::new(Self {
             offset,
             size,

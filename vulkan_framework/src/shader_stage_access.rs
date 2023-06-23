@@ -1,7 +1,7 @@
 use crate::shader_trait::{ShaderType, ShaderTypeRayTracingKHR};
 
 #[derive(Copy, Clone, PartialEq, Eq)]
-pub struct ShaderStageAccessRayTracingKHR {
+pub struct ShaderStagesAccessRayTracingKHR {
     rgen: bool,
     miss: bool,
     callable: bool,
@@ -10,7 +10,7 @@ pub struct ShaderStageAccessRayTracingKHR {
     intersection: bool,
 }
 
-impl ShaderStageAccessRayTracingKHR {
+impl ShaderStagesAccessRayTracingKHR {
     pub(crate) fn ash_stage_access_mask(&self) -> ash::vk::ShaderStageFlags {
         match self.rgen {
             true => ash::vk::ShaderStageFlags::RAYGEN_KHR,
@@ -20,23 +20,50 @@ impl ShaderStageAccessRayTracingKHR {
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
-pub struct ShaderStageAccess {
+pub enum ShaderStage {
+    Compute,
+    Vertex,
+    Geometry,
+    Fragment,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum ShaderStageRayTracingKHR {
+    RayGen,
+    Callable,
+    Miss,
+    ClosestHit,
+    AnyHit,
+    Intersection,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub struct ShaderStagesAccess {
     compute: bool,
     vertex: bool,
     geometry: bool,
     fragment: bool,
-    ray_tracing: ShaderStageAccessRayTracingKHR,
+    ray_tracing: ShaderStagesAccessRayTracingKHR,
 }
 
-impl ShaderStageAccess {
-    /*
-    // TODO: the proper way
-    pub fn from() -> Self {
+impl ShaderStagesAccess {
+    
+    pub fn from(stages: &[ShaderStage], ray_tracing: &[ShaderStageRayTracingKHR]) -> Self {
         Self {
-
+            compute: stages.contains(&ShaderStage::Compute),
+            vertex: stages.contains(&ShaderStage::Vertex),
+            fragment: stages.contains(&ShaderStage::Fragment),
+            geometry: stages.contains(&ShaderStage::Geometry),
+            ray_tracing: ShaderStagesAccessRayTracingKHR {
+                rgen: ray_tracing.contains(&ShaderStageRayTracingKHR::RayGen),
+                miss: ray_tracing.contains(&ShaderStageRayTracingKHR::Miss),
+                callable: ray_tracing.contains(&ShaderStageRayTracingKHR::Callable),
+                closest_hit: ray_tracing.contains(&ShaderStageRayTracingKHR::ClosestHit),
+                any_hit: ray_tracing.contains(&ShaderStageRayTracingKHR::AnyHit),
+                intersection: ray_tracing.contains(&ShaderStageRayTracingKHR::Intersection),
+            }
         }
     }
-    */
 
     pub fn raytracing() -> Self {
         Self {
@@ -44,7 +71,7 @@ impl ShaderStageAccess {
             vertex: false,
             geometry: false,
             fragment: false,
-            ray_tracing: ShaderStageAccessRayTracingKHR {
+            ray_tracing: ShaderStagesAccessRayTracingKHR {
                 rgen: true,
                 miss: true,
                 callable: true,
@@ -61,7 +88,7 @@ impl ShaderStageAccess {
             vertex: true,
             geometry: true,
             fragment: true,
-            ray_tracing: ShaderStageAccessRayTracingKHR {
+            ray_tracing: ShaderStagesAccessRayTracingKHR {
                 rgen: false,
                 miss: false,
                 callable: false,
@@ -78,7 +105,7 @@ impl ShaderStageAccess {
             vertex: false,
             geometry: false,
             fragment: false,
-            ray_tracing: ShaderStageAccessRayTracingKHR {
+            ray_tracing: ShaderStagesAccessRayTracingKHR {
                 rgen: false,
                 miss: false,
                 callable: false,
