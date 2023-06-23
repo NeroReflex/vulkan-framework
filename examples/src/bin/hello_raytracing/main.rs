@@ -79,8 +79,8 @@ void main() {
     const ivec2 pixelCoords = ivec2(gl_LaunchIDEXT.xy);
 
     const vec2 position_xy = vec2((float(pixelCoords.x) + 0.5) / resolution.x, (float(pixelCoords.y) + 0.5) / resolution.y);
-    const vec3 origin = vec3(position_xy, 0.5);
-    const vec3 direction = vec3(0.0, 0.0, -1.0);
+    const vec3 origin = vec3(position_xy, -0.5);
+    const vec3 direction = vec3(0.0, 0.0, 1.0);
 
     vec4 output_color = vec4(1.0, 0.0, 0.0, 0.0);
 
@@ -869,7 +869,7 @@ fn main() {
 
                 let a = ash::vk::AccelerationStructureInstanceKHR {
                     transform: ash::vk::TransformMatrixKHR {
-                        matrix: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
+                        matrix: [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
                     },
                     instance_shader_binding_table_record_offset_and_flags: ash::vk::Packed24_8::new(0, 0x01), // VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
                     instance_custom_index_and_mask: ash::vk::Packed24_8::new(0x00, 0xFF),
