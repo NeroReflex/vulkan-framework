@@ -84,37 +84,13 @@ void main() {
 
     vec4 output_color = vec4(1.0, 0.0, 0.0, 0.0);
 
-    hitValue = vec3(position_xy, 0.0);
+    hitValue = vec3(0.0, 0.0, 0.1);
 
-    //traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, origin.xyz, 0.001, direction.xyz, 10.0, 0);
+    traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, origin.xyz, 0.001, direction.xyz, 10.0, 0);
+    //                      gl_RayFlagsNoneEXT
 
     // Store the output color to the image
     imageStore(outputImage, pixelCoords, vec4(hitValue.xyz, 1.0));
-
-    /*
-    const vec2 resolution = vec2(imageSize(outputImage));
-
-    ivec2 pixelCoords = ivec2(glLaunchIDEXT.xy);
-    vec2 uv = (vec2(pixelCoords) + vec2(0.5)) / resolution;
-
-    // Calculate the ray direction based on the UV coordinates
-    vec3 rayDir = vec3(uv * 2.0 - 1.0, -1.0);
-    rayDir.y *= -1.0; // Flip the Y-axis if needed
-
-    // Normalize the ray direction
-    rayDir = normalize(rayDir);
-
-    // Create a ray with the origin at the camera position and the direction calculated above
-    Ray ray;
-    ray.origin = vec4(0.0, 0.0, 0.0, 1.0);
-    ray.direction = vec4(rayDir, 0.0);
-
-    // Trace the ray
-    TraceRayEXT(topLevelAS, gl_RayFlagsNoneEXT, 0xFF, 0, 1, 0, ray);
-
-    // Store the output color to the image
-    imageStore(outputImage, pixelCoords, vec4(ray.color.xyz, 1.0));
-    */
 }
 "#,
     glsl,

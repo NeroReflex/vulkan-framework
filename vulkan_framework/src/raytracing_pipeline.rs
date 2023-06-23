@@ -161,10 +161,9 @@ impl RaytracingPipeline {
 
                     shader_group_create_info.push(
                         ash::vk::RayTracingShaderGroupCreateInfoKHR::builder()
-                            .ty(ash::vk::RayTracingShaderGroupTypeKHR::GENERAL)
+                            .ty(ash::vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP)
                             .general_shader(shader_unused_khr)
                             .closest_hit_shader((stages_create_info.len() - 1) as u32)
-                            .closest_hit_shader(shader_unused_khr)
                             .any_hit_shader(shader_unused_khr)
                             .intersection_shader(shader_unused_khr)
                             .build(),
