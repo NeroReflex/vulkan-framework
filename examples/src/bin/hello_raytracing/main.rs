@@ -69,20 +69,27 @@ const RAYGEN_SPV: &[u32] = inline_spirv!(
 
 uniform layout(binding=0, set = 0, rgba32f) writeonly image2D outputImage;
 
-layout(binding = 0, set = 1) uniform accelerationStructureEXT topLevelAS;
+layout(binding = 1, set = 0) uniform accelerationStructureEXT topLevelAS;
+
+layout(location = 0) rayPayloadEXT vec3 hitValue;
 
 void main() {
     const vec2 resolution = vec2(imageSize(outputImage));
 
-    ivec2 pixelCoords = ivec2(gl_LaunchIDEXT.xy);
+    const ivec2 pixelCoords = ivec2(gl_LaunchIDEXT.xy);
 
-
-    
+    const vec2 position_xy = vec2(pixelCoords) / resolution;
+    const vec3 origin = vec3(position_xy, -0.5);
+    const vec3 direction = vec3(0.0, 0.0, 1.0);
 
     vec4 output_color = vec4(1.0, 0.0, 0.0, 0.0);
 
+    hitValue = vec3(0.0);
+
+    traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, origin.xyz, 0.001, direction.xyz, 10.0, 0);
+
     // Store the output color to the image
-    imageStore(outputImage, pixelCoords, vec4(output_color.xyz, 1.0));
+    imageStore(outputImage, pixelCoords, vec4(hitValue.xyz, 1.0));
 
     /*
     const vec2 resolution = vec2(imageSize(outputImage));
@@ -881,8 +888,8 @@ fn main() {
                     transform: ash::vk::TransformMatrixKHR {
                         matrix: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
                     },
-                    instance_shader_binding_table_record_offset_and_flags: ash::vk::Packed24_8::new(24, 8),
-                    instance_custom_index_and_mask: ash::vk::Packed24_8::new(24, 8),
+                    instance_shader_binding_table_record_offset_and_flags: ash::vk::Packed24_8::new(0, 0),
+                    instance_custom_index_and_mask: ash::vk::Packed24_8::new(0x00, 0xFF),
                     acceleration_structure_reference: ash::vk::AccelerationStructureReferenceKHR {
                         device_handle: blas.device_addr()
                     }
