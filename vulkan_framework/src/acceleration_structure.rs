@@ -116,19 +116,42 @@ impl HostScratchBuffer {
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
+pub enum VertexIndexing {
+    None,
+    UInt16,
+    UInt32,
+}
+
+impl VertexIndexing {
+    pub(crate) fn ash_index_type(&self) -> ash::vk::IndexType {
+        match self {
+            &VertexIndexing::None => ash::vk::IndexType::NONE_KHR,
+            &VertexIndexing::UInt16 => ash::vk::IndexType::UINT16,
+            &VertexIndexing::UInt32 => ash::vk::IndexType::UINT32,
+        }
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct BottomLevelTrianglesGroupDecl {
+    vertex_indexing: VertexIndexing,
     max_triangles: u32,
     vertex_stride: u64,
     vertex_format: AttributeType,
 }
 
 impl BottomLevelTrianglesGroupDecl {
-    pub fn new(max_triangles: u32, vertex_stride: u64, vertex_format: AttributeType) -> Self {
+    pub fn new(vertex_indexing: VertexIndexing, max_triangles: u32, vertex_stride: u64, vertex_format: AttributeType) -> Self {
         Self {
+            vertex_indexing,
             max_triangles,
             vertex_stride,
             vertex_format,
         }
+    }
+
+    pub fn vertex_indexing(&self) -> VertexIndexing {
+        self.vertex_indexing
     }
 
     pub fn max_triangles(&self) -> u32 {
@@ -153,7 +176,7 @@ impl BottomLevelTrianglesGroupDecl {
             .geometry_type(ash::vk::GeometryTypeKHR::TRIANGLES)
             .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
                 triangles: ash::vk::AccelerationStructureGeometryTrianglesDataKHR::builder()
-                    .index_type(ash::vk::IndexType::UINT32)
+                    .index_type(self.vertex_indexing().ash_index_type())
                     .max_vertex(self.max_vertices())
                     .vertex_format(self.vertex_format.ash_format())
                     .vertex_stride(self.vertex_stride)
@@ -166,7 +189,7 @@ impl BottomLevelTrianglesGroupDecl {
 pub struct BottomLevelTrianglesGroupData {
     decl: BottomLevelTrianglesGroupDecl,
 
-    index_buffer: Arc<Buffer>,
+    index_buffer: Option<Arc<Buffer>>,
     vertex_buffer: Arc<Buffer>,
     transform_buffer: Arc<Buffer>,
 
@@ -179,7 +202,7 @@ pub struct BottomLevelTrianglesGroupData {
 impl BottomLevelTrianglesGroupData {
     pub fn new(
         decl: BottomLevelTrianglesGroupDecl,
-        index_buffer: Arc<Buffer>,
+        index_buffer: Option<Arc<Buffer>>,
         vertex_buffer: Arc<Buffer>,
         transform_buffer: Arc<Buffer>,
         primitive_offset: u32,
@@ -203,7 +226,7 @@ impl BottomLevelTrianglesGroupData {
         self.decl
     }
 
-    pub fn index_buffer(&self) -> Arc<Buffer> {
+    pub fn index_buffer(&self) -> Option<Arc<Buffer>> {
         self.index_buffer.clone()
     }
 

@@ -9,7 +9,7 @@ use ash::vk::Handle;
 use crate::{
     acceleration_structure::{
         BottomLevelAccelerationStructure, BottomLevelTrianglesGroupData, DeviceScratchBuffer,
-        TopLevelAccelerationStructure, TopLevelBLASGroupData,
+        TopLevelAccelerationStructure, TopLevelBLASGroupData, VertexIndexing,
     },
     binding_tables::RaytracingBindingTables,
     command_pool::{CommandPool, CommandPoolOwned},
@@ -632,12 +632,21 @@ impl<'a> CommandBufferRecorder<'a> {
                     .get_buffer_device_address(&vertex_info)
             };
 
-            let index_info =
-                ash::vk::BufferDeviceAddressInfo::builder().buffer(g.index_buffer().ash_handle());
-            let index_buffer_device_addr = unsafe {
-                self.device
-                    .ash_handle()
-                    .get_buffer_device_address(&index_info)
+            
+            let index_buffer_device_addr = match g.index_buffer() {
+                Some(buffer) => unsafe {
+                    let index_info =
+                        ash::vk::BufferDeviceAddressInfo::builder().buffer(buffer.ash_handle());
+
+                    self.device
+                        .ash_handle()
+                        .get_buffer_device_address(&index_info)
+                },
+                None => {
+                    assert!(g.decl().vertex_indexing() == VertexIndexing::None);
+
+                    0
+                }
             };
 
             let transform_info: ash::vk::BufferDeviceAddressInfoBuilder<'_> =
@@ -656,10 +665,10 @@ impl<'a> CommandBufferRecorder<'a> {
                     .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
                         triangles: ash::vk::AccelerationStructureGeometryTrianglesDataKHR::builder(
                         )
-                        .index_type(unsafe { ash::vk::IndexType::UINT32 })
-                        .max_vertex(unsafe { g.decl().max_vertices() })
-                        .vertex_format(unsafe { g.decl().vertex_format().ash_format() })
-                        .vertex_stride(unsafe { g.decl().vertex_stride() })
+                        .index_type(g.decl().vertex_indexing().ash_index_type())
+                        .max_vertex(g.decl().max_vertices())
+                        .vertex_format(g.decl().vertex_format().ash_format())
+                        .vertex_stride(g.decl().vertex_stride())
                         .vertex_data(ash::vk::DeviceOrHostAddressConstKHR {
                             device_address: vertex_buffer_device_addr,
                         }) //

@@ -6,7 +6,7 @@ use vulkan_framework::{
     acceleration_structure::{
         AllowedBuildingDevice, BottomLevelAccelerationStructure, BottomLevelTrianglesGroupData,
         BottomLevelTrianglesGroupDecl, DeviceScratchBuffer, TopLevelAccelerationStructure,
-        TopLevelBLASGroupData, TopLevelBLASGroupDecl,
+        TopLevelBLASGroupData, TopLevelBLASGroupDecl, VertexIndexing,
     },
     binding_tables::{required_memory_type, RaytracingBindingTables},
     buffer::{Buffer, BufferUsage, ConcreteBufferDescriptor},
@@ -720,6 +720,7 @@ fn main() {
                     .collect::<Vec<Arc<RaytracingBindingTables>>>();
 
                 let triangle_decl = BottomLevelTrianglesGroupDecl::new(
+                    VertexIndexing::UInt32,
                     1,
                     (std::mem::size_of::<f32>() as u64) * 3u64,
                     AttributeType::Vec3,
@@ -830,7 +831,7 @@ fn main() {
                             scratch_buffer.clone(),
                             &[BottomLevelTrianglesGroupData::new(
                                 triangle_decl,
-                                index_buffer.clone(),
+                                Some(index_buffer.clone()),
                                 vertex_buffer.clone(),
                                 transform_buffer.clone(),
                                 0,
