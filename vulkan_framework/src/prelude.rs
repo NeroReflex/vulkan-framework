@@ -37,7 +37,7 @@ impl Display for VulkanError {
                     FrameworkError::IncompatibleMemoryHeapType => {
                         write!(f, " IncompatibleMemoryHeapType")
                     }
-                    FrameworkError::UserInput(maybe_details) => write!(f, " UserInput"),
+                    FrameworkError::UserInput(_maybe_details) => write!(f, " UserInput"),
                     FrameworkError::NoSuitableDeviceFound => write!(f, " NoSuitableDeviceFound"),
                     FrameworkError::NoSuitableMemoryHeapFound => {
                         write!(f, " NoSuitableMemoryHeapFound")
@@ -51,10 +51,10 @@ impl Display for VulkanError {
                     }
                     FrameworkError::MapMemoryError => write!(f, " MapMemoryError"),
                     FrameworkError::IncompatibleInstanceVersion(
-                        current_version,
-                        wanted_version,
+                        _current_version,
+                        _wanted_version,
                     ) => write!(f, " IncompatibleInstanceVersion"),
-                    FrameworkError::Unknown(details) => write!(f, " Unknown"),
+                    FrameworkError::Unknown(_details) => write!(f, " Unknown"),
                 }
             }
             VulkanError::Vulkan(code, maybe_str) => {

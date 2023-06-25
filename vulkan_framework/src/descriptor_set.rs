@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use ash::vk::Handle;
 
 use crate::{
+    acceleration_structure::TopLevelAccelerationStructure,
     buffer::BufferTrait,
     descriptor_pool::{DescriptorPool, DescriptorPoolOwned},
     descriptor_set_layout::{DescriptorSetLayout, DescriptorSetLayoutDependant},
@@ -10,14 +11,15 @@ use crate::{
     image::ImageLayout,
     image_view::ImageView,
     prelude::{FrameworkError, VulkanError, VulkanResult},
-    sampler::Sampler, acceleration_structure::TopLevelAccelerationStructure,
+    sampler::Sampler,
 };
 
 pub struct DescriptorSetWriter<'a> {
     //device: Arc<Device>,
     descriptor_set: &'a DescriptorSet,
     acceleration_structures: smallvec::SmallVec<[Vec<ash::vk::AccelerationStructureKHR>; 4]>,
-    acceleration_structure_writers: smallvec::SmallVec<[ash::vk::WriteDescriptorSetAccelerationStructureKHR; 4]>,
+    acceleration_structure_writers:
+        smallvec::SmallVec<[ash::vk::WriteDescriptorSetAccelerationStructureKHR; 4]>,
     images_writers: smallvec::SmallVec<[Vec<ash::vk::DescriptorImageInfo>; 32]>,
     buffers_writers: smallvec::SmallVec<[Vec<ash::vk::DescriptorBufferInfo>; 32]>,
     writer: smallvec::SmallVec<[ash::vk::WriteDescriptorSet; 32]>,
@@ -56,16 +58,20 @@ impl<'a> DescriptorSetWriter<'a> {
     pub fn bind_tlas(
         &mut self,
         first_layout_id: u32,
-        tlas_collection: &[Arc<TopLevelAccelerationStructure>]
+        tlas_collection: &[Arc<TopLevelAccelerationStructure>],
     ) {
-
-        let as_handles = tlas_collection.iter().map(|accel_structure| accel_structure.ash_handle()).collect();
+        let as_handles = tlas_collection
+            .iter()
+            .map(|accel_structure| accel_structure.ash_handle())
+            .collect();
         self.acceleration_structures.push(as_handles);
 
         self.acceleration_structure_writers.push(
             ash::vk::WriteDescriptorSetAccelerationStructureKHR::builder()
-                .acceleration_structures(self.acceleration_structures[self.acceleration_structures.len() - 1].as_slice())
-                .build()
+                .acceleration_structures(
+                    self.acceleration_structures[self.acceleration_structures.len() - 1].as_slice(),
+                )
+                .build(),
         );
 
         let mut descriptor_writes = ash::vk::WriteDescriptorSet::builder()
@@ -74,11 +80,12 @@ impl<'a> DescriptorSetWriter<'a> {
             .descriptor_type(ash::vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
             .build();
 
-        descriptor_writes.p_next = (&self.acceleration_structure_writers[self.acceleration_structure_writers.len() - 1] as *const _) as *const std::ffi::c_void;
+        descriptor_writes.p_next = (&self.acceleration_structure_writers
+            [self.acceleration_structure_writers.len() - 1]
+            as *const _) as *const std::ffi::c_void;
         descriptor_writes.descriptor_count = 1;
 
         self.writer.push(descriptor_writes);
-        
     }
 
     pub fn bind_combined_images_samplers(

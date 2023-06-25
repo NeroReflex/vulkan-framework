@@ -47,7 +47,6 @@ pub struct ShaderStagesAccess {
 }
 
 impl ShaderStagesAccess {
-    
     pub fn from(stages: &[ShaderStage], ray_tracing: &[ShaderStageRayTracingKHR]) -> Self {
         Self {
             compute: stages.contains(&ShaderStage::Compute),
@@ -61,7 +60,7 @@ impl ShaderStagesAccess {
                 closest_hit: ray_tracing.contains(&ShaderStageRayTracingKHR::ClosestHit),
                 any_hit: ray_tracing.contains(&ShaderStageRayTracingKHR::AnyHit),
                 intersection: ray_tracing.contains(&ShaderStageRayTracingKHR::Intersection),
-            }
+            },
         }
     }
 

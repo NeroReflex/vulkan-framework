@@ -5,8 +5,8 @@ use inline_spirv::*;
 use vulkan_framework::{
     acceleration_structure::{
         AllowedBuildingDevice, BottomLevelAccelerationStructure, BottomLevelTrianglesGroupData,
-        BottomLevelTrianglesGroupDecl, DeviceScratchBuffer, HostScratchBuffer,
-        TopLevelAccelerationStructure, TopLevelBLASGroupData, TopLevelBLASGroupDecl,
+        BottomLevelTrianglesGroupDecl, DeviceScratchBuffer, TopLevelAccelerationStructure,
+        TopLevelBLASGroupData, TopLevelBLASGroupDecl,
     },
     binding_tables::{required_memory_type, RaytracingBindingTables},
     buffer::{Buffer, BufferUsage, ConcreteBufferDescriptor},
@@ -16,6 +16,7 @@ use vulkan_framework::{
         CommandBufferRecorder, ImageMemoryBarrier, PrimaryCommandBuffer,
     },
     command_pool::CommandPool,
+    descriptor_pool::DescriptorPoolSizesAcceletarionStructureKHR,
     descriptor_set_layout::DescriptorSetLayout,
     device::*,
     fence::{Fence, FenceWaiter},
@@ -38,7 +39,6 @@ use vulkan_framework::{
     miss_shader::MissShader,
     pipeline_layout::PipelineLayout,
     pipeline_stage::{PipelineStage, PipelineStageRayTracingPipelineKHR, PipelineStages},
-    prelude::VulkanError,
     queue::*,
     queue_family::*,
     raygen_shader::RaygenShader,
@@ -47,14 +47,16 @@ use vulkan_framework::{
         AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp, RenderSubPassDescription,
     },
     semaphore::Semaphore,
-    shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType, AccelerationStructureBindingType},
-    shader_stage_access::{ShaderStagesAccess, ShaderStageRayTracingKHR},
+    shader_layout_binding::{
+        AccelerationStructureBindingType, BindingDescriptor, BindingType, NativeBindingType,
+    },
+    shader_stage_access::{ShaderStageRayTracingKHR, ShaderStagesAccess},
     swapchain::{
         CompositeAlphaSwapchainKHR, DeviceSurfaceInfo, PresentModeSwapchainKHR,
         SurfaceColorspaceSwapchainKHR, SurfaceTransformSwapchainKHR, SwapchainKHR,
     },
     swapchain_image::ImageSwapchainKHR,
-    vertex_shader::VertexShader, descriptor_pool::DescriptorPoolSizesAcceletarionStructureKHR,
+    vertex_shader::VertexShader,
 };
 
 use vulkan_framework::descriptor_pool::DescriptorPool;
@@ -332,7 +334,7 @@ fn main() {
                 println!("Memory heap created! <3");
 
                 let raytracing_allocator = MemoryPool::new(
-                    raytracing_memory_heap.clone(),
+                    raytracing_memory_heap,
                     Arc::new(DefaultAllocator::new(1024 * 1024 * 128)),
                     MemoryPoolFeatures::from(&[MemoryPoolFeature::DeviceAddressable]),
                 )
@@ -439,7 +441,9 @@ fn main() {
                             0,
                             0,
                             0,
-                            Some(DescriptorPoolSizesAcceletarionStructureKHR::new(1 * swapchain_images_count)),
+                            Some(DescriptorPoolSizesAcceletarionStructureKHR::new(
+                                swapchain_images_count,
+                            )),
                         ),
                         2 * swapchain_images_count, // one for descriptor_set and one for renderquad_descriptor_set
                     ),
@@ -492,15 +496,23 @@ fn main() {
 
                 let rt_acceleration_structure_descriptor = BindingDescriptor::new(
                     ShaderStagesAccess::from(&[], &[ShaderStageRayTracingKHR::RayGen]),
-                    BindingType::AccelerationStructure(AccelerationStructureBindingType::AccelerationStructure),
+                    BindingType::AccelerationStructure(
+                        AccelerationStructureBindingType::AccelerationStructure,
+                    ),
                     1,
-                    1
+                    1,
                 );
 
                 let rt_writer_img_layout = ImageLayout::General;
 
-                let rt_descriptor_set_layout =
-                    DescriptorSetLayout::new(dev.clone(), &[rt_output_image_descriptor, rt_acceleration_structure_descriptor]).unwrap();
+                let rt_descriptor_set_layout = DescriptorSetLayout::new(
+                    dev.clone(),
+                    &[
+                        rt_output_image_descriptor,
+                        rt_acceleration_structure_descriptor,
+                    ],
+                )
+                .unwrap();
 
                 let pipeline_layout = PipelineLayout::new(
                     dev.clone(),
@@ -771,7 +783,7 @@ fn main() {
                                     ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                                 ).as_raw()
                             ),
-                            (core::mem::size_of::<[f32; 12]>() as u64) * 1u64
+                            core::mem::size_of::<[f32; 12]>() as u64
                         ),
                         None,
                         None
@@ -832,7 +844,7 @@ fn main() {
                 let blas_building_fence =
                     Fence::new(dev.clone(), false, Some("blas_building_fence")).unwrap();
                 let mut waiter = queue
-                    .submit(&[blas_building.clone()], &[], &[], blas_building_fence)
+                    .submit(&[blas_building], &[], &[], blas_building_fence)
                     .unwrap();
 
                 loop {
@@ -869,24 +881,23 @@ fn main() {
 
                 let a = ash::vk::AccelerationStructureInstanceKHR {
                     transform: ash::vk::TransformMatrixKHR {
-                        matrix: [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+                        matrix: [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
                     },
-                    instance_shader_binding_table_record_offset_and_flags: ash::vk::Packed24_8::new(0, 0x01), // VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
+                    instance_shader_binding_table_record_offset_and_flags: ash::vk::Packed24_8::new(
+                        0, 0x01,
+                    ), // VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
                     instance_custom_index_and_mask: ash::vk::Packed24_8::new(0x00, 0xFF),
                     acceleration_structure_reference: ash::vk::AccelerationStructureReferenceKHR {
-                        device_handle: blas.device_addr()
-                    }
+                        device_handle: blas.device_addr(),
+                    },
                 };
 
                 raytracing_allocator
-                    .write_raw_data(
-                        blas_instances_buffer.allocation_offset(),
-                        &[a]
-                    )
+                    .write_raw_data(blas_instances_buffer.allocation_offset(), &[a])
                     .unwrap();
 
                 let tlas_building =
-                    PrimaryCommandBuffer::new(command_pool.clone(), Some("TLAS_Builder")).unwrap();
+                    PrimaryCommandBuffer::new(command_pool, Some("TLAS_Builder")).unwrap();
                 tlas_building
                     .record_commands(|cmd| {
                         cmd.build_tlas(
@@ -904,9 +915,9 @@ fn main() {
                     })
                     .unwrap();
                 let tlas_building_fence =
-                    Fence::new(dev.clone(), false, Some("tlas_building_fence")).unwrap();
+                    Fence::new(dev, false, Some("tlas_building_fence")).unwrap();
                 let mut waiter = queue
-                    .submit(&[tlas_building.clone()], &[], &[], tlas_building_fence)
+                    .submit(&[tlas_building], &[], &[], tlas_building_fence)
                     .unwrap();
 
                 loop {
@@ -947,7 +958,6 @@ fn main() {
                         result
                     })
                     .collect::<Vec<Arc<DescriptorSet>>>();
-
 
                 let mut current_frame: usize = 0;
 

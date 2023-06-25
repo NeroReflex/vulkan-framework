@@ -8,11 +8,10 @@ use ash::vk::Handle;
 
 use crate::{
     acceleration_structure::{
-        AllowedBuildingDevice, BottomLevelAccelerationStructure, BottomLevelTrianglesGroupData,
-        DeviceScratchBuffer, TopLevelAccelerationStructure, TopLevelBLASGroupData,
+        BottomLevelAccelerationStructure, BottomLevelTrianglesGroupData, DeviceScratchBuffer,
+        TopLevelAccelerationStructure, TopLevelBLASGroupData,
     },
     binding_tables::RaytracingBindingTables,
-    buffer::Buffer,
     command_pool::{CommandPool, CommandPoolOwned},
     device::DeviceOwned,
     framebuffer::{Framebuffer, FramebufferTrait},
@@ -538,8 +537,8 @@ impl<'a> CommandBufferRecorder<'a> {
         for g in geometry_data.iter() {
             // TODO: assert from same device
 
-            let instances_info =
-                ash::vk::BufferDeviceAddressInfo::builder().buffer(g.instances_buffer().ash_handle());
+            let instances_info = ash::vk::BufferDeviceAddressInfo::builder()
+                .buffer(g.instances_buffer().ash_handle());
             let instances_buffer_device_addr = unsafe {
                 self.device
                     .ash_handle()

@@ -102,7 +102,7 @@ impl HostScratchBuffer {
             Ok(mut lck) => ash::vk::DeviceOrHostAddressKHR {
                 host_address: lck.as_mut_slice().as_mut_ptr() as *mut std::ffi::c_void,
             },
-            Err(err) => {
+            Err(_err) => {
                 todo!()
             }
         }
@@ -241,12 +241,19 @@ pub struct BottomLevelAccelerationStructure {
 
 impl Drop for BottomLevelAccelerationStructure {
     fn drop(&mut self) {
-        let device =  self.buffer.get_parent_device();
-        match self.buffer.get_parent_device().ash_ext_acceleration_structure_khr() {
-            Some(as_ext) => {
-                unsafe { as_ext.destroy_acceleration_structure(self.handle, device.get_parent_instance().get_alloc_callbacks()) }
+        let device = self.buffer.get_parent_device();
+        match self
+            .buffer
+            .get_parent_device()
+            .ash_ext_acceleration_structure_khr()
+        {
+            Some(as_ext) => unsafe {
+                as_ext.destroy_acceleration_structure(
+                    self.handle,
+                    device.get_parent_instance().get_alloc_callbacks(),
+                )
             },
-            None => todo!()
+            None => todo!(),
         }
     }
 }
@@ -349,7 +356,7 @@ impl BottomLevelAccelerationStructure {
             Ok(buffer) => {
                 let info = ash::vk::BufferDeviceAddressInfo::builder().buffer(buffer.ash_handle());
 
-                let buffer_device_addr =
+                let _buffer_device_addr =
                     unsafe { device.ash_handle().get_buffer_device_address(&info) };
 
                 /*let scratch_data = ash::vk::DeviceOrHostAddressKHR {
@@ -378,7 +385,6 @@ impl BottomLevelAccelerationStructure {
                                 let info = ash::vk::AccelerationStructureDeviceAddressInfoKHR::builder()
                                     .acceleration_structure(handle)
                                     .build();
-                                
                                 Ok(Arc::new(Self {
                                     handle,
                                     buffer,
@@ -389,7 +395,7 @@ impl BottomLevelAccelerationStructure {
                                 err.as_raw(),
                                 Some(format!(
                                     "Error creating acceleration structure: {}",
-                                    err.to_string()
+                                    err
                                 )),
                             )),
                         }
@@ -496,12 +502,19 @@ pub struct TopLevelAccelerationStructure {
 
 impl Drop for TopLevelAccelerationStructure {
     fn drop(&mut self) {
-        let device =  self.buffer.get_parent_device();
-        match self.buffer.get_parent_device().ash_ext_acceleration_structure_khr() {
-            Some(as_ext) => {
-                unsafe { as_ext.destroy_acceleration_structure(self.handle, device.get_parent_instance().get_alloc_callbacks()) }
+        let device = self.buffer.get_parent_device();
+        match self
+            .buffer
+            .get_parent_device()
+            .ash_ext_acceleration_structure_khr()
+        {
+            Some(as_ext) => unsafe {
+                as_ext.destroy_acceleration_structure(
+                    self.handle,
+                    device.get_parent_instance().get_alloc_callbacks(),
+                )
             },
-            None => todo!()
+            None => todo!(),
         }
     }
 }
@@ -633,10 +646,7 @@ impl TopLevelAccelerationStructure {
                             })),
                             Err(err) => Err(VulkanError::Vulkan(
                                 err.as_raw(),
-                                Some(format!(
-                                    "Error creating acceleration structure: {}",
-                                    err.to_string()
-                                )),
+                                Some(format!("Error creating acceleration structure: {}", err)),
                             )),
                         }
                     }
