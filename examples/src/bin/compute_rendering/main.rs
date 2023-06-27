@@ -11,7 +11,6 @@ use vulkan_framework::command_buffer::ImageMemoryBarrier;
 use vulkan_framework::command_buffer::PrimaryCommandBuffer;
 use vulkan_framework::command_pool::CommandPool;
 use vulkan_framework::compute_pipeline::ComputePipeline;
-use vulkan_framework::compute_shader::ComputeShader;
 use vulkan_framework::descriptor_pool::DescriptorPool;
 use vulkan_framework::descriptor_pool::DescriptorPoolConcreteDescriptor;
 use vulkan_framework::descriptor_pool::DescriptorPoolSizesConcreteDescriptor;
@@ -20,7 +19,6 @@ use vulkan_framework::descriptor_set_layout::DescriptorSetLayout;
 use vulkan_framework::device::*;
 use vulkan_framework::fence::Fence;
 use vulkan_framework::fence::FenceWaiter;
-use vulkan_framework::fragment_shader::FragmentShader;
 use vulkan_framework::framebuffer::Framebuffer;
 use vulkan_framework::graphics_pipeline::CullMode;
 use vulkan_framework::graphics_pipeline::DepthCompareOp;
@@ -32,14 +30,12 @@ use vulkan_framework::graphics_pipeline::Rasterizer;
 use vulkan_framework::image::ConcreteImageDescriptor;
 use vulkan_framework::image::Image;
 use vulkan_framework::image::Image2DDimensions;
-
 use vulkan_framework::image::ImageDimensions;
 use vulkan_framework::image::ImageFlags;
 use vulkan_framework::image::ImageFormat;
 use vulkan_framework::image::ImageLayout;
 use vulkan_framework::image::ImageLayoutSwapchainKHR;
 use vulkan_framework::image::ImageMultisampling;
-
 use vulkan_framework::image::ImageTiling;
 use vulkan_framework::image::ImageUsage;
 use vulkan_framework::image::ImageUsageSpecifier;
@@ -75,7 +71,11 @@ use vulkan_framework::swapchain::SurfaceColorspaceSwapchainKHR;
 use vulkan_framework::swapchain::SurfaceTransformSwapchainKHR;
 use vulkan_framework::swapchain::SwapchainKHR;
 use vulkan_framework::swapchain_image::ImageSwapchainKHR;
-use vulkan_framework::vertex_shader::VertexShader;
+use vulkan_framework::shaders::{
+    vertex_shader::VertexShader,
+    compute_shader::ComputeShader,
+    fragment_shader::FragmentShader,
+};
 
 const COMPUTE_SPV: &[u32] = inline_spirv!(
     r#"

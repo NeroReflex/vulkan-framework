@@ -7,7 +7,6 @@ use vulkan_framework::{
     command_pool::CommandPool,
     device::*,
     fence::{Fence, FenceWaiter},
-    fragment_shader::FragmentShader,
     framebuffer::Framebuffer,
     graphics_pipeline::{
         CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline, PolygonMode,
@@ -36,7 +35,10 @@ use vulkan_framework::{
         SurfaceColorspaceSwapchainKHR, SurfaceTransformSwapchainKHR, SwapchainKHR,
     },
     swapchain_image::ImageSwapchainKHR,
-    vertex_shader::VertexShader,
+    shaders::{
+        vertex_shader::VertexShader,
+        fragment_shader::FragmentShader,
+    }
 };
 
 const VERTEX_SPV: &[u32] = inline_spirv!(

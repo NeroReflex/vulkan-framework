@@ -1,13 +1,13 @@
 use std::ffi::CStr;
 use std::sync::Arc;
 
-use crate::compute_shader::ComputeShader;
 use crate::device::{Device, DeviceOwned};
 use crate::instance::InstanceOwned;
 
 use crate::pipeline_layout::{PipelineLayout, PipelineLayoutDependant};
 use crate::prelude::{VulkanError, VulkanResult};
 use crate::shader_trait::PrivateShaderTrait;
+use crate::shaders::compute_shader::ComputeShader;
 
 pub struct ComputePipeline {
     device: Arc<Device>,

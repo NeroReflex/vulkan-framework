@@ -1,18 +1,21 @@
 use std::ffi::CStr;
 use std::sync::Arc;
 
-use crate::any_hit_shader::AnyHitShader;
-use crate::callable_shader::CallableShader;
-use crate::closest_hit_shader::ClosestHitShader;
+use crate::shaders::{
+    raygen_shader::RaygenShader,
+    miss_shader::MissShader,
+    intersection_shader::IntersectionShader,
+    closest_hit_shader::ClosestHitShader,
+    callable_shader::CallableShader,
+    any_hit_shader::AnyHitShader,
+};
 
 use crate::device::{Device, DeviceOwned};
 use crate::instance::InstanceOwned;
 
-use crate::intersection_shader::IntersectionShader;
-use crate::miss_shader::MissShader;
 use crate::pipeline_layout::{PipelineLayout, PipelineLayoutDependant};
 use crate::prelude::{VulkanError, VulkanResult};
-use crate::raygen_shader::RaygenShader;
+
 use crate::shader_trait::PrivateShaderTrait;
 
 pub struct RaytracingPipeline {

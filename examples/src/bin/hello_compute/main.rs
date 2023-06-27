@@ -9,7 +9,7 @@ use vulkan_framework::command_buffer::ImageMemoryBarrier;
 use vulkan_framework::command_buffer::PrimaryCommandBuffer;
 use vulkan_framework::command_pool::CommandPool;
 use vulkan_framework::compute_pipeline::ComputePipeline;
-use vulkan_framework::compute_shader::ComputeShader;
+use vulkan_framework::shaders::compute_shader::ComputeShader;
 use vulkan_framework::descriptor_pool::DescriptorPool;
 use vulkan_framework::descriptor_pool::DescriptorPoolConcreteDescriptor;
 use vulkan_framework::descriptor_pool::DescriptorPoolSizesConcreteDescriptor;
