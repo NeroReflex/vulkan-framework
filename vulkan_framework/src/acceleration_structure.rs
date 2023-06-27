@@ -141,7 +141,12 @@ pub struct BottomLevelTrianglesGroupDecl {
 }
 
 impl BottomLevelTrianglesGroupDecl {
-    pub fn new(vertex_indexing: VertexIndexing, max_triangles: u32, vertex_stride: u64, vertex_format: AttributeType) -> Self {
+    pub fn new(
+        vertex_indexing: VertexIndexing,
+        max_triangles: u32,
+        vertex_stride: u64,
+        vertex_format: AttributeType,
+    ) -> Self {
         Self {
             vertex_indexing,
             max_triangles,

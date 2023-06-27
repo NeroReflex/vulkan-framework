@@ -53,7 +53,7 @@ pub struct QueueFamily {
     family_index: u32,
 }
 
-pub(crate) trait QueueFamilyOwned {
+pub trait QueueFamilyOwned {
     fn get_parent_queue_family(&self) -> Arc<QueueFamily>;
 }
 

@@ -113,14 +113,17 @@ impl Queue {
         }
     }
 
+    #[inline]
     pub fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.queue)
     }
 
+    #[inline]
     pub(crate) fn ash_handle(&self) -> ash::vk::Queue {
         self.queue
     }
 
+    #[inline]
     pub fn get_priority(&self) -> f32 {
         self.priority
     }

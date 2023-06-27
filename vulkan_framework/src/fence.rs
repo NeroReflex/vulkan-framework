@@ -1,4 +1,9 @@
-use std::sync::Arc;
+use std::{
+    future::Future,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+};
 
 use crate::{
     command_buffer::CommandBufferTrait,
@@ -37,6 +42,40 @@ pub enum FenceWaitFor {
 impl Fence {
     pub(crate) fn ash_handle(&self) -> ash::vk::Fence {
         self.fence
+    }
+
+    pub fn is_signaled(&self) -> VulkanResult<bool> {
+        match unsafe {
+            self.get_parent_device()
+                .ash_handle()
+                .get_fence_status(self.fence)
+        } {
+            Ok(status) => Ok(status),
+            Err(err) => Err(VulkanError::Vulkan(
+                err.as_raw(),
+                Some(format!("Error reading fence status: {}", err.to_string())),
+            )),
+        }
+    }
+
+    pub(crate) fn poll_impl(&self, cx: &mut Context<'_>) -> Poll<VulkanResult<()>> {
+        // Vulkan only allows polling of the fence status, so we have to use a spin future.
+        // This is still better than blocking in async applications, since a smart-enough async engine
+        // can choose to run some other tasks between probing this one.
+
+        // Check if we are done without blocking
+        match self.is_signaled() {
+            Err(e) => return Poll::Ready(Err(e)),
+            Ok(status) => {
+                if status {
+                    return Poll::Ready(Ok(()));
+                }
+            }
+        }
+
+        // Otherwise spin
+        cx.waker().wake_by_ref();
+        Poll::Pending
     }
 
     pub fn reset(&self) -> VulkanResult<()> {
@@ -256,6 +295,17 @@ impl FenceWaiter {
             // If this is empty then a successful wait operation has already been completed, therefore there is nothing to do.
             // It is safe to return another Ok() as bound resources have been already freed
             Ok(())
+        }
+    }
+}
+
+impl Future for FenceWaiter {
+    type Output = VulkanResult<()>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        match &self.fence {
+            Some(fence) => fence.poll_impl(cx),
+            None => Poll::Ready(Ok(())),
         }
     }
 }

@@ -33,6 +33,7 @@ impl ShaderTrait for RaygenShader {
         ShaderType::RayTracingKHR(ShaderTypeRayTracingKHR::RayGen)
     }
 
+    #[inline]
     fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.module)
     }

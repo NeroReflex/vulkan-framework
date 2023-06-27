@@ -632,7 +632,6 @@ impl<'a> CommandBufferRecorder<'a> {
                     .get_buffer_device_address(&vertex_info)
             };
 
-            
             let index_buffer_device_addr = match g.index_buffer() {
                 Some(buffer) => unsafe {
                     let index_info =
