@@ -34,10 +34,12 @@ impl Worker {
                 {
                     Ok(msg) => match msg {
                         Message::NewRetryingJob(job) => {
-                            dbg!("do job from worker[{}]", id);
+                            #[cfg(debug_assertions)]
+                            println!("do job from worker[{}]", id);
 
                             if !job() {
-                                dbg!("job from worker[{}] asked to be executed again, scheduling execution", id);
+                                #[cfg(debug_assertions)]
+                                println!("job from worker[{}] asked to be executed again, scheduling execution", id);
 
                                 let mut recycled = Option::<usize>::None;
                                 for a in 0..scheduled_retry_job.len() {
@@ -54,7 +56,9 @@ impl Worker {
                             }
                         }
                         Message::NewJob(job) => {
-                            dbg!("do job from worker[{}]", id);
+                            #[cfg(debug_assertions)]
+                            println!("do job from worker[{}]", id);
+
                             job();
                         }
                         Message::Close => {
@@ -65,11 +69,13 @@ impl Worker {
                                 }
                             }
 
-                            dbg!("Closing worker[{}]", id);
+                            #[cfg(debug_assertions)]
+                            println!("Closing worker[{}]", id);
+
                             break;
                         }
                     },
-                    Err(timeout_err) => {
+                    Err(_timeout_err) => {
                         let mut completed = Option::<usize>::None;
 
                         'try_to_complete_one: for (job_idx, maybe_job) in
