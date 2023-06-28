@@ -10,6 +10,8 @@ So... one day I decided I will be writing my experimental engine with a multithr
 
 I have headache since that day. This project will support async runtimes in response!
 
+The async runtime support is fully optional and the framework will be usable just by itself, this is also what it is provided with examples.
+
 ## Portability
 This project is designed to run everywhere vulkan 1.0.0 with no extensions is supported and a rust compiler is available!
 

@@ -2,6 +2,10 @@ use std::sync::Arc;
 
 use ash::vk::Handle;
 
+
+#[cfg(feature = "async")]
+use crate::synchronization::fence::SpinlockFenceWaiter;
+
 use crate::{
     device::{Device, DeviceOwned},
     fence::Fence,
@@ -328,12 +332,55 @@ impl SwapchainKHR {
         }
     }
 
+    #[cfg(feature = "async")]
+    pub fn async_spinlock_acquire_next_image_index(
+        &self,
+        timeout: Option<u64>,
+        maybe_semaphore: Option<Arc<Semaphore>>,
+        fence: Arc<Fence>,
+    ) -> VulkanResult<SpinlockFenceWaiter<(u32, bool)>> {
+        match self.get_parent_device().ash_ext_swapchain_khr() {
+            Option::Some(ext) => {
+                match unsafe {
+                    ext.acquire_next_image(
+                        self.swapchain,
+                        match timeout {
+                            Option::Some(t) => t,
+                            None => u64::MAX,
+                        },
+                        match maybe_semaphore {
+                            Option::Some(semaphore) => semaphore.ash_handle(),
+                            Option::None => ash::vk::Semaphore::null(),
+                        },
+                        fence.ash_handle(),
+                    )
+                } {
+                    Ok(result) => Ok(
+                        SpinlockFenceWaiter::new(
+                            None,
+                            &[],
+                            fence,
+                            result
+                        )
+                    ),
+                    Err(err) => Err(VulkanError::Vulkan(
+                        err.as_raw(),
+                        Some(format!("Error creating the swapchain: {}", err)),
+                    )),
+                }
+            }
+            Option::None => Err(VulkanError::MissingExtension(String::from(
+                "VK_KHR_swapchain",
+            ))),
+        }
+    }
+
     pub fn acquire_next_image_index(
         &self,
         timeout: Option<u64>,
         maybe_semaphore: Option<Arc<Semaphore>>,
         maybe_fence: Option<Arc<Fence>>,
-    ) -> VulkanResult<u32> {
+    ) -> VulkanResult<(u32, bool)> {
         match self.get_parent_device().ash_ext_swapchain_khr() {
             Option::Some(ext) => {
                 match unsafe {
@@ -353,7 +400,7 @@ impl SwapchainKHR {
                         },
                     )
                 } {
-                    Ok((a, _b)) => Ok(a),
+                    Ok(result) => Ok(result),
                     Err(err) => Err(VulkanError::Vulkan(
                         err.as_raw(),
                         Some(format!("Error creating the swapchain: {}", err)),

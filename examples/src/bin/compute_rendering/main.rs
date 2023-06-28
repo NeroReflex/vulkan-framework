@@ -894,7 +894,7 @@ fn main() {
                                                             .unwrap();
                                                         println!(
                                                             "Swapchain image index {}",
-                                                            swapchain_index
+                                                            swapchain_index.0
                                                         );
 
                                                         // wait for fence
@@ -956,7 +956,7 @@ fn main() {
                                                         swapchain
                                                             .queue_present(
                                                                 queue.clone(),
-                                                                swapchain_index,
+                                                                swapchain_index.0,
                                                                 &[image_rendered_semaphores
                                                                     [current_frame
                                                                         % (swapchain_images_count
@@ -965,7 +965,7 @@ fn main() {
                                                             )
                                                             .unwrap();
 
-                                                        current_frame = swapchain_index as usize;
+                                                        current_frame = swapchain_index.0 as usize;
                                                     }
                                                 }
                                                 Err(_) => {

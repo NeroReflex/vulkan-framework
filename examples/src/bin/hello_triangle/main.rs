@@ -470,14 +470,14 @@ fn main() {
                     swapchain
                         .queue_present(
                             queue.clone(),
-                            swapchain_index,
+                            swapchain_index.0,
                             &[image_rendered_semaphores
                                 [current_frame % (swapchain_images_count as usize)]
                                 .clone()],
                         )
                         .unwrap();
 
-                    current_frame = swapchain_index as usize;
+                    current_frame = swapchain_index.0 as usize;
                 }
             }
             Err(err) => {
