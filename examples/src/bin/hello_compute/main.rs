@@ -1,5 +1,6 @@
 use std::io::Write;
 use std::sync::Arc;
+use std::time::Duration;
 
 use inline_spirv::*;
 use vulkan_framework::command_buffer::AccessFlag;
@@ -9,6 +10,7 @@ use vulkan_framework::command_buffer::ImageMemoryBarrier;
 use vulkan_framework::command_buffer::PrimaryCommandBuffer;
 use vulkan_framework::command_pool::CommandPool;
 use vulkan_framework::compute_pipeline::ComputePipeline;
+use vulkan_framework::fence::FenceWaitFor;
 use vulkan_framework::shaders::compute_shader::ComputeShader;
 use vulkan_framework::descriptor_pool::DescriptorPool;
 use vulkan_framework::descriptor_pool::DescriptorPoolConcreteDescriptor;
@@ -423,15 +425,16 @@ fn main() {
                                         }
                                     };
 
-                                    match queue.submit(&[command_buffer], &[], &[], fence) {
-                                        Ok(mut fence_waiter) => {
+                                    match queue.submit(&[command_buffer], &[], &[], fence.clone()) {
+                                        Ok(()) => {
                                             println!(
                                                 "Command buffer submitted! GPU will work on that!"
                                             );
 
                                             'wait_for_fence: loop {
-                                                match fence_waiter.wait(100u64) {
+                                                match Fence::wait_for_fences(&[fence.clone()], FenceWaitFor::All, Duration::from_nanos(100)) {
                                                     Ok(_) => {
+                                                        fence.reset().unwrap();
                                                         break 'wait_for_fence;
                                                     }
                                                     Err(err) => {

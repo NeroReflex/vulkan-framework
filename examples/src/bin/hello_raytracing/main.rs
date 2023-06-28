@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use inline_spirv::*;
 
@@ -19,7 +19,7 @@ use vulkan_framework::{
     descriptor_pool::DescriptorPoolSizesAcceletarionStructureKHR,
     descriptor_set_layout::DescriptorSetLayout,
     device::*,
-    fence::{Fence, FenceWaiter},
+    fence::{Fence, FenceWaiter, FenceWaitFor},
     shaders::{
         vertex_shader::VertexShader,
         fragment_shader::FragmentShader,
@@ -474,10 +474,6 @@ fn main() {
                     })
                     .collect::<Vec<Arc<Fence>>>();
 
-                let mut swapchain_fence_waiters = (0..swapchain_images_count)
-                    .map(|idx| FenceWaiter::from_fence(swapchain_fences[idx as usize].clone()))
-                    .collect::<Vec<FenceWaiter>>();
-
                 let command_pool =
                     CommandPool::new(queue_family.clone(), Some("My command pool")).unwrap();
 
@@ -848,13 +844,15 @@ fn main() {
                     .unwrap();
                 let blas_building_fence =
                     Fence::new(dev.clone(), false, Some("blas_building_fence")).unwrap();
-                let mut waiter = queue
-                    .submit(&[blas_building], &[], &[], blas_building_fence)
+                
+                queue
+                    .submit(&[blas_building], &[], &[], blas_building_fence.clone())
                     .unwrap();
 
                 loop {
-                    match waiter.wait(100) {
+                    match Fence::wait_for_fences(&[blas_building_fence.clone()], FenceWaitFor::All, Duration::from_nanos(100)) {
                         Ok(_) => {
+                            blas_building_fence.reset().unwrap();
                             break;
                         }
                         Err(err) => {
@@ -921,13 +919,15 @@ fn main() {
                     .unwrap();
                 let tlas_building_fence =
                     Fence::new(dev, false, Some("tlas_building_fence")).unwrap();
-                let mut waiter = queue
-                    .submit(&[tlas_building], &[], &[], tlas_building_fence)
+                
+                queue
+                    .submit(&[tlas_building], &[], &[], tlas_building_fence.clone())
                     .unwrap();
 
                 loop {
-                    match waiter.wait(100) {
+                    match Fence::wait_for_fences(&[tlas_building_fence.clone()], FenceWaitFor::All, Duration::from_nanos(100)) {
                         Ok(_) => {
+                            tlas_building_fence.reset().unwrap();
                             break;
                         }
                         Err(err) => {
@@ -975,8 +975,9 @@ fn main() {
                                 keycode: Some(sdl2::keyboard::Keycode::Escape),
                                 ..
                             } => {
-                                for fence_waiter in swapchain_fence_waiters.iter_mut() {
-                                    fence_waiter.wait(u64::MAX).unwrap()
+                                for fence in swapchain_fences.iter() {
+                                    Fence::wait_for_fences(&[fence.clone()], FenceWaitFor::All, Duration::from_nanos(u64::MAX)).unwrap();
+                                    fence.reset().unwrap();
                                 }
                                 break 'running;
                             }
@@ -997,9 +998,8 @@ fn main() {
                         .unwrap();
 
                     // wait for fence
-                    swapchain_fence_waiters[current_frame % (swapchain_images_count as usize)]
-                        .wait(u64::MAX)
-                        .unwrap();
+                    Fence::wait_for_fences(&[swapchain_fences[current_frame % (swapchain_images_count as usize)].clone()], FenceWaitFor::All, Duration::from_nanos(u64::MAX)).unwrap();
+                    swapchain_fences[current_frame % (swapchain_images_count as usize)].reset().unwrap();
 
                     present_command_buffers[current_frame % (swapchain_images_count as usize)]
                         .record_commands(|recorder: &mut CommandBufferRecorder| {
@@ -1102,30 +1102,29 @@ fn main() {
                         })
                         .unwrap();
 
-                    swapchain_fence_waiters[current_frame % (swapchain_images_count as usize)] =
-                        queue
-                            .submit(
-                                &[present_command_buffers
+                    queue
+                        .submit(
+                            &[present_command_buffers
+                                [current_frame % (swapchain_images_count as usize)]
+                                .clone()],
+                            &[(
+                                PipelineStages::from(
+                                    &[PipelineStage::FragmentShader],
+                                    None,
+                                    None,
+                                    None,
+                                ),
+                                image_available_semaphores
                                     [current_frame % (swapchain_images_count as usize)]
-                                    .clone()],
-                                &[(
-                                    PipelineStages::from(
-                                        &[PipelineStage::FragmentShader],
-                                        None,
-                                        None,
-                                        None,
-                                    ),
-                                    image_available_semaphores
-                                        [current_frame % (swapchain_images_count as usize)]
-                                        .clone(),
-                                )],
-                                &[image_rendered_semaphores
-                                    [current_frame % (swapchain_images_count as usize)]
-                                    .clone()],
-                                swapchain_fences[current_frame % (swapchain_images_count as usize)]
                                     .clone(),
-                            )
-                            .unwrap();
+                            )],
+                            &[image_rendered_semaphores
+                                [current_frame % (swapchain_images_count as usize)]
+                                .clone()],
+                            swapchain_fences[current_frame % (swapchain_images_count as usize)]
+                                .clone(),
+                        )
+                        .unwrap();
 
                     swapchain
                         .queue_present(

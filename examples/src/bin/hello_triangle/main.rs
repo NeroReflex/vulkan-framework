@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use inline_spirv::*;
 
@@ -6,7 +6,7 @@ use vulkan_framework::{
     command_buffer::{ClearValues, ColorClearValues, CommandBufferRecorder, PrimaryCommandBuffer},
     command_pool::CommandPool,
     device::*,
-    fence::{Fence, FenceWaiter},
+    fence::{Fence, FenceWaitFor},
     framebuffer::Framebuffer,
     graphics_pipeline::{
         CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline, PolygonMode,
@@ -245,10 +245,6 @@ fn main() {
                     })
                     .collect::<Vec<Arc<Fence>>>();
 
-                let mut swapchain_fence_waiters = (0..swapchain_images_count)
-                    .map(|idx| FenceWaiter::from_fence(swapchain_fences[idx as usize].clone()))
-                    .collect::<Vec<FenceWaiter>>();
-
                 let command_pool = CommandPool::new(queue_family, Some("My command pool")).unwrap();
 
                 let _command_buffer =
@@ -390,8 +386,9 @@ fn main() {
                                 keycode: Some(sdl2::keyboard::Keycode::Escape),
                                 ..
                             } => {
-                                for fence_waiter in swapchain_fence_waiters.iter_mut() {
-                                    fence_waiter.wait(u64::MAX).unwrap()
+                                for fence_waiter in swapchain_fences.iter() {
+                                    Fence::wait_for_fences(&[fence_waiter.clone()], FenceWaitFor::All, Duration::from_nanos(u64::MAX)).unwrap();
+                                    fence_waiter.reset().unwrap();
                                 }
                                 break 'running;
                             }
@@ -412,9 +409,8 @@ fn main() {
                         .unwrap();
 
                     // wait for fence
-                    swapchain_fence_waiters[current_frame % (swapchain_images_count as usize)]
-                        .wait(u64::MAX)
-                        .unwrap();
+                    Fence::wait_for_fences(&[swapchain_fences[current_frame % (swapchain_images_count as usize)].clone()], FenceWaitFor::All, Duration::from_nanos(u64::MAX)).unwrap();
+                    swapchain_fences[current_frame % (swapchain_images_count as usize)].reset().unwrap();
 
                     present_command_buffers[current_frame % (swapchain_images_count as usize)]
                         .record_commands(|recorder: &mut CommandBufferRecorder| {
@@ -435,8 +431,7 @@ fn main() {
                         })
                         .unwrap();
 
-                    swapchain_fence_waiters[current_frame % (swapchain_images_count as usize)] =
-                        queue
+                    queue
                             .submit(
                                 &[present_command_buffers
                                     [current_frame % (swapchain_images_count as usize)]

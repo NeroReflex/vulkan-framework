@@ -48,7 +48,7 @@ impl Queue {
         wait_semaphores: &[(PipelineStages, Arc<Semaphore>)],
         signal_semaphores: &[Arc<Semaphore>],
         fence: Arc<Fence>,
-    ) -> VulkanResult<FenceWaiter> {
+    ) -> VulkanResult<()> {
         if self.get_parent_queue_family().get_parent_device() != fence.get_parent_device() {
             return Err(VulkanError::Framework(
                 crate::prelude::FrameworkError::ResourceFromIncompatibleDevice,
@@ -102,7 +102,7 @@ impl Queue {
                 .ash_handle()
                 .queue_submit(self.ash_handle(), submits.as_slice(), fence.ash_handle())
         } {
-            Ok(_) => Ok(FenceWaiter::new(fence, command_buffers)),
+            Ok(_) => Ok(()),
             Err(err) => Err(VulkanError::Vulkan(
                 err.as_raw(),
                 Some(format!(

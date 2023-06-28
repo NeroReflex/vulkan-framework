@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use inline_spirv::*;
 use vulkan_framework::command_buffer::AccessFlag;
@@ -18,6 +19,7 @@ use vulkan_framework::descriptor_set::DescriptorSet;
 use vulkan_framework::descriptor_set_layout::DescriptorSetLayout;
 use vulkan_framework::device::*;
 use vulkan_framework::fence::Fence;
+use vulkan_framework::fence::FenceWaitFor;
 use vulkan_framework::fence::FenceWaiter;
 use vulkan_framework::framebuffer::Framebuffer;
 use vulkan_framework::graphics_pipeline::CullMode;
@@ -776,15 +778,6 @@ fn main() {
                                                 })
                                                 .collect::<Vec<Arc<Fence>>>();
 
-                                            let mut swapchain_fence_waiters = (0
-                                                ..(swapchain_images_count))
-                                                .map(|idx| {
-                                                    FenceWaiter::from_fence(
-                                                        swapchain_fences[idx as usize].clone(),
-                                                    )
-                                                })
-                                                .collect::<Vec<FenceWaiter>>();
-
                                             let present_command_buffers = (0
                                                 ..(swapchain_images_count))
                                                 .map(|_idx| {
@@ -835,14 +828,15 @@ fn main() {
                                                 &[command_buffer],
                                                 &[],
                                                 &[semaphore],
-                                                fence,
+                                                fence.clone(),
                                             ) {
-                                                Ok(mut fence_waiter) => {
+                                                Ok(()) => {
                                                     println!("Command buffer submitted! GPU will work on that!");
 
                                                     'wait_for_fence: loop {
-                                                        match fence_waiter.wait(100u64) {
+                                                        match Fence::wait_for_fences(&[fence.clone()], FenceWaitFor::All, Duration::from_nanos(100)) {
                                                             Ok(_) => {
+                                                                fence.reset().unwrap();
                                                                 device.wait_idle().unwrap();
                                                                 break 'wait_for_fence;
                                                             }
@@ -876,10 +870,9 @@ fn main() {
                                                         for event in event_pump.poll_iter() {
                                                             match event {
                                                                 sdl2::event::Event::Quit {..} | sdl2::event::Event::KeyDown { keycode: Some(sdl2::keyboard::Keycode::Escape), .. } => {
-                                                                    for fence_waiter in swapchain_fence_waiters.iter_mut() {
-                                                                        fence_waiter
-                                                                            .wait(u64::MAX)
-                                                                            .unwrap()
+                                                                    for fence in swapchain_fences.iter() {
+                                                                        Fence::wait_for_fences(&[fence.clone()], FenceWaitFor::All, Duration::from_nanos(u64::MAX)).unwrap();
+                                                                        fence.reset().unwrap();
                                                                     }
                                                                     break 'running
                                                                 },
@@ -902,11 +895,12 @@ fn main() {
                                                             "Swapchain image index {}",
                                                             swapchain_index
                                                         );
+
                                                         // wait for fence
-                                                        swapchain_fence_waiters[current_frame
-                                                            % (swapchain_images_count as usize)]
-                                                            .wait(u64::MAX)
-                                                            .unwrap();
+                                                        Fence::wait_for_fences(&[swapchain_fences[current_frame
+                                                            % (swapchain_images_count as usize)].clone()], FenceWaitFor::All, Duration::from_nanos(u64::MAX)).unwrap();
+                                                        swapchain_fences[current_frame
+                                                            % (swapchain_images_count as usize)].reset().unwrap();
 
                                                         present_command_buffers[current_frame % (swapchain_images_count as usize)].record_commands(|recorder: &mut CommandBufferRecorder| {
                                                             // when submitting wait for the image available semaphore before beginning transfer
@@ -925,8 +919,7 @@ fn main() {
                                                             recorder.end_renderpass();
                                                         }).unwrap();
 
-                                                        swapchain_fence_waiters
-                                                            [current_frame % (swapchain_images_count as usize)] = queue
+                                                        queue
                                                             .submit(
                                                                 &[present_command_buffers
                                                                     [current_frame % (swapchain_images_count as usize)]

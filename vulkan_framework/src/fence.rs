@@ -2,14 +2,14 @@ use std::{
     future::Future,
     pin::Pin,
     sync::Arc,
-    task::{Context, Poll},
+    task::{Context, Poll}, time::Duration,
 };
 
 use crate::{
     command_buffer::CommandBufferTrait,
     device::{Device, DeviceOwned},
     instance::InstanceOwned,
-    prelude::{FrameworkError, VulkanError, VulkanResult},
+    prelude::{FrameworkError, VulkanError, VulkanResult}, queue::Queue, pipeline_stage::PipelineStages, semaphore::Semaphore,
 };
 
 pub struct Fence {
@@ -56,26 +56,6 @@ impl Fence {
                 Some(format!("Error reading fence status: {}", err.to_string())),
             )),
         }
-    }
-
-    pub(crate) fn poll_impl(&self, cx: &mut Context<'_>) -> Poll<VulkanResult<()>> {
-        // Vulkan only allows polling of the fence status, so we have to use a spin future.
-        // This is still better than blocking in async applications, since a smart-enough async engine
-        // can choose to run some other tasks between probing this one.
-
-        // Check if we are done without blocking
-        match self.is_signaled() {
-            Err(e) => return Poll::Ready(Err(e)),
-            Ok(status) => {
-                if status {
-                    return Poll::Ready(Ok(()));
-                }
-            }
-        }
-
-        // Otherwise spin
-        cx.waker().wake_by_ref();
-        Poll::Pending
     }
 
     pub fn reset(&self) -> VulkanResult<()> {
@@ -135,7 +115,7 @@ impl Fence {
     pub fn wait_for_fences(
         fences: &[Arc<Self>],
         wait_target: FenceWaitFor,
-        device_timeout_ns: u64,
+        device_timeout: Duration,
     ) -> VulkanResult<()> {
         let mut device: Option<Arc<Device>> = None;
         let mut native_fences = smallvec::SmallVec::<[ash::vk::Fence; 4]>::new();
@@ -154,6 +134,8 @@ impl Fence {
             native_fences.push(fence.fence)
         }
 
+        let timeout_ns = device_timeout.as_nanos();
+
         match device {
             Some(device) => {
                 let wait_result = unsafe {
@@ -163,7 +145,7 @@ impl Fence {
                             FenceWaitFor::All => true,
                             FenceWaitFor::One => false,
                         },
-                        device_timeout_ns,
+                        if timeout_ns >= (u64::MAX as u128) { u64::MAX } else { timeout_ns as u64 },
                     )
                 };
 
@@ -240,6 +222,7 @@ impl Fence {
 
 pub struct FenceWaiter {
     fence: Option<Arc<Fence>>,
+    queue: Option<Arc<Queue>>,
     command_buffers: smallvec::SmallVec<[Arc<dyn CommandBufferTrait>; 8]>,
 }
 
@@ -252,28 +235,51 @@ impl Drop for FenceWaiter {
 }
 
 impl FenceWaiter {
-    pub(crate) fn new(fence: Arc<Fence>, command_buffers: &[Arc<dyn CommandBufferTrait>]) -> Self {
+    pub fn empty() -> Self {
         Self {
-            fence: Some(fence),
-            command_buffers: command_buffers
-                .iter()
-                .cloned()
-                .collect::<smallvec::SmallVec<[Arc<dyn CommandBufferTrait>; 8]>>(),
+            queue: None,
+            fence: None,
+            command_buffers: smallvec::smallvec![]
+        }
+    }
+
+    pub fn new_by_submit(
+        queue: Arc<Queue>,
+        command_buffers: &[Arc<dyn CommandBufferTrait>],
+        wait_semaphores: &[(PipelineStages, Arc<Semaphore>)],
+        signal_semaphores: &[Arc<Semaphore>],
+        fence: Arc<Fence>,
+    ) -> VulkanResult<Self> {
+        match queue.submit(command_buffers, wait_semaphores, signal_semaphores, fence.clone()) {
+            Ok(()) => {
+                Ok(
+                    Self {
+                        fence: Some(fence),
+                        queue: Some(queue),
+                        command_buffers: command_buffers
+                            .iter()
+                            .cloned()
+                            .collect::<smallvec::SmallVec<[Arc<dyn CommandBufferTrait>; 8]>>(),
+                    }
+                )
+            },
+            Err(err) => Err(err)
         }
     }
 
     pub fn from_fence(fence: Arc<Fence>) -> Self {
         Self {
             fence: Some(fence),
+            queue: None,
             command_buffers: smallvec::smallvec![],
         }
     }
 
-    pub fn wait(&mut self, device_timeout_ns: u64) -> VulkanResult<()> {
+    pub fn wait(&mut self, device_timeout: Duration) -> VulkanResult<()> {
         if let Some(fence) = &self.fence {
             let fence_arr = [fence.clone()];
 
-            match Fence::wait_for_fences(fence_arr.as_slice(), FenceWaitFor::All, device_timeout_ns)
+            match Fence::wait_for_fences(fence_arr.as_slice(), FenceWaitFor::All, device_timeout)
             {
                 Ok(_) => {
                     match fence.reset() {
@@ -283,6 +289,7 @@ impl FenceWaiter {
                                 cmd_buffer.flag_execution_as_finished();
                             }
                             self.fence = None;
+                            self.queue = None;
 
                             Ok(())
                         }
@@ -304,7 +311,41 @@ impl Future for FenceWaiter {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match &self.fence {
-            Some(fence) => fence.poll_impl(cx),
+            Some(fence) => {
+                // Vulkan only allows polling of the fence status, so we have to use a spin future.
+                // This is still better than blocking in async applications, since a smart-enough async engine
+                // can choose to run some other tasks between probing this one.
+
+                // Check if we are done without blocking
+                match fence.is_signaled() {
+                    Err(e) => return Poll::Ready(Err(e)),
+                    Ok(status) => {
+                        if status {
+                            return match fence.reset() {
+                                Ok(()) => {
+                                    // here I am gonna destroy the fence and the list of occupied resources so that they can finally be free
+                                    for cmd_buffer in self.command_buffers.iter() {
+                                        cmd_buffer.flag_execution_as_finished();
+                                    }
+                                    unsafe {
+                                        let self_mut_ref = self.get_unchecked_mut(); 
+
+                                        self_mut_ref.fence = None;
+                                        self_mut_ref.queue = None;
+                                    }
+
+                                    Poll::Ready(Ok(()))
+                                },
+                                Err(err) => Poll::Ready(Err(err))
+                            }
+                        }
+                    }
+                }
+
+                // Otherwise spin
+                //cx.waker().wake_by_ref();
+                Poll::Pending
+            },
             None => Poll::Ready(Ok(())),
         }
     }
