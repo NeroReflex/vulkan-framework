@@ -6,10 +6,9 @@ This framework aims to assist the developer with vulkan common operations and re
 You are __NOT__ limited to the functionality of the framework: while the C++ version exposed native vulkan handles this one exposes ash data that is a wrapper around vulkan raw API specification, therefore evey feature of vulkan can be used as it is usable in plain C.
 
 ## Async
-So... one day I decided I will be writing my experimental engine with a multithreading approch, I was honestly unsure whether to use tokio, but I opted not to.
-I have headache since that day.
+So... one day I decided I will be writing my experimental engine with a multithreading approch, I was honestly unsure whether to use tokio or std-async, but I opted not to.
 
-vulkan_framework will support async in response.
+I have headache since that day. This project will support async runtimes in response!
 
 ## Portability
 This project is designed to run everywhere vulkan 1.0.0 with no extensions is supported and a rust compiler is available!
