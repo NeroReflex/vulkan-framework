@@ -1,6 +1,10 @@
 use std::sync::Arc;
 
+#[cfg(feature = "parking_lot")]
 use parking_lot::{const_mutex, Mutex};
+
+#[cfg(not(feature = "parking_lot"))]
+use std::sync::Mutex;
 
 use crate::{
     buffer::{Buffer, BufferTrait, BufferUsage, ConcreteBufferDescriptor},
@@ -100,17 +104,42 @@ pub struct HostScratchBuffer {
 
 impl HostScratchBuffer {
     pub(crate) fn address(&self) -> ash::vk::DeviceOrHostAddressKHR {
-        let mut lck = self.buffer.lock();
+        #[cfg(feature = "parking_lot")]
+        {
+            let mut lck = self.buffer.lock();
 
-        ash::vk::DeviceOrHostAddressKHR {
-            host_address: lck.as_mut_slice().as_mut_ptr() as *mut std::ffi::c_void,
+            ash::vk::DeviceOrHostAddressKHR {
+                host_address: lck.as_mut_slice().as_mut_ptr() as *mut std::ffi::c_void,
+            }
+        }
+
+        #[cfg(not(feature = "parking_lot"))]
+        {
+            match self.buffer.lock() {
+                Ok(mut lck) => ash::vk::DeviceOrHostAddressKHR {
+                    host_address: lck.as_mut_slice().as_mut_ptr() as *mut std::ffi::c_void,
+                },
+                Err(_err) => {
+                    todo!()
+                }
+            }
         }
     }
 
     pub fn new(size: u64) -> Arc<Self> {
-        Arc::new(Self {
-            buffer: const_mutex(Vec::<u8>::with_capacity(size as usize)),
-        })
+        #[cfg(feature = "parking_lot")]
+        {
+            Arc::new(Self {
+                buffer: const_mutex(Vec::<u8>::with_capacity(size as usize)),
+            })
+        }
+
+        #[cfg(not(feature = "parking_lot"))]
+        {
+            Arc::new(Self {
+                buffer: Mutex::new(Vec::<u8>::with_capacity(size as usize)),
+            })
+        }
     }
 }
 

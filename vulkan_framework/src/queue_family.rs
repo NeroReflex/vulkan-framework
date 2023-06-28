@@ -2,7 +2,11 @@ use std::ops::Deref;
 
 use std::sync::Arc;
 
+#[cfg(feature = "parking_lot")]
 use parking_lot::{const_mutex, Mutex};
+
+#[cfg(not(feature = "parking_lot"))]
+use std::sync::Mutex;
 
 use crate::prelude::FrameworkError;
 use crate::{
@@ -77,11 +81,17 @@ impl QueueFamily {
     }
 
     pub fn new(device: Arc<Device>, index_of_required_queue: usize) -> VulkanResult<Arc<Self>> {
+        #[cfg(feature = "parking_lot")]
+        let created_queues = const_mutex(0);
+
+        #[cfg(not(feature = "parking_lot"))]
+        let created_queues = Mutex::new(0);
+
         match device.move_out_queue_family(index_of_required_queue) {
             Ok((queue_family, descriptor)) => Ok(Arc::new(Self {
                 device: device.clone(),
                 descriptor,
-                created_queues: const_mutex(0),
+                created_queues,
                 family_index: queue_family,
             })),
             Err(err) => Err(err),
@@ -89,7 +99,18 @@ impl QueueFamily {
     }
 
     pub(crate) fn move_out_queue(&self) -> VulkanResult<(u32, f32)> {
+        #[cfg(feature = "parking_lot")]
         let created_queues = self.created_queues.lock();
+
+        #[cfg(not(feature = "parking_lot"))]
+        let created_queues = match self.created_queues.lock() {
+            Ok(lock) => lock,
+            Err(err) => {
+                return Err(VulkanError::Framework(FrameworkError::Unknown(Some(
+                    format!("Error acquiring internal mutex: {}", err),
+                ))))
+            }
+        };
 
         let created_queues_num = *(created_queues.deref());
         let total_number_of_queues = self.descriptor.queue_priorities.len();

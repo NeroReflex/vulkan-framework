@@ -63,16 +63,15 @@ impl SpinlockFenceWaiter {
         }
     }
 
-/*
-    pub fn from_fence(fence: Arc<Fence>) -> Self {
-        Self {
-            fence: Some(fence),
-            queue: None,
-            command_buffers: smallvec::smallvec![],
+    /*
+        pub fn from_fence(fence: Arc<Fence>) -> Self {
+            Self {
+                fence: Some(fence),
+                queue: None,
+                command_buffers: smallvec::smallvec![],
+            }
         }
-    }
-*/
-
+    */
 }
 
 impl Future for SpinlockFenceWaiter {

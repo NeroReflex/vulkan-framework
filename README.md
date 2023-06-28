@@ -17,8 +17,10 @@ This project is designed to run everywhere vulkan 1.0.0 with no extensions is su
 To achieve this goal, ideally, only rust's standard library and ash should be used, everything else that might be needed (as the sdl2 glue) __MUST__ be manually imported by the developer, however due to speed being a huge factor in vulkan and interoperability with other libraries are important two libraries
 are being used that are outside of the core rust+vulkan ecosystem:
    - smallvec: spare time at the cost of extra stack usage by preventing memory allocation when requested number of resources is small
-   - parking_lot: as a vulkan renderer is part of a larger application (probably a very big one) it's not unresonable to think that tokio library will be used,
+   - parking_lot (__optional__): as a vulkan renderer is part of a larger application (probably a very big one) it's not unresonable to think that tokio library will be used,
        so mutexes are created using this library because tokio points to this library as the go-to implementation for mutexex and the library also claims to not allocating any memory on the heap, witch is always good if can be avoided and finally that it's faster than rust one.
+
+However parking_lot is not included by default and it's totally optional package, enabled when the "better_mutex" feature is enabled, this should increase compatibility of the framework with nearly all available platforms that supports vulkan.
 
 Moreover everything that depends on a vulkan extension is optional and is not "flattened" as it is in the vulkan documentation, insted it is very explicit when you are using a Vulkan extension!
 

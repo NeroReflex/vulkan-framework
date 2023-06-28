@@ -2,7 +2,11 @@ use std::sync::Arc;
 
 use ash::vk::Handle;
 
+#[cfg(feature = "parking_lot")]
 use parking_lot::{const_mutex, Mutex};
+
+#[cfg(not(feature = "parking_lot"))]
+use std::sync::Mutex;
 
 use crate::{
     acceleration_structure::TopLevelAccelerationStructure,
@@ -326,7 +330,18 @@ impl DescriptorSet {
     where
         F: Fn(&mut DescriptorSetWriter),
     {
+        #[cfg(feature = "parking_lot")]
         let mut lck = self.bound_resources.lock();
+
+        #[cfg(not(feature = "parking_lot"))]
+        let mut lck = match self.bound_resources.lock() {
+            Ok(lock) => lock,
+            Err(err) => {
+                return Err(VulkanError::Framework(FrameworkError::Unknown(Some(
+                    format!("Error acquiring the descriptor set mutex: {}", err),
+                ))))
+            }
+        };
 
         let mut writer = DescriptorSetWriter::new(self, lck.len() as u32);
 
@@ -382,16 +397,24 @@ impl DescriptorSet {
                 .ash_handle()
                 .allocate_descriptor_sets(&create_info)
         } {
-            Ok(descriptor_set) => Ok(Arc::new(Self {
-                pool,
-                descriptor_set: descriptor_set[0],
-                layout,
-                bound_resources: const_mutex(
-                    (0..(max_idx + 1))
-                        .map(|_idx| DescriptorSetBoundResource::None)
-                        .collect(),
-                ),
-            })),
+            Ok(descriptor_set) => {
+                let guarded_resource = (0..(max_idx + 1))
+                    .map(|_idx| DescriptorSetBoundResource::None)
+                    .collect();
+
+                #[cfg(feature = "parking_lot")]
+                let bound_resources = const_mutex(guarded_resource);
+
+                #[cfg(not(feature = "parking_lot"))]
+                let bound_resources = Mutex::new(guarded_resource);
+
+                Ok(Arc::new(Self {
+                    pool,
+                    descriptor_set: descriptor_set[0],
+                    layout,
+                    bound_resources,
+                }))
+            }
             Err(err) => Err(VulkanError::Vulkan(
                 err.as_raw(),
                 Some(format!("Error creating the descriptor set: {}", err)),

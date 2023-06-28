@@ -6,7 +6,11 @@ use ash;
 
 use std::os::raw::c_char;
 
+#[cfg(feature = "parking_lot")]
 use parking_lot::{const_mutex, Mutex};
+
+#[cfg(not(feature = "parking_lot"))]
+use std::sync::Mutex;
 
 use std::vec::Vec;
 
@@ -788,11 +792,17 @@ impl Device {
                                         }
                                     }
 
+                                    #[cfg(not(feature = "parking_lot"))]
+                                    let required_family_collection =
+                                        Mutex::new(selected_device.required_family_collection);
+
+                                    #[cfg(feature = "parking_lot")]
+                                    let required_family_collection =
+                                        const_mutex(selected_device.required_family_collection);
+
                                     Ok(Arc::new(Self {
                                         //_name_bytes: obj_name_bytes,
-                                        required_family_collection: const_mutex(
-                                            selected_device.required_family_collection,
-                                        ),
+                                        required_family_collection,
                                         device,
                                         extensions: DeviceExtensions {
                                             swapchain_khr_ext: swapchain_ext,
@@ -826,7 +836,19 @@ impl Device {
         &self,
         index: usize,
     ) -> VulkanResult<(u32, ConcreteQueueFamilyDescriptor)> {
+        #[cfg(feature = "parking_lot")]
         let mut collection = self.required_family_collection.lock();
+
+        #[cfg(not(feature = "parking_lot"))]
+        let mut collection = match self.required_family_collection.lock() {
+            Ok(lock) => lock,
+            Err(err) => {
+                return Err(VulkanError::Framework(FrameworkError::Unknown(Some(
+                    format!("Error acquiring internal mutex: {}", err),
+                ))))
+            }
+        };
+
         match collection.len() > index {
             true => match collection[index].to_owned() {
                 Some(cose) => {

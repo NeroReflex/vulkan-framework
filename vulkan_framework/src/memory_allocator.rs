@@ -1,6 +1,10 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
+#[cfg(feature = "parking_lot")]
 use parking_lot::{const_mutex, Mutex};
+
+#[cfg(not(feature = "parking_lot"))]
+use std::sync::Mutex;
 
 pub struct AllocationResult {
     requested_size: u64,
@@ -95,12 +99,18 @@ impl DefaultAllocator {
             number_of_blocks, block_size
         );
 
+        let protected_resource = (0..(number_of_blocks as usize))
+            .map(|_idx| 0u8)
+            .collect::<smallvec::SmallVec<[u8; 4096]>>();
+
+        #[cfg(feature = "parking_lot")]
+        let management_array = const_mutex(protected_resource);
+
+        #[cfg(not(feature = "parking_lot"))]
+        let management_array = Mutex::new(protected_resource);
+
         Self {
-            management_array: const_mutex(
-                (0..(number_of_blocks as usize))
-                    .map(|_idx| 0u8)
-                    .collect::<smallvec::SmallVec<[u8; 4096]>>(),
-            ),
+            management_array,
             total_size: number_of_blocks * block_size,
             block_size,
         }
@@ -122,7 +132,18 @@ impl MemoryAllocator for DefaultAllocator {
 
         let last_useful_first_allocation_block = total_number_of_blocks - required_number_of_blocks;
 
+        #[cfg(feature = "parking_lot")]
         let mut lck = self.management_array.lock();
+
+        #[cfg(not(feature = "parking_lot"))]
+        let mut lck = match self.management_array.lock() {
+            Ok(lock) => lock,
+            Err(err) => {
+                dbg!("Error locking mutex: memory won't be allocated -- {}", err);
+
+                return None;
+            }
+        };
 
         'find_first_block: for i in 0..last_useful_first_allocation_block {
             let next_aligned_start_addr = (((i * self.block_size) / alignment)
@@ -188,7 +209,18 @@ impl MemoryAllocator for DefaultAllocator {
             panic!("Memory was not allocated from this pool! :O");
         }
 
+        #[cfg(feature = "parking_lot")]
         let mut lck = self.management_array.lock();
+
+        #[cfg(not(feature = "parking_lot"))]
+        let mut lck = match self.management_array.lock() {
+            Ok(lock) => lock,
+            Err(err) => {
+                dbg!("Error in locking mutex: memory will be lost -- {}", err);
+
+                return;
+            }
+        };
 
         for i in first_block..number_of_allocated_blocks {
             if (*lck)[i as usize] != 1u8 {

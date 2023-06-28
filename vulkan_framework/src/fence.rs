@@ -1,19 +1,9 @@
-use std::{
-    future::Future,
-    pin::Pin,
-    sync::Arc,
-    task::{Context, Poll},
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
 use crate::{
-    command_buffer::CommandBufferTrait,
     device::{Device, DeviceOwned},
     instance::InstanceOwned,
-    pipeline_stage::PipelineStages,
     prelude::{FrameworkError, VulkanError, VulkanResult},
-    queue::Queue,
-    semaphore::Semaphore,
 };
 
 pub struct Fence {

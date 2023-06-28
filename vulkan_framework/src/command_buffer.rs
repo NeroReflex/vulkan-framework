@@ -1,6 +1,10 @@
 use std::{collections::HashSet, hash::Hash, sync::Arc};
 
+#[cfg(feature = "parking_lot")]
 use parking_lot::{const_mutex, Mutex};
+
+#[cfg(not(feature = "parking_lot"))]
+use std::sync::Mutex;
 
 use ash::vk::Handle;
 
@@ -1130,7 +1134,21 @@ impl PrimaryCommandBuffer {
             .get_parent_queue_family()
             .get_parent_device();
 
+        #[cfg(feature = "parking_lot")]
         let mut resources_lck = self.resources_in_use.lock();
+
+        #[cfg(not(feature = "parking_lot"))]
+        let mut resources_lck = match self.resources_in_use.lock() {
+            Ok(lock) => lock,
+            Err(err) => {
+                return Err(VulkanError::Framework(FrameworkError::Unknown(Some(
+                    format!(
+                        "Error opening the command buffer for writing: Error acquiring mutex: {}",
+                        err
+                    ),
+                ))))
+            }
+        };
 
         let begin_info = ash::vk::CommandBufferBeginInfo::builder()
             .flags(ash::vk::CommandBufferUsageFlags::empty() /*ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT*/)
@@ -1224,10 +1242,18 @@ impl PrimaryCommandBuffer {
                     }
                 }
 
+                #[cfg(feature = "parking_lot")]
+                let resources_in_use = const_mutex(HashSet::new());
+
+                #[cfg(not(feature = "parking_lot"))]
+                let resources_in_use: Mutex<
+                    HashSet<CommandBufferReferencedResource>,
+                > = Mutex::new(HashSet::new());
+
                 Ok(Arc::new(Self {
                     command_buffer,
                     command_pool,
-                    resources_in_use: const_mutex(HashSet::new()),
+                    resources_in_use,
                 }))
             }
             Err(err) => Err(VulkanError::Vulkan(
