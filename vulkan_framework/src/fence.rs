@@ -34,7 +34,6 @@ pub enum FenceWaitFor {
 }
 
 impl Fence {
-    
     #[inline]
     pub(crate) fn ash_handle(&self) -> ash::vk::Fence {
         self.fence

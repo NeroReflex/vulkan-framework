@@ -45,7 +45,6 @@ impl Drop for ComputePipeline {
 }*/
 
 impl ComputePipeline {
-
     #[inline]
     pub fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.pipeline)

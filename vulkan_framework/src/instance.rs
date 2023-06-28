@@ -47,7 +47,6 @@ impl Drop for Instance {
 }
 
 impl Instance {
-
     #[inline]
     pub fn instance_vulkan_version(&self) -> InstanceAPIVersion {
         self.version

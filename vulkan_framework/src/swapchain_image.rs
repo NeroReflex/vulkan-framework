@@ -25,7 +25,6 @@ impl SwapchainKHROwned for ImageSwapchainKHR {
 }
 
 impl ImageTrait for ImageSwapchainKHR {
-
     #[inline]
     fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.image)

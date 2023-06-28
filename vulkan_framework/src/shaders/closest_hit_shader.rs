@@ -23,7 +23,6 @@ impl Drop for ClosestHitShader {
 }
 
 impl DeviceOwned for ClosestHitShader {
-
     #[inline]
     fn get_parent_device(&self) -> Arc<Device> {
         self.device.clone()
@@ -31,7 +30,6 @@ impl DeviceOwned for ClosestHitShader {
 }
 
 impl ShaderTrait for ClosestHitShader {
-    
     #[inline]
     fn shader_type(&self) -> ShaderType {
         ShaderType::RayTracingKHR(ShaderTypeRayTracingKHR::ClosestHit)
@@ -44,7 +42,6 @@ impl ShaderTrait for ClosestHitShader {
 }
 
 impl PrivateShaderTrait for ClosestHitShader {
-
     #[inline]
     fn ash_handle(&self) -> ash::vk::ShaderModule {
         self.module

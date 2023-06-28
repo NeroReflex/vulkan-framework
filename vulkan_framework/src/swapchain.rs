@@ -2,9 +2,11 @@ use std::sync::Arc;
 
 use ash::vk::Handle;
 
-
 #[cfg(feature = "async")]
-use crate::synchronization::fence::SpinlockFenceWaiter;
+use crate::synchronization::{
+    fence::{SpinlockFenceWaiter, ThreadedFenceWaiter},
+    thread::ThreadPool,
+};
 
 use crate::{
     device::{Device, DeviceOwned},
@@ -254,12 +256,14 @@ pub trait SwapchainKHROwned {
 }
 
 impl DeviceOwned for SwapchainKHR {
+    #[inline]
     fn get_parent_device(&self) -> Arc<Device> {
         self.device.clone()
     }
 }
 
 impl Drop for SwapchainKHR {
+    #[inline]
     fn drop(&mut self) {
         match self.device.ash_ext_swapchain_khr() {
             Some(ext) => unsafe {
@@ -276,18 +280,22 @@ impl Drop for SwapchainKHR {
 }
 
 impl SwapchainKHR {
+    #[inline]
     pub(crate) fn ash_handle(&self) -> ash::vk::SwapchainKHR {
         self.swapchain
     }
 
+    #[inline]
     pub fn images_format(&self) -> crate::image::ImageFormat {
         self.image_format
     }
 
+    #[inline]
     pub fn images_extent(&self) -> crate::image::Image2DDimensions {
         self.extent
     }
 
+    #[inline]
     pub fn images_layers_count(&self) -> u32 {
         self.image_layers
     }
@@ -333,6 +341,43 @@ impl SwapchainKHR {
     }
 
     #[cfg(feature = "async")]
+    pub fn async_threaded_acquire_next_image_index(
+        &self,
+        pool: Arc<ThreadPool>,
+        timeout: Option<u64>,
+        maybe_semaphore: Option<Arc<Semaphore>>,
+        fence: Arc<Fence>,
+    ) -> VulkanResult<ThreadedFenceWaiter<(u32, bool)>> {
+        match self.get_parent_device().ash_ext_swapchain_khr() {
+            Option::Some(ext) => {
+                match unsafe {
+                    ext.acquire_next_image(
+                        self.swapchain,
+                        match timeout {
+                            Option::Some(t) => t,
+                            None => u64::MAX,
+                        },
+                        match maybe_semaphore {
+                            Option::Some(semaphore) => semaphore.ash_handle(),
+                            Option::None => ash::vk::Semaphore::null(),
+                        },
+                        fence.ash_handle(),
+                    )
+                } {
+                    Ok(result) => Ok(ThreadedFenceWaiter::new(pool, None, &[], fence, result)),
+                    Err(err) => Err(VulkanError::Vulkan(
+                        err.as_raw(),
+                        Some(format!("Error creating the swapchain: {}", err)),
+                    )),
+                }
+            }
+            Option::None => Err(VulkanError::MissingExtension(String::from(
+                "VK_KHR_swapchain",
+            ))),
+        }
+    }
+
+    #[cfg(feature = "async")]
     pub fn async_spinlock_acquire_next_image_index(
         &self,
         timeout: Option<u64>,
@@ -355,14 +400,7 @@ impl SwapchainKHR {
                         fence.ash_handle(),
                     )
                 } {
-                    Ok(result) => Ok(
-                        SpinlockFenceWaiter::new(
-                            None,
-                            &[],
-                            fence,
-                            result
-                        )
-                    ),
+                    Ok(result) => Ok(SpinlockFenceWaiter::new(None, &[], fence, result)),
                     Err(err) => Err(VulkanError::Vulkan(
                         err.as_raw(),
                         Some(format!("Error creating the swapchain: {}", err)),

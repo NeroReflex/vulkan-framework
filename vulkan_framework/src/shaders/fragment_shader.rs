@@ -26,7 +26,6 @@ impl Drop for FragmentShader {
 }
 
 impl DeviceOwned for FragmentShader {
-
     #[inline]
     fn get_parent_device(&self) -> Arc<Device> {
         self.device.clone()
@@ -34,7 +33,6 @@ impl DeviceOwned for FragmentShader {
 }
 
 impl ShaderTrait for FragmentShader {
-    
     #[inline]
     fn shader_type(&self) -> ShaderType {
         ShaderType::Fragment
@@ -47,7 +45,6 @@ impl ShaderTrait for FragmentShader {
 }
 
 impl PrivateShaderTrait for FragmentShader {
-    
     #[inline]
     fn ash_handle(&self) -> ash::vk::ShaderModule {
         self.module

@@ -29,7 +29,6 @@ impl DeviceOwned for RaygenShader {
 }
 
 impl ShaderTrait for RaygenShader {
-
     #[inline]
     fn shader_type(&self) -> ShaderType {
         ShaderType::RayTracingKHR(ShaderTypeRayTracingKHR::RayGen)
@@ -42,7 +41,6 @@ impl ShaderTrait for RaygenShader {
 }
 
 impl PrivateShaderTrait for RaygenShader {
-
     #[inline]
     fn ash_handle(&self) -> ash::vk::ShaderModule {
         self.module

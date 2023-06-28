@@ -26,7 +26,6 @@ impl Drop for VertexShader {
 }
 
 impl DeviceOwned for VertexShader {
-
     #[inline]
     fn get_parent_device(&self) -> Arc<Device> {
         self.device.clone()
@@ -34,7 +33,6 @@ impl DeviceOwned for VertexShader {
 }
 
 impl ShaderTrait for VertexShader {
-
     #[inline]
     fn shader_type(&self) -> ShaderType {
         ShaderType::Vertex
@@ -47,7 +45,6 @@ impl ShaderTrait for VertexShader {
 }
 
 impl PrivateShaderTrait for VertexShader {
-    
     #[inline]
     fn ash_handle(&self) -> ash::vk::ShaderModule {
         self.module

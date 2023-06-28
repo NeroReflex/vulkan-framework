@@ -65,7 +65,6 @@ impl Drop for Sampler {
 }
 
 impl Sampler {
-
     #[inline]
     pub fn mag_filter(&self) -> Filtering {
         self.mag_filter

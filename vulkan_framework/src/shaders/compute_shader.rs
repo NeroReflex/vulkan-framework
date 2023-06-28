@@ -25,7 +25,6 @@ impl Drop for ComputeShader {
 }
 
 impl DeviceOwned for ComputeShader {
-
     #[inline]
     fn get_parent_device(&self) -> Arc<Device> {
         self.device.clone()
@@ -33,7 +32,6 @@ impl DeviceOwned for ComputeShader {
 }
 
 impl ShaderTrait for ComputeShader {
-    
     #[inline]
     fn shader_type(&self) -> ShaderType {
         ShaderType::Compute
@@ -46,7 +44,6 @@ impl ShaderTrait for ComputeShader {
 }
 
 impl PrivateShaderTrait for ComputeShader {
-
     #[inline]
     fn ash_handle(&self) -> ash::vk::ShaderModule {
         self.module
