@@ -6,10 +6,10 @@ use ash;
 
 use std::os::raw::c_char;
 
-#[cfg(feature = "parking_lot")]
+#[cfg(feature = "better_mutex")]
 use parking_lot::{const_mutex, Mutex};
 
-#[cfg(not(feature = "parking_lot"))]
+#[cfg(not(feature = "better_mutex"))]
 use std::sync::Mutex;
 
 use std::vec::Vec;
@@ -792,11 +792,11 @@ impl Device {
                                         }
                                     }
 
-                                    #[cfg(not(feature = "parking_lot"))]
+                                    #[cfg(not(feature = "better_mutex"))]
                                     let required_family_collection =
                                         Mutex::new(selected_device.required_family_collection);
 
-                                    #[cfg(feature = "parking_lot")]
+                                    #[cfg(feature = "better_mutex")]
                                     let required_family_collection =
                                         const_mutex(selected_device.required_family_collection);
 
@@ -836,10 +836,10 @@ impl Device {
         &self,
         index: usize,
     ) -> VulkanResult<(u32, ConcreteQueueFamilyDescriptor)> {
-        #[cfg(feature = "parking_lot")]
+        #[cfg(feature = "better_mutex")]
         let mut collection = self.required_family_collection.lock();
 
-        #[cfg(not(feature = "parking_lot"))]
+        #[cfg(not(feature = "better_mutex"))]
         let mut collection = match self.required_family_collection.lock() {
             Ok(lock) => lock,
             Err(err) => {

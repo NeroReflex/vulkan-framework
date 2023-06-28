@@ -1,9 +1,9 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
-#[cfg(feature = "parking_lot")]
+#[cfg(feature = "better_mutex")]
 use parking_lot::{const_mutex, Mutex};
 
-#[cfg(not(feature = "parking_lot"))]
+#[cfg(not(feature = "better_mutex"))]
 use std::sync::Mutex;
 
 pub struct AllocationResult {
@@ -103,10 +103,10 @@ impl DefaultAllocator {
             .map(|_idx| 0u8)
             .collect::<smallvec::SmallVec<[u8; 4096]>>();
 
-        #[cfg(feature = "parking_lot")]
+        #[cfg(feature = "better_mutex")]
         let management_array = const_mutex(protected_resource);
 
-        #[cfg(not(feature = "parking_lot"))]
+        #[cfg(not(feature = "better_mutex"))]
         let management_array = Mutex::new(protected_resource);
 
         Self {
@@ -132,10 +132,10 @@ impl MemoryAllocator for DefaultAllocator {
 
         let last_useful_first_allocation_block = total_number_of_blocks - required_number_of_blocks;
 
-        #[cfg(feature = "parking_lot")]
+        #[cfg(feature = "better_mutex")]
         let mut lck = self.management_array.lock();
 
-        #[cfg(not(feature = "parking_lot"))]
+        #[cfg(not(feature = "better_mutex"))]
         let mut lck = match self.management_array.lock() {
             Ok(lock) => lock,
             Err(err) => {
@@ -209,10 +209,10 @@ impl MemoryAllocator for DefaultAllocator {
             panic!("Memory was not allocated from this pool! :O");
         }
 
-        #[cfg(feature = "parking_lot")]
+        #[cfg(feature = "better_mutex")]
         let mut lck = self.management_array.lock();
 
-        #[cfg(not(feature = "parking_lot"))]
+        #[cfg(not(feature = "better_mutex"))]
         let mut lck = match self.management_array.lock() {
             Ok(lock) => lock,
             Err(err) => {

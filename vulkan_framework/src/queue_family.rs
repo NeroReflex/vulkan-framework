@@ -2,10 +2,10 @@ use std::ops::Deref;
 
 use std::sync::Arc;
 
-#[cfg(feature = "parking_lot")]
+#[cfg(feature = "better_mutex")]
 use parking_lot::{const_mutex, Mutex};
 
-#[cfg(not(feature = "parking_lot"))]
+#[cfg(not(feature = "better_mutex"))]
 use std::sync::Mutex;
 
 use crate::prelude::FrameworkError;
@@ -81,10 +81,10 @@ impl QueueFamily {
     }
 
     pub fn new(device: Arc<Device>, index_of_required_queue: usize) -> VulkanResult<Arc<Self>> {
-        #[cfg(feature = "parking_lot")]
+        #[cfg(feature = "better_mutex")]
         let created_queues = const_mutex(0);
 
-        #[cfg(not(feature = "parking_lot"))]
+        #[cfg(not(feature = "better_mutex"))]
         let created_queues = Mutex::new(0);
 
         match device.move_out_queue_family(index_of_required_queue) {
@@ -99,10 +99,10 @@ impl QueueFamily {
     }
 
     pub(crate) fn move_out_queue(&self) -> VulkanResult<(u32, f32)> {
-        #[cfg(feature = "parking_lot")]
+        #[cfg(feature = "better_mutex")]
         let created_queues = self.created_queues.lock();
 
-        #[cfg(not(feature = "parking_lot"))]
+        #[cfg(not(feature = "better_mutex"))]
         let created_queues = match self.created_queues.lock() {
             Ok(lock) => lock,
             Err(err) => {

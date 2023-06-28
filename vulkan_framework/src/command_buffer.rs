@@ -1,9 +1,9 @@
 use std::{collections::HashSet, hash::Hash, sync::Arc};
 
-#[cfg(feature = "parking_lot")]
+#[cfg(feature = "better_mutex")]
 use parking_lot::{const_mutex, Mutex};
 
-#[cfg(not(feature = "parking_lot"))]
+#[cfg(not(feature = "better_mutex"))]
 use std::sync::Mutex;
 
 use ash::vk::Handle;
@@ -1134,10 +1134,10 @@ impl PrimaryCommandBuffer {
             .get_parent_queue_family()
             .get_parent_device();
 
-        #[cfg(feature = "parking_lot")]
+        #[cfg(feature = "better_mutex")]
         let mut resources_lck = self.resources_in_use.lock();
 
-        #[cfg(not(feature = "parking_lot"))]
+        #[cfg(not(feature = "better_mutex"))]
         let mut resources_lck = match self.resources_in_use.lock() {
             Ok(lock) => lock,
             Err(err) => {
@@ -1242,10 +1242,10 @@ impl PrimaryCommandBuffer {
                     }
                 }
 
-                #[cfg(feature = "parking_lot")]
+                #[cfg(feature = "better_mutex")]
                 let resources_in_use = const_mutex(HashSet::new());
 
-                #[cfg(not(feature = "parking_lot"))]
+                #[cfg(not(feature = "better_mutex"))]
                 let resources_in_use: Mutex<
                     HashSet<CommandBufferReferencedResource>,
                 > = Mutex::new(HashSet::new());

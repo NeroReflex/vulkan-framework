@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use ash::vk::Handle;
 
-#[cfg(feature = "parking_lot")]
+#[cfg(feature = "better_mutex")]
 use parking_lot::{const_mutex, Mutex};
 
-#[cfg(not(feature = "parking_lot"))]
+#[cfg(not(feature = "better_mutex"))]
 use std::sync::Mutex;
 
 use crate::{
@@ -330,10 +330,10 @@ impl DescriptorSet {
     where
         F: Fn(&mut DescriptorSetWriter),
     {
-        #[cfg(feature = "parking_lot")]
+        #[cfg(feature = "better_mutex")]
         let mut lck = self.bound_resources.lock();
 
-        #[cfg(not(feature = "parking_lot"))]
+        #[cfg(not(feature = "better_mutex"))]
         let mut lck = match self.bound_resources.lock() {
             Ok(lock) => lock,
             Err(err) => {
@@ -402,10 +402,10 @@ impl DescriptorSet {
                     .map(|_idx| DescriptorSetBoundResource::None)
                     .collect();
 
-                #[cfg(feature = "parking_lot")]
+                #[cfg(feature = "better_mutex")]
                 let bound_resources = const_mutex(guarded_resource);
 
-                #[cfg(not(feature = "parking_lot"))]
+                #[cfg(not(feature = "better_mutex"))]
                 let bound_resources = Mutex::new(guarded_resource);
 
                 Ok(Arc::new(Self {

@@ -21,6 +21,8 @@ are being used that are outside of the core rust+vulkan ecosystem:
 
 However parking_lot is not included by default and it's totally optional package, enabled when the "better_mutex" feature is enabled, this should increase compatibility of the framework with nearly all available platforms that supports vulkan.
 
+In addition to that the possibility to exclude smallvec is also planned, but since that crate is also available with no_std it's not an urgent need that will drop compatibility with any more platforms than ash is already dropping due to requiring the std library.
+
 Moreover everything that depends on a vulkan extension is optional and is not "flattened" as it is in the vulkan documentation, insted it is very explicit when you are using a Vulkan extension!
 
 ## Memory Management

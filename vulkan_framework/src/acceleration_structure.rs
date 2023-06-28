@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-#[cfg(feature = "parking_lot")]
+#[cfg(feature = "better_mutex")]
 use parking_lot::{const_mutex, Mutex};
 
-#[cfg(not(feature = "parking_lot"))]
+#[cfg(not(feature = "better_mutex"))]
 use std::sync::Mutex;
 
 use crate::{
@@ -104,7 +104,7 @@ pub struct HostScratchBuffer {
 
 impl HostScratchBuffer {
     pub(crate) fn address(&self) -> ash::vk::DeviceOrHostAddressKHR {
-        #[cfg(feature = "parking_lot")]
+        #[cfg(feature = "better_mutex")]
         {
             let mut lck = self.buffer.lock();
 
@@ -113,7 +113,7 @@ impl HostScratchBuffer {
             }
         }
 
-        #[cfg(not(feature = "parking_lot"))]
+        #[cfg(not(feature = "better_mutex"))]
         {
             match self.buffer.lock() {
                 Ok(mut lck) => ash::vk::DeviceOrHostAddressKHR {
@@ -127,14 +127,14 @@ impl HostScratchBuffer {
     }
 
     pub fn new(size: u64) -> Arc<Self> {
-        #[cfg(feature = "parking_lot")]
+        #[cfg(feature = "better_mutex")]
         {
             Arc::new(Self {
                 buffer: const_mutex(Vec::<u8>::with_capacity(size as usize)),
             })
         }
 
-        #[cfg(not(feature = "parking_lot"))]
+        #[cfg(not(feature = "better_mutex"))]
         {
             Arc::new(Self {
                 buffer: Mutex::new(Vec::<u8>::with_capacity(size as usize)),
