@@ -15,13 +15,13 @@ use crate::{
     semaphore::Semaphore,
 };
 
-pub struct FenceWaiter {
+pub struct SpinlockFenceWaiter {
     fence: Option<Arc<Fence>>,
     queue: Option<Arc<Queue>>,
     command_buffers: smallvec::SmallVec<[Arc<dyn CommandBufferTrait>; 8]>,
 }
 
-impl Drop for FenceWaiter {
+impl Drop for SpinlockFenceWaiter {
     fn drop(&mut self) {
         if let Some(_fence) = &self.fence {
             panic!("Nooooooo you still have resources in use, please wait for the fence!!! :(");
@@ -29,7 +29,7 @@ impl Drop for FenceWaiter {
     }
 }
 
-impl FenceWaiter {
+impl SpinlockFenceWaiter {
     pub fn empty() -> Self {
         Self {
             queue: None,
@@ -63,6 +63,7 @@ impl FenceWaiter {
         }
     }
 
+/*
     pub fn from_fence(fence: Arc<Fence>) -> Self {
         Self {
             fence: Some(fence),
@@ -70,44 +71,17 @@ impl FenceWaiter {
             command_buffers: smallvec::smallvec![],
         }
     }
+*/
 
-    pub fn wait(&mut self, device_timeout: Duration) -> VulkanResult<()> {
-        if let Some(fence) = &self.fence {
-            let fence_arr = [fence.clone()];
-
-            match Fence::wait_for_fences(fence_arr.as_slice(), FenceWaitFor::All, device_timeout) {
-                Ok(_) => {
-                    match fence.reset() {
-                        Ok(()) => {
-                            // here I am gonna destroy the fence and the list of occupied resources so that they can finally be free
-                            for cmd_buffer in self.command_buffers.iter() {
-                                cmd_buffer.flag_execution_as_finished();
-                            }
-                            self.fence = None;
-                            self.queue = None;
-
-                            Ok(())
-                        }
-                        Err(err) => Err(err),
-                    }
-                }
-                Err(err) => Err(err),
-            }
-        } else {
-            // If this is empty then a successful wait operation has already been completed, therefore there is nothing to do.
-            // It is safe to return another Ok() as bound resources have been already freed
-            Ok(())
-        }
-    }
 }
 
-impl Future for FenceWaiter {
+impl Future for SpinlockFenceWaiter {
     type Output = VulkanResult<()>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match &self.fence {
             Some(fence) => {
-                // Vulkan only allows polling of the fence status, so we have to use a spin future.
+                // Vulkan only allows polling of the fence status and not a callback-wake feature, so we have to use a spin future.
                 // This is still better than blocking in async applications, since a smart-enough async engine
                 // can choose to run some other tasks between probing this one.
 
@@ -138,7 +112,7 @@ impl Future for FenceWaiter {
                 }
 
                 // Otherwise spin
-                //cx.waker().wake_by_ref();
+                cx.waker().wake_by_ref();
                 Poll::Pending
             }
             None => Poll::Ready(Ok(())),
