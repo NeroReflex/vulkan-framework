@@ -19,7 +19,7 @@ use vulkan_framework::{
     descriptor_pool::DescriptorPoolSizesAcceletarionStructureKHR,
     descriptor_set_layout::DescriptorSetLayout,
     device::*,
-    fence::{Fence, FenceWaiter, FenceWaitFor},
+    fence::{Fence, FenceWaitFor},
     shaders::{
         vertex_shader::VertexShader,
         fragment_shader::FragmentShader,

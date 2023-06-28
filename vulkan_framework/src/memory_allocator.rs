@@ -1,7 +1,6 @@
-use std::sync::{
-    atomic::{AtomicU64, Ordering},
-    Mutex,
-};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use parking_lot::{const_mutex, Mutex};
 
 pub struct AllocationResult {
     requested_size: u64,
@@ -97,7 +96,7 @@ impl DefaultAllocator {
         );
 
         Self {
-            management_array: Mutex::new(
+            management_array: const_mutex(
                 (0..(number_of_blocks as usize))
                     .map(|_idx| 0u8)
                     .collect::<smallvec::SmallVec<[u8; 4096]>>(),
@@ -123,8 +122,8 @@ impl MemoryAllocator for DefaultAllocator {
 
         let last_useful_first_allocation_block = total_number_of_blocks - required_number_of_blocks;
 
-        match self.management_array.lock() {
-            Ok(mut lck) => {
+        let mut lck = self.management_array.lock();
+
                 'find_first_block: for i in 0..last_useful_first_allocation_block {
                     let next_aligned_start_addr = (((i * self.block_size) / alignment)
                         + if ((i * self.block_size) % alignment) == 0 {
@@ -176,9 +175,7 @@ impl MemoryAllocator for DefaultAllocator {
                 }
 
                 None
-            }
-            Err(_err) => None,
-        }
+            
     }
 
     fn dealloc(&self, allocation: &mut AllocationResult) {
@@ -189,20 +186,16 @@ impl MemoryAllocator for DefaultAllocator {
             panic!("Memory was not allocated from this pool! :O");
         }
 
-        match self.management_array.lock() {
-            Ok(mut lck) => {
-                for i in first_block..number_of_allocated_blocks {
-                    if (*lck)[i as usize] != 1u8 {
-                        panic!("Memory was not allocated from this pool! :O");
-                    }
+        let mut lck = self.management_array.lock();
 
-                    (*lck)[i as usize] = 0u8;
-                }
+        for i in first_block..number_of_allocated_blocks {
+            if (*lck)[i as usize] != 1u8 {
+                panic!("Memory was not allocated from this pool! :O");
             }
-            Err(err) => {
-                println!("Error locking tha mutex: {}, memory will be lost", err);
-            }
+
+            (*lck)[i as usize] = 0u8;
         }
+            
     }
 }
 

@@ -1,8 +1,10 @@
 use std::{
     collections::HashSet,
     hash::Hash,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
+
+use parking_lot::{const_mutex, Mutex};
 
 use ash::vk::Handle;
 
@@ -1132,58 +1134,51 @@ impl PrimaryCommandBuffer {
             .get_parent_queue_family()
             .get_parent_device();
 
-        match self.resources_in_use.lock() {
-            Ok(mut resources_lck) => {
-                let begin_info = ash::vk::CommandBufferBeginInfo::builder()
-                    .flags(ash::vk::CommandBufferUsageFlags::empty() /*ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT*/)
-                    .build();
+        let mut resources_lck = self.resources_in_use.lock();
+    
+        let begin_info = ash::vk::CommandBufferBeginInfo::builder()
+            .flags(ash::vk::CommandBufferUsageFlags::empty() /*ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT*/)
+            .build();
 
-                match unsafe {
-                    device
-                        .ash_handle()
-                        .begin_command_buffer(self.ash_handle(), &begin_info)
-                } {
-                    Ok(_) => {
-                        let mut recorder = CommandBufferRecorder {
-                            device: device.clone(),
-                            command_buffer: self,
-                            used_resources: HashSet::new(),
-                        };
+        match unsafe {
+            device
+                .ash_handle()
+                .begin_command_buffer(self.ash_handle(), &begin_info)
+        } {
+            Ok(_) => {
+                let mut recorder = CommandBufferRecorder {
+                    device: device.clone(),
+                    command_buffer: self,
+                    used_resources: HashSet::new(),
+                };
 
-                        commands_writer_fn(&mut recorder);
+                commands_writer_fn(&mut recorder);
 
-                        match unsafe { device.ash_handle().end_command_buffer(self.ash_handle()) } {
-                            Ok(()) => {
-                                *resources_lck = recorder.used_resources;
+                match unsafe { device.ash_handle().end_command_buffer(self.ash_handle()) } {
+                    Ok(()) => {
+                        *resources_lck = recorder.used_resources;
 
-                                Ok(())
-                            }
-                            Err(err) => Err(VulkanError::Vulkan(
-                                err.as_raw(),
-                                Some(format!("Error updating the command buffer: {}", err)),
-                            )),
-                        }
+                        Ok(())
                     }
-                    Err(err) =>
-                    // the command buffer is in the previous state... A good one unless the error is DEVICE_LOST
-                    {
-                        Err(VulkanError::Vulkan(
-                            err.as_raw(),
-                            Some(format!(
-                                "Error opening the command buffer for writing: {}",
-                                err
-                            )),
-                        ))
-                    }
+                    Err(err) => Err(VulkanError::Vulkan(
+                        err.as_raw(),
+                        Some(format!("Error updating the command buffer: {}", err)),
+                    )),
                 }
             }
-            Err(err) => Err(VulkanError::Framework(FrameworkError::Unknown(Some(
-                format!(
-                    "Error opening the command buffer for writing: Error acquiring mutex: {}",
-                    err
-                ),
-            )))),
+            Err(err) =>
+            // the command buffer is in the previous state... A good one unless the error is DEVICE_LOST
+            {
+                Err(VulkanError::Vulkan(
+                    err.as_raw(),
+                    Some(format!(
+                        "Error opening the command buffer for writing: {}",
+                        err
+                    )),
+                ))
+            }
         }
+            
     }
 
     pub fn new(
@@ -1237,7 +1232,7 @@ impl PrimaryCommandBuffer {
                 Ok(Arc::new(Self {
                     command_buffer,
                     command_pool,
-                    resources_in_use: Mutex::new(HashSet::new()),
+                    resources_in_use: const_mutex(HashSet::new()),
                 }))
             }
             Err(err) => Err(VulkanError::Vulkan(

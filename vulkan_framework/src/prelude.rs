@@ -31,37 +31,35 @@ impl Display for VulkanError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             VulkanError::Framework(error) => {
-                write!(f, "Framework error");
                 match error {
-                    FrameworkError::MallocFail => write!(f, " MallocFail"),
+                    FrameworkError::MallocFail => write!(f, "Framework error: MallocFail"),
                     FrameworkError::IncompatibleMemoryHeapType => {
-                        write!(f, " IncompatibleMemoryHeapType")
+                        write!(f, "Framework error: IncompatibleMemoryHeapType")
                     }
-                    FrameworkError::UserInput(_maybe_details) => write!(f, " UserInput"),
-                    FrameworkError::NoSuitableDeviceFound => write!(f, " NoSuitableDeviceFound"),
+                    FrameworkError::UserInput(_maybe_details) => write!(f, "Framework error: UserInput"),
+                    FrameworkError::NoSuitableDeviceFound => write!(f, "Framework error: NoSuitableDeviceFound"),
                     FrameworkError::NoSuitableMemoryHeapFound => {
-                        write!(f, " NoSuitableMemoryHeapFound")
+                        write!(f, "Framework error: NoSuitableMemoryHeapFound")
                     }
                     FrameworkError::ResourceFromIncompatibleDevice => {
-                        write!(f, " ResourceFromIncompatibleDevice")
+                        write!(f, "Framework error: ResourceFromIncompatibleDevice")
                     }
-                    FrameworkError::CannotLoadVulkan => write!(f, " CannotLoadVulkan"),
+                    FrameworkError::CannotLoadVulkan => write!(f, "Framework error: CannotLoadVulkan"),
                     FrameworkError::CannotCreateVulkanInstance => {
-                        write!(f, " CannotCreateVulkanInstance")
+                        write!(f, "Framework error: CannotCreateVulkanInstance")
                     }
-                    FrameworkError::MapMemoryError => write!(f, " MapMemoryError"),
+                    FrameworkError::MapMemoryError => write!(f, "Framework error: MapMemoryError"),
                     FrameworkError::IncompatibleInstanceVersion(
                         _current_version,
                         _wanted_version,
-                    ) => write!(f, " IncompatibleInstanceVersion"),
-                    FrameworkError::Unknown(_details) => write!(f, " Unknown"),
+                    ) => write!(f, "Framework error: IncompatibleInstanceVersion"),
+                    FrameworkError::Unknown(_details) => write!(f, "Framework error: Unknown"),
                 }
             }
             VulkanError::Vulkan(code, maybe_str) => {
-                write!(f, "Vulkan error ({})", code);
                 match maybe_str {
-                    Some(str) => write!(f, ": {}", str),
-                    None => write!(f, ""),
+                    Some(str) => write!(f, "Vulkan error ({}): {}", code, str),
+                    None => write!(f, "Vulkan error ({})", code),
                 }
             }
             VulkanError::MissingExtension(name) => write!(f, "Missing vulkan extension: {}", name),

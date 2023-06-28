@@ -1,4 +1,6 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+
+use parking_lot::{Mutex, const_mutex};
 
 use crate::{
     buffer::{Buffer, BufferTrait, BufferUsage, ConcreteBufferDescriptor},
@@ -98,19 +100,16 @@ pub struct HostScratchBuffer {
 
 impl HostScratchBuffer {
     pub(crate) fn address(&self) -> ash::vk::DeviceOrHostAddressKHR {
-        match self.buffer.lock() {
-            Ok(mut lck) => ash::vk::DeviceOrHostAddressKHR {
-                host_address: lck.as_mut_slice().as_mut_ptr() as *mut std::ffi::c_void,
-            },
-            Err(_err) => {
-                todo!()
-            }
+        let mut lck = self.buffer.lock();
+        
+        ash::vk::DeviceOrHostAddressKHR {
+            host_address: lck.as_mut_slice().as_mut_ptr() as *mut std::ffi::c_void,
         }
     }
 
     pub fn new(size: u64) -> Arc<Self> {
         Arc::new(Self {
-            buffer: Mutex::new(Vec::<u8>::with_capacity(size as usize)),
+            buffer: const_mutex(Vec::<u8>::with_capacity(size as usize)),
         })
     }
 }

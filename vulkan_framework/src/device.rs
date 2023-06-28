@@ -5,7 +5,9 @@ use crate::{instance::*, queue_family::*};
 use ash;
 
 use std::os::raw::c_char;
-use std::sync::Mutex;
+
+use parking_lot::{const_mutex, Mutex};
+
 use std::vec::Vec;
 
 use std::sync::Arc;
@@ -788,7 +790,7 @@ impl Device {
 
                                     Ok(Arc::new(Self {
                                         //_name_bytes: obj_name_bytes,
-                                        required_family_collection: Mutex::new(
+                                        required_family_collection: const_mutex(
                                             selected_device.required_family_collection,
                                         ),
                                         device,
@@ -824,25 +826,20 @@ impl Device {
         &self,
         index: usize,
     ) -> VulkanResult<(u32, ConcreteQueueFamilyDescriptor)> {
-        match self.required_family_collection.lock() {
-            Ok(mut collection) => match collection.len() > index {
-                true => match collection[index].to_owned() {
-                    Some(cose) => {
-                        collection[index] = None;
-                        Ok(cose)
-                    }
-                    None => Err(VulkanError::Framework(
-                            FrameworkError::UserInput(Some(format!("The queue family with index {} has already been created once and there can only be one QueueFamily for requested queue capabilies.", index))),
-                        ))
-                },
-                false =>
-                    Err(VulkanError::Framework(
-                        FrameworkError::UserInput(Some(format!("A queue family with index {} does not exists, at device creation time only {} queue families were requested.", index, collection.len()))),
+        let mut collection = self.required_family_collection.lock();
+        match collection.len() > index {
+            true => match collection[index].to_owned() {
+                Some(cose) => {
+                    collection[index] = None;
+                    Ok(cose)
+                }
+                None => Err(VulkanError::Framework(
+                        FrameworkError::UserInput(Some(format!("The queue family with index {} has already been created once and there can only be one QueueFamily for requested queue capabilies.", index))),
                     ))
             },
-            Err(err) =>
+            false =>
                 Err(VulkanError::Framework(
-                    FrameworkError::Unknown(Some(format!("Error acquiring internal mutex: {}", err))),
+                    FrameworkError::UserInput(Some(format!("A queue family with index {} does not exists, at device creation time only {} queue families were requested.", index, collection.len()))),
                 ))
         }
     }

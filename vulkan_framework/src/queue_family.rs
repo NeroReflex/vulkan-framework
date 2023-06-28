@@ -1,6 +1,8 @@
-use std::{ops::Deref, sync::Mutex};
+use std::ops::Deref;
 
 use std::sync::Arc;
+
+use parking_lot::{const_mutex, Mutex};
 
 use crate::prelude::FrameworkError;
 use crate::{
@@ -79,7 +81,7 @@ impl QueueFamily {
             Ok((queue_family, descriptor)) => Ok(Arc::new(Self {
                 device: device.clone(),
                 descriptor,
-                created_queues: Mutex::new(0),
+                created_queues: const_mutex(0),
                 family_index: queue_family,
             })),
             Err(err) => Err(err),
@@ -87,19 +89,14 @@ impl QueueFamily {
     }
 
     pub(crate) fn move_out_queue(&self) -> VulkanResult<(u32, f32)> {
-        match self.created_queues.lock() {
-            Ok(created_queues) => {
-                let created_queues_num = *(created_queues.deref());
-                let total_number_of_queues = self.descriptor.queue_priorities.len();
-                match created_queues_num < total_number_of_queues as u64 {
-                    true => Ok((created_queues_num as u32, self.descriptor.queue_priorities[created_queues_num as usize])),
-                    false =>
-                        Err(VulkanError::Framework(FrameworkError::UserInput(Some(format!("From this QueueFamily the number of created Queue(s) is {} out of a maximum supported number of {} has already been created.", created_queues_num, total_number_of_queues)))))
-                }
-            }
-            Err(err) => Err(VulkanError::Framework(FrameworkError::Unknown(Some(
-                format!("Error acquiring internal mutex: {}", err),
-            )))),
+        let created_queues = self.created_queues.lock();
+            
+        let created_queues_num = *(created_queues.deref());
+        let total_number_of_queues = self.descriptor.queue_priorities.len();
+        match created_queues_num < total_number_of_queues as u64 {
+            true => Ok((created_queues_num as u32, self.descriptor.queue_priorities[created_queues_num as usize])),
+            false =>
+                Err(VulkanError::Framework(FrameworkError::UserInput(Some(format!("From this QueueFamily the number of created Queue(s) is {} out of a maximum supported number of {} has already been created.", created_queues_num, total_number_of_queues)))))
         }
     }
 }

@@ -20,7 +20,6 @@ use vulkan_framework::descriptor_set_layout::DescriptorSetLayout;
 use vulkan_framework::device::*;
 use vulkan_framework::fence::Fence;
 use vulkan_framework::fence::FenceWaitFor;
-use vulkan_framework::fence::FenceWaiter;
 use vulkan_framework::framebuffer::Framebuffer;
 use vulkan_framework::graphics_pipeline::CullMode;
 use vulkan_framework::graphics_pipeline::DepthCompareOp;

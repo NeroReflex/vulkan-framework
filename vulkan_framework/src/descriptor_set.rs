@@ -1,6 +1,8 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use ash::vk::Handle;
+
+use parking_lot::{const_mutex, Mutex};
 
 use crate::{
     acceleration_structure::TopLevelAccelerationStructure,
@@ -324,34 +326,29 @@ impl DescriptorSet {
     where
         F: Fn(&mut DescriptorSetWriter),
     {
-        match self.bound_resources.lock() {
-            Ok(mut lck) => {
-                let mut writer = DescriptorSetWriter::new(self, lck.len() as u32);
+        let mut lck = self.bound_resources.lock();
 
-                f(&mut writer);
+        let mut writer = DescriptorSetWriter::new(self, lck.len() as u32);
 
-                unsafe {
-                    self.get_parent_descriptor_pool()
-                        .get_parent_device()
-                        .ash_handle()
-                        .update_descriptor_sets(writer.writer.as_slice(), &[])
-                };
+        f(&mut writer);
 
-                for (idx, res) in writer.ref_used_resources().enumerate() {
-                    match res {
-                        DescriptorSetBoundResource::None => {}
-                        updated_resource => {
-                            (*lck)[idx] = updated_resource.clone();
-                        }
-                    }
+        unsafe {
+            self.get_parent_descriptor_pool()
+                .get_parent_device()
+                .ash_handle()
+                .update_descriptor_sets(writer.writer.as_slice(), &[])
+        };
+
+        for (idx, res) in writer.ref_used_resources().enumerate() {
+            match res {
+                DescriptorSetBoundResource::None => {}
+                updated_resource => {
+                    (*lck)[idx] = updated_resource.clone();
                 }
-
-                Ok(())
             }
-            Err(err) => Err(VulkanError::Framework(FrameworkError::Unknown(Some(
-                format!("Error acquiring the descriptor set mutex: {}", err),
-            )))),
         }
+
+        Ok(())
     }
 
     pub fn new(
@@ -389,7 +386,7 @@ impl DescriptorSet {
                 pool,
                 descriptor_set: descriptor_set[0],
                 layout,
-                bound_resources: Mutex::new(
+                bound_resources: const_mutex(
                     (0..(max_idx + 1))
                         .map(|_idx| DescriptorSetBoundResource::None)
                         .collect(),
