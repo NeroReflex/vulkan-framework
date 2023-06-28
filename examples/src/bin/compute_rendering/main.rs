@@ -311,7 +311,7 @@ fn main() {
                                             }
 
                                             let mut swapchain_images_count =
-                                                device_swapchain_info.min_image_count() + 2;
+                                                device_swapchain_info.min_image_count() /*+ 2*/;
 
                                             if !device_swapchain_info
                                                 .image_count_supported(swapchain_images_count)
@@ -507,12 +507,12 @@ fn main() {
                                                     Image2DDimensions::new(WIDTH, HEIGHT),
                                                     renderquad_pipeline_layout.clone(),
                                                     &[
-                                                    /*VertexInputBinding::new(
-                                                    VertexInputRate::PerVertex,
-                                                    0,
-                                                    &[VertexInputAttribute::new(0, 0, AttributeType::Vec4)],
-                                                    )*/
-                                                ],
+                                                        /*VertexInputBinding::new(
+                                                        VertexInputRate::PerVertex,
+                                                        0,
+                                                        &[VertexInputAttribute::new(0, 0, AttributeType::Vec4)],
+                                                        )*/
+                                                    ],
                                                     Rasterizer::new(
                                                         PolygonMode::Fill,
                                                         FrontFace::CounterClockwise,
