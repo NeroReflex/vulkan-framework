@@ -90,7 +90,7 @@ impl QueueFamily {
 
     pub(crate) fn move_out_queue(&self) -> VulkanResult<(u32, f32)> {
         let created_queues = self.created_queues.lock();
-            
+
         let created_queues_num = *(created_queues.deref());
         let total_number_of_queues = self.descriptor.queue_priorities.len();
         match created_queues_num < total_number_of_queues as u64 {

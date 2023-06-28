@@ -1,8 +1,4 @@
-use std::{
-    collections::HashSet,
-    hash::Hash,
-    sync::Arc,
-};
+use std::{collections::HashSet, hash::Hash, sync::Arc};
 
 use parking_lot::{const_mutex, Mutex};
 
@@ -1135,7 +1131,7 @@ impl PrimaryCommandBuffer {
             .get_parent_device();
 
         let mut resources_lck = self.resources_in_use.lock();
-    
+
         let begin_info = ash::vk::CommandBufferBeginInfo::builder()
             .flags(ash::vk::CommandBufferUsageFlags::empty() /*ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT*/)
             .build();
@@ -1178,7 +1174,6 @@ impl PrimaryCommandBuffer {
                 ))
             }
         }
-            
     }
 
     pub fn new(

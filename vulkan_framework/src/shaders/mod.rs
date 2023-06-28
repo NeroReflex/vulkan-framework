@@ -3,7 +3,7 @@ pub mod callable_shader;
 pub mod closest_hit_shader;
 pub mod compute_shader;
 pub mod fragment_shader;
-pub mod vertex_shader;
 pub mod intersection_shader;
 pub mod miss_shader;
 pub mod raygen_shader;
+pub mod vertex_shader;

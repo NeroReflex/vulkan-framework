@@ -4,7 +4,7 @@ use smallvec::{smallvec, SmallVec};
 use crate::{
     command_buffer::CommandBufferTrait,
     device::DeviceOwned,
-    fence::{Fence, FenceWaiter},
+    fence::Fence,
     instance::InstanceOwned,
     pipeline_stage::PipelineStages,
     prelude::{VulkanError, VulkanResult},

@@ -10,7 +10,6 @@ use vulkan_framework::{
     },
     binding_tables::{required_memory_type, RaytracingBindingTables},
     buffer::{Buffer, BufferUsage, ConcreteBufferDescriptor},
-    
     command_buffer::{
         AccessFlag, AccessFlags, AccessFlagsSpecifier, ClearValues, ColorClearValues,
         CommandBufferRecorder, ImageMemoryBarrier, PrimaryCommandBuffer,
@@ -20,13 +19,6 @@ use vulkan_framework::{
     descriptor_set_layout::DescriptorSetLayout,
     device::*,
     fence::{Fence, FenceWaitFor},
-    shaders::{
-        vertex_shader::VertexShader,
-        fragment_shader::FragmentShader,
-        closest_hit_shader::ClosestHitShader,
-        miss_shader::MissShader,
-        raygen_shader::RaygenShader,
-    },
     framebuffer::Framebuffer,
     graphics_pipeline::{
         AttributeType, CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline,
@@ -42,7 +34,6 @@ use vulkan_framework::{
     memory_allocator::*,
     memory_heap::*,
     memory_pool::{MemoryPool, MemoryPoolBacked, MemoryPoolFeature, MemoryPoolFeatures},
-    
     pipeline_layout::PipelineLayout,
     pipeline_stage::{PipelineStage, PipelineStageRayTracingPipelineKHR, PipelineStages},
     queue::*,
@@ -56,6 +47,10 @@ use vulkan_framework::{
         AccelerationStructureBindingType, BindingDescriptor, BindingType, NativeBindingType,
     },
     shader_stage_access::{ShaderStageRayTracingKHR, ShaderStagesAccess},
+    shaders::{
+        closest_hit_shader::ClosestHitShader, fragment_shader::FragmentShader,
+        miss_shader::MissShader, raygen_shader::RaygenShader, vertex_shader::VertexShader,
+    },
     swapchain::{
         CompositeAlphaSwapchainKHR, DeviceSurfaceInfo, PresentModeSwapchainKHR,
         SurfaceColorspaceSwapchainKHR, SurfaceTransformSwapchainKHR, SwapchainKHR,
@@ -844,13 +839,17 @@ fn main() {
                     .unwrap();
                 let blas_building_fence =
                     Fence::new(dev.clone(), false, Some("blas_building_fence")).unwrap();
-                
+
                 queue
                     .submit(&[blas_building], &[], &[], blas_building_fence.clone())
                     .unwrap();
 
                 loop {
-                    match Fence::wait_for_fences(&[blas_building_fence.clone()], FenceWaitFor::All, Duration::from_nanos(100)) {
+                    match Fence::wait_for_fences(
+                        &[blas_building_fence.clone()],
+                        FenceWaitFor::All,
+                        Duration::from_nanos(100),
+                    ) {
                         Ok(_) => {
                             blas_building_fence.reset().unwrap();
                             break;
@@ -919,13 +918,17 @@ fn main() {
                     .unwrap();
                 let tlas_building_fence =
                     Fence::new(dev, false, Some("tlas_building_fence")).unwrap();
-                
+
                 queue
                     .submit(&[tlas_building], &[], &[], tlas_building_fence.clone())
                     .unwrap();
 
                 loop {
-                    match Fence::wait_for_fences(&[tlas_building_fence.clone()], FenceWaitFor::All, Duration::from_nanos(100)) {
+                    match Fence::wait_for_fences(
+                        &[tlas_building_fence.clone()],
+                        FenceWaitFor::All,
+                        Duration::from_nanos(100),
+                    ) {
                         Ok(_) => {
                             tlas_building_fence.reset().unwrap();
                             break;
@@ -976,7 +979,12 @@ fn main() {
                                 ..
                             } => {
                                 for fence in swapchain_fences.iter() {
-                                    Fence::wait_for_fences(&[fence.clone()], FenceWaitFor::All, Duration::from_nanos(u64::MAX)).unwrap();
+                                    Fence::wait_for_fences(
+                                        &[fence.clone()],
+                                        FenceWaitFor::All,
+                                        Duration::from_nanos(u64::MAX),
+                                    )
+                                    .unwrap();
                                     fence.reset().unwrap();
                                 }
                                 break 'running;
@@ -998,8 +1006,18 @@ fn main() {
                         .unwrap();
 
                     // wait for fence
-                    Fence::wait_for_fences(&[swapchain_fences[current_frame % (swapchain_images_count as usize)].clone()], FenceWaitFor::All, Duration::from_nanos(u64::MAX)).unwrap();
-                    swapchain_fences[current_frame % (swapchain_images_count as usize)].reset().unwrap();
+                    Fence::wait_for_fences(
+                        &[
+                            swapchain_fences[current_frame % (swapchain_images_count as usize)]
+                                .clone(),
+                        ],
+                        FenceWaitFor::All,
+                        Duration::from_nanos(u64::MAX),
+                    )
+                    .unwrap();
+                    swapchain_fences[current_frame % (swapchain_images_count as usize)]
+                        .reset()
+                        .unwrap();
 
                     present_command_buffers[current_frame % (swapchain_images_count as usize)]
                         .record_commands(|recorder: &mut CommandBufferRecorder| {

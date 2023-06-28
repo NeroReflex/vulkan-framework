@@ -2,12 +2,9 @@ use std::ffi::CStr;
 use std::sync::Arc;
 
 use crate::shaders::{
-    raygen_shader::RaygenShader,
-    miss_shader::MissShader,
-    intersection_shader::IntersectionShader,
-    closest_hit_shader::ClosestHitShader,
-    callable_shader::CallableShader,
-    any_hit_shader::AnyHitShader,
+    any_hit_shader::AnyHitShader, callable_shader::CallableShader,
+    closest_hit_shader::ClosestHitShader, intersection_shader::IntersectionShader,
+    miss_shader::MissShader, raygen_shader::RaygenShader,
 };
 
 use crate::device::{Device, DeviceOwned};

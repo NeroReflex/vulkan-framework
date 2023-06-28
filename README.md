@@ -1,9 +1,15 @@
 # vulkan_framework
-vulkan_framework is my C++ vulkan-framework ported to Rust from C++ with lots of improvements.
+vulkan_framework is my C++ vulkan-framework ported to the Rust programming language from C++ with lots of improvements.
 
 This framework aims to assist the developer with vulkan common operations and resources creation and memory allocation without limiting possibilities of what can be done.
 
 You are __NOT__ limited to the functionality of the framework: while the C++ version exposed native vulkan handles this one exposes ash data that is a wrapper around vulkan raw API specification, therefore evey feature of vulkan can be used as it is usable in plain C.
+
+## Async
+So... one day I decided I will be writing my experimental engine with a multithreading approch, I was honestly unsure whether to use tokio, but I opted not to.
+I have headache since that day.
+
+vulkan_framework will support async in response.
 
 ## Portability
 This project is designed to run everywhere vulkan 1.0.0 with no extensions is supported and a rust compiler is available!

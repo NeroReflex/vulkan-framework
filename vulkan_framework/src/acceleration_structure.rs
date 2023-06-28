@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use parking_lot::{Mutex, const_mutex};
+use parking_lot::{const_mutex, Mutex};
 
 use crate::{
     buffer::{Buffer, BufferTrait, BufferUsage, ConcreteBufferDescriptor},
@@ -101,7 +101,7 @@ pub struct HostScratchBuffer {
 impl HostScratchBuffer {
     pub(crate) fn address(&self) -> ash::vk::DeviceOrHostAddressKHR {
         let mut lck = self.buffer.lock();
-        
+
         ash::vk::DeviceOrHostAddressKHR {
             host_address: lck.as_mut_slice().as_mut_ptr() as *mut std::ffi::c_void,
         }

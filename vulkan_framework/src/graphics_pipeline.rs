@@ -6,7 +6,7 @@ use crate::device::{Device, DeviceOwned};
 use crate::image::{Image1DTrait, Image2DDimensions, Image2DTrait, ImageMultisampling};
 use crate::instance::InstanceOwned;
 use crate::renderpass::RenderPass;
-use crate::shaders::{vertex_shader::VertexShader, fragment_shader::FragmentShader};
+use crate::shaders::{fragment_shader::FragmentShader, vertex_shader::VertexShader};
 
 use crate::pipeline_layout::{PipelineLayout, PipelineLayoutDependant};
 use crate::prelude::{VulkanError, VulkanResult};

@@ -124,58 +124,57 @@ impl MemoryAllocator for DefaultAllocator {
 
         let mut lck = self.management_array.lock();
 
-                'find_first_block: for i in 0..last_useful_first_allocation_block {
-                    let next_aligned_start_addr = (((i * self.block_size) / alignment)
-                        + if ((i * self.block_size) % alignment) == 0 {
-                            0
-                        } else {
-                            1
-                        })
-                        * alignment;
+        'find_first_block: for i in 0..last_useful_first_allocation_block {
+            let next_aligned_start_addr = (((i * self.block_size) / alignment)
+                + if ((i * self.block_size) % alignment) == 0 {
+                    0
+                } else {
+                    1
+                })
+                * alignment;
 
-                    let contains_aligned_start = next_aligned_start_addr >= (i * self.block_size)
-                        && (next_aligned_start_addr < ((i + 1u64) * self.block_size));
+            let contains_aligned_start = next_aligned_start_addr >= (i * self.block_size)
+                && (next_aligned_start_addr < ((i + 1u64) * self.block_size));
 
-                    if !contains_aligned_start {
-                        continue 'find_first_block;
-                    }
+            if !contains_aligned_start {
+                continue 'find_first_block;
+            }
 
-                    /*
-                    let aligned_starts_at_this_block = next_aligned_start_addr == (i * self.block_size);
+            /*
+            let aligned_starts_at_this_block = next_aligned_start_addr == (i * self.block_size);
 
-                    let required_number_of_blocks = match aligned_starts_at_this_block {
-                        true => required_number_of_blocks + 0,
-                        false => required_number_of_blocks + 1,
-                    };
-                    */
+            let required_number_of_blocks = match aligned_starts_at_this_block {
+                true => required_number_of_blocks + 0,
+                false => required_number_of_blocks + 1,
+            };
+            */
 
-                    // make sure the requested memory is free
-                    for j in i..(i + required_number_of_blocks) {
-                        if (*lck)[j as usize] != 0u8 {
-                            continue 'find_first_block;
-                        }
-                    }
-
-                    // found a suitable set of blocks: set them as occupied and retun the allocated memory
-                    for j in i..(i + required_number_of_blocks) {
-                        (*lck)[j as usize] = 1u8
-                    }
-
-                    let allocation_start = next_aligned_start_addr;
-                    let allocation_end =
-                        (i * self.block_size) + (required_number_of_blocks * self.block_size);
-
-                    return Some(AllocationResult::new(
-                        size,
-                        alignment,
-                        next_aligned_start_addr,
-                        allocation_start,
-                        allocation_end,
-                    ));
+            // make sure the requested memory is free
+            for j in i..(i + required_number_of_blocks) {
+                if (*lck)[j as usize] != 0u8 {
+                    continue 'find_first_block;
                 }
+            }
 
-                None
-            
+            // found a suitable set of blocks: set them as occupied and retun the allocated memory
+            for j in i..(i + required_number_of_blocks) {
+                (*lck)[j as usize] = 1u8
+            }
+
+            let allocation_start = next_aligned_start_addr;
+            let allocation_end =
+                (i * self.block_size) + (required_number_of_blocks * self.block_size);
+
+            return Some(AllocationResult::new(
+                size,
+                alignment,
+                next_aligned_start_addr,
+                allocation_start,
+                allocation_end,
+            ));
+        }
+
+        None
     }
 
     fn dealloc(&self, allocation: &mut AllocationResult) {
@@ -195,7 +194,6 @@ impl MemoryAllocator for DefaultAllocator {
 
             (*lck)[i as usize] = 0u8;
         }
-            
     }
 }
 

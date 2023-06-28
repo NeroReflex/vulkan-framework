@@ -10,8 +10,6 @@ use vulkan_framework::command_buffer::ImageMemoryBarrier;
 use vulkan_framework::command_buffer::PrimaryCommandBuffer;
 use vulkan_framework::command_pool::CommandPool;
 use vulkan_framework::compute_pipeline::ComputePipeline;
-use vulkan_framework::fence::FenceWaitFor;
-use vulkan_framework::shaders::compute_shader::ComputeShader;
 use vulkan_framework::descriptor_pool::DescriptorPool;
 use vulkan_framework::descriptor_pool::DescriptorPoolConcreteDescriptor;
 use vulkan_framework::descriptor_pool::DescriptorPoolSizesConcreteDescriptor;
@@ -19,6 +17,7 @@ use vulkan_framework::descriptor_set::DescriptorSet;
 use vulkan_framework::descriptor_set_layout::DescriptorSetLayout;
 use vulkan_framework::device::*;
 use vulkan_framework::fence::Fence;
+use vulkan_framework::fence::FenceWaitFor;
 use vulkan_framework::image::ConcreteImageDescriptor;
 use vulkan_framework::image::Image;
 use vulkan_framework::image::Image2DDimensions;
@@ -50,6 +49,7 @@ use vulkan_framework::shader_layout_binding::BindingDescriptor;
 use vulkan_framework::shader_layout_binding::BindingType;
 use vulkan_framework::shader_layout_binding::NativeBindingType;
 use vulkan_framework::shader_stage_access::ShaderStagesAccess;
+use vulkan_framework::shaders::compute_shader::ComputeShader;
 
 const COMPUTE_SPV: &[u32] = inline_spirv!(
     r#"
@@ -432,7 +432,11 @@ fn main() {
                                             );
 
                                             'wait_for_fence: loop {
-                                                match Fence::wait_for_fences(&[fence.clone()], FenceWaitFor::All, Duration::from_nanos(100)) {
+                                                match Fence::wait_for_fences(
+                                                    &[fence.clone()],
+                                                    FenceWaitFor::All,
+                                                    Duration::from_nanos(100),
+                                                ) {
                                                     Ok(_) => {
                                                         fence.reset().unwrap();
                                                         break 'wait_for_fence;

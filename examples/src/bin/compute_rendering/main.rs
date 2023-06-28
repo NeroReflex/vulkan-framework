@@ -65,6 +65,9 @@ use vulkan_framework::shader_layout_binding::BindingDescriptor;
 use vulkan_framework::shader_layout_binding::BindingType;
 use vulkan_framework::shader_layout_binding::NativeBindingType;
 use vulkan_framework::shader_stage_access::ShaderStagesAccess;
+use vulkan_framework::shaders::{
+    compute_shader::ComputeShader, fragment_shader::FragmentShader, vertex_shader::VertexShader,
+};
 use vulkan_framework::swapchain::CompositeAlphaSwapchainKHR;
 use vulkan_framework::swapchain::DeviceSurfaceInfo;
 use vulkan_framework::swapchain::PresentModeSwapchainKHR;
@@ -72,11 +75,6 @@ use vulkan_framework::swapchain::SurfaceColorspaceSwapchainKHR;
 use vulkan_framework::swapchain::SurfaceTransformSwapchainKHR;
 use vulkan_framework::swapchain::SwapchainKHR;
 use vulkan_framework::swapchain_image::ImageSwapchainKHR;
-use vulkan_framework::shaders::{
-    vertex_shader::VertexShader,
-    compute_shader::ComputeShader,
-    fragment_shader::FragmentShader,
-};
 
 const COMPUTE_SPV: &[u32] = inline_spirv!(
     r#"
@@ -833,7 +831,11 @@ fn main() {
                                                     println!("Command buffer submitted! GPU will work on that!");
 
                                                     'wait_for_fence: loop {
-                                                        match Fence::wait_for_fences(&[fence.clone()], FenceWaitFor::All, Duration::from_nanos(100)) {
+                                                        match Fence::wait_for_fences(
+                                                            &[fence.clone()],
+                                                            FenceWaitFor::All,
+                                                            Duration::from_nanos(100),
+                                                        ) {
                                                             Ok(_) => {
                                                                 fence.reset().unwrap();
                                                                 device.wait_idle().unwrap();
@@ -896,10 +898,19 @@ fn main() {
                                                         );
 
                                                         // wait for fence
-                                                        Fence::wait_for_fences(&[swapchain_fences[current_frame
-                                                            % (swapchain_images_count as usize)].clone()], FenceWaitFor::All, Duration::from_nanos(u64::MAX)).unwrap();
+                                                        Fence::wait_for_fences(
+                                                            &[swapchain_fences[current_frame
+                                                                % (swapchain_images_count
+                                                                    as usize)]
+                                                                .clone()],
+                                                            FenceWaitFor::All,
+                                                            Duration::from_nanos(u64::MAX),
+                                                        )
+                                                        .unwrap();
                                                         swapchain_fences[current_frame
-                                                            % (swapchain_images_count as usize)].reset().unwrap();
+                                                            % (swapchain_images_count as usize)]
+                                                            .reset()
+                                                            .unwrap();
 
                                                         present_command_buffers[current_frame % (swapchain_images_count as usize)].record_commands(|recorder: &mut CommandBufferRecorder| {
                                                             // when submitting wait for the image available semaphore before beginning transfer

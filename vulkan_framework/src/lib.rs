@@ -23,7 +23,6 @@ pub mod prelude;
 pub mod push_constant_range;
 pub mod queue;
 pub mod queue_family;
-pub mod shaders;
 pub mod raytracing_pipeline;
 pub mod renderpass;
 pub mod sampler;
@@ -31,8 +30,9 @@ pub mod semaphore;
 pub mod shader_layout_binding;
 pub mod shader_stage_access;
 pub mod shader_trait;
+pub mod shaders;
 pub mod surface;
 pub mod swapchain;
 pub mod swapchain_image;
+pub mod synchronization;
 pub mod utils;
-
