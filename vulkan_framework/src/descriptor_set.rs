@@ -114,7 +114,7 @@ impl<'a> DescriptorSetWriter<'a> {
 
                 ash::vk::DescriptorImageInfo::builder()
                     .image_view(image_view.ash_handle())
-                    .sampler(image_sampler.ash_native())
+                    .sampler(image_sampler.ash_handle())
                     .image_layout(image_layout.ash_layout())
                     .build()
             })

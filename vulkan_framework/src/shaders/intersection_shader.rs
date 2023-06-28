@@ -23,22 +23,29 @@ impl Drop for IntersectionShader {
 }
 
 impl DeviceOwned for IntersectionShader {
+
+    #[inline]
     fn get_parent_device(&self) -> Arc<Device> {
         self.device.clone()
     }
 }
 
 impl ShaderTrait for IntersectionShader {
+    
+    #[inline]
     fn shader_type(&self) -> ShaderType {
         ShaderType::RayTracingKHR(ShaderTypeRayTracingKHR::Intersection)
     }
 
+    #[inline]
     fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.module)
     }
 }
 
 impl PrivateShaderTrait for IntersectionShader {
+    
+    #[inline]
     fn ash_handle(&self) -> ash::vk::ShaderModule {
         self.module
     }

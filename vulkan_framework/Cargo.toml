@@ -14,3 +14,6 @@ parking_lot = { version = "0.12.1", optional = true }
 default = []
 better_mutex = [ "parking_lot" ]
 async = []
+
+[profile.release]
+lto = true

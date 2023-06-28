@@ -34,6 +34,8 @@ pub enum FenceWaitFor {
 }
 
 impl Fence {
+    
+    #[inline]
     pub(crate) fn ash_handle(&self) -> ash::vk::Fence {
         self.fence
     }
@@ -99,6 +101,7 @@ impl Fence {
         }
     }
 
+    #[inline]
     pub fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.fence)
     }

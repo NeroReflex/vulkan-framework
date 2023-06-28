@@ -24,6 +24,7 @@ pub enum AllowedBuildingDevice {
 }
 
 impl AllowedBuildingDevice {
+    #[inline]
     pub(crate) fn ash_flags(&self) -> ash::vk::AccelerationStructureBuildTypeKHR {
         match self {
             AllowedBuildingDevice::HostOnly => ash::vk::AccelerationStructureBuildTypeKHR::HOST,
@@ -47,16 +48,19 @@ impl DeviceOwned for DeviceScratchBuffer {
 }
 
 impl BufferTrait for DeviceScratchBuffer {
+    #[inline]
     fn size(&self) -> u64 {
         self.buffer.size()
     }
 
+    #[inline]
     fn native_handle(&self) -> u64 {
         self.buffer.native_handle()
     }
 }
 
 impl DeviceScratchBuffer {
+    #[inline]
     pub(crate) fn addr(&self) -> ash::vk::DeviceOrHostAddressKHR {
         ash::vk::DeviceOrHostAddressKHR {
             device_address: self.buffer_device_addr,

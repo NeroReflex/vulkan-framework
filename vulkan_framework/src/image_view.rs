@@ -159,34 +159,43 @@ impl Drop for ImageView {
 }
 
 impl ImageView {
+    
+    #[inline]
     pub(crate) fn ash_handle(&self) -> ash::vk::ImageView {
         self.image_view
     }
 
+    #[inline]
     pub fn view_type(&self) -> ImageViewType {
         self.view_type
     }
 
+    #[inline]
     pub fn color_mapping(&self) -> ImageViewColorMapping {
         self.color_mapping
     }
 
+    #[inline]
     pub fn subrange_base_mip_level(&self) -> u32 {
         self.subrange_base_mip_level
     }
 
+    #[inline]
     pub fn subrange_level_count(&self) -> u32 {
         self.subrange_level_count
     }
 
+    #[inline]
     pub fn subrange_base_array_layer(&self) -> u32 {
         self.subrange_base_array_layer
     }
 
+    #[inline]
     pub fn subrange_layer_count(&self) -> u32 {
         self.subrange_layer_count
     }
 
+    #[inline]
     pub fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.image_view)
     }

@@ -65,30 +65,38 @@ impl Drop for Sampler {
 }
 
 impl Sampler {
+
+    #[inline]
     pub fn mag_filter(&self) -> Filtering {
         self.mag_filter
     }
 
+    #[inline]
     pub fn min_filter(&self) -> Filtering {
         self.min_filter
     }
 
+    #[inline]
     pub fn mipmap_mode(&self) -> MipmapMode {
         self.mipmap_mode
     }
 
+    #[inline]
     pub fn max_anisotropy(&self) -> f32 {
         self.max_anisotropy
     }
 
+    #[inline]
     pub fn is_anisotropic_enabled(&self) -> bool {
         self.max_anisotropy > 1.0
     }
 
-    pub(crate) fn ash_native(&self) -> ash::vk::Sampler {
+    #[inline]
+    pub(crate) fn ash_handle(&self) -> ash::vk::Sampler {
         self.sampler
     }
 
+    #[inline]
     pub fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.sampler)
     }

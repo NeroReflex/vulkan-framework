@@ -23,16 +23,21 @@ impl Drop for CallableShader {
 }
 
 impl DeviceOwned for CallableShader {
+    
+    #[inline]
     fn get_parent_device(&self) -> Arc<Device> {
         self.device.clone()
     }
 }
 
 impl ShaderTrait for CallableShader {
+    
+    #[inline]
     fn shader_type(&self) -> ShaderType {
         ShaderType::RayTracingKHR(ShaderTypeRayTracingKHR::Callable)
     }
 
+    #[inline]
     fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.module)
     }

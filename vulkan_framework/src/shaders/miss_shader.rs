@@ -29,16 +29,21 @@ impl DeviceOwned for MissShader {
 }
 
 impl ShaderTrait for MissShader {
+    
+    #[inline]
     fn shader_type(&self) -> ShaderType {
         ShaderType::RayTracingKHR(ShaderTypeRayTracingKHR::Miss)
     }
 
+    #[inline]
     fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.module)
     }
 }
 
 impl PrivateShaderTrait for MissShader {
+    
+    #[inline]
     fn ash_handle(&self) -> ash::vk::ShaderModule {
         self.module
     }

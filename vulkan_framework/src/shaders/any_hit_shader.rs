@@ -23,22 +23,26 @@ impl Drop for AnyHitShader {
 }
 
 impl DeviceOwned for AnyHitShader {
+    #[inline]
     fn get_parent_device(&self) -> Arc<Device> {
         self.device.clone()
     }
 }
 
 impl ShaderTrait for AnyHitShader {
+    #[inline]
     fn shader_type(&self) -> ShaderType {
         ShaderType::RayTracingKHR(ShaderTypeRayTracingKHR::AnyHit)
     }
 
+    #[inline]
     fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.module)
     }
 }
 
 impl PrivateShaderTrait for AnyHitShader {
+    #[inline]
     fn ash_handle(&self) -> ash::vk::ShaderModule {
         self.module
     }

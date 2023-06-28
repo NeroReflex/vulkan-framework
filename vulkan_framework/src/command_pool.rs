@@ -35,10 +35,13 @@ impl QueueFamilyOwned for CommandPool {
 }
 
 impl CommandPool {
+
+    #[inline]
     pub fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.command_pool)
     }
 
+    #[inline]
     pub(crate) fn ash_handle(&self) -> ash::vk::CommandPool {
         self.command_pool
     }

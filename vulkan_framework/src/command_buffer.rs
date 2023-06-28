@@ -48,6 +48,7 @@ enum CommandBufferReferencedResource {
 impl Eq for CommandBufferReferencedResource {}
 
 impl CommandBufferReferencedResource {
+    #[inline]
     pub fn hash(&self) -> u128 {
         match self {
             Self::ComputePipeline(l0) => l0.native_handle() as u128,
@@ -378,38 +379,47 @@ pub struct ImageMemoryBarrier {
 }
 
 impl ImageMemoryBarrier {
+    #[inline]
     pub(crate) fn ash_src_access_mask_flags(&self) -> ash::vk::AccessFlags {
         self.src_access.ash_flags()
     }
 
+    #[inline]
     pub(crate) fn ash_dst_access_mask_flags(&self) -> ash::vk::AccessFlags {
         self.dst_access.ash_flags()
     }
 
+    #[inline]
     pub(crate) fn ash_src_queue_family(&self) -> u32 {
         self.src_queue_family.get_family_index()
     }
 
+    #[inline]
     pub(crate) fn ash_dst_queue_family(&self) -> u32 {
         self.dst_queue_family.get_family_index()
     }
 
+    #[inline]
     pub(crate) fn ash_image_handle(&self) -> ash::vk::Image {
         ash::vk::Image::from_raw(self.image.native_handle())
     }
 
+    #[inline]
     pub(crate) fn ash_src_flags(&self) -> ash::vk::PipelineStageFlags {
         self.src_stages.ash_flags()
     }
 
+    #[inline]
     pub(crate) fn ash_dst_flags(&self) -> ash::vk::PipelineStageFlags {
         self.dst_stages.ash_flags()
     }
 
+    #[inline]
     pub(crate) fn ash_subresource_range(&self) -> ash::vk::ImageSubresourceRange {
         self.srr.ash_subresource_range()
     }
 
+    #[inline]
     pub fn from_subnresource_range(
         src_stages: PipelineStages,
         src_access: AccessFlags,
@@ -436,6 +446,7 @@ impl ImageMemoryBarrier {
         }
     }
 
+    #[inline]
     pub fn new(
         src_stages: PipelineStages,
         src_access: AccessFlags,

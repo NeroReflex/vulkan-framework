@@ -25,24 +25,30 @@ impl SwapchainKHROwned for ImageSwapchainKHR {
 }
 
 impl ImageTrait for ImageSwapchainKHR {
+
+    #[inline]
     fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.image)
     }
 
+    #[inline]
     fn format(&self) -> crate::image::ImageFormat {
         self.swapchain.images_format()
     }
 
+    #[inline]
     fn dimensions(&self) -> crate::image::ImageDimensions {
         crate::image::ImageDimensions::Image2D {
             extent: self.swapchain.images_extent(),
         }
     }
 
+    #[inline]
     fn layers_count(&self) -> u32 {
         self.swapchain.images_layers_count()
     }
 
+    #[inline]
     fn mip_levels_count(&self) -> u32 {
         self.swapchain.images_layers_count()
     }

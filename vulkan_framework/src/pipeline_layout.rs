@@ -39,10 +39,13 @@ impl DeviceOwned for PipelineLayout {
 }
 
 impl PipelineLayout {
+
+    #[inline]
     pub fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.pipeline_layout)
     }
 
+    #[inline]
     pub(crate) fn ash_handle(&self) -> ash::vk::PipelineLayout {
         self.pipeline_layout
     }

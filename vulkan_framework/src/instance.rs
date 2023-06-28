@@ -47,10 +47,13 @@ impl Drop for Instance {
 }
 
 impl Instance {
+
+    #[inline]
     pub fn instance_vulkan_version(&self) -> InstanceAPIVersion {
         self.version
     }
 
+    #[inline]
     pub(crate) fn get_debug_ext_extension(&self) -> Option<&ash::extensions::ext::DebugUtils> {
         match self.extensions.debug_ext_ext.as_ref() {
             Some(debug_ext_ext) => Some(debug_ext_ext),
@@ -58,6 +61,7 @@ impl Instance {
         }
     }
 
+    #[inline]
     pub(crate) fn get_surface_khr_extension(&self) -> Option<&ash::extensions::khr::Surface> {
         match self.extensions.surface_khr_ext.as_ref() {
             Some(ext) => Some(ext),
@@ -65,6 +69,7 @@ impl Instance {
         }
     }
 
+    #[inline]
     pub fn get_alloc_callbacks(&self) -> Option<&ash::vk::AllocationCallbacks> {
         // TODO: implement in such a way that Instance remains Send + Sync
 
@@ -76,10 +81,12 @@ impl Instance {
         None
     }
 
+    #[inline]
     pub fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.instance.handle())
     }
 
+    #[inline]
     pub(crate) fn ash_handle(&self) -> &ash::Instance {
         &self.instance
     }

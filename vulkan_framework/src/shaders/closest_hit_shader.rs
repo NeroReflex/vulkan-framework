@@ -23,22 +23,29 @@ impl Drop for ClosestHitShader {
 }
 
 impl DeviceOwned for ClosestHitShader {
+
+    #[inline]
     fn get_parent_device(&self) -> Arc<Device> {
         self.device.clone()
     }
 }
 
 impl ShaderTrait for ClosestHitShader {
+    
+    #[inline]
     fn shader_type(&self) -> ShaderType {
         ShaderType::RayTracingKHR(ShaderTypeRayTracingKHR::ClosestHit)
     }
 
+    #[inline]
     fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.module)
     }
 }
 
 impl PrivateShaderTrait for ClosestHitShader {
+
+    #[inline]
     fn ash_handle(&self) -> ash::vk::ShaderModule {
         self.module
     }
