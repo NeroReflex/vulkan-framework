@@ -331,7 +331,8 @@ impl Scissor {
 pub struct Viewport {
     top_left_x: f32,
     top_left_y: f32,
-    dimensions: Image2DDimensions,
+    width: f32,
+    height: f32,
     min_depth: f32,
     max_depth: f32,
 }
@@ -348,8 +349,13 @@ impl Viewport {
     }
 
     #[inline]
-    pub fn dimensions(&self) -> Image2DDimensions {
-        self.dimensions
+    pub fn width(&self) -> f32 {
+        self.width
+    }
+
+    #[inline]
+    pub fn height(&self) -> f32 {
+        self.height
     }
 
     #[inline]
@@ -365,14 +371,16 @@ impl Viewport {
     pub fn new(
         top_left_x: f32,
         top_left_y: f32,
-        dimensions: Image2DDimensions,
+        width: f32,
+        height: f32,
         min_depth: f32,
         max_depth: f32,
     ) -> Self {
         Self {
             top_left_x,
             top_left_y,
-            dimensions,
+            width,
+            height,
             min_depth,
             max_depth,
         }
@@ -566,18 +574,14 @@ impl GraphicsPipeline {
             .build();
 
         let viewport_static = match viewport {
-            Some(viewport) => {
-                let dimensions = viewport.dimensions();
-
-                ash::vk::Viewport::builder()
-                    .x(viewport.top_left_x())
-                    .y(viewport.top_left_y())
-                    .width(dimensions.width() as f32)
-                    .height(dimensions.height() as f32)
-                    .min_depth(viewport.min_depth())
-                    .max_depth(viewport.max_depth())
-                    .build()
-            }
+            Some(viewport) => ash::vk::Viewport::builder()
+                .x(viewport.top_left_x())
+                .y(viewport.top_left_y())
+                .width(viewport.width() as f32)
+                .height(viewport.height() as f32)
+                .min_depth(viewport.min_depth())
+                .max_depth(viewport.max_depth())
+                .build(),
             None => ash::vk::Viewport::builder()
                 .x(0.0)
                 .y(0.0)

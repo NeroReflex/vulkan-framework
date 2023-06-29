@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     device::DeviceOwned,
-    image::ImageTrait,
+    image::{ImageFlags, ImageTrait, ImageUsage},
     prelude::{VulkanError, VulkanResult},
     swapchain::{SwapchainKHR, SwapchainKHROwned},
 };
@@ -28,6 +28,15 @@ impl ImageTrait for ImageSwapchainKHR {
     #[inline]
     fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.image)
+    }
+
+    fn flags(&self) -> ImageFlags {
+        self.get_parent_swapchain().images_flags()
+    }
+
+    #[inline]
+    fn usage(&self) -> ImageUsage {
+        self.get_parent_swapchain().images_usage()
     }
 
     #[inline]

@@ -272,6 +272,24 @@ impl Image2DDimensions {
     }
 }
 
+impl TryFrom<ImageDimensions> for Image2DDimensions {
+    type Error = VulkanError;
+
+    fn try_from(value: ImageDimensions) -> Result<Self, Self::Error> {
+        match &value {
+            ImageDimensions::Image1D { extent: _ } => Err(VulkanError::Framework(
+                FrameworkError::UserInput(Some(format!(""))),
+            )),
+            ImageDimensions::Image2D { extent } => {
+                Ok(Image2DDimensions::new(extent.width(), extent.height()))
+            }
+            ImageDimensions::Image3D { extent: _ } => Err(VulkanError::Framework(
+                FrameworkError::UserInput(Some(format!(""))),
+            )),
+        }
+    }
+}
+
 impl Image1DTrait for Image2DDimensions {
     fn width(&self) -> u32 {
         self.width
@@ -857,6 +875,10 @@ impl ConcreteImageDescriptor {
 pub trait ImageTrait: Send + Sync + DeviceOwned {
     fn native_handle(&self) -> u64;
 
+    fn flags(&self) -> ImageFlags;
+
+    fn usage(&self) -> ImageUsage;
+
     fn format(&self) -> ImageFormat;
 
     fn dimensions(&self) -> ImageDimensions;
@@ -866,7 +888,7 @@ pub trait ImageTrait: Send + Sync + DeviceOwned {
     fn mip_levels_count(&self) -> u32;
 }
 
-pub(crate) trait ImageOwned {
+pub trait ImageOwned {
     fn get_parent_image(&self) -> Arc<dyn ImageTrait>;
 }
 
@@ -886,22 +908,37 @@ impl DeviceOwned for Image {
 }
 
 impl ImageTrait for Image {
+    #[inline]
     fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.image)
     }
 
+    #[inline]
+    fn flags(&self) -> ImageFlags {
+        self.descriptor.img_flags
+    }
+
+    #[inline]
+    fn usage(&self) -> ImageUsage {
+        self.descriptor.img_usage
+    }
+
+    #[inline]
     fn format(&self) -> ImageFormat {
         self.descriptor.img_format
     }
 
+    #[inline]
     fn dimensions(&self) -> ImageDimensions {
         self.descriptor.img_dimensions
     }
 
+    #[inline]
     fn layers_count(&self) -> u32 {
         self.descriptor.img_layers
     }
 
+    #[inline]
     fn mip_levels_count(&self) -> u32 {
         self.descriptor.img_mip_levels
     }

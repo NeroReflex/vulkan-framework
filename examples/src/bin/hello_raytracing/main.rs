@@ -656,7 +656,8 @@ fn main() {
                     Some(Viewport::new(
                         0.0f32,
                         0.0f32,
-                        Image2DDimensions::new(WIDTH, HEIGHT),
+                        WIDTH as f32,
+                        HEIGHT as f32,
                         0.0f32,
                         0.0f32,
                     )),

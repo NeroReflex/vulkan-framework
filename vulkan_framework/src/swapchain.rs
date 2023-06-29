@@ -11,7 +11,7 @@ use crate::synchronization::{
 use crate::{
     device::{Device, DeviceOwned},
     fence::Fence,
-    image::{Image1DTrait, Image2DDimensions, Image2DTrait, ImageFormat, ImageUsage},
+    image::{Image1DTrait, Image2DDimensions, Image2DTrait, ImageFlags, ImageFormat, ImageUsage},
     instance::InstanceOwned,
     prelude::{VulkanError, VulkanResult},
     queue::Queue,
@@ -283,6 +283,30 @@ impl SwapchainKHR {
     #[inline]
     pub(crate) fn ash_handle(&self) -> ash::vk::SwapchainKHR {
         self.swapchain
+    }
+
+    pub fn surface(&self) -> Arc<Surface> {
+        self.surface.clone()
+    }
+
+    pub fn transform(&self) -> SurfaceTransformSwapchainKHR {
+        self.transform
+    }
+
+    pub fn composite_alpha(&self) -> CompositeAlphaSwapchainKHR {
+        self.composite_alpha
+    }
+
+    pub fn min_image_count(&self) -> u32 {
+        self.min_image_count
+    }
+
+    pub fn images_flags(&self) -> ImageFlags {
+        ImageFlags::Unmanaged(0)
+    }
+
+    pub fn images_usage(&self) -> ImageUsage {
+        self.image_usage
     }
 
     #[inline]

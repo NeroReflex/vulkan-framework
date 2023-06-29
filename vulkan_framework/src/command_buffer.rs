@@ -16,14 +16,15 @@ use crate::{
     binding_tables::RaytracingBindingTables,
     command_pool::{CommandPool, CommandPoolOwned},
     device::DeviceOwned,
-    framebuffer::{Framebuffer, FramebufferTrait},
+    framebuffer::{Framebuffer, FramebufferTrait, ImagelessFramebuffer},
     graphics_pipeline::{GraphicsPipeline, Scissor, Viewport},
     image::{
         Image1DTrait, Image2DDimensions, Image2DTrait, Image3DDimensions, Image3DTrait,
         ImageAspects, ImageDimensions, ImageLayout, ImageSubresourceLayers, ImageSubresourceRange,
         ImageTrait,
     },
-    instance::InstanceOwned,
+    image_view::ImageView,
+    instance::{InstanceAPIVersion, InstanceOwned},
     pipeline_layout::PipelineLayout,
     pipeline_stage::PipelineStages,
     prelude::{FrameworkError, VulkanError, VulkanResult},
@@ -44,6 +45,7 @@ enum CommandBufferReferencedResource {
     PipelineLayout(Arc<PipelineLayout>),
     Framebuffer(Arc<dyn FramebufferTrait>),
     Image(Arc<dyn ImageTrait>),
+    ImageView(Arc<ImageView>),
 }
 
 impl Eq for CommandBufferReferencedResource {}
@@ -59,6 +61,7 @@ impl CommandBufferReferencedResource {
             Self::Framebuffer(l0) => (0b0100u128 << 124u128) | (l0.native_handle() as u128),
             Self::GraphicsPipeline(l0) => (0b0101u128 << 124u128) | (l0.native_handle() as u128),
             Self::RaytracingPipeline(l0) => (0b0110u128 << 124u128) | (l0.native_handle() as u128),
+            Self::ImageView(l0) => (0b0111u128 << 124u128) | (l0.native_handle() as u128),
         }
     }
 }
@@ -85,6 +88,7 @@ impl PartialEq for CommandBufferReferencedResource {
                 l0.native_handle() == r0.native_handle()
             }
             (Self::Image(l0), Self::Image(r0)) => l0.native_handle() == r0.native_handle(),
+            (Self::ImageView(l0), Self::Image(r0)) => l0.native_handle() == r0.native_handle(),
             _ => false,
         }
     }
@@ -887,18 +891,16 @@ impl<'a> CommandBufferRecorder<'a> {
 
             match viewport {
                 Some(viewport) => {
-                    let dimensions = viewport.dimensions();
+                    assert!(graphics_pipeline.is_viewport_dynamic() == true);
 
                     let viewports = [ash::vk::Viewport::builder()
                         .x(viewport.top_left_x())
                         .y(viewport.top_left_y())
-                        .width(dimensions.width() as f32)
-                        .height(dimensions.height() as f32)
+                        .width(viewport.width() as f32)
+                        .height(viewport.height() as f32)
                         .min_depth(viewport.min_depth())
                         .max_depth(viewport.max_depth())
                         .build()];
-
-                    assert!(graphics_pipeline.is_viewport_dynamic() == true);
 
                     self.device.ash_handle().cmd_set_viewport(
                         self.command_buffer.ash_handle(),
@@ -955,6 +957,61 @@ impl<'a> CommandBufferRecorder<'a> {
             self.device
                 .ash_handle()
                 .cmd_end_render_pass(self.command_buffer.ash_handle())
+        }
+    }
+
+    pub fn begin_renderpass_with_imageless_framebuffer(
+        &mut self,
+        framebuffer: Arc<ImagelessFramebuffer>,
+        imageviews: &[Arc<ImageView>],
+        clear_values: &[ClearValues],
+    ) {
+        let ash_clear_values: smallvec::SmallVec<[ash::vk::ClearValue; 32]> =
+            clear_values.iter().map(|cv| cv.ash_clear()).collect();
+
+        let ash_imageviews: smallvec::SmallVec<[ash::vk::ImageView; 32]> = imageviews
+            .iter()
+            .map(|iv: &Arc<ImageView>| iv.ash_handle())
+            .collect();
+
+        let mut attachment_begin_info = ash::vk::RenderPassAttachmentBeginInfo::builder()
+            .attachments(ash_imageviews.as_slice())
+            .build();
+
+        let vulkan_instance_version = self.device.get_parent_instance().instance_vulkan_version();
+
+        assert!(
+            (vulkan_instance_version != InstanceAPIVersion::Version1_0)
+                && (vulkan_instance_version != InstanceAPIVersion::Version1_1)
+        );
+
+        let render_pass_begin_info = ash::vk::RenderPassBeginInfo::builder()
+            .push_next(&mut attachment_begin_info)
+            .clear_values(ash_clear_values.as_slice())
+            .framebuffer(ash::vk::Framebuffer::from_raw(framebuffer.native_handle()))
+            .render_pass(framebuffer.get_parent_renderpass().ash_handle())
+            .render_area(
+                ash::vk::Rect2D::builder()
+                    .offset(ash::vk::Offset2D::builder().x(0).y(0).build())
+                    .extent(
+                        ash::vk::Extent2D::builder()
+                            .width(framebuffer.dimensions().width())
+                            .height(framebuffer.dimensions().height())
+                            .build(),
+                    )
+                    .build(),
+            )
+            .build();
+
+        self.used_resources
+            .insert(CommandBufferReferencedResource::Framebuffer(framebuffer));
+
+        unsafe {
+            self.device.ash_handle().cmd_begin_render_pass(
+                self.command_buffer.ash_handle(),
+                &render_pass_begin_info,
+                ash::vk::SubpassContents::INLINE,
+            )
         }
     }
 
@@ -1202,7 +1259,7 @@ impl CommandBufferCrateTrait for PrimaryCommandBuffer {
 impl PrimaryCommandBuffer {
     pub fn record_commands<F>(&self, commands_writer_fn: F) -> VulkanResult<()>
     where
-        F: Fn(&mut CommandBufferRecorder) + Sized,
+        F: FnOnce(&mut CommandBufferRecorder) + Sized,
     {
         let device = self
             .get_parent_command_pool()
