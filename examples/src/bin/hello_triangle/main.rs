@@ -10,7 +10,7 @@ use vulkan_framework::{
     framebuffer::Framebuffer,
     graphics_pipeline::{
         CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline, PolygonMode,
-        Rasterizer,
+        Rasterizer, Scissor, Viewport,
     },
     image::{
         Image2DDimensions, ImageFormat, ImageLayout, ImageLayoutSwapchainKHR, ImageMultisampling,
@@ -310,6 +310,7 @@ fn main() {
                 let fragment_shader = FragmentShader::new(dev, &[], &[], FRAGMENT_SPV).unwrap();
 
                 let graphics_pipeline = GraphicsPipeline::new(
+                    None,
                     renderpass.clone(),
                     0,
                     ImageMultisampling::SamplesPerPixel1,
@@ -318,7 +319,8 @@ fn main() {
                         DepthCompareOp::Always,
                         Some((0.0, 1.0)),
                     )),
-                    Image2DDimensions::new(WIDTH, HEIGHT),
+                    None,
+                    None,
                     pipeline_layout,
                     &[
                         /*VertexInputBinding::new(
@@ -435,7 +437,17 @@ fn main() {
                                 )))],
                             );
 
-                            recorder.bind_graphics_pipeline(graphics_pipeline.clone());
+                            recorder.bind_graphics_pipeline(
+                                graphics_pipeline.clone(),
+                                Some(Viewport::new(
+                                    0.0f32,
+                                    0.0f32,
+                                    Image2DDimensions::new(WIDTH, HEIGHT),
+                                    0.0f32,
+                                    0.0f32,
+                                )),
+                                Some(Scissor::new(0, 0, Image2DDimensions::new(WIDTH, HEIGHT))),
+                            );
 
                             recorder.draw(0, 3, 0, 1);
 

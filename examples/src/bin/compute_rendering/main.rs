@@ -28,6 +28,8 @@ use vulkan_framework::graphics_pipeline::FrontFace;
 use vulkan_framework::graphics_pipeline::GraphicsPipeline;
 use vulkan_framework::graphics_pipeline::PolygonMode;
 use vulkan_framework::graphics_pipeline::Rasterizer;
+use vulkan_framework::graphics_pipeline::Scissor;
+use vulkan_framework::graphics_pipeline::Viewport;
 use vulkan_framework::image::ConcreteImageDescriptor;
 use vulkan_framework::image::Image;
 use vulkan_framework::image::Image2DDimensions;
@@ -496,6 +498,7 @@ fn main() {
 
                                             let renderquad_graphics_pipeline =
                                                 GraphicsPipeline::new(
+                                                    None,
                                                     renderquad_renderpass.clone(),
                                                     0,
                                                     ImageMultisampling::SamplesPerPixel1,
@@ -504,7 +507,18 @@ fn main() {
                                                         DepthCompareOp::Always,
                                                         Some((0.0, 1.0)),
                                                     )),
-                                                    Image2DDimensions::new(WIDTH, HEIGHT),
+                                                    Some(Viewport::new(
+                                                        0.0f32,
+                                                        0.0f32,
+                                                        Image2DDimensions::new(WIDTH, HEIGHT),
+                                                        0.0f32,
+                                                        0.0f32,
+                                                    )),
+                                                    Some(Scissor::new(
+                                                        0,
+                                                        0,
+                                                        Image2DDimensions::new(WIDTH, HEIGHT),
+                                                    )),
                                                     renderquad_pipeline_layout.clone(),
                                                     &[
                                                         /*VertexInputBinding::new(
@@ -585,6 +599,7 @@ fn main() {
                                             .unwrap();
 
                                             let compute_pipeline = ComputePipeline::new(
+                                                None,
                                                 compute_pipeline_layout.clone(),
                                                 (compute_shader, None),
                                                 Some("Example pipeline"),
@@ -919,7 +934,7 @@ fn main() {
                                                                 rendequad_framebuffers[current_frame % (swapchain_images_count as usize)].clone(),
                                                                 &[ClearValues::new(Some(ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0)))]
                                                             );
-                                                            recorder.bind_graphics_pipeline(renderquad_graphics_pipeline.clone());
+                                                            recorder.bind_graphics_pipeline(renderquad_graphics_pipeline.clone(), None, None);
                                                             recorder.bind_descriptor_sets_for_graphics_pipeline(
                                                                 renderquad_pipeline_layout.clone(),
                                                                 0,

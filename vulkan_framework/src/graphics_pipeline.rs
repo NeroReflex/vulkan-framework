@@ -1,6 +1,8 @@
 use std::ffi::CStr;
 use std::sync::Arc;
 
+use ash::vk::Handle;
+
 use crate::device::{Device, DeviceOwned};
 
 use crate::image::{Image1DTrait, Image2DDimensions, Image2DTrait, ImageMultisampling};
@@ -293,6 +295,90 @@ impl DepthConfiguration {
     }
 }
 
+#[derive(Copy, Clone, PartialEq)]
+pub struct Scissor {
+    offset_x: i32,
+    offset_y: i32,
+    dimensions: Image2DDimensions,
+}
+
+impl Scissor {
+    #[inline]
+    pub fn offset_x(&self) -> i32 {
+        self.offset_x
+    }
+
+    #[inline]
+    pub fn offset_y(&self) -> i32 {
+        self.offset_y
+    }
+
+    #[inline]
+    pub fn dimensions(&self) -> Image2DDimensions {
+        self.dimensions
+    }
+
+    pub fn new(offset_x: i32, offset_y: i32, dimensions: Image2DDimensions) -> Self {
+        Self {
+            offset_x,
+            offset_y,
+            dimensions,
+        }
+    }
+}
+
+#[derive(Copy, Clone, PartialEq)]
+pub struct Viewport {
+    top_left_x: f32,
+    top_left_y: f32,
+    dimensions: Image2DDimensions,
+    min_depth: f32,
+    max_depth: f32,
+}
+
+impl Viewport {
+    #[inline]
+    pub fn top_left_x(&self) -> f32 {
+        self.top_left_x
+    }
+
+    #[inline]
+    pub fn top_left_y(&self) -> f32 {
+        self.top_left_y
+    }
+
+    #[inline]
+    pub fn dimensions(&self) -> Image2DDimensions {
+        self.dimensions
+    }
+
+    #[inline]
+    pub fn min_depth(&self) -> f32 {
+        self.min_depth
+    }
+
+    #[inline]
+    pub fn max_depth(&self) -> f32 {
+        self.max_depth
+    }
+
+    pub fn new(
+        top_left_x: f32,
+        top_left_y: f32,
+        dimensions: Image2DDimensions,
+        min_depth: f32,
+        max_depth: f32,
+    ) -> Self {
+        Self {
+            top_left_x,
+            top_left_y,
+            dimensions,
+            min_depth,
+            max_depth,
+        }
+    }
+}
+
 pub struct GraphicsPipeline {
     device: Arc<Device>,
     renderpass: Arc<RenderPass>,
@@ -301,15 +387,19 @@ pub struct GraphicsPipeline {
     subpass_index: u32,
     pipeline_layout: Arc<PipelineLayout>,
     pipeline: ash::vk::Pipeline,
+    viewport: Option<Viewport>,
+    scissor: Option<Scissor>,
 }
 
 impl PipelineLayoutDependant for GraphicsPipeline {
+    #[inline]
     fn get_parent_pipeline_layout(&self) -> Arc<PipelineLayout> {
         self.pipeline_layout.clone()
     }
 }
 
 impl DeviceOwned for GraphicsPipeline {
+    #[inline]
     fn get_parent_device(&self) -> Arc<Device> {
         self.device.clone()
     }
@@ -333,35 +423,63 @@ impl Drop for GraphicsPipeline {
 }*/
 
 impl GraphicsPipeline {
+    #[inline]
+    pub fn viewport(&self) -> Option<Viewport> {
+        self.viewport
+    }
+
+    #[inline]
+    pub fn scissor(&self) -> Option<Scissor> {
+        self.scissor
+    }
+
+    pub fn is_scissor_dynamic(&self) -> bool {
+        self.scissor.is_none()
+    }
+
+    #[inline]
+    pub fn is_viewport_dynamic(&self) -> bool {
+        self.viewport.is_none()
+    }
+
+    #[inline]
     pub fn renderpass(&self) -> Arc<RenderPass> {
         self.renderpass.clone()
     }
 
+    #[inline]
     pub fn depth_configuration(&self) -> Option<DepthConfiguration> {
         self.depth_configuration
     }
+
+    #[inline]
     pub fn rasterizer(&self) -> Rasterizer {
         self.rasterizer
     }
 
+    #[inline]
     pub fn subpass_index(&self) -> u32 {
         self.subpass_index
     }
 
+    #[inline]
     pub fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.pipeline)
     }
 
+    #[inline]
     pub(crate) fn ash_handle(&self) -> ash::vk::Pipeline {
         self.pipeline
     }
 
     pub fn new(
+        base_pipeline: Option<Arc<GraphicsPipeline>>,
         renderpass: Arc<RenderPass>,
         subpass_index: u32,
         multisampling: ImageMultisampling,
         depth_configuration: Option<DepthConfiguration>,
-        dimensions: Image2DDimensions,
+        viewport: Option<Viewport>,
+        scissor: Option<Scissor>,
         pipeline_layout: Arc<PipelineLayout>,
         bindings: &[VertexInputBinding],
         rasterizer: Rasterizer,
@@ -447,27 +565,90 @@ impl GraphicsPipeline {
             .rasterization_samples(multisampling.ash_samples())
             .build();
 
-        let viewport = ash::vk::Viewport::builder()
-            .x(0.0)
-            .y(0.0)
-            .width(dimensions.width() as f32)
-            .height(dimensions.height() as f32)
+        let viewport_static = match viewport {
+            Some(viewport) => {
+                let dimensions = viewport.dimensions();
+
+                ash::vk::Viewport::builder()
+                    .x(viewport.top_left_x())
+                    .y(viewport.top_left_y())
+                    .width(dimensions.width() as f32)
+                    .height(dimensions.height() as f32)
+                    .min_depth(viewport.min_depth())
+                    .max_depth(viewport.max_depth())
+                    .build()
+            }
+            None => ash::vk::Viewport::builder()
+                .x(0.0)
+                .y(0.0)
+                .width(32.0)
+                .height(32.0)
+                .min_depth(0.0f32)
+                .max_depth(1.0f32)
+                .build(),
+        };
+
+        let scissor_static = match scissor {
+            Some(scissor) => {
+                let dimensions = scissor.dimensions();
+
+                ash::vk::Rect2D::builder()
+                    .extent(
+                        ash::vk::Extent2D::builder()
+                            .width(dimensions.width())
+                            .height(dimensions.height())
+                            .build(),
+                    )
+                    .offset(
+                        ash::vk::Offset2D::builder()
+                            .x(scissor.offset_x())
+                            .y(scissor.offset_y())
+                            .build(),
+                    )
+                    .build()
+            }
+            None => ash::vk::Rect2D::builder()
+                .extent(
+                    ash::vk::Extent2D::builder()
+                        .width(viewport_static.width as u32)
+                        .height(viewport_static.height as u32)
+                        .build(),
+                )
+                .offset(ash::vk::Offset2D::builder().build())
+                .build(),
+        };
+
+        let is_viewport_dynamic = viewport.is_none();
+        let is_scissor_dynamic = scissor.is_none();
+
+        let mut dynamic_states: smallvec::SmallVec<[ash::vk::DynamicState; 4]> =
+            smallvec::smallvec![];
+        if is_viewport_dynamic {
+            dynamic_states.push(ash::vk::DynamicState::VIEWPORT);
+        }
+
+        if is_scissor_dynamic {
+            dynamic_states.push(ash::vk::DynamicState::SCISSOR);
+        }
+
+        let dynamic_state_create_info = ash::vk::PipelineDynamicStateCreateInfo::builder()
+            .dynamic_states(dynamic_states.as_slice())
             .build();
 
-        let scissor = ash::vk::Rect2D::builder()
-            .extent(
-                ash::vk::Extent2D::builder()
-                    .width(dimensions.width())
-                    .height(dimensions.height())
-                    .build(),
-            )
-            .offset(ash::vk::Offset2D::builder().build())
+        let mut viewport_state_create_info = ash::vk::PipelineViewportStateCreateInfo::builder()
+            .viewports(&[viewport_static])
+            .scissors(&[scissor_static])
             .build();
 
-        let viewport_state_create_info = ash::vk::PipelineViewportStateCreateInfo::builder()
-            .viewports(&[viewport])
-            .scissors(&[scissor])
-            .build();
+        if is_viewport_dynamic {
+            viewport_state_create_info.p_viewports = std::ptr::null();
+            viewport_state_create_info.viewport_count = 1;
+        }
+
+        if is_scissor_dynamic {
+            viewport_state_create_info.p_scissors = std::ptr::null();
+            viewport_state_create_info.scissor_count = 1;
+        }
 
         let rasterization_state_create_info_builder =
             ash::vk::PipelineRasterizationStateCreateInfo::builder()
@@ -565,6 +746,11 @@ impl GraphicsPipeline {
             .input_assembly_state(&input_assembly_create_info)
             .color_blend_state(&color_blend_state_create_info)
             .depth_stencil_state(&depth_stencil_state_create_info)
+            .dynamic_state(&dynamic_state_create_info)
+            .base_pipeline_handle(match &base_pipeline {
+                Some(old_pipeline) => old_pipeline.ash_handle(),
+                None => ash::vk::Pipeline::null(),
+            })
             .build();
 
         match unsafe {
@@ -575,6 +761,8 @@ impl GraphicsPipeline {
             )
         } {
             Ok(pipelines) => {
+                drop(base_pipeline);
+
                 assert_eq!(pipelines.len(), 1);
 
                 let pipeline = pipelines[0];
@@ -619,6 +807,8 @@ impl GraphicsPipeline {
                     pipeline,
                     pipeline_layout,
                     rasterizer,
+                    viewport,
+                    scissor,
                 }))
             }
             Err((_, err)) => Err(VulkanError::Vulkan(

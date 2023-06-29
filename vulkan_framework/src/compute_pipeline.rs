@@ -56,6 +56,7 @@ impl ComputePipeline {
     }
 
     pub fn new(
+        base_pipeline: Option<Arc<ComputePipeline>>,
         pipeline_layout: Arc<PipelineLayout>,
         compute_shader: (Arc<ComputeShader>, Option<String>),
         debug_name: Option<&str>,
@@ -83,6 +84,10 @@ impl ComputePipeline {
         let create_info = [ash::vk::ComputePipelineCreateInfo::builder()
             .layout(pipeline_layout.ash_handle())
             .stage(shader_stage_info)
+            .base_pipeline_handle(match &base_pipeline {
+                Some(old_pipeline) => old_pipeline.ash_handle(),
+                None => ash::vk::Pipeline::null(),
+            })
             .build()];
 
         match unsafe {
@@ -96,6 +101,8 @@ impl ComputePipeline {
                 )
         } {
             Ok(pipelines) => {
+                drop(base_pipeline);
+
                 assert_eq!(pipelines.len(), 1);
 
                 let pipeline = pipelines[0];

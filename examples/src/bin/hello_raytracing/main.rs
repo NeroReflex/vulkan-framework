@@ -22,7 +22,7 @@ use vulkan_framework::{
     framebuffer::Framebuffer,
     graphics_pipeline::{
         AttributeType, CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline,
-        PolygonMode, Rasterizer,
+        PolygonMode, Rasterizer, Scissor, Viewport,
     },
     image::{
         ConcreteImageDescriptor, Image2DDimensions, Image3DDimensions, ImageDimensions, ImageFlags,
@@ -644,6 +644,7 @@ fn main() {
                 .unwrap();
 
                 let renderquad_graphics_pipeline = GraphicsPipeline::new(
+                    None,
                     renderquad_renderpass.clone(),
                     0,
                     ImageMultisampling::SamplesPerPixel1,
@@ -652,7 +653,14 @@ fn main() {
                         DepthCompareOp::Always,
                         Some((0.0, 1.0)),
                     )),
-                    Image2DDimensions::new(WIDTH, HEIGHT),
+                    Some(Viewport::new(
+                        0.0f32,
+                        0.0f32,
+                        Image2DDimensions::new(WIDTH, HEIGHT),
+                        0.0f32,
+                        0.0f32,
+                    )),
+                    Some(Scissor::new(0, 0, Image2DDimensions::new(WIDTH, HEIGHT))),
                     renderquad_pipeline_layout.clone(),
                     &[
                             /*VertexInputBinding::new(
@@ -1106,7 +1114,11 @@ fn main() {
                                     1.0, 1.0, 1.0, 1.0,
                                 )))],
                             );
-                            recorder.bind_graphics_pipeline(renderquad_graphics_pipeline.clone());
+                            recorder.bind_graphics_pipeline(
+                                renderquad_graphics_pipeline.clone(),
+                                None,
+                                None,
+                            );
                             recorder.bind_descriptor_sets_for_graphics_pipeline(
                                 renderquad_pipeline_layout.clone(),
                                 0,

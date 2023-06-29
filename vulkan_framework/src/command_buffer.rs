@@ -6,7 +6,7 @@ use parking_lot::{const_mutex, Mutex};
 #[cfg(not(feature = "better_mutex"))]
 use std::sync::Mutex;
 
-use ash::vk::Handle;
+use ash::vk::{Handle, Offset2D};
 
 use crate::{
     acceleration_structure::{
@@ -17,10 +17,11 @@ use crate::{
     command_pool::{CommandPool, CommandPoolOwned},
     device::DeviceOwned,
     framebuffer::{Framebuffer, FramebufferTrait},
-    graphics_pipeline::GraphicsPipeline,
+    graphics_pipeline::{GraphicsPipeline, Scissor, Viewport},
     image::{
-        Image1DTrait, Image2DTrait, Image3DDimensions, Image3DTrait, ImageAspects, ImageDimensions,
-        ImageLayout, ImageSubresourceLayers, ImageSubresourceRange, ImageTrait,
+        Image1DTrait, Image2DDimensions, Image2DTrait, Image3DDimensions, Image3DTrait,
+        ImageAspects, ImageDimensions, ImageLayout, ImageSubresourceLayers, ImageSubresourceRange,
+        ImageTrait,
     },
     instance::InstanceOwned,
     pipeline_layout::PipelineLayout,
@@ -871,13 +872,76 @@ impl<'a> CommandBufferRecorder<'a> {
             ));
     }
 
-    pub fn bind_graphics_pipeline(&mut self, graphics_pipeline: Arc<GraphicsPipeline>) {
+    pub fn bind_graphics_pipeline(
+        &mut self,
+        graphics_pipeline: Arc<GraphicsPipeline>,
+        viewport: Option<Viewport>,
+        scissor: Option<Scissor>,
+    ) {
         unsafe {
             self.device.ash_handle().cmd_bind_pipeline(
                 self.command_buffer.ash_handle(),
                 ash::vk::PipelineBindPoint::GRAPHICS,
                 graphics_pipeline.ash_handle(),
-            )
+            );
+
+            match viewport {
+                Some(viewport) => {
+                    let dimensions = viewport.dimensions();
+
+                    let viewports = [ash::vk::Viewport::builder()
+                        .x(viewport.top_left_x())
+                        .y(viewport.top_left_y())
+                        .width(dimensions.width() as f32)
+                        .height(dimensions.height() as f32)
+                        .min_depth(viewport.min_depth())
+                        .max_depth(viewport.max_depth())
+                        .build()];
+
+                    assert!(graphics_pipeline.is_viewport_dynamic() == true);
+
+                    self.device.ash_handle().cmd_set_viewport(
+                        self.command_buffer.ash_handle(),
+                        0,
+                        viewports.as_slice(),
+                    );
+                }
+                None => {
+                    assert!(graphics_pipeline.is_viewport_dynamic() == false);
+                }
+            }
+
+            match scissor {
+                Some(scissor) => {
+                    assert!(graphics_pipeline.is_scissor_dynamic() == true);
+
+                    let dimensions = scissor.dimensions();
+
+                    let scissors = [ash::vk::Rect2D::builder()
+                        .offset(
+                            Offset2D::builder()
+                                .x(scissor.offset_x())
+                                .y(scissor.offset_y())
+                                .build(),
+                        )
+                        .extent(
+                            ash::vk::Extent2D::builder()
+                                .width(dimensions.width())
+                                .height(dimensions.height())
+                                .build(),
+                        )
+                        .build()];
+
+                    self.device.ash_handle().cmd_set_scissor(
+                        self.command_buffer.ash_handle(),
+                        0,
+                        scissors.as_slice(),
+                    );
+                }
+                None => {
+                    assert!(graphics_pipeline.is_scissor_dynamic() == false);
+                }
+            }
         }
 
         self.used_resources
