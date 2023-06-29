@@ -136,7 +136,7 @@ impl ImagelessFramebufferAttachmentImageInfo {
             layer_count,
             view_formats: view_formats
                 .iter()
-                .map(|a| a.clone())
+                .copied()
                 .collect::<smallvec::SmallVec<[ImageFormat; 2]>>(),
         }
     }
@@ -279,7 +279,7 @@ impl ImagelessFramebuffer {
                 layers,
                 attachments_descriptors: attachments
                     .iter()
-                    .map(|i| i.clone())
+                    .cloned()
                     .collect::<smallvec::SmallVec<[ImagelessFramebufferAttachmentImageInfo; 8]>>(),
             })),
             Err(_err) => {

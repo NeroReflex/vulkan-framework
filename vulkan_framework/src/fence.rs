@@ -48,7 +48,7 @@ impl Fence {
             Ok(status) => Ok(status),
             Err(err) => Err(VulkanError::Vulkan(
                 err.as_raw(),
-                Some(format!("Error reading fence status: {}", err.to_string())),
+                Some(format!("Error reading fence status: {}", err)),
             )),
         }
     }

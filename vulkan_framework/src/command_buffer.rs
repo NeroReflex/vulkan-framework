@@ -19,9 +19,8 @@ use crate::{
     framebuffer::{Framebuffer, FramebufferTrait, ImagelessFramebuffer},
     graphics_pipeline::{GraphicsPipeline, Scissor, Viewport},
     image::{
-        Image1DTrait, Image2DDimensions, Image2DTrait, Image3DDimensions, Image3DTrait,
-        ImageAspects, ImageDimensions, ImageLayout, ImageSubresourceLayers, ImageSubresourceRange,
-        ImageTrait,
+        Image1DTrait, Image2DTrait, Image3DDimensions, Image3DTrait, ImageAspects, ImageDimensions,
+        ImageLayout, ImageSubresourceLayers, ImageSubresourceRange, ImageTrait,
     },
     image_view::ImageView,
     instance::{InstanceAPIVersion, InstanceOwned},
@@ -891,13 +890,13 @@ impl<'a> CommandBufferRecorder<'a> {
 
             match viewport {
                 Some(viewport) => {
-                    assert!(graphics_pipeline.is_viewport_dynamic() == true);
+                    assert!(graphics_pipeline.is_viewport_dynamic());
 
                     let viewports = [ash::vk::Viewport::builder()
                         .x(viewport.top_left_x())
                         .y(viewport.top_left_y())
-                        .width(viewport.width() as f32)
-                        .height(viewport.height() as f32)
+                        .width(viewport.width())
+                        .height(viewport.height())
                         .min_depth(viewport.min_depth())
                         .max_depth(viewport.max_depth())
                         .build()];
@@ -909,13 +908,13 @@ impl<'a> CommandBufferRecorder<'a> {
                     );
                 }
                 None => {
-                    assert!(graphics_pipeline.is_viewport_dynamic() == false);
+                    assert!(!graphics_pipeline.is_viewport_dynamic());
                 }
             }
 
             match scissor {
                 Some(scissor) => {
-                    assert!(graphics_pipeline.is_scissor_dynamic() == true);
+                    assert!(graphics_pipeline.is_scissor_dynamic());
 
                     let dimensions = scissor.dimensions();
 
@@ -941,7 +940,7 @@ impl<'a> CommandBufferRecorder<'a> {
                     );
                 }
                 None => {
-                    assert!(graphics_pipeline.is_scissor_dynamic() == false);
+                    assert!(!graphics_pipeline.is_scissor_dynamic());
                 }
             }
         }

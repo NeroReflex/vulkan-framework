@@ -278,13 +278,13 @@ impl TryFrom<ImageDimensions> for Image2DDimensions {
     fn try_from(value: ImageDimensions) -> Result<Self, Self::Error> {
         match &value {
             ImageDimensions::Image1D { extent: _ } => Err(VulkanError::Framework(
-                FrameworkError::UserInput(Some(format!(""))),
+                FrameworkError::UserInput(Some(String::new())),
             )),
             ImageDimensions::Image2D { extent } => {
                 Ok(Image2DDimensions::new(extent.width(), extent.height()))
             }
             ImageDimensions::Image3D { extent: _ } => Err(VulkanError::Framework(
-                FrameworkError::UserInput(Some(format!(""))),
+                FrameworkError::UserInput(Some(String::new())),
             )),
         }
     }

@@ -577,8 +577,8 @@ impl GraphicsPipeline {
             Some(viewport) => ash::vk::Viewport::builder()
                 .x(viewport.top_left_x())
                 .y(viewport.top_left_y())
-                .width(viewport.width() as f32)
-                .height(viewport.height() as f32)
+                .width(viewport.width())
+                .height(viewport.height())
                 .min_depth(viewport.min_depth())
                 .max_depth(viewport.max_depth())
                 .build(),
