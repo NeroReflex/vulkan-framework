@@ -968,10 +968,10 @@ impl<'a> CommandBufferRecorder<'a> {
         let ash_clear_values: smallvec::SmallVec<[ash::vk::ClearValue; 32]> =
             clear_values.iter().map(|cv| cv.ash_clear()).collect();
 
-        let ash_imageviews: smallvec::SmallVec<[ash::vk::ImageView; 32]> = imageviews
+        let ash_imageviews/*: smallvec::SmallVec<[ash::vk::ImageView; 32]>*/ = imageviews
             .iter()
             .map(|iv: &Arc<ImageView>| iv.ash_handle())
-            .collect();
+            .collect::<Vec<ash::vk::ImageView>>();
 
         let mut attachment_begin_info = ash::vk::RenderPassAttachmentBeginInfo::builder()
             .attachments(ash_imageviews.as_slice())

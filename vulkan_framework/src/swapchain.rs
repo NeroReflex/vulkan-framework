@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use ash::vk::Handle;
 
@@ -368,18 +368,20 @@ impl SwapchainKHR {
     pub fn async_threaded_acquire_next_image_index(
         &self,
         pool: Arc<ThreadPool>,
-        timeout: Option<u64>,
+        timeout: Duration,
         maybe_semaphore: Option<Arc<Semaphore>>,
         fence: Arc<Fence>,
     ) -> VulkanResult<ThreadedFenceWaiter<(u32, bool)>> {
         match self.get_parent_device().ash_ext_swapchain_khr() {
             Option::Some(ext) => {
                 match unsafe {
+                    let nanos = timeout.as_nanos();
                     ext.acquire_next_image(
                         self.swapchain,
-                        match timeout {
-                            Option::Some(t) => t,
-                            None => u64::MAX,
+                        if nanos > (u64::MAX as u128) {
+                            u64::MAX
+                        } else {
+                            nanos as u64
                         },
                         match maybe_semaphore {
                             Option::Some(semaphore) => semaphore.ash_handle(),
@@ -404,18 +406,20 @@ impl SwapchainKHR {
     #[cfg(feature = "async")]
     pub fn async_spinlock_acquire_next_image_index(
         &self,
-        timeout: Option<u64>,
+        timeout: Duration,
         maybe_semaphore: Option<Arc<Semaphore>>,
         fence: Arc<Fence>,
     ) -> VulkanResult<SpinlockFenceWaiter<(u32, bool)>> {
         match self.get_parent_device().ash_ext_swapchain_khr() {
             Option::Some(ext) => {
                 match unsafe {
+                    let nanos = timeout.as_nanos();
                     ext.acquire_next_image(
                         self.swapchain,
-                        match timeout {
-                            Option::Some(t) => t,
-                            None => u64::MAX,
+                        if nanos > (u64::MAX as u128) {
+                            u64::MAX
+                        } else {
+                            nanos as u64
                         },
                         match maybe_semaphore {
                             Option::Some(semaphore) => semaphore.ash_handle(),
@@ -439,18 +443,20 @@ impl SwapchainKHR {
 
     pub fn acquire_next_image_index(
         &self,
-        timeout: Option<u64>,
+        timeout: Duration,
         maybe_semaphore: Option<Arc<Semaphore>>,
         maybe_fence: Option<Arc<Fence>>,
     ) -> VulkanResult<(u32, bool)> {
         match self.get_parent_device().ash_ext_swapchain_khr() {
             Option::Some(ext) => {
                 match unsafe {
+                    let nanos = timeout.as_nanos();
                     ext.acquire_next_image(
                         self.swapchain,
-                        match timeout {
-                            Option::Some(t) => t,
-                            None => u64::MAX,
+                        if nanos > (u64::MAX as u128) {
+                            u64::MAX
+                        } else {
+                            nanos as u64
                         },
                         match maybe_semaphore {
                             Option::Some(semaphore) => semaphore.ash_handle(),

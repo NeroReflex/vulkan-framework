@@ -230,7 +230,7 @@ impl ImagelessFramebuffer {
                     .view_formats(attachment_formats[idx].as_slice())
                     .build()
             })
-            .collect::<smallvec::SmallVec<[ash::vk::FramebufferAttachmentImageInfoKHR; 8]>>();
+            .collect::<Vec<ash::vk::FramebufferAttachmentImageInfoKHR>>/* ::<smallvec::SmallVec<[ash::vk::FramebufferAttachmentImageInfoKHR; 8]>>*/();
 
         let mut attachments_create_info = ash::vk::FramebufferAttachmentsCreateInfo::builder()
             .attachment_image_infos(attachment_image_infos.as_slice())
@@ -258,6 +258,7 @@ impl ImagelessFramebuffer {
             .width(dimensions.width())
             .height(dimensions.height())
             .layers(layers)
+            .attachment_count(attachment_image_infos.len() as u32)
             .build();
 
         match unsafe {
