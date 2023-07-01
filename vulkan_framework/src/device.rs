@@ -584,10 +584,18 @@ impl Device {
                                 ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
                             let mut get_device_address_features =
                                 ash::vk::PhysicalDeviceBufferDeviceAddressFeatures::default();
+                            let mut get_imageless_framebuffer_features =
+                                ash::vk::PhysicalDeviceImagelessFramebufferFeatures::default();
 
                             let mut properties2 = ash::vk::PhysicalDeviceProperties2::default();
                             let mut ray_tracing_pipeline_properties =
                                 ash::vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
+
+                            if (instance.instance_vulkan_version()
+                                != InstanceAPIVersion::Version1_0) && (instance.instance_vulkan_version()
+                                != InstanceAPIVersion::Version1_1) {
+
+                            }
 
                             // Enable raytracing if required extensions have been requested
                             if instance.instance_vulkan_version() != InstanceAPIVersion::Version1_0
@@ -597,14 +605,23 @@ impl Device {
                                         properties2.p_next = &mut ray_tracing_pipeline_properties as *mut ash::vk::PhysicalDeviceRayTracingPipelinePropertiesKHR as *mut std::ffi::c_void;
                                         accel_structure_features.p_next = &mut ray_tracing_pipeline_features as *mut ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR as *mut std::ffi::c_void;
 
-                                        if instance.instance_vulkan_version()
-                                            != InstanceAPIVersion::Version1_1
+                                        if (instance.instance_vulkan_version()
+                                            != InstanceAPIVersion::Version1_0) && (instance.instance_vulkan_version()
+                                            != InstanceAPIVersion::Version1_1)
                                         {
                                             ray_tracing_pipeline_features.p_next = &mut get_device_address_features as *mut ash::vk::PhysicalDeviceBufferDeviceAddressFeatures as *mut std::ffi::c_void;
                                         }
                                     }
 
-                                    features2.p_next = &mut accel_structure_features as *mut ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR as *mut std::ffi::c_void;
+                                    if (instance.instance_vulkan_version()
+                                        != InstanceAPIVersion::Version1_0) && (instance.instance_vulkan_version()
+                                        != InstanceAPIVersion::Version1_1) {
+                                            features2.p_next = &mut get_imageless_framebuffer_features as *mut ash::vk::PhysicalDeviceImagelessFramebufferFeatures as *mut std::ffi::c_void;
+                                            get_imageless_framebuffer_features.p_next = &mut accel_structure_features as *mut ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR as *mut std::ffi::c_void;
+                                    } else {
+                                        features2.p_next = &mut accel_structure_features as *mut ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR as *mut std::ffi::c_void;
+                                    }
+                                    
                                 }
 
                                 if instance.instance_vulkan_version()

@@ -383,14 +383,17 @@ impl SwapchainKHR {
                         } else {
                             nanos as u64
                         },
-                        match maybe_semaphore {
+                        match &maybe_semaphore {
                             Option::Some(semaphore) => semaphore.ash_handle(),
                             Option::None => ash::vk::Semaphore::null(),
                         },
                         fence.ash_handle(),
                     )
                 } {
-                    Ok(result) => Ok(ThreadedFenceWaiter::new(pool, None, &[], fence, result)),
+                    Ok(result) => match &maybe_semaphore {
+                        Some(sem) => Ok(ThreadedFenceWaiter::new(pool, None, &[], &[sem.clone()], fence, result)),
+                        None => Ok(ThreadedFenceWaiter::new(pool, None, &[], &[], fence, result)),
+                    },
                     Err(err) => Err(VulkanError::Vulkan(
                         err.as_raw(),
                         Some(format!("Error creating the swapchain: {}", err)),
@@ -428,7 +431,7 @@ impl SwapchainKHR {
                         fence.ash_handle(),
                     )
                 } {
-                    Ok(result) => Ok(SpinlockFenceWaiter::new(None, &[], fence, result)),
+                    Ok(result) => Ok(SpinlockFenceWaiter::new(None, &[], &[], fence, result)),
                     Err(err) => Err(VulkanError::Vulkan(
                         err.as_raw(),
                         Some(format!("Error creating the swapchain: {}", err)),

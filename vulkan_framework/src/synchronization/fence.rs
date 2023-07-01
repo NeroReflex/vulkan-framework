@@ -24,6 +24,7 @@ where
     result: T,
     fence: Option<Arc<Fence>>,
     queue: Option<Arc<Queue>>,
+    semaphores: smallvec::SmallVec<[Arc<Semaphore>; 16]>,
     command_buffers: smallvec::SmallVec<[Arc<dyn CommandBufferTrait>; 8]>,
 }
 
@@ -47,6 +48,7 @@ where
             result,
             queue: None,
             fence: None,
+            semaphores: smallvec::smallvec![],
             command_buffers: smallvec::smallvec![],
         }
     }
@@ -54,6 +56,7 @@ where
     pub fn new(
         queue: Option<Arc<Queue>>,
         command_buffers: &[Arc<dyn CommandBufferTrait>],
+        semaphores: &[Arc<Semaphore>],
         fence: Arc<Fence>,
         result: T,
     ) -> Self {
@@ -61,6 +64,10 @@ where
             result,
             fence: Some(fence),
             queue: queue,
+            semaphores: semaphores
+                .iter()
+                .cloned()
+                .collect::<smallvec::SmallVec<[Arc<Semaphore>; 16]>>(),
             command_buffers: command_buffers
                 .iter()
                 .cloned()
@@ -82,15 +89,25 @@ where
             signal_semaphores,
             fence.clone(),
         ) {
-            Ok(()) => Ok(Self {
-                result,
-                fence: Some(fence),
-                queue: Some(queue),
-                command_buffers: command_buffers
-                    .iter()
-                    .cloned()
-                    .collect::<smallvec::SmallVec<[Arc<dyn CommandBufferTrait>; 8]>>(),
-            }),
+            Ok(()) => {
+                let mut semaphores: smallvec::SmallVec<[Arc<Semaphore>; 16]> = smallvec::smallvec![];
+
+                for s in signal_semaphores.iter() {
+                    semaphores.push(s.clone())
+                }
+
+                for s in wait_semaphores {
+                    semaphores.push(s.1.clone())
+                }
+                
+                Ok(Self::new(
+                    Some(queue),
+                    command_buffers,
+                    semaphores.as_slice(),
+                    fence,
+                    result,
+                ))
+            },
             Err(err) => Err(err),
         }
     }
@@ -136,6 +153,8 @@ where
 
                                         self_mut_ref.fence = None;
                                         self_mut_ref.queue = None;
+                                        self_mut_ref.command_buffers.clear();
+                                        self_mut_ref.semaphores.clear();
 
                                         self_mut_ref.result
                                     };
@@ -167,6 +186,7 @@ where
     result: T,
     fence: Option<Arc<Fence>>,
     queue: Option<Arc<Queue>>,
+    semaphores: smallvec::SmallVec<[Arc<Semaphore>; 16]>,
     command_buffers: smallvec::SmallVec<[Arc<dyn CommandBufferTrait>; 8]>,
 }
 
@@ -191,6 +211,7 @@ where
             result,
             queue: None,
             fence: None,
+            semaphores: smallvec::smallvec![],
             command_buffers: smallvec::smallvec![],
         }
     }
@@ -199,6 +220,7 @@ where
         pool: Arc<ThreadPool>,
         queue: Option<Arc<Queue>>,
         command_buffers: &[Arc<dyn CommandBufferTrait>],
+        semaphores: &[Arc<Semaphore>],
         fence: Arc<Fence>,
         result: T,
     ) -> Self {
@@ -207,6 +229,10 @@ where
             result,
             fence: Some(fence),
             queue: queue,
+            semaphores: semaphores
+                .iter()
+                .cloned()
+                .collect::<smallvec::SmallVec<[Arc<Semaphore>; 16]>>(),
             command_buffers: command_buffers
                 .iter()
                 .cloned()
@@ -229,16 +255,26 @@ where
             signal_semaphores,
             fence.clone(),
         ) {
-            Ok(()) => Ok(Self {
-                pool,
-                result,
-                fence: Some(fence),
-                queue: Some(queue),
-                command_buffers: command_buffers
-                    .iter()
-                    .cloned()
-                    .collect::<smallvec::SmallVec<[Arc<dyn CommandBufferTrait>; 8]>>(),
-            }),
+            Ok(()) => {
+                let mut semaphores: smallvec::SmallVec<[Arc<Semaphore>; 16]> = smallvec::smallvec![];
+
+                for s in signal_semaphores.iter() {
+                    semaphores.push(s.clone())
+                }
+
+                for s in wait_semaphores {
+                    semaphores.push(s.1.clone())
+                }
+                
+                Ok(Self::new(
+                    pool,
+                    Some(queue),
+                    command_buffers,
+                    semaphores.as_slice(),
+                    fence,
+                    result,
+                ))
+            },
             Err(err) => Err(err),
         }
     }
@@ -285,6 +321,8 @@ where
 
                                         self_mut_ref.fence = None;
                                         self_mut_ref.queue = None;
+                                        self_mut_ref.command_buffers.clear();
+                                        self_mut_ref.semaphores.clear();
 
                                         self_mut_ref.result
                                     };
