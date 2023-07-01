@@ -1004,7 +1004,7 @@ fn main() {
 
                     let swapchain_index = swapchain
                         .acquire_next_image_index(
-                            None,
+                            Duration::from_nanos(u64::MAX),
                             Some(
                                 image_available_semaphores
                                     [current_frame % (swapchain_images_count as usize)]
