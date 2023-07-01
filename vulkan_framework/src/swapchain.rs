@@ -391,8 +391,22 @@ impl SwapchainKHR {
                     )
                 } {
                     Ok(result) => match &maybe_semaphore {
-                        Some(sem) => Ok(ThreadedFenceWaiter::new(pool, None, &[], &[sem.clone()], fence, result)),
-                        None => Ok(ThreadedFenceWaiter::new(pool, None, &[], &[], fence, result)),
+                        Some(sem) => Ok(ThreadedFenceWaiter::new(
+                            pool,
+                            None,
+                            &[],
+                            &[sem.clone()],
+                            fence,
+                            result,
+                        )),
+                        None => Ok(ThreadedFenceWaiter::new(
+                            pool,
+                            None,
+                            &[],
+                            &[],
+                            fence,
+                            result,
+                        )),
                     },
                     Err(err) => Err(VulkanError::Vulkan(
                         err.as_raw(),

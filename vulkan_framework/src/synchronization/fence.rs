@@ -90,7 +90,8 @@ where
             fence.clone(),
         ) {
             Ok(()) => {
-                let mut semaphores: smallvec::SmallVec<[Arc<Semaphore>; 16]> = smallvec::smallvec![];
+                let mut semaphores: smallvec::SmallVec<[Arc<Semaphore>; 16]> =
+                    smallvec::smallvec![];
 
                 for s in signal_semaphores.iter() {
                     semaphores.push(s.clone())
@@ -99,7 +100,7 @@ where
                 for s in wait_semaphores {
                     semaphores.push(s.1.clone())
                 }
-                
+
                 Ok(Self::new(
                     Some(queue),
                     command_buffers,
@@ -107,7 +108,7 @@ where
                     fence,
                     result,
                 ))
-            },
+            }
             Err(err) => Err(err),
         }
     }
@@ -256,7 +257,8 @@ where
             fence.clone(),
         ) {
             Ok(()) => {
-                let mut semaphores: smallvec::SmallVec<[Arc<Semaphore>; 16]> = smallvec::smallvec![];
+                let mut semaphores: smallvec::SmallVec<[Arc<Semaphore>; 16]> =
+                    smallvec::smallvec![];
 
                 for s in signal_semaphores.iter() {
                     semaphores.push(s.clone())
@@ -265,7 +267,7 @@ where
                 for s in wait_semaphores {
                     semaphores.push(s.1.clone())
                 }
-                
+
                 Ok(Self::new(
                     pool,
                     Some(queue),
@@ -274,7 +276,7 @@ where
                     fence,
                     result,
                 ))
-            },
+            }
             Err(err) => Err(err),
         }
     }
