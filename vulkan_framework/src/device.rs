@@ -614,16 +614,14 @@ impl Device {
                                         }
                                     }
 
-                                    if (instance.instance_vulkan_version()
-                                        != InstanceAPIVersion::Version1_0)
-                                        && (instance.instance_vulkan_version()
-                                            != InstanceAPIVersion::Version1_1)
-                                    {
-                                        features2.p_next = &mut get_imageless_framebuffer_features as *mut ash::vk::PhysicalDeviceImagelessFramebufferFeatures as *mut std::ffi::c_void;
-                                        get_imageless_framebuffer_features.p_next = &mut accel_structure_features as *mut ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR as *mut std::ffi::c_void;
-                                    } else {
+                                    if instance.instance_vulkan_version() != InstanceAPIVersion::Version1_1 {
                                         features2.p_next = &mut accel_structure_features as *mut ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR as *mut std::ffi::c_void;
                                     }
+                                }
+
+                                if instance.instance_vulkan_version() != InstanceAPIVersion::Version1_1 {
+                                    get_imageless_framebuffer_features.p_next = features2.p_next;
+                                    features2.p_next = &mut get_imageless_framebuffer_features as *mut ash::vk::PhysicalDeviceImagelessFramebufferFeatures as *mut std::ffi::c_void;
                                 }
 
                                 if instance.instance_vulkan_version()
