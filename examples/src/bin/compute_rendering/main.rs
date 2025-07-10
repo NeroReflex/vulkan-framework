@@ -802,6 +802,7 @@ fn main() {
                                 .unwrap();
                                 fence.reset().unwrap();
                             }
+                            device.wait_idle().unwrap();
                             break 'running;
                         }
                         _ => {}

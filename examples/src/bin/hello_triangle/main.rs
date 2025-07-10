@@ -316,7 +316,7 @@ fn main() {
 
         let vertex_shader = VertexShader::new(dev.clone(), &[], &[], VERTEX_SPV).unwrap();
 
-        let fragment_shader = FragmentShader::new(dev, &[], &[], FRAGMENT_SPV).unwrap();
+        let fragment_shader = FragmentShader::new(dev.clone(), &[], &[], FRAGMENT_SPV).unwrap();
 
         let graphics_pipeline = GraphicsPipeline::new(
             None,
@@ -404,6 +404,7 @@ fn main() {
                             .unwrap();
                             fence_waiter.reset().unwrap();
                         }
+                        dev.clone().wait_idle().unwrap();
                         break 'running;
                     }
                     _ => {}
@@ -478,4 +479,6 @@ fn main() {
             current_frame = (current_frame + 1) % frames_in_flight;
         }
     }
+
+    
 }

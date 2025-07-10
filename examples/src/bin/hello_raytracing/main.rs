@@ -938,7 +938,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 )
             })
             .unwrap();
-        let tlas_building_fence = Fence::new(dev, false, Some("tlas_building_fence")).unwrap();
+        let tlas_building_fence = Fence::new(dev.clone(), false, Some("tlas_building_fence")).unwrap();
 
         queue
             .submit(&[tlas_building], &[], &[], tlas_building_fence.clone())
@@ -1006,6 +1006,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .unwrap();
                             fence.reset().unwrap();
                         }
+                        dev.clone().wait_idle().unwrap();
                         break 'running;
                     }
                     _ => {}
