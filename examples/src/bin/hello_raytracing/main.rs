@@ -203,7 +203,7 @@ const INSTANCE_DATA: [f32; 12] = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0
 const VERTEX_INDEX: [u32; 3] = [0, 1, 2];
 const VERTEX_DATA: [f32; 9] = [0.0, 0.0, 0.0, 0.8, 0.0, 0.0, 0.0, 0.8, 0.0];
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut instance_extensions = vec![String::from("VK_EXT_debug_utils")];
     let engine_name = String::from("None");
     let app_name = String::from("hello_window");
@@ -231,948 +231,930 @@ fn main() {
     {
         // this parenthesis contains the window handle and closes before calling deinitialize(). This is important as Window::drop() MUST be called BEFORE calling deinitialize()!!!
         // create a sdl2 window
-        match video_subsystem
+        let window = match video_subsystem
             .window("Window", WIDTH, HEIGHT)
             .vulkan()
             .build()
         {
             Ok(window) => {
                 println!("SDL2 window created");
+                window
+            }
+            Err(err) => {
+                println!("Error creating sdl2 window: {}", err);
+                return Err(Box::new(err));
+            }
+        };
 
-                match window.vulkan_instance_extensions() {
-                    Ok(required_extensions) => {
-                        println!("To present frames in this window the following vulkan instance extensions must be enabled: ");
+        match window.vulkan_instance_extensions() {
+            Ok(required_extensions) => {
+                println!("To present frames in this window the following vulkan instance extensions must be enabled: ");
 
-                        for (required_instance_extension_index, required_instance_extension_name) in
-                            required_extensions.iter().enumerate()
-                        {
-                            instance_extensions
-                                .push(String::from(*required_instance_extension_name));
-                            println!(
-                                "    {}) {}",
-                                required_instance_extension_index,
-                                *required_instance_extension_name
-                            );
-                        }
-                    }
-                    Err(err) => {
-                        println!(
-                            "Error fetching required vulkan instance extensions: {}",
-                            err
-                        );
-                    }
+                for (required_instance_extension_index, required_instance_extension_name) in
+                    required_extensions.iter().enumerate()
+                {
+                    instance_extensions.push(String::from(*required_instance_extension_name));
+                    println!(
+                        "    {}) {}",
+                        required_instance_extension_index, *required_instance_extension_name
+                    );
                 }
+            }
+            Err(err) => {
+                panic!(
+                    "Error fetching required vulkan instance extensions: {}",
+                    err
+                );
+            }
+        }
 
-                let instance = Instance::new(
-                    [String::from("VK_LAYER_KHRONOS_validation")].as_slice(),
-                    instance_extensions.as_slice(),
-                    &engine_name,
-                    &app_name,
-                    &api_version,
-                )
-                .unwrap();
-                println!("Vulkan instance created");
+        let instance = Instance::new(
+            [String::from("VK_LAYER_KHRONOS_validation")].as_slice(),
+            instance_extensions.as_slice(),
+            &engine_name,
+            &app_name,
+            &api_version,
+        )
+        .unwrap();
+        println!("Vulkan instance created");
 
-                let sfc = vulkan_framework::surface::Surface::from_raw(
-                    instance.clone(),
-                    window
-                        .vulkan_create_surface(instance.native_handle() as sdl2::video::VkInstance)
-                        .unwrap(),
-                )
-                .unwrap();
-                println!("Vulkan rendering surface created and registered successfully");
+        let sfc = vulkan_framework::surface::Surface::from_raw(
+            instance.clone(),
+            window
+                .vulkan_create_surface(instance.native_handle() as sdl2::video::VkInstance)
+                .unwrap(),
+        )
+        .unwrap();
+        println!("Vulkan rendering surface created and registered successfully");
 
-                let dev = Device::new(
-                    instance,
-                    [ConcreteQueueFamilyDescriptor::new(
-                        vec![
-                            QueueFamilySupportedOperationType::Graphics,
-                            QueueFamilySupportedOperationType::Transfer,
-                            QueueFamilySupportedOperationType::Present(sfc.clone()),
-                        ]
-                        .as_ref(),
-                        [1.0f32].as_slice(),
-                    )]
-                    .as_slice(),
-                    device_extensions.as_slice(),
-                    device_layers.as_slice(),
-                    Some("Opened Device"),
-                )
-                .unwrap();
-                println!("Device opened successfully");
+        let dev = Device::new(
+            instance,
+            [ConcreteQueueFamilyDescriptor::new(
+                vec![
+                    QueueFamilySupportedOperationType::Graphics,
+                    QueueFamilySupportedOperationType::Transfer,
+                    QueueFamilySupportedOperationType::Present(sfc.clone()),
+                ]
+                .as_ref(),
+                [1.0f32].as_slice(),
+            )]
+            .as_slice(),
+            device_extensions.as_slice(),
+            device_layers.as_slice(),
+            Some("Opened Device"),
+        )
+        .unwrap();
+        println!("Device opened successfully");
 
-                let queue_family = QueueFamily::new(dev.clone(), 0).unwrap();
+        let queue_family = QueueFamily::new(dev.clone(), 0).unwrap();
 
-                println!("Base queue family obtained successfully from Device");
+        println!("Base queue family obtained successfully from Device");
 
-                let queue = Queue::new(queue_family.clone(), Some("best queua evah")).unwrap();
-                println!("Queue created successfully");
+        let queue = Queue::new(queue_family.clone(), Some("best queua evah")).unwrap();
+        println!("Queue created successfully");
 
-                let device_local_memory_heap = MemoryHeap::new(
-                    dev.clone(),
-                    ConcreteMemoryHeapDescriptor::new(
-                        MemoryType::DeviceLocal(None),
-                        1024 * 1024 * 128, // 128MiB of memory!
+        let device_local_memory_heap = MemoryHeap::new(
+            dev.clone(),
+            ConcreteMemoryHeapDescriptor::new(
+                MemoryType::DeviceLocal(None),
+                1024 * 1024 * 128, // 128MiB of memory!
+            ),
+        )
+        .unwrap();
+        println!("Memory heap created! <3");
+
+        let device_local_default_allocator = MemoryPool::new(
+            device_local_memory_heap,
+            Arc::new(DefaultAllocator::new(1024 * 1024 * 128)),
+            MemoryPoolFeatures::from(&[]),
+        )
+        .unwrap();
+
+        let raytracing_memory_heap = MemoryHeap::new(
+            dev.clone(),
+            ConcreteMemoryHeapDescriptor::new(required_memory_type(), 1024 * 1024 * 128),
+        )
+        .unwrap();
+        println!("Memory heap created! <3");
+
+        let raytracing_allocator = MemoryPool::new(
+            raytracing_memory_heap,
+            Arc::new(DefaultAllocator::new(1024 * 1024 * 128)),
+            MemoryPoolFeatures::from(&[MemoryPoolFeature::DeviceAddressable]),
+        )
+        .unwrap();
+
+        let device_swapchain_info = DeviceSurfaceInfo::new(dev.clone(), sfc).unwrap();
+
+        if !device_swapchain_info.present_mode_supported(&PresentModeSwapchainKHR::FIFO) {
+            panic!("Device does not support the most common present mode. LOL.");
+        }
+
+        let final_format = ImageFormat::b8g8r8a8_srgb;
+        let color_space = SurfaceColorspaceSwapchainKHR::SRGBNonlinear;
+        if !device_swapchain_info.format_supported(&color_space, &final_format) {
+            panic!("Device does not support the most common format. LOL.");
+        }
+
+        let mut swapchain_images_count = device_swapchain_info.min_image_count() + 2;
+
+        if !device_swapchain_info.image_count_supported(swapchain_images_count) {
+            println!("Image count {} not supported (the maximum is {}), sticking with the minimum one: {}", swapchain_images_count, device_swapchain_info.max_image_count(), device_swapchain_info.min_image_count());
+            swapchain_images_count = device_swapchain_info.min_image_count();
+        }
+
+        let swapchain_extent = Image2DDimensions::new(WIDTH, HEIGHT);
+
+        let swapchain = SwapchainKHR::new(
+            &device_swapchain_info,
+            &[queue_family.clone()],
+            None,
+            PresentModeSwapchainKHR::FIFO,
+            color_space,
+            CompositeAlphaSwapchainKHR::Opaque,
+            SurfaceTransformSwapchainKHR::Identity,
+            true,
+            final_format,
+            ImageUsage::Managed(ImageUsageSpecifier::new(
+                false, true, false, false, true, false, false, false,
+            )),
+            swapchain_extent,
+            swapchain_images_count,
+            1,
+        )
+        .unwrap();
+        println!("Swapchain created!");
+
+        let rt_images = (0..swapchain_images_count)
+            .map(|_idx| {
+                vulkan_framework::image::Image::new(
+                    device_local_default_allocator.clone(),
+                    ConcreteImageDescriptor::new(
+                        ImageDimensions::Image2D {
+                            extent: swapchain_extent,
+                        },
+                        ImageUsage::Managed(ImageUsageSpecifier::new(
+                            false, false, true, true, false, false, false, false,
+                        )),
+                        ImageMultisampling::SamplesPerPixel1,
+                        1,
+                        1,
+                        ImageFormat::r32g32b32a32_sfloat,
+                        ImageFlags::empty(),
+                        ImageTiling::Optimal,
                     ),
-                )
-                .unwrap();
-                println!("Memory heap created! <3");
-
-                let device_local_default_allocator = MemoryPool::new(
-                    device_local_memory_heap,
-                    Arc::new(DefaultAllocator::new(1024 * 1024 * 128)),
-                    MemoryPoolFeatures::from(&[]),
-                )
-                .unwrap();
-
-                let raytracing_memory_heap = MemoryHeap::new(
-                    dev.clone(),
-                    ConcreteMemoryHeapDescriptor::new(required_memory_type(), 1024 * 1024 * 128),
-                )
-                .unwrap();
-                println!("Memory heap created! <3");
-
-                let raytracing_allocator = MemoryPool::new(
-                    raytracing_memory_heap,
-                    Arc::new(DefaultAllocator::new(1024 * 1024 * 128)),
-                    MemoryPoolFeatures::from(&[MemoryPoolFeature::DeviceAddressable]),
-                )
-                .unwrap();
-
-                let device_swapchain_info = DeviceSurfaceInfo::new(dev.clone(), sfc).unwrap();
-
-                if !device_swapchain_info.present_mode_supported(&PresentModeSwapchainKHR::FIFO) {
-                    panic!("Device does not support the most common present mode. LOL.");
-                }
-
-                let final_format = ImageFormat::b8g8r8a8_srgb;
-                let color_space = SurfaceColorspaceSwapchainKHR::SRGBNonlinear;
-                if !device_swapchain_info.format_supported(&color_space, &final_format) {
-                    panic!("Device does not support the most common format. LOL.");
-                }
-
-                let mut swapchain_images_count = device_swapchain_info.min_image_count() + 2;
-
-                if !device_swapchain_info.image_count_supported(swapchain_images_count) {
-                    println!("Image count {} not supported (the maximum is {}), sticking with the minimum one: {}", swapchain_images_count, device_swapchain_info.max_image_count(), device_swapchain_info.min_image_count());
-                    swapchain_images_count = device_swapchain_info.min_image_count();
-                }
-
-                let swapchain_extent = Image2DDimensions::new(WIDTH, HEIGHT);
-
-                let swapchain = SwapchainKHR::new(
-                    &device_swapchain_info,
-                    &[queue_family.clone()],
                     None,
-                    PresentModeSwapchainKHR::FIFO,
-                    color_space,
-                    CompositeAlphaSwapchainKHR::Opaque,
-                    SurfaceTransformSwapchainKHR::Identity,
-                    true,
-                    final_format,
-                    ImageUsage::Managed(ImageUsageSpecifier::new(
-                        false, true, false, false, true, false, false, false,
-                    )),
-                    swapchain_extent,
+                    Some("Test Image"),
+                )
+                .unwrap()
+            })
+            .collect::<Vec<Arc<vulkan_framework::image::Image>>>();
+
+        let rt_image_views = rt_images
+            .iter()
+            .map(|rt_img| {
+                ImageView::new(
+                    rt_img.clone(),
+                    ImageViewType::Image2D,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+                .unwrap()
+            })
+            .collect::<Vec<Arc<ImageView>>>();
+
+        let swapchain_images = ImageSwapchainKHR::extract(swapchain.clone()).unwrap();
+        println!("Swapchain images extracted!");
+
+        let descriptor_pool = DescriptorPool::new(
+            dev.clone(),
+            DescriptorPoolConcreteDescriptor::new(
+                DescriptorPoolSizesConcreteDescriptor::new(
+                    0,
                     swapchain_images_count,
-                    1,
-                )
-                .unwrap();
-                println!("Swapchain created!");
-
-                let rt_images = (0..swapchain_images_count)
-                    .map(|_idx| {
-                        vulkan_framework::image::Image::new(
-                            device_local_default_allocator.clone(),
-                            ConcreteImageDescriptor::new(
-                                ImageDimensions::Image2D {
-                                    extent: swapchain_extent,
-                                },
-                                ImageUsage::Managed(ImageUsageSpecifier::new(
-                                    false, false, true, true, false, false, false, false,
-                                )),
-                                ImageMultisampling::SamplesPerPixel1,
-                                1,
-                                1,
-                                ImageFormat::r32g32b32a32_sfloat,
-                                ImageFlags::empty(),
-                                ImageTiling::Optimal,
-                            ),
-                            None,
-                            Some("Test Image"),
-                        )
-                        .unwrap()
-                    })
-                    .collect::<Vec<Arc<vulkan_framework::image::Image>>>();
-
-                let rt_image_views = rt_images
-                    .iter()
-                    .map(|rt_img| {
-                        ImageView::new(
-                            rt_img.clone(),
-                            ImageViewType::Image2D,
-                            None,
-                            None,
-                            None,
-                            None,
-                            None,
-                            None,
-                            None,
-                            None,
-                        )
-                        .unwrap()
-                    })
-                    .collect::<Vec<Arc<ImageView>>>();
-
-                let swapchain_images = ImageSwapchainKHR::extract(swapchain.clone()).unwrap();
-                println!("Swapchain images extracted!");
-
-                let descriptor_pool = DescriptorPool::new(
-                    dev.clone(),
-                    DescriptorPoolConcreteDescriptor::new(
-                        DescriptorPoolSizesConcreteDescriptor::new(
-                            0,
-                            swapchain_images_count,
-                            0,
-                            swapchain_images_count,
-                            0,
-                            0,
-                            0,
-                            0,
-                            0,
-                            Some(DescriptorPoolSizesAcceletarionStructureKHR::new(
-                                swapchain_images_count,
-                            )),
-                        ),
-                        2 * swapchain_images_count, // one for descriptor_set and one for renderquad_descriptor_set
-                    ),
-                    Some("My descriptor pool"),
-                )
-                .unwrap();
-
-                let image_available_semaphores = (0..swapchain_images_count)
-                    .map(|_idx| {
-                        Semaphore::new(dev.clone(), Some("image_available_semaphores[...]"))
-                            .unwrap()
-                    })
-                    .collect::<Vec<Arc<Semaphore>>>();
-
-                let image_rendered_semaphores = (0..swapchain_images_count)
-                    .map(|_idx| {
-                        Semaphore::new(dev.clone(), Some("image_rendered_semaphores[...]")).unwrap()
-                    })
-                    .collect::<Vec<Arc<Semaphore>>>();
-
-                let swapchain_fences = (0..swapchain_images_count)
-                    .map(|_idx| {
-                        Fence::new(dev.clone(), true, Some("swapchain_fences[...]")).unwrap()
-                    })
-                    .collect::<Vec<Arc<Fence>>>();
-
-                let command_pool =
-                    CommandPool::new(queue_family.clone(), Some("My command pool")).unwrap();
-
-                let present_command_buffers = (0..swapchain_images_count)
-                    .map(|_idx| {
-                        PrimaryCommandBuffer::new(
-                            command_pool.clone(),
-                            Some("present_command_buffers[...]"),
-                        )
-                        .unwrap()
-                    })
-                    .collect::<Vec<Arc<PrimaryCommandBuffer>>>();
-
-                let rt_output_image_descriptor = BindingDescriptor::new(
-                    ShaderStagesAccess::from(&[], &[ShaderStageRayTracingKHR::RayGen]),
-                    BindingType::Native(NativeBindingType::StorageImage),
                     0,
-                    1,
-                );
-
-                let rt_acceleration_structure_descriptor = BindingDescriptor::new(
-                    ShaderStagesAccess::from(&[], &[ShaderStageRayTracingKHR::RayGen]),
-                    BindingType::AccelerationStructure(
-                        AccelerationStructureBindingType::AccelerationStructure,
-                    ),
-                    1,
-                    1,
-                );
-
-                let rt_writer_img_layout = ImageLayout::General;
-
-                let rt_descriptor_set_layout = DescriptorSetLayout::new(
-                    dev.clone(),
-                    &[
-                        rt_output_image_descriptor,
-                        rt_acceleration_structure_descriptor,
-                    ],
-                )
-                .unwrap();
-
-                let pipeline_layout = PipelineLayout::new(
-                    dev.clone(),
-                    &[rt_descriptor_set_layout.clone()],
-                    &[],
-                    Some("pipeline_layout"),
-                )
-                .unwrap();
-                println!("Pipeline layout created!");
-
-                let swapchain_image_views = swapchain_images
-                    .clone()
-                    .into_iter()
-                    .map(|image_swapchain| {
-                        ImageView::new(
-                            image_swapchain,
-                            ImageViewType::Image2D,
-                            None,
-                            None,
-                            None,
-                            None,
-                            None,
-                            None,
-                            None,
-                            Some("swapchain_image_views[...]"),
-                        )
-                        .unwrap()
-                    })
-                    .collect::<Vec<Arc<ImageView>>>();
-
-                let renderquad_sampler = vulkan_framework::sampler::Sampler::new(
-                    dev.clone(),
-                    vulkan_framework::sampler::Filtering::Nearest,
-                    vulkan_framework::sampler::Filtering::Nearest,
-                    vulkan_framework::sampler::MipmapMode::ModeNearest,
-                    0.0,
-                )
-                .unwrap();
-
-                let renderquad_renderpass = vulkan_framework::renderpass::RenderPass::new(
-                    dev.clone(),
-                    &[
-                        AttachmentDescription::new(
-                            final_format,
-                            ImageMultisampling::SamplesPerPixel1,
-                            ImageLayout::Undefined,
-                            ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
-                            AttachmentLoadOp::Clear,
-                            AttachmentStoreOp::Store,
-                            AttachmentLoadOp::Clear,
-                            AttachmentStoreOp::Store,
-                        ),
-                        /*
-                        // depth
-                        AttachmentDescription::new(
-                            final_format,
-                            ImageMultisampling::SamplesPerPixel1,
-                            ImageLayout::Undefined,
-                            ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
-                            AttachmentLoadOp::Clear,
-                            AttachmentStoreOp::Store,
-                            AttachmentLoadOp::Clear,
-                            AttachmentStoreOp::Store,
-                        )*/
-                    ],
-                    &[RenderSubPassDescription::new(&[], &[0], None)],
-                )
-                .unwrap();
-                println!("Renderpass created!");
-
-                let renderquad_image_input_format = ImageLayout::ShaderReadOnlyOptimal;
-
-                let renderquad_texture_binding_descriptor = BindingDescriptor::new(
-                    ShaderStagesAccess::graphics(),
-                    BindingType::Native(NativeBindingType::CombinedImageSampler),
+                    swapchain_images_count,
                     0,
-                    1,
-                );
+                    0,
+                    0,
+                    0,
+                    0,
+                    Some(DescriptorPoolSizesAcceletarionStructureKHR::new(
+                        swapchain_images_count,
+                    )),
+                ),
+                2 * swapchain_images_count, // one for descriptor_set and one for renderquad_descriptor_set
+            ),
+            Some("My descriptor pool"),
+        )
+        .unwrap();
 
-                let renderquad_descriptor_set_layout = DescriptorSetLayout::new(
-                    dev.clone(),
-                    &[renderquad_texture_binding_descriptor.clone()],
+        let image_available_semaphores = (0..swapchain_images_count)
+            .map(|_idx| {
+                Semaphore::new(dev.clone(), Some("image_available_semaphores[...]")).unwrap()
+            })
+            .collect::<Vec<Arc<Semaphore>>>();
+
+        let image_rendered_semaphores = (0..swapchain_images_count)
+            .map(|_idx| {
+                Semaphore::new(dev.clone(), Some("image_rendered_semaphores[...]")).unwrap()
+            })
+            .collect::<Vec<Arc<Semaphore>>>();
+
+        let swapchain_fences = (0..swapchain_images_count)
+            .map(|_idx| Fence::new(dev.clone(), true, Some("swapchain_fences[...]")).unwrap())
+            .collect::<Vec<Arc<Fence>>>();
+
+        let command_pool = CommandPool::new(queue_family.clone(), Some("My command pool")).unwrap();
+
+        let present_command_buffers = (0..swapchain_images_count)
+            .map(|_idx| {
+                PrimaryCommandBuffer::new(
+                    command_pool.clone(),
+                    Some("present_command_buffers[...]"),
                 )
-                .unwrap();
+                .unwrap()
+            })
+            .collect::<Vec<Arc<PrimaryCommandBuffer>>>();
 
-                let renderquad_pipeline_layout = PipelineLayout::new(
-                    dev.clone(),
-                    &[renderquad_descriptor_set_layout.clone()],
-                    &[],
-                    Some("pipeline_layout"),
-                )
-                .unwrap();
-                println!("Pipeline layout created!");
+        let rt_output_image_descriptor = BindingDescriptor::new(
+            ShaderStagesAccess::from(&[], &[ShaderStageRayTracingKHR::RayGen]),
+            BindingType::Native(NativeBindingType::StorageImage),
+            0,
+            1,
+        );
 
-                let renderquad_descriptor_sets = (0..swapchain_images_count)
-                    .map(|idx| {
-                        let result = DescriptorSet::new(
-                            descriptor_pool.clone(),
-                            renderquad_descriptor_set_layout.clone(),
-                        )
-                        .unwrap();
+        let rt_acceleration_structure_descriptor = BindingDescriptor::new(
+            ShaderStagesAccess::from(&[], &[ShaderStageRayTracingKHR::RayGen]),
+            BindingType::AccelerationStructure(
+                AccelerationStructureBindingType::AccelerationStructure,
+            ),
+            1,
+            1,
+        );
 
-                        result
-                            .bind_resources(|binder| {
-                                binder.bind_combined_images_samplers(
-                                    0,
-                                    &[(
-                                        renderquad_image_input_format,
-                                        rt_image_views[idx as usize].clone(),
-                                        renderquad_sampler.clone(),
-                                    )],
-                                )
-                            })
-                            .unwrap();
+        let rt_writer_img_layout = ImageLayout::General;
 
-                        result
-                    })
-                    .collect::<Vec<Arc<DescriptorSet>>>();
+        let rt_descriptor_set_layout = DescriptorSetLayout::new(
+            dev.clone(),
+            &[
+                rt_output_image_descriptor,
+                rt_acceleration_structure_descriptor,
+            ],
+        )
+        .unwrap();
 
-                let renderquad_vertex_shader = VertexShader::new(
-                    dev.clone(),
-                    &[],
-                    &[renderquad_texture_binding_descriptor.clone()],
-                    RENDERQUAD_VERTEX_SPV,
-                )
-                .unwrap();
+        let pipeline_layout = PipelineLayout::new(
+            dev.clone(),
+            &[rt_descriptor_set_layout.clone()],
+            &[],
+            Some("pipeline_layout"),
+        )
+        .unwrap();
+        println!("Pipeline layout created!");
 
-                let renderquad_fragment_shader = FragmentShader::new(
-                    dev.clone(),
-                    &[],
-                    &[renderquad_texture_binding_descriptor],
-                    RENDERQUAD_FRAGMENT_SPV,
-                )
-                .unwrap();
-
-                let renderquad_graphics_pipeline = GraphicsPipeline::new(
+        let swapchain_image_views = swapchain_images
+            .clone()
+            .into_iter()
+            .map(|image_swapchain| {
+                ImageView::new(
+                    image_swapchain,
+                    ImageViewType::Image2D,
                     None,
-                    renderquad_renderpass.clone(),
-                    0,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some("swapchain_image_views[...]"),
+                )
+                .unwrap()
+            })
+            .collect::<Vec<Arc<ImageView>>>();
+
+        let renderquad_sampler = vulkan_framework::sampler::Sampler::new(
+            dev.clone(),
+            vulkan_framework::sampler::Filtering::Nearest,
+            vulkan_framework::sampler::Filtering::Nearest,
+            vulkan_framework::sampler::MipmapMode::ModeNearest,
+            0.0,
+        )
+        .unwrap();
+
+        let renderquad_renderpass = vulkan_framework::renderpass::RenderPass::new(
+            dev.clone(),
+            &[
+                AttachmentDescription::new(
+                    final_format,
                     ImageMultisampling::SamplesPerPixel1,
-                    Some(DepthConfiguration::new(
-                        true,
-                        DepthCompareOp::Always,
-                        Some((0.0, 1.0)),
-                    )),
-                    Some(Viewport::new(
-                        0.0f32,
-                        0.0f32,
-                        WIDTH as f32,
-                        HEIGHT as f32,
-                        0.0f32,
-                        0.0f32,
-                    )),
-                    Some(Scissor::new(0, 0, Image2DDimensions::new(WIDTH, HEIGHT))),
-                    renderquad_pipeline_layout.clone(),
-                    &[
+                    ImageLayout::Undefined,
+                    ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
+                    AttachmentLoadOp::Clear,
+                    AttachmentStoreOp::Store,
+                    AttachmentLoadOp::Clear,
+                    AttachmentStoreOp::Store,
+                ),
+                /*
+                // depth
+                AttachmentDescription::new(
+                    final_format,
+                    ImageMultisampling::SamplesPerPixel1,
+                    ImageLayout::Undefined,
+                    ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
+                    AttachmentLoadOp::Clear,
+                    AttachmentStoreOp::Store,
+                    AttachmentLoadOp::Clear,
+                    AttachmentStoreOp::Store,
+                )*/
+            ],
+            &[RenderSubPassDescription::new(&[], &[0], None)],
+        )
+        .unwrap();
+        println!("Renderpass created!");
+
+        let renderquad_image_input_format = ImageLayout::ShaderReadOnlyOptimal;
+
+        let renderquad_texture_binding_descriptor = BindingDescriptor::new(
+            ShaderStagesAccess::graphics(),
+            BindingType::Native(NativeBindingType::CombinedImageSampler),
+            0,
+            1,
+        );
+
+        let renderquad_descriptor_set_layout = DescriptorSetLayout::new(
+            dev.clone(),
+            &[renderquad_texture_binding_descriptor.clone()],
+        )
+        .unwrap();
+
+        let renderquad_pipeline_layout = PipelineLayout::new(
+            dev.clone(),
+            &[renderquad_descriptor_set_layout.clone()],
+            &[],
+            Some("pipeline_layout"),
+        )
+        .unwrap();
+        println!("Pipeline layout created!");
+
+        let renderquad_descriptor_sets = (0..swapchain_images_count)
+            .map(|idx| {
+                let result = DescriptorSet::new(
+                    descriptor_pool.clone(),
+                    renderquad_descriptor_set_layout.clone(),
+                )
+                .unwrap();
+
+                result
+                    .bind_resources(|binder| {
+                        binder.bind_combined_images_samplers(
+                            0,
+                            &[(
+                                renderquad_image_input_format,
+                                rt_image_views[idx as usize].clone(),
+                                renderquad_sampler.clone(),
+                            )],
+                        )
+                    })
+                    .unwrap();
+
+                result
+            })
+            .collect::<Vec<Arc<DescriptorSet>>>();
+
+        let renderquad_vertex_shader = VertexShader::new(
+            dev.clone(),
+            &[],
+            &[renderquad_texture_binding_descriptor.clone()],
+            RENDERQUAD_VERTEX_SPV,
+        )
+        .unwrap();
+
+        let renderquad_fragment_shader = FragmentShader::new(
+            dev.clone(),
+            &[],
+            &[renderquad_texture_binding_descriptor],
+            RENDERQUAD_FRAGMENT_SPV,
+        )
+        .unwrap();
+
+        let renderquad_graphics_pipeline = GraphicsPipeline::new(
+            None,
+            renderquad_renderpass.clone(),
+            0,
+            ImageMultisampling::SamplesPerPixel1,
+            Some(DepthConfiguration::new(
+                true,
+                DepthCompareOp::Always,
+                Some((0.0, 1.0)),
+            )),
+            Some(Viewport::new(
+                0.0f32,
+                0.0f32,
+                WIDTH as f32,
+                HEIGHT as f32,
+                0.0f32,
+                0.0f32,
+            )),
+            Some(Scissor::new(0, 0, Image2DDimensions::new(WIDTH, HEIGHT))),
+            renderquad_pipeline_layout.clone(),
+            &[
                             /*VertexInputBinding::new(
                             VertexInputRate::PerVertex,
                             0,
                             &[VertexInputAttribute::new(0, 0, AttributeType::Vec4)],
                             )*/
                         ],
-                    Rasterizer::new(
-                        PolygonMode::Fill,
-                        FrontFace::CounterClockwise,
-                        CullMode::None,
-                        None,
-                    ),
-                    (renderquad_vertex_shader, None),
-                    (renderquad_fragment_shader, None),
-                    Some("renderquad_pipeline"),
-                )
-                .unwrap();
-                println!("Graphics pipeline created!");
+            Rasterizer::new(
+                PolygonMode::Fill,
+                FrontFace::CounterClockwise,
+                CullMode::None,
+                None,
+            ),
+            (renderquad_vertex_shader, None),
+            (renderquad_fragment_shader, None),
+            Some("renderquad_pipeline"),
+        )
+        .unwrap();
+        println!("Graphics pipeline created!");
 
-                let rendequad_framebuffers = (0..(swapchain_images_count))
-                    .map(|idx| {
-                        Framebuffer::new(
-                            renderquad_renderpass.clone(),
-                            &[swapchain_image_views[idx as usize].clone()],
-                            swapchain_extent,
-                            1,
-                        )
-                        .unwrap()
-                    })
-                    .collect::<Vec<Arc<Framebuffer>>>();
-
-                let raygen_shader = RaygenShader::new(dev.clone(), RAYGEN_SPV).unwrap();
-                //let intersection_shader = IntersectionShader::new(dev.clone(), INTERSECTION_SPV).unwrap();
-                let miss_shader = MissShader::new(dev.clone(), MISS_SPV).unwrap();
-                //let anyhit_shader = AnyHitShader::new(dev.clone(), AHIT_SPV).unwrap();
-                let closesthit_shader = ClosestHitShader::new(dev.clone(), CHIT_SPV).unwrap();
-                //let callable_shader = CallableShader::new(dev.clone(), CALLABLE_SPV).unwrap();
-
-                let pipeline = RaytracingPipeline::new(
-                    pipeline_layout.clone(),
+        let rendequad_framebuffers = (0..(swapchain_images_count))
+            .map(|idx| {
+                Framebuffer::new(
+                    renderquad_renderpass.clone(),
+                    &[swapchain_image_views[idx as usize].clone()],
+                    swapchain_extent,
                     1,
-                    raygen_shader,
-                    None,
-                    miss_shader,
-                    None,
-                    closesthit_shader,
-                    None,
-                    Some("raytracing_pipeline!"),
                 )
-                .unwrap();
+                .unwrap()
+            })
+            .collect::<Vec<Arc<Framebuffer>>>();
 
-                let shader_binding_tables = swapchain_images
-                    .into_iter()
-                    .map(|_image_swapchain| {
-                        RaytracingBindingTables::new(pipeline.clone(), raytracing_allocator.clone())
-                            .unwrap()
-                    })
-                    .collect::<Vec<Arc<RaytracingBindingTables>>>();
+        let raygen_shader = RaygenShader::new(dev.clone(), RAYGEN_SPV).unwrap();
+        //let intersection_shader = IntersectionShader::new(dev.clone(), INTERSECTION_SPV).unwrap();
+        let miss_shader = MissShader::new(dev.clone(), MISS_SPV).unwrap();
+        //let anyhit_shader = AnyHitShader::new(dev.clone(), AHIT_SPV).unwrap();
+        let closesthit_shader = ClosestHitShader::new(dev.clone(), CHIT_SPV).unwrap();
+        //let callable_shader = CallableShader::new(dev.clone(), CALLABLE_SPV).unwrap();
 
-                let triangle_decl = BottomLevelTrianglesGroupDecl::new(
-                    VertexIndexing::UInt32,
-                    1,
-                    (std::mem::size_of::<f32>() as u64) * 3u64,
-                    AttributeType::Vec3,
+        let pipeline = RaytracingPipeline::new(
+            pipeline_layout.clone(),
+            1,
+            raygen_shader,
+            None,
+            miss_shader,
+            None,
+            closesthit_shader,
+            None,
+            Some("raytracing_pipeline!"),
+        )
+        .unwrap();
+
+        let shader_binding_tables = swapchain_images
+            .into_iter()
+            .map(|_image_swapchain| {
+                RaytracingBindingTables::new(pipeline.clone(), raytracing_allocator.clone())
+                    .unwrap()
+            })
+            .collect::<Vec<Arc<RaytracingBindingTables>>>();
+
+        let triangle_decl = BottomLevelTrianglesGroupDecl::new(
+            VertexIndexing::UInt32,
+            1,
+            (std::mem::size_of::<f32>() as u64) * 3u64,
+            AttributeType::Vec3,
+        );
+
+        let blas_decl = TopLevelBLASGroupDecl::new();
+
+        let blas_estimated_sizes = BottomLevelAccelerationStructure::query_minimum_sizes(
+            dev.clone(),
+            AllowedBuildingDevice::DeviceOnly,
+            &[triangle_decl],
+        )
+        .unwrap();
+
+        let tlas_estimated_sizes = TopLevelAccelerationStructure::query_minimum_sizes(
+            dev.clone(),
+            AllowedBuildingDevice::DeviceOnly,
+            &[blas_decl],
+        )
+        .unwrap();
+
+        let vertex_buffer = Buffer::new(
+            raytracing_allocator.clone(),
+            ConcreteBufferDescriptor::new(
+                BufferUsage::Unmanaged(
+                    (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
+                        | ash::vk::BufferUsageFlags::VERTEX_BUFFER
+                        | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
+                        .as_raw(),
+                ),
+                (core::mem::size_of::<[f32; 3]>() as u64) * 3u64,
+            ),
+            None,
+            None,
+        )
+        .unwrap();
+
+        let index_buffer = Buffer::new(
+            raytracing_allocator.clone(),
+            ConcreteBufferDescriptor::new(
+                BufferUsage::Unmanaged(
+                    (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
+                        | ash::vk::BufferUsageFlags::INDEX_BUFFER
+                        | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
+                        .as_raw(),
+                ),
+                (core::mem::size_of::<u32>() as u64) * 3u64,
+            ),
+            None,
+            None,
+        )
+        .unwrap();
+
+        let transform_buffer = Buffer::new(
+            raytracing_allocator.clone(),
+            ConcreteBufferDescriptor::new(
+                BufferUsage::Unmanaged(
+                    (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
+                        | ash::vk::BufferUsageFlags::INDEX_BUFFER
+                        | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
+                        .as_raw(),
+                ),
+                core::mem::size_of::<[f32; 12]>() as u64,
+            ),
+            None,
+            None,
+        )
+        .unwrap();
+
+        let blas = BottomLevelAccelerationStructure::new(
+            raytracing_allocator.clone(),
+            blas_estimated_sizes.0,
+        )
+        .unwrap();
+
+        raytracing_allocator
+            .write_raw_data(index_buffer.allocation_offset(), VERTEX_INDEX.as_slice())
+            .unwrap();
+        raytracing_allocator
+            .write_raw_data(vertex_buffer.allocation_offset(), VERTEX_DATA.as_slice())
+            .unwrap();
+        raytracing_allocator
+            .write_raw_data(
+                transform_buffer.allocation_offset(),
+                INSTANCE_DATA.as_slice(),
+            )
+            .unwrap();
+
+        let tlas = TopLevelAccelerationStructure::new(
+            raytracing_allocator.clone(),
+            tlas_estimated_sizes.0,
+        )
+        .unwrap();
+
+        let scratch_buffer = DeviceScratchBuffer::new(
+            raytracing_allocator.clone(),
+            u64::max(blas_estimated_sizes.1, tlas_estimated_sizes.1),
+        )
+        .unwrap();
+
+        // PUNTO DI INTERESE
+        let blas_building =
+            PrimaryCommandBuffer::new(command_pool.clone(), Some("BLAS_Builder")).unwrap();
+        blas_building
+            .record_commands(|cmd| {
+                cmd.build_blas(
+                    blas.clone(),
+                    scratch_buffer.clone(),
+                    &[BottomLevelTrianglesGroupData::new(
+                        triangle_decl,
+                        Some(index_buffer.clone()),
+                        vertex_buffer.clone(),
+                        transform_buffer.clone(),
+                        0,
+                        1,
+                        0,
+                        0,
+                    )],
                 );
+            })
+            .unwrap();
+        let blas_building_fence =
+            Fence::new(dev.clone(), false, Some("blas_building_fence")).unwrap();
 
-                let blas_decl = TopLevelBLASGroupDecl::new();
+        queue
+            .submit(&[blas_building], &[], &[], blas_building_fence.clone())
+            .unwrap();
 
-                let blas_estimated_sizes = BottomLevelAccelerationStructure::query_minimum_sizes(
-                    dev.clone(),
-                    AllowedBuildingDevice::DeviceOnly,
-                    &[triangle_decl],
-                )
-                .unwrap();
-
-                let tlas_estimated_sizes = TopLevelAccelerationStructure::query_minimum_sizes(
-                    dev.clone(),
-                    AllowedBuildingDevice::DeviceOnly,
-                    &[blas_decl],
-                )
-                .unwrap();
-
-                let vertex_buffer = Buffer::new(
-                    raytracing_allocator.clone(),
-                    ConcreteBufferDescriptor::new(
-                        BufferUsage::Unmanaged(
-                                (
-                                    ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR |
-                                    ash::vk::BufferUsageFlags::VERTEX_BUFFER |
-                                    ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
-                                ).as_raw()
-                            ),
-                            (core::mem::size_of::<[f32; 3]>() as u64) * 3u64
-                        ),
-                        None,
-                        None
-                ).unwrap();
-
-                let index_buffer = Buffer::new(
-                    raytracing_allocator.clone(),
-                    ConcreteBufferDescriptor::new(
-                        BufferUsage::Unmanaged(
-                                (
-                                    ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR |
-                                    ash::vk::BufferUsageFlags::INDEX_BUFFER |
-                                    ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
-                                ).as_raw()
-                            ),
-                            (core::mem::size_of::<u32>() as u64) * 3u64
-                        ),
-                        None,
-                        None
-                ).unwrap();
-
-                let transform_buffer = Buffer::new(
-                    raytracing_allocator.clone(),
-                    ConcreteBufferDescriptor::new(
-                        BufferUsage::Unmanaged(
-                                (
-                                    ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR |
-                                    ash::vk::BufferUsageFlags::INDEX_BUFFER |
-                                    ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
-                                ).as_raw()
-                            ),
-                            core::mem::size_of::<[f32; 12]>() as u64
-                        ),
-                        None,
-                        None
-                ).unwrap();
-
-                let blas = BottomLevelAccelerationStructure::new(
-                    raytracing_allocator.clone(),
-                    blas_estimated_sizes.0,
-                )
-                .unwrap();
-
-                raytracing_allocator
-                    .write_raw_data(index_buffer.allocation_offset(), VERTEX_INDEX.as_slice())
-                    .unwrap();
-                raytracing_allocator
-                    .write_raw_data(vertex_buffer.allocation_offset(), VERTEX_DATA.as_slice())
-                    .unwrap();
-                raytracing_allocator
-                    .write_raw_data(
-                        transform_buffer.allocation_offset(),
-                        INSTANCE_DATA.as_slice(),
-                    )
-                    .unwrap();
-
-                let tlas = TopLevelAccelerationStructure::new(
-                    raytracing_allocator.clone(),
-                    tlas_estimated_sizes.0,
-                )
-                .unwrap();
-
-                let scratch_buffer = DeviceScratchBuffer::new(
-                    raytracing_allocator.clone(),
-                    u64::max(blas_estimated_sizes.1, tlas_estimated_sizes.1),
-                )
-                .unwrap();
-
-                // PUNTO DI INTERESE
-                let blas_building =
-                    PrimaryCommandBuffer::new(command_pool.clone(), Some("BLAS_Builder")).unwrap();
-                blas_building
-                    .record_commands(|cmd| {
-                        cmd.build_blas(
-                            blas.clone(),
-                            scratch_buffer.clone(),
-                            &[BottomLevelTrianglesGroupData::new(
-                                triangle_decl,
-                                Some(index_buffer.clone()),
-                                vertex_buffer.clone(),
-                                transform_buffer.clone(),
-                                0,
-                                1,
-                                0,
-                                0,
-                            )],
-                        );
-                    })
-                    .unwrap();
-                let blas_building_fence =
-                    Fence::new(dev.clone(), false, Some("blas_building_fence")).unwrap();
-
-                queue
-                    .submit(&[blas_building], &[], &[], blas_building_fence.clone())
-                    .unwrap();
-
-                loop {
-                    match Fence::wait_for_fences(
-                        &[blas_building_fence.clone()],
-                        FenceWaitFor::All,
-                        Duration::from_nanos(100),
-                    ) {
-                        Ok(_) => {
-                            blas_building_fence.reset().unwrap();
-                            break;
-                        }
-                        Err(err) => {
-                            if err.is_timeout() {
-                                //println!("TIMEOUT");
-                                continue;
-                            }
-
-                            panic!("{}", err)
-                        }
-                    }
+        loop {
+            match Fence::wait_for_fences(
+                &[blas_building_fence.clone()],
+                FenceWaitFor::All,
+                Duration::from_nanos(100),
+            ) {
+                Ok(_) => {
+                    blas_building_fence.reset().unwrap();
+                    break;
                 }
-
-                let blas_instances_buffer = Buffer::new(
-                    raytracing_allocator.clone(),
-                    ConcreteBufferDescriptor::new(
-                        BufferUsage::Unmanaged(
-                                (
-                                    ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR |
-                                    ash::vk::BufferUsageFlags::INDEX_BUFFER |
-                                    ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
-                                ).as_raw()
-                            ),
-                            core::mem::size_of::<ash::vk::AccelerationStructureInstanceKHR>() as u64
-                        ),
-                        None,
-                        None
-                ).unwrap();
-
-                let a = ash::vk::AccelerationStructureInstanceKHR {
-                    transform: ash::vk::TransformMatrixKHR {
-                        matrix: [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
-                    },
-                    instance_shader_binding_table_record_offset_and_flags: ash::vk::Packed24_8::new(
-                        0, 0x01,
-                    ), // VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
-                    instance_custom_index_and_mask: ash::vk::Packed24_8::new(0x00, 0xFF),
-                    acceleration_structure_reference: ash::vk::AccelerationStructureReferenceKHR {
-                        device_handle: blas.device_addr(),
-                    },
-                };
-
-                raytracing_allocator
-                    .write_raw_data(blas_instances_buffer.allocation_offset(), &[a])
-                    .unwrap();
-
-                let tlas_building =
-                    PrimaryCommandBuffer::new(command_pool, Some("TLAS_Builder")).unwrap();
-                tlas_building
-                    .record_commands(|cmd| {
-                        cmd.build_tlas(
-                            tlas.clone(),
-                            scratch_buffer.clone(),
-                            &[TopLevelBLASGroupData::new(
-                                blas_decl,
-                                blas_instances_buffer.clone(),
-                                0,
-                                1,
-                                0,
-                                0,
-                            )],
-                        )
-                    })
-                    .unwrap();
-                let tlas_building_fence =
-                    Fence::new(dev, false, Some("tlas_building_fence")).unwrap();
-
-                queue
-                    .submit(&[tlas_building], &[], &[], tlas_building_fence.clone())
-                    .unwrap();
-
-                loop {
-                    match Fence::wait_for_fences(
-                        &[tlas_building_fence.clone()],
-                        FenceWaitFor::All,
-                        Duration::from_nanos(100),
-                    ) {
-                        Ok(_) => {
-                            tlas_building_fence.reset().unwrap();
-                            break;
-                        }
-                        Err(err) => {
-                            if err.is_timeout() {
-                                //println!("TIMEOUT");
-                                continue;
-                            }
-
-                            panic!("{}", err)
-                        }
-                    }
-                }
-
-                let rt_descriptor_sets = (0..swapchain_images_count)
-                    .map(|idx| {
-                        let result = DescriptorSet::new(
-                            descriptor_pool.clone(),
-                            rt_descriptor_set_layout.clone(),
-                        )
-                        .unwrap();
-
-                        result
-                            .bind_resources(|binder| {
-                                binder.bind_storage_images(
-                                    0,
-                                    &[(rt_writer_img_layout, rt_image_views[idx as usize].clone())],
-                                );
-
-                                binder.bind_tlas(1, &[tlas.clone()]);
-                            })
-                            .unwrap();
-
-                        result
-                    })
-                    .collect::<Vec<Arc<DescriptorSet>>>();
-
-                let mut current_frame: usize = 0;
-
-                let mut event_pump = sdl_context.event_pump().unwrap();
-                'running: loop {
-                    for event in event_pump.poll_iter() {
-                        match event {
-                            sdl2::event::Event::Quit { .. }
-                            | sdl2::event::Event::KeyDown {
-                                keycode: Some(sdl2::keyboard::Keycode::Escape),
-                                ..
-                            } => {
-                                for fence in swapchain_fences.iter() {
-                                    Fence::wait_for_fences(
-                                        &[fence.clone()],
-                                        FenceWaitFor::All,
-                                        Duration::from_nanos(u64::MAX),
-                                    )
-                                    .unwrap();
-                                    fence.reset().unwrap();
-                                }
-                                break 'running;
-                            }
-                            _ => {}
-                        }
+                Err(err) => {
+                    if err.is_timeout() {
+                        //println!("TIMEOUT");
+                        continue;
                     }
 
-                    let swapchain_index = swapchain
-                        .acquire_next_image_index(
-                            Duration::from_nanos(u64::MAX),
-                            Some(
-                                image_available_semaphores
-                                    [current_frame % (swapchain_images_count as usize)]
-                                    .clone(),
-                            ),
-                            None,
-                        )
-                        .unwrap();
-
-                    // wait for fence
-                    Fence::wait_for_fences(
-                        &[
-                            swapchain_fences[current_frame % (swapchain_images_count as usize)]
-                                .clone(),
-                        ],
-                        FenceWaitFor::All,
-                        Duration::from_nanos(u64::MAX),
-                    )
-                    .unwrap();
-                    swapchain_fences[current_frame % (swapchain_images_count as usize)]
-                        .reset()
-                        .unwrap();
-
-                    present_command_buffers[current_frame % (swapchain_images_count as usize)]
-                        .record_commands(|recorder: &mut CommandBufferRecorder| {
-                            // TODO: HERE transition the image layout from UNDEFINED to GENERAL so that ray tracing pipeline can write to it
-                            recorder.image_barrier(ImageMemoryBarrier::new(
-                                PipelineStages::from(&[PipelineStage::TopOfPipe], None, None, None),
-                                AccessFlags::Unmanaged(0),
-                                PipelineStages::from(
-                                    &[],
-                                    None,
-                                    None,
-                                    Some(&[PipelineStageRayTracingPipelineKHR::RayTracingShader]),
-                                ),
-                                AccessFlags::Managed(AccessFlagsSpecifier::from(
-                                    &[AccessFlag::ShaderWrite],
-                                    None,
-                                )),
-                                rt_images[current_frame % (swapchain_images_count as usize)]
-                                    .clone(),
-                                None,
-                                None,
-                                None,
-                                None,
-                                None,
-                                ImageLayout::Undefined,
-                                rt_writer_img_layout,
-                                queue_family.clone(),
-                                queue_family.clone(),
-                            ));
-
-                            recorder.bind_ray_tracing_pipeline(pipeline.clone());
-                            recorder.bind_descriptor_sets_for_ray_tracing_pipeline(
-                                pipeline_layout.clone(),
-                                0,
-                                &[rt_descriptor_sets
-                                    [current_frame % (swapchain_images_count as usize)]
-                                    .clone()],
-                            );
-                            recorder.trace_rays(
-                                shader_binding_tables
-                                    [current_frame % (swapchain_images_count as usize)]
-                                    .clone(),
-                                Image3DDimensions::from(swapchain_extent),
-                            );
-
-                            // HERE wait for the ray tracing pipeline to transition image layout from GENERAL to renderquad_texture_layout
-                            recorder.image_barrier(ImageMemoryBarrier::new(
-                                PipelineStages::from(
-                                    &[],
-                                    None,
-                                    None,
-                                    Some(&[PipelineStageRayTracingPipelineKHR::RayTracingShader]),
-                                ),
-                                AccessFlags::Managed(AccessFlagsSpecifier::from(
-                                    &[AccessFlag::ShaderWrite],
-                                    None,
-                                )),
-                                PipelineStages::from(
-                                    &[PipelineStage::FragmentShader],
-                                    None,
-                                    None,
-                                    None,
-                                ),
-                                AccessFlags::Managed(AccessFlagsSpecifier::from(
-                                    &[AccessFlag::ShaderRead],
-                                    None,
-                                )),
-                                rt_images[current_frame % (swapchain_images_count as usize)]
-                                    .clone(),
-                                None,
-                                None,
-                                None,
-                                None,
-                                None,
-                                rt_writer_img_layout,
-                                renderquad_image_input_format,
-                                queue_family.clone(),
-                                queue_family.clone(),
-                            ));
-
-                            recorder.begin_renderpass(
-                                rendequad_framebuffers
-                                    [current_frame % (swapchain_images_count as usize)]
-                                    .clone(),
-                                &[ClearValues::new(Some(ColorClearValues::Vec4(
-                                    1.0, 1.0, 1.0, 1.0,
-                                )))],
-                            );
-                            recorder.bind_graphics_pipeline(
-                                renderquad_graphics_pipeline.clone(),
-                                None,
-                                None,
-                            );
-                            recorder.bind_descriptor_sets_for_graphics_pipeline(
-                                renderquad_pipeline_layout.clone(),
-                                0,
-                                &[renderquad_descriptor_sets
-                                    [current_frame % (swapchain_images_count as usize)]
-                                    .clone()],
-                            );
-                            recorder.draw(0, 6, 0, 1);
-
-                            recorder.end_renderpass();
-                        })
-                        .unwrap();
-
-                    queue
-                        .submit(
-                            &[present_command_buffers
-                                [current_frame % (swapchain_images_count as usize)]
-                                .clone()],
-                            &[(
-                                PipelineStages::from(
-                                    &[PipelineStage::FragmentShader],
-                                    None,
-                                    None,
-                                    None,
-                                ),
-                                image_available_semaphores
-                                    [current_frame % (swapchain_images_count as usize)]
-                                    .clone(),
-                            )],
-                            &[image_rendered_semaphores
-                                [current_frame % (swapchain_images_count as usize)]
-                                .clone()],
-                            swapchain_fences[current_frame % (swapchain_images_count as usize)]
-                                .clone(),
-                        )
-                        .unwrap();
-
-                    swapchain
-                        .queue_present(
-                            queue.clone(),
-                            swapchain_index.0,
-                            &[image_rendered_semaphores
-                                [current_frame % (swapchain_images_count as usize)]
-                                .clone()],
-                        )
-                        .unwrap();
-
-                    current_frame = swapchain_index.0 as usize;
+                    panic!("{}", err)
                 }
-            }
-            Err(err) => {
-                println!("Error creating sdl2 window: {}", err);
             }
         }
+
+        let blas_instances_buffer = Buffer::new(
+            raytracing_allocator.clone(),
+            ConcreteBufferDescriptor::new(
+                BufferUsage::Unmanaged(
+                    (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
+                        | ash::vk::BufferUsageFlags::INDEX_BUFFER
+                        | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
+                        .as_raw(),
+                ),
+                core::mem::size_of::<ash::vk::AccelerationStructureInstanceKHR>() as u64,
+            ),
+            None,
+            None,
+        )
+        .unwrap();
+
+        let a = ash::vk::AccelerationStructureInstanceKHR {
+            transform: ash::vk::TransformMatrixKHR {
+                matrix: [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+            },
+            instance_shader_binding_table_record_offset_and_flags: ash::vk::Packed24_8::new(
+                0, 0x01,
+            ), // VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
+            instance_custom_index_and_mask: ash::vk::Packed24_8::new(0x00, 0xFF),
+            acceleration_structure_reference: ash::vk::AccelerationStructureReferenceKHR {
+                device_handle: blas.device_addr(),
+            },
+        };
+
+        raytracing_allocator
+            .write_raw_data(blas_instances_buffer.allocation_offset(), &[a])
+            .unwrap();
+
+        let tlas_building = PrimaryCommandBuffer::new(command_pool, Some("TLAS_Builder")).unwrap();
+        tlas_building
+            .record_commands(|cmd| {
+                cmd.build_tlas(
+                    tlas.clone(),
+                    scratch_buffer.clone(),
+                    &[TopLevelBLASGroupData::new(
+                        blas_decl,
+                        blas_instances_buffer.clone(),
+                        0,
+                        1,
+                        0,
+                        0,
+                    )],
+                )
+            })
+            .unwrap();
+        let tlas_building_fence = Fence::new(dev, false, Some("tlas_building_fence")).unwrap();
+
+        queue
+            .submit(&[tlas_building], &[], &[], tlas_building_fence.clone())
+            .unwrap();
+
+        loop {
+            match Fence::wait_for_fences(
+                &[tlas_building_fence.clone()],
+                FenceWaitFor::All,
+                Duration::from_nanos(100),
+            ) {
+                Ok(_) => {
+                    tlas_building_fence.reset().unwrap();
+                    break;
+                }
+                Err(err) => {
+                    if err.is_timeout() {
+                        //println!("TIMEOUT");
+                        continue;
+                    }
+
+                    panic!("{}", err)
+                }
+            }
+        }
+
+        let rt_descriptor_sets = (0..swapchain_images_count)
+            .map(|idx| {
+                let result =
+                    DescriptorSet::new(descriptor_pool.clone(), rt_descriptor_set_layout.clone())
+                        .unwrap();
+
+                result
+                    .bind_resources(|binder| {
+                        binder.bind_storage_images(
+                            0,
+                            &[(rt_writer_img_layout, rt_image_views[idx as usize].clone())],
+                        );
+
+                        binder.bind_tlas(1, &[tlas.clone()]);
+                    })
+                    .unwrap();
+
+                result
+            })
+            .collect::<Vec<Arc<DescriptorSet>>>();
+
+        let mut current_frame: usize = 0;
+
+        let mut event_pump = sdl_context.event_pump().unwrap();
+        'running: loop {
+            for event in event_pump.poll_iter() {
+                match event {
+                    sdl2::event::Event::Quit { .. }
+                    | sdl2::event::Event::KeyDown {
+                        keycode: Some(sdl2::keyboard::Keycode::Escape),
+                        ..
+                    } => {
+                        for fence in swapchain_fences.iter() {
+                            Fence::wait_for_fences(
+                                &[fence.clone()],
+                                FenceWaitFor::All,
+                                Duration::from_nanos(u64::MAX),
+                            )
+                            .unwrap();
+                            fence.reset().unwrap();
+                        }
+                        break 'running;
+                    }
+                    _ => {}
+                }
+            }
+
+            let swapchain_index = swapchain
+                .acquire_next_image_index(
+                    Duration::from_nanos(u64::MAX),
+                    Some(
+                        image_available_semaphores
+                            [current_frame % (swapchain_images_count as usize)]
+                            .clone(),
+                    ),
+                    None,
+                )
+                .unwrap();
+
+            // wait for fence
+            Fence::wait_for_fences(
+                &[swapchain_fences[current_frame % (swapchain_images_count as usize)].clone()],
+                FenceWaitFor::All,
+                Duration::from_nanos(u64::MAX),
+            )
+            .unwrap();
+            swapchain_fences[current_frame % (swapchain_images_count as usize)]
+                .reset()
+                .unwrap();
+
+            present_command_buffers[current_frame % (swapchain_images_count as usize)]
+                .record_commands(|recorder: &mut CommandBufferRecorder| {
+                    // TODO: HERE transition the image layout from UNDEFINED to GENERAL so that ray tracing pipeline can write to it
+                    recorder.image_barrier(ImageMemoryBarrier::new(
+                        PipelineStages::from(&[PipelineStage::TopOfPipe], None, None, None),
+                        AccessFlags::Unmanaged(0),
+                        PipelineStages::from(
+                            &[],
+                            None,
+                            None,
+                            Some(&[PipelineStageRayTracingPipelineKHR::RayTracingShader]),
+                        ),
+                        AccessFlags::Managed(AccessFlagsSpecifier::from(
+                            &[AccessFlag::ShaderWrite],
+                            None,
+                        )),
+                        rt_images[current_frame % (swapchain_images_count as usize)].clone(),
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        ImageLayout::Undefined,
+                        rt_writer_img_layout,
+                        queue_family.clone(),
+                        queue_family.clone(),
+                    ));
+
+                    recorder.bind_ray_tracing_pipeline(pipeline.clone());
+                    recorder.bind_descriptor_sets_for_ray_tracing_pipeline(
+                        pipeline_layout.clone(),
+                        0,
+                        &[
+                            rt_descriptor_sets[current_frame % (swapchain_images_count as usize)]
+                                .clone(),
+                        ],
+                    );
+                    recorder.trace_rays(
+                        shader_binding_tables[current_frame % (swapchain_images_count as usize)]
+                            .clone(),
+                        Image3DDimensions::from(swapchain_extent),
+                    );
+
+                    // HERE wait for the ray tracing pipeline to transition image layout from GENERAL to renderquad_texture_layout
+                    recorder.image_barrier(ImageMemoryBarrier::new(
+                        PipelineStages::from(
+                            &[],
+                            None,
+                            None,
+                            Some(&[PipelineStageRayTracingPipelineKHR::RayTracingShader]),
+                        ),
+                        AccessFlags::Managed(AccessFlagsSpecifier::from(
+                            &[AccessFlag::ShaderWrite],
+                            None,
+                        )),
+                        PipelineStages::from(&[PipelineStage::FragmentShader], None, None, None),
+                        AccessFlags::Managed(AccessFlagsSpecifier::from(
+                            &[AccessFlag::ShaderRead],
+                            None,
+                        )),
+                        rt_images[current_frame % (swapchain_images_count as usize)].clone(),
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        rt_writer_img_layout,
+                        renderquad_image_input_format,
+                        queue_family.clone(),
+                        queue_family.clone(),
+                    ));
+
+                    recorder.begin_renderpass(
+                        rendequad_framebuffers[current_frame % (swapchain_images_count as usize)]
+                            .clone(),
+                        &[ClearValues::new(Some(ColorClearValues::Vec4(
+                            1.0, 1.0, 1.0, 1.0,
+                        )))],
+                    );
+                    recorder.bind_graphics_pipeline(
+                        renderquad_graphics_pipeline.clone(),
+                        None,
+                        None,
+                    );
+                    recorder.bind_descriptor_sets_for_graphics_pipeline(
+                        renderquad_pipeline_layout.clone(),
+                        0,
+                        &[renderquad_descriptor_sets
+                            [current_frame % (swapchain_images_count as usize)]
+                            .clone()],
+                    );
+                    recorder.draw(0, 6, 0, 1);
+
+                    recorder.end_renderpass();
+                })
+                .unwrap();
+
+            queue
+                .submit(
+                    &[
+                        present_command_buffers[current_frame % (swapchain_images_count as usize)]
+                            .clone(),
+                    ],
+                    &[(
+                        PipelineStages::from(&[PipelineStage::FragmentShader], None, None, None),
+                        image_available_semaphores
+                            [current_frame % (swapchain_images_count as usize)]
+                            .clone(),
+                    )],
+                    &[
+                        image_rendered_semaphores
+                            [current_frame % (swapchain_images_count as usize)]
+                            .clone(),
+                    ],
+                    swapchain_fences[current_frame % (swapchain_images_count as usize)].clone(),
+                )
+                .unwrap();
+
+            swapchain
+                .queue_present(
+                    queue.clone(),
+                    swapchain_index.0,
+                    &[
+                        image_rendered_semaphores
+                            [current_frame % (swapchain_images_count as usize)]
+                            .clone(),
+                    ],
+                )
+                .unwrap();
+
+            current_frame = swapchain_index.0 as usize;
+        }
     }
+
+    Ok(())
 }

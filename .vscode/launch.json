@@ -26,15 +26,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'hello_triangle'",
+            "name": "Debug executable 'compute_rendering'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=hello_triangle",
+                    "--bin=compute_rendering",
                     "--package=examples"
                 ],
                 "filter": {
-                    "name": "hello_triangle",
+                    "name": "compute_rendering",
                     "kind": "bin"
                 }
             },
@@ -44,16 +44,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'hello_triangle'",
+            "name": "Debug unit tests in executable 'compute_rendering'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=hello_triangle",
+                    "--bin=compute_rendering",
                     "--package=examples"
                 ],
                 "filter": {
-                    "name": "hello_triangle",
+                    "name": "compute_rendering",
                     "kind": "bin"
                 }
             },
@@ -63,15 +63,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'hello_instance'",
+            "name": "Debug executable 'hello_compute'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=hello_instance",
+                    "--bin=hello_compute",
                     "--package=examples"
                 ],
                 "filter": {
-                    "name": "hello_instance",
+                    "name": "hello_compute",
                     "kind": "bin"
                 }
             },
@@ -81,16 +81,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'hello_instance'",
+            "name": "Debug unit tests in executable 'hello_compute'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=hello_instance",
+                    "--bin=hello_compute",
                     "--package=examples"
                 ],
                 "filter": {
-                    "name": "hello_instance",
+                    "name": "hello_compute",
                     "kind": "bin"
                 }
             },
@@ -137,126 +137,34 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'hello_window'",
+            "name": "Debug executable 'hello_instance'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=hello_window",
+                    "--bin=hello_instance",
                     "--package=examples"
                 ],
                 "filter": {
-                    "name": "hello_window",
+                    "name": "hello_instance",
                     "kind": "bin"
                 }
             },
             "args": [],
-            "env":
-            {
-                //"VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/radeon_icd.i686.json:/usr/share/vulkan/icd.d/radeon_icd.x86_64.json"
-                "VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/amd_icd32.json:/usr/share/vulkan/icd.d/amd_icd64.json"
-                //"VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/amd_pro_icd32.json:/usr/share/vulkan/icd.d/amd_pro_icd64.json"
-            },
             "cwd": "${workspaceFolder}"
         },
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'hello_window'",
+            "name": "Debug unit tests in executable 'hello_instance'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=hello_window",
+                    "--bin=hello_instance",
                     "--package=examples"
                 ],
                 "filter": {
-                    "name": "hello_window",
-                    "kind": "bin"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug executable 'hello_triangle'",
-            "cargo": {
-                "args": [
-                    "build",
-                    "--bin=hello_triangle",
-                    "--package=examples"
-                ],
-                "filter": {
-                    "name": "hello_triangle",
-                    "kind": "bin"
-                }
-            },
-            "args": [],
-            "env":
-            {
-                //"VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/radeon_icd.i686.json:/usr/share/vulkan/icd.d/radeon_icd.x86_64.json"
-                "VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/amd_icd32.json:/usr/share/vulkan/icd.d/amd_icd64.json"
-                //"VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/amd_pro_icd32.json:/usr/share/vulkan/icd.d/amd_pro_icd64.json"
-            },
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug unit tests in executable 'hello_triangle'",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--bin=hello_triangle",
-                    "--package=examples"
-                ],
-                "filter": {
-                    "name": "hello_triangle",
-                    "kind": "bin"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug executable 'hello_compute'",
-            "cargo": {
-                "args": [
-                    "build",
-                    "--bin=hello_compute",
-                    "--package=examples"
-                ],
-                "filter": {
-                    "name": "hello_compute",
-                    "kind": "bin"
-                }
-            },
-            "args": [],
-            "env":
-            {
-                //"VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/radeon_icd.i686.json:/usr/share/vulkan/icd.d/radeon_icd.x86_64.json"
-                "VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/amd_icd32.json:/usr/share/vulkan/icd.d/amd_icd64.json"
-                //"VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/amd_pro_icd32.json:/usr/share/vulkan/icd.d/amd_pro_icd64.json"
-            },
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug unit tests in executable 'hello_compute'",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--bin=hello_compute",
-                    "--package=examples"
-                ],
-                "filter": {
-                    "name": "hello_compute",
+                    "name": "hello_instance",
                     "kind": "bin"
                 }
             },
@@ -279,12 +187,6 @@
                 }
             },
             "args": [],
-            "env":
-            {
-                //"VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/radeon_icd.i686.json:/usr/share/vulkan/icd.d/radeon_icd.x86_64.json"
-                "VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/amd_icd32.json:/usr/share/vulkan/icd.d/amd_icd64.json"
-                //"VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/amd_pro_icd32.json:/usr/share/vulkan/icd.d/amd_pro_icd64.json"
-            },
             "cwd": "${workspaceFolder}"
         },
         {
@@ -309,40 +211,182 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'compute_rendering'",
+            "name": "Debug executable 'hello_triangle'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=compute_rendering",
+                    "--bin=hello_triangle",
                     "--package=examples"
                 ],
                 "filter": {
-                    "name": "compute_rendering",
+                    "name": "hello_triangle",
                     "kind": "bin"
                 }
             },
             "args": [],
-            "env":
-            {
-                "VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/radeon_icd.i686.json:/usr/share/vulkan/icd.d/radeon_icd.x86_64.json"
-                //"VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/amd_icd32.json:/usr/share/vulkan/icd.d/amd_icd64.json"
-                //"VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/amd_pro_icd32.json:/usr/share/vulkan/icd.d/amd_pro_icd64.json"
-            },
             "cwd": "${workspaceFolder}"
         },
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'compute_rendering'",
+            "name": "Debug unit tests in executable 'hello_triangle'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=compute_rendering",
+                    "--bin=hello_triangle",
                     "--package=examples"
                 ],
                 "filter": {
-                    "name": "compute_rendering",
+                    "name": "hello_triangle",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'hello_window'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=hello_window",
+                    "--package=examples"
+                ],
+                "filter": {
+                    "name": "hello_window",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'hello_window'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=hello_window",
+                    "--package=examples"
+                ],
+                "filter": {
+                    "name": "hello_window",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'hello_window2'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=hello_window2",
+                    "--package=examples"
+                ],
+                "filter": {
+                    "name": "hello_window2",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'hello_window2'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=hello_window2",
+                    "--package=examples"
+                ],
+                "filter": {
+                    "name": "hello_window2",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'hello_window_glfw_glue'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=hello_window_glfw_glue",
+                    "--package=examples"
+                ],
+                "filter": {
+                    "name": "hello_window_glfw_glue",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'hello_window_glfw_glue'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=hello_window_glfw_glue",
+                    "--package=examples"
+                ],
+                "filter": {
+                    "name": "hello_window_glfw_glue",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'hello_window_sdl2_glue'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=hello_window_sdl2_glue",
+                    "--package=examples"
+                ],
+                "filter": {
+                    "name": "hello_window_sdl2_glue",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'hello_window_sdl2_glue'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=hello_window_sdl2_glue",
+                    "--package=examples"
+                ],
+                "filter": {
+                    "name": "hello_window_sdl2_glue",
                     "kind": "bin"
                 }
             },
@@ -362,6 +406,25 @@
                 ],
                 "filter": {
                     "name": "vulkan_framework",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'vulkan_framework_glfw_glue'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=vulkan_framework_glfw_glue"
+                ],
+                "filter": {
+                    "name": "vulkan_framework_glfw_glue",
                     "kind": "lib"
                 }
             },

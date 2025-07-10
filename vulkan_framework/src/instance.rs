@@ -194,50 +194,48 @@ impl Instance {
             };
 
             if let Ok(entry) = ash::Entry::load() {
-                if let Ok(instance) = entry.create_instance(
+                let Ok(instance) = entry.create_instance(
                     &create_info,
                     match alloc_callbacks.as_ref() {
                         Some(callbacks) => Some(callbacks),
                         None => None,
                     },
-                ) {
-                    // also enable debugging extension for debug build
-                    let debug_ext = match instance_extensions.iter().any(|ext| {
-                        ext.as_str()
-                            == ash::extensions::ext::DebugUtils::name()
-                                .to_str()
-                                .unwrap_or("")
-                    }) {
-                        true => {
-                            Option::Some(ash::extensions::ext::DebugUtils::new(&entry, &instance))
-                        }
-                        false => Option::None,
-                    };
+                ) else {
+                    return Err(VulkanError::Framework(
+                        FrameworkError::CannotCreateVulkanInstance,
+                    ));
+                };
 
-                    // if requested enable the swapchain required extension(s)
-                    let surface_ext = match instance_extensions.iter().any(|ext| {
-                        ext.as_str() == ash::extensions::khr::Surface::name().to_str().unwrap_or("")
-                    }) {
-                        true => Option::Some(ash::extensions::khr::Surface::new(&entry, &instance)),
-                        false => Option::None,
-                    };
+                // also enable debugging extension for debug build
+                let debug_ext = match instance_extensions.iter().any(|ext| {
+                    ext.as_str()
+                        == ash::extensions::ext::DebugUtils::name()
+                            .to_str()
+                            .unwrap_or("")
+                }) {
+                    true => Option::Some(ash::extensions::ext::DebugUtils::new(&entry, &instance)),
+                    false => Option::None,
+                };
 
-                    return Ok(Arc::new(Self {
-                        //data: data,
-                        //alloc_callbacks,
-                        entry,
-                        instance,
-                        extensions: InstanceExtensions {
-                            surface_khr_ext: surface_ext,
-                            debug_ext_ext: debug_ext,
-                        },
-                        version: *api_version,
-                    }));
-                }
+                // if requested enable the swapchain required extension(s)
+                let surface_ext = match instance_extensions.iter().any(|ext| {
+                    ext.as_str() == ash::extensions::khr::Surface::name().to_str().unwrap_or("")
+                }) {
+                    true => Option::Some(ash::extensions::khr::Surface::new(&entry, &instance)),
+                    false => Option::None,
+                };
 
-                return Err(VulkanError::Framework(
-                    FrameworkError::CannotCreateVulkanInstance,
-                ));
+                return Ok(Arc::new(Self {
+                    //data: data,
+                    //alloc_callbacks,
+                    entry,
+                    instance,
+                    extensions: InstanceExtensions {
+                        surface_khr_ext: surface_ext,
+                        debug_ext_ext: debug_ext,
+                    },
+                    version: *api_version,
+                }));
             }
 
             Err(VulkanError::Framework(FrameworkError::CannotLoadVulkan))
