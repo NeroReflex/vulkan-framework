@@ -83,7 +83,7 @@ pub struct Device {
     supported_extension_names: Vec<String>,
     extensions: DeviceExtensions,
     device: ash::Device,
-    physical_device: ash::vk::PhysicalDevice,
+    pub(crate) physical_device: ash::vk::PhysicalDevice,
     ray_tracing_info: Option<RaytracingInfo>,
 }
 
@@ -877,110 +877,5 @@ impl Device {
                     FrameworkError::UserInput(Some(format!("A queue family with index {} does not exists, at device creation time only {} queue families were requested.", index, collection.len()))),
                 ))
         }
-    }
-
-    pub(crate) fn search_adequate_heap(
-        &self,
-        current_requested_memory_heap_descriptor: &ConcreteMemoryHeapDescriptor,
-    ) -> Option<(u32, u32, u32)> {
-        let device_memory_properties = unsafe {
-            self.get_parent_instance()
-                .ash_handle()
-                .get_physical_device_memory_properties(self.physical_device.to_owned())
-        };
-
-        let requested_size = current_requested_memory_heap_descriptor.memory_minimum_size();
-
-        'suitable_heap_search: for (memory_type_index, heap_descriptor) in
-            device_memory_properties.memory_types.iter().enumerate()
-        {
-            // discard heaps that are too small
-            let available_size =
-                device_memory_properties.memory_heaps[heap_descriptor.heap_index as usize].size;
-            if requested_size > available_size {
-                continue 'suitable_heap_search;
-            }
-
-            match current_requested_memory_heap_descriptor.memory_type() {
-                MemoryType::DeviceLocal(host_visibility) => {
-                    // if I want device-local memory just ignore heaps that are not device-local
-                    if !heap_descriptor
-                        .property_flags
-                        .contains(ash::vk::MemoryPropertyFlags::DEVICE_LOCAL)
-                    {
-                        continue 'suitable_heap_search;
-                    }
-
-                    match host_visibility {
-                        Some(visibility_model) => {
-                            // a visibility model is specified, exclude heaps that are not suitable as not memory-mappable
-                            if !heap_descriptor
-                                .property_flags
-                                .contains(ash::vk::MemoryPropertyFlags::HOST_VISIBLE)
-                            {
-                                continue 'suitable_heap_search;
-                            }
-
-                            match visibility_model.cached() {
-                                true => {
-                                    if !heap_descriptor
-                                        .property_flags
-                                        .contains(ash::vk::MemoryPropertyFlags::HOST_CACHED)
-                                    {
-                                        continue 'suitable_heap_search;
-                                    }
-                                }
-                                false => {
-                                    if heap_descriptor
-                                        .property_flags
-                                        .contains(ash::vk::MemoryPropertyFlags::HOST_CACHED)
-                                    {
-                                        continue 'suitable_heap_search;
-                                    }
-                                }
-                            }
-                        }
-                        None => {
-                            // a visibility model is NOT specified, the user wants memory that is not memory-mappable
-                            if heap_descriptor
-                                .property_flags
-                                .contains(ash::vk::MemoryPropertyFlags::HOST_VISIBLE)
-                            {
-                                continue 'suitable_heap_search;
-                            }
-
-                            // Only avaialble on Vulkan 1.1
-                            /*
-                            if (instance.instance_vulkan_version()
-                                != InstanceAPIVersion::Version1_0)
-                                && (!heap_descriptor.property_flags.contains(
-                                    ash::vk::MemoryPropertyFlags::PROTECTED,
-                                ))
-                            {
-                                continue 'suitable_heap_search;
-                            }
-                            */
-                        }
-                    }
-                }
-                MemoryType::HostLocal(_coherence_model) => {
-                    // if I want host-local memory just ignore heaps that are not host-local
-                    if heap_descriptor
-                        .property_flags
-                        .contains(ash::vk::MemoryPropertyFlags::DEVICE_LOCAL)
-                    {
-                        continue 'suitable_heap_search;
-                    }
-                }
-            }
-
-            // If I'm here the previous search has find that the current heap is suitable...
-            return Some((
-                heap_descriptor.heap_index,
-                memory_type_index as u32,
-                heap_descriptor.property_flags.as_raw(),
-            ));
-        }
-        None
     }
 }
