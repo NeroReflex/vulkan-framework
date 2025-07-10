@@ -883,7 +883,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         continue;
                     }
 
-                    panic!("{}", err)
+                    panic!("Error in waiting for fence: {err}")
                 }
             }
         }
@@ -904,7 +904,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .unwrap();
 
-        let a = ash::vk::AccelerationStructureInstanceKHR {
+        let accel_structure_instance = ash::vk::AccelerationStructureInstanceKHR {
             transform: ash::vk::TransformMatrixKHR {
                 matrix: [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
             },
@@ -918,7 +918,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         raytracing_allocator
-            .write_raw_data(blas_instances_buffer.allocation_offset(), &[a])
+            .write_raw_data(blas_instances_buffer.allocation_offset(), &[accel_structure_instance])
             .unwrap();
 
         let tlas_building = PrimaryCommandBuffer::new(command_pool, Some("TLAS_Builder")).unwrap();
