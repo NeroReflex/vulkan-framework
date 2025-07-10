@@ -461,7 +461,7 @@ fn main() {
                 )
                 .unwrap();
 
-            current_frame = /*swapchain_index.0 as usize*/ current_frame + 1;
+            current_frame = swapchain_index.0 as usize;
         }
     }
 }
