@@ -226,7 +226,11 @@ fn main() {
 
         let image_available_semaphores = (0..frames_in_flight)
             .map(|idx| {
-                Semaphore::new(dev.clone(), Some(format!("image_available_semaphores[{idx}]").as_str())).unwrap()
+                Semaphore::new(
+                    dev.clone(),
+                    Some(format!("image_available_semaphores[{idx}]").as_str()),
+                )
+                .unwrap()
             })
             .collect::<Vec<Arc<Semaphore>>>();
 
@@ -238,7 +242,14 @@ fn main() {
             .collect::<Vec<Arc<Semaphore>>>();
 
         let swapchain_fences = (0..swapchain_images_count)
-            .map(|idx| Fence::new(dev.clone(), true, Some(format!("swapchain_fences[{idx}]").as_str())).unwrap())
+            .map(|idx| {
+                Fence::new(
+                    dev.clone(),
+                    true,
+                    Some(format!("swapchain_fences[{idx}]").as_str()),
+                )
+                .unwrap()
+            })
             .collect::<Vec<Arc<Fence>>>();
 
         let command_pool = CommandPool::new(queue_family, Some("My command pool")).unwrap();
@@ -248,8 +259,11 @@ fn main() {
 
         let present_command_buffers = (0..swapchain_images_count)
             .map(|idx| {
-                PrimaryCommandBuffer::new(command_pool.clone(), Some(format!("present_command_buffers[{idx}]").as_str()))
-                    .unwrap()
+                PrimaryCommandBuffer::new(
+                    command_pool.clone(),
+                    Some(format!("present_command_buffers[{idx}]").as_str()),
+                )
+                .unwrap()
             })
             .collect::<Vec<Arc<PrimaryCommandBuffer>>>();
 
