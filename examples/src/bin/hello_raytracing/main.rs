@@ -357,7 +357,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         let mut swapchain_images_count = device_swapchain_info.min_image_count() + 2;
-
+        let frames_in_flight = device_swapchain_info.min_image_count() as usize;
         if !device_swapchain_info.image_count_supported(swapchain_images_count) {
             println!("Image count {} not supported (the maximum is {}), sticking with the minimum one: {}", swapchain_images_count, device_swapchain_info.max_image_count(), device_swapchain_info.min_image_count());
             swapchain_images_count = device_swapchain_info.min_image_count();
@@ -455,29 +455,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .unwrap();
 
-        let image_available_semaphores = (0..swapchain_images_count)
-            .map(|_idx| {
-                Semaphore::new(dev.clone(), Some("image_available_semaphores[...]")).unwrap()
+        let image_available_semaphores = (0..frames_in_flight)
+            .map(|idx| {
+                Semaphore::new(
+                    dev.clone(),
+                    Some(format!("image_available_semaphores[{idx}]").as_str()),
+                )
+                .unwrap()
             })
             .collect::<Vec<Arc<Semaphore>>>();
 
-        let image_rendered_semaphores = (0..swapchain_images_count)
-            .map(|_idx| {
-                Semaphore::new(dev.clone(), Some("image_rendered_semaphores[...]")).unwrap()
+        // this tells me when the present operation can start
+        let present_ready = (0..swapchain_images_count)
+            .map(|idx| {
+                Semaphore::new(dev.clone(), Some(format!("present_ready[{idx}]").as_str())).unwrap()
             })
             .collect::<Vec<Arc<Semaphore>>>();
 
         let swapchain_fences = (0..swapchain_images_count)
-            .map(|_idx| Fence::new(dev.clone(), true, Some("swapchain_fences[...]")).unwrap())
+            .map(|idx| {
+                Fence::new(
+                    dev.clone(),
+                    true,
+                    Some(format!("swapchain_fences[{idx}]").as_str()),
+                )
+                .unwrap()
+            })
             .collect::<Vec<Arc<Fence>>>();
 
         let command_pool = CommandPool::new(queue_family.clone(), Some("My command pool")).unwrap();
 
         let present_command_buffers = (0..swapchain_images_count)
-            .map(|_idx| {
+            .map(|idx| {
                 PrimaryCommandBuffer::new(
                     command_pool.clone(),
-                    Some("present_command_buffers[...]"),
+                    Some(format!("present_command_buffers[{idx}]").as_str()),
                 )
                 .unwrap()
             })
@@ -522,7 +534,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let swapchain_image_views = swapchain_images
             .clone()
             .into_iter()
-            .map(|image_swapchain| {
+            .enumerate()
+            .map(|(idx, image_swapchain)| {
                 ImageView::new(
                     image_swapchain,
                     ImageViewType::Image2D,
@@ -533,7 +546,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     None,
                     None,
                     None,
-                    Some("swapchain_image_views[...]"),
+                    Some(format!("swapchain_image_views[{idx}]").as_str()),
                 )
                 .unwrap()
             })
@@ -999,30 +1012,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
 
-            let swapchain_index = swapchain
-                .acquire_next_image_index(
-                    Duration::from_nanos(u64::MAX),
-                    Some(
-                        image_available_semaphores
-                            [current_frame % (swapchain_images_count as usize)]
-                            .clone(),
-                    ),
-                    None,
-                )
-                .unwrap();
-
-            // wait for fence
             Fence::wait_for_fences(
-                &[swapchain_fences[current_frame % (swapchain_images_count as usize)].clone()],
+                &[swapchain_fences[current_frame].clone()],
                 FenceWaitFor::All,
                 Duration::from_nanos(u64::MAX),
             )
             .unwrap();
-            swapchain_fences[current_frame % (swapchain_images_count as usize)]
-                .reset()
+
+            let (swapchain_index, _swapchain_optimal) = swapchain
+                .acquire_next_image_index(
+                    Duration::from_nanos(u64::MAX),
+                    Some(image_available_semaphores[current_frame].clone()),
+                    None,
+                )
                 .unwrap();
 
-            present_command_buffers[current_frame % (swapchain_images_count as usize)]
+            swapchain_fences[current_frame].reset().unwrap();
+
+            present_command_buffers[swapchain_index as usize]
                 .record_commands(|recorder: &mut CommandBufferRecorder| {
                     // TODO: HERE transition the image layout from UNDEFINED to GENERAL so that ray tracing pipeline can write to it
                     recorder.image_barrier(ImageMemoryBarrier::new(
@@ -1038,7 +1045,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             &[AccessFlag::ShaderWrite],
                             None,
                         )),
-                        rt_images[current_frame % (swapchain_images_count as usize)].clone(),
+                        rt_images[swapchain_index as usize].clone(),
                         None,
                         None,
                         None,
@@ -1054,14 +1061,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     recorder.bind_descriptor_sets_for_ray_tracing_pipeline(
                         pipeline_layout.clone(),
                         0,
-                        &[
-                            rt_descriptor_sets[current_frame % (swapchain_images_count as usize)]
-                                .clone(),
-                        ],
+                        &[rt_descriptor_sets[swapchain_index as usize].clone()],
                     );
                     recorder.trace_rays(
-                        shader_binding_tables[current_frame % (swapchain_images_count as usize)]
-                            .clone(),
+                        shader_binding_tables[swapchain_index as usize].clone(),
                         Image3DDimensions::from(swapchain_extent),
                     );
 
@@ -1082,7 +1085,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             &[AccessFlag::ShaderRead],
                             None,
                         )),
-                        rt_images[current_frame % (swapchain_images_count as usize)].clone(),
+                        rt_images[swapchain_index as usize].clone(),
                         None,
                         None,
                         None,
@@ -1095,8 +1098,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ));
 
                     recorder.begin_renderpass(
-                        rendequad_framebuffers[current_frame % (swapchain_images_count as usize)]
-                            .clone(),
+                        rendequad_framebuffers[swapchain_index as usize].clone(),
                         &[ClearValues::new(Some(ColorClearValues::Vec4(
                             1.0, 1.0, 1.0, 1.0,
                         )))],
@@ -1109,9 +1111,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     recorder.bind_descriptor_sets_for_graphics_pipeline(
                         renderquad_pipeline_layout.clone(),
                         0,
-                        &[renderquad_descriptor_sets
-                            [current_frame % (swapchain_images_count as usize)]
-                            .clone()],
+                        &[renderquad_descriptor_sets[swapchain_index as usize].clone()],
                     );
                     recorder.draw(0, 6, 0, 1);
 
@@ -1121,38 +1121,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             queue
                 .submit(
-                    &[
-                        present_command_buffers[current_frame % (swapchain_images_count as usize)]
-                            .clone(),
-                    ],
+                    &[present_command_buffers[swapchain_index as usize].clone()],
                     &[(
                         PipelineStages::from(&[PipelineStage::FragmentShader], None, None, None),
-                        image_available_semaphores
-                            [current_frame % (swapchain_images_count as usize)]
-                            .clone(),
+                        image_available_semaphores[current_frame].clone(),
                     )],
-                    &[
-                        image_rendered_semaphores
-                            [current_frame % (swapchain_images_count as usize)]
-                            .clone(),
-                    ],
-                    swapchain_fences[current_frame % (swapchain_images_count as usize)].clone(),
+                    &[present_ready[swapchain_index as usize].clone()],
+                    swapchain_fences[current_frame].clone(),
                 )
                 .unwrap();
 
             swapchain
                 .queue_present(
                     queue.clone(),
-                    swapchain_index.0,
-                    &[
-                        image_rendered_semaphores
-                            [current_frame % (swapchain_images_count as usize)]
-                            .clone(),
-                    ],
+                    swapchain_index,
+                    &[present_ready[swapchain_index as usize].clone()],
                 )
                 .unwrap();
 
-            current_frame = swapchain_index.0 as usize;
+            current_frame = (current_frame + 1) % frames_in_flight;
         }
     }
 
