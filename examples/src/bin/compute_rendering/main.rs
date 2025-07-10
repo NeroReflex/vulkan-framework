@@ -749,133 +749,108 @@ fn main() {
     match queue.submit(&[command_buffer], &[], &[semaphore], fence.clone()) {
         Ok(()) => {
             println!("Command buffer submitted! GPU will work on that!");
-
-            'wait_for_fence: loop {
-                match Fence::wait_for_fences(
-                    &[fence.clone()],
-                    FenceWaitFor::All,
-                    Duration::from_nanos(100),
-                ) {
-                    Ok(_) => {
-                        fence.reset().unwrap();
-                        device.wait_idle().unwrap();
-                        break 'wait_for_fence;
-                    }
-                    Err(err) => {
-                        if err.is_timeout() {
-                            continue 'wait_for_fence;
-                        }
-
-                        panic!("Error waiting for device to complete the task. Don't know what to do... Panic!");
-                    }
-                }
-            }
-
-            renderquad_descriptor_set
-                .bind_resources(|renderquad_binder| {
-                    renderquad_binder.bind_combined_images_samplers(
-                        0,
-                        &[(
-                            renderquad_image_imput_format,
-                            image_view.clone(),
-                            renderquad_sampler.clone(),
-                        )],
-                    );
-                })
-                .unwrap();
-
-            let mut event_pump = sdl_context.event_pump().unwrap();
-            'running: loop {
-                for event in event_pump.poll_iter() {
-                    match event {
-                        sdl2::event::Event::Quit { .. }
-                        | sdl2::event::Event::KeyDown {
-                            keycode: Some(sdl2::keyboard::Keycode::Escape),
-                            ..
-                        } => {
-                            for fence in swapchain_fences.iter() {
-                                Fence::wait_for_fences(
-                                    &[fence.clone()],
-                                    FenceWaitFor::All,
-                                    Duration::from_nanos(u64::MAX),
-                                )
-                                .unwrap();
-                                fence.reset().unwrap();
-                            }
-                            device.wait_idle().unwrap();
-                            break 'running;
-                        }
-                        _ => {}
-                    }
-                }
-
-                Fence::wait_for_fences(
-                    &[swapchain_fences[current_frame].clone()],
-                    FenceWaitFor::All,
-                    Duration::from_nanos(u64::MAX),
-                )
-                .unwrap();
-
-                let (swapchain_index, _swapchain_optimal) = swapchain
-                    .acquire_next_image_index(
-                        Duration::from_nanos(u64::MAX),
-                        Some(image_available_semaphores[current_frame].clone()),
-                        None,
-                    )
-                    .unwrap();
-
-                swapchain_fences[current_frame].reset().unwrap();
-
-                present_command_buffers[swapchain_index as usize]
-                    .record_commands(|recorder: &mut CommandBufferRecorder| {
-                        // when submitting wait for the image available semaphore before beginning transfer
-
-                        recorder.begin_renderpass(
-                            rendequad_framebuffers[swapchain_index as usize].clone(),
-                            &[ClearValues::new(Some(ColorClearValues::Vec4(
-                                0.0, 0.0, 0.0, 0.0,
-                            )))],
-                        );
-                        recorder.bind_graphics_pipeline(
-                            renderquad_graphics_pipeline.clone(),
-                            None,
-                            None,
-                        );
-                        recorder.bind_descriptor_sets_for_graphics_pipeline(
-                            renderquad_pipeline_layout.clone(),
-                            0,
-                            &[renderquad_descriptor_set.clone()],
-                        );
-                        recorder.draw(0, 6, 0, 1);
-                        recorder.end_renderpass();
-                    })
-                    .unwrap();
-
-                queue
-                    .submit(
-                        &[present_command_buffers[swapchain_index as usize].clone()],
-                        &[(
-                            PipelineStages::from(&[PipelineStage::Transfer], None, None, None),
-                            image_available_semaphores[current_frame].clone(),
-                        )],
-                        &[present_ready[swapchain_index as usize].clone()],
-                        swapchain_fences[current_frame].clone(),
-                    )
-                    .unwrap();
-
-                swapchain
-                    .queue_present(
-                        queue.clone(),
-                        swapchain_index,
-                        &[present_ready[swapchain_index as usize].clone()],
-                    )
-                    .unwrap();
-
-                current_frame = (current_frame + 1) % frames_in_flight;
-            }
         }
         Err(err) => {
-            println!("Error submitting the command buffer to the queue: {err} -- No work will be done :(");
+            panic!("Error submitting the command buffer to the queue: {err} -- No work will be done :(");
         }
+    };
+
+    renderquad_descriptor_set
+        .bind_resources(|renderquad_binder| {
+            renderquad_binder.bind_combined_images_samplers(
+                0,
+                &[(
+                    renderquad_image_imput_format,
+                    image_view.clone(),
+                    renderquad_sampler.clone(),
+                )],
+            );
+        })
+        .unwrap();
+
+    let mut event_pump = sdl_context.event_pump().unwrap();
+    'running: loop {
+        for event in event_pump.poll_iter() {
+            match event {
+                sdl2::event::Event::Quit { .. }
+                | sdl2::event::Event::KeyDown {
+                    keycode: Some(sdl2::keyboard::Keycode::Escape),
+                    ..
+                } => {
+                    for fence in swapchain_fences.iter() {
+                        Fence::wait_for_fences(
+                            &[fence.clone()],
+                            FenceWaitFor::All,
+                            Duration::from_nanos(u64::MAX),
+                        )
+                        .unwrap();
+                        fence.reset().unwrap();
+                    }
+                    device.wait_idle().unwrap();
+                    break 'running;
+                }
+                _ => {}
+            }
+        }
+
+        Fence::wait_for_fences(
+            &[swapchain_fences[current_frame].clone()],
+            FenceWaitFor::All,
+            Duration::from_nanos(u64::MAX),
+        )
+        .unwrap();
+
+        let (swapchain_index, _swapchain_optimal) = swapchain
+            .acquire_next_image_index(
+                Duration::from_nanos(u64::MAX),
+                Some(image_available_semaphores[current_frame].clone()),
+                None,
+            )
+            .unwrap();
+
+        swapchain_fences[current_frame].reset().unwrap();
+
+        present_command_buffers[swapchain_index as usize]
+            .record_commands(|recorder: &mut CommandBufferRecorder| {
+                // when submitting wait for the image available semaphore before beginning transfer
+
+                recorder.begin_renderpass(
+                    rendequad_framebuffers[swapchain_index as usize].clone(),
+                    &[ClearValues::new(Some(ColorClearValues::Vec4(
+                        0.0, 0.0, 0.0, 0.0,
+                    )))],
+                );
+                recorder.bind_graphics_pipeline(renderquad_graphics_pipeline.clone(), None, None);
+                recorder.bind_descriptor_sets_for_graphics_pipeline(
+                    renderquad_pipeline_layout.clone(),
+                    0,
+                    &[renderquad_descriptor_set.clone()],
+                );
+                recorder.draw(0, 6, 0, 1);
+                recorder.end_renderpass();
+            })
+            .unwrap();
+
+        queue
+            .submit(
+                &[present_command_buffers[swapchain_index as usize].clone()],
+                &[(
+                    PipelineStages::from(&[PipelineStage::Transfer], None, None, None),
+                    image_available_semaphores[current_frame].clone(),
+                )],
+                &[present_ready[swapchain_index as usize].clone()],
+                swapchain_fences[current_frame].clone(),
+            )
+            .unwrap();
+
+        swapchain
+            .queue_present(
+                queue.clone(),
+                swapchain_index,
+                &[present_ready[swapchain_index as usize].clone()],
+            )
+            .unwrap();
+
+        current_frame = (current_frame + 1) % frames_in_flight;
     }
 }

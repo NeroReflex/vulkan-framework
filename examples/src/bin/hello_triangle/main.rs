@@ -479,6 +479,4 @@ fn main() {
             current_frame = (current_frame + 1) % frames_in_flight;
         }
     }
-
-    
 }
