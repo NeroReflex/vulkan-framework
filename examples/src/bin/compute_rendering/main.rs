@@ -749,6 +749,26 @@ fn main() {
     match queue.submit(&[command_buffer], &[], &[semaphore], fence.clone()) {
         Ok(()) => {
             println!("Command buffer submitted! GPU will work on that!");
+
+            'wait_for_fence: loop {
+                match Fence::wait_for_fences(
+                    &[fence.clone()],
+                    FenceWaitFor::All,
+                    Duration::from_nanos(100),
+                ) {
+                    Ok(_) => {
+                        fence.reset().unwrap();
+                        break 'wait_for_fence;
+                    }
+                    Err(err) => {
+                        if err.is_timeout() {
+                            continue 'wait_for_fence;
+                        }
+
+                        panic!("Error waiting for device to complete the task. Don't know what to do... Panic!");
+                    }
+                }
+            }
         }
         Err(err) => {
             panic!("Error submitting the command buffer to the queue: {err} -- No work will be done :(");
