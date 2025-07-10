@@ -458,6 +458,13 @@ impl SwapchainKHR {
         }
     }
 
+    /// Retrieve the index of the next available presentable image.
+    ///
+    /// @param timeout how long the function waits if no image is available
+    /// @param maybe_semaphore the semaphore to signal
+    /// @param maybe_fence the fence to signal
+    /// @returns a tuple of the index and a boolean true or a boolean false if the image is suboptimal
+    ///
     pub fn acquire_next_image_index(
         &self,
         timeout: Duration,
