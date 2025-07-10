@@ -32,6 +32,7 @@ struct DeviceData {
     selected_device_features: ash::vk::PhysicalDeviceFeatures,
     selected_queues: Vec<ash::vk::DeviceQueueCreateInfo>,
     required_family_collection: Vec<Option<(u32, ConcreteQueueFamilyDescriptor)>>,
+    supported_extension_names: Vec<String>,
     enabled_extensions: Vec<Vec<c_char>>,
     enabled_layers: Vec<Vec<c_char>>,
 }
@@ -79,6 +80,7 @@ pub struct Device {
     //_name_bytes: Vec<u8>,
     required_family_collection: Mutex<Vec<Option<(u32, ConcreteQueueFamilyDescriptor)>>>,
     instance: Arc<Instance>,
+    supported_extension_names: Vec<String>,
     extensions: DeviceExtensions,
     device: ash::Device,
     physical_device: ash::vk::PhysicalDevice,
@@ -142,6 +144,10 @@ impl Device {
 
     pub(crate) fn ash_handle(&self) -> &ash::Device {
         &self.device
+    }
+
+    pub fn supported_extensions(&self) -> Vec<String> {
+        self.supported_extension_names.clone()
     }
 
     pub fn wait_idle(&self) -> VulkanResult<()> {
@@ -377,7 +383,7 @@ impl Device {
                             .unwrap(),
                         );
 
-                        match phy_device_extensions {
+                        let supported_extension_names = match phy_device_extensions {
                             Ok(supported_extensions) => {
                                 let supproted_extensions_map = supported_extensions
                                     .iter()
@@ -420,13 +426,18 @@ impl Device {
                                         println!("Requested extension {requested_extension} is supported by physical device {phy_device_name}!");
                                     }
                                 }
+
+                                supported_extensions_strings
+                                    .iter()
+                                    .map(|ext_str| String::from(*ext_str))
+                                    .collect()
                             }
                             Err(err) => {
                                 println!("Error enumerating device extensions for device {phy_device_name}: {err}. Will skip this device.");
 
                                 continue 'suitable_device_search;
                             }
-                        }
+                        };
 
                         let msbytes = match phy_device_properties.device_type {
                             ash::vk::PhysicalDeviceType::DISCRETE_GPU => 0xC000000000000000u64,
@@ -526,6 +537,7 @@ impl Device {
                             selected_device_features: phy_device_features,
                             selected_queues,
                             required_family_collection,
+                            supported_extension_names,
                             enabled_extensions,
                             enabled_layers,
                         };
@@ -661,178 +673,173 @@ impl Device {
                     let mut raytracing_info: Option<RaytracingInfo> = Option::None;
 
                     let device_create_info = device_create_info_builder.build();
-                    match instance.ash_handle().create_device(
-                        selected_device.selected_physical_device.to_owned(),
-                        &device_create_info,
-                        instance.get_alloc_callbacks(),
-                    ) {
-                        Ok(device) => {
-                            // open requested swapchain extensions (or implied ones)
-                            let swapchain_ext: Option<ash::extensions::khr::Swapchain> =
-                                match device_extensions.iter().any(|ext| {
-                                    ext.as_str()
-                                        == ash::extensions::khr::Swapchain::name()
-                                            .to_str()
-                                            .unwrap_or("")
-                                }) {
-                                    true => Option::Some(ash::extensions::khr::Swapchain::new(
-                                        instance.ash_handle(),
-                                        &device,
-                                    )),
-                                    false => Option::None,
-                                };
+                    let device = instance
+                        .ash_handle()
+                        .create_device(
+                            selected_device.selected_physical_device.to_owned(),
+                            &device_create_info,
+                            instance.get_alloc_callbacks(),
+                        )
+                        .map_err(|err| {
+                            VulkanError::Vulkan(
+                                err.as_raw(),
+                                Some(format!("Error creating the logical device: {}", err)),
+                            )
+                        })?;
 
-                            let raytracing_pipeline_ext: Option<
-                                ash::extensions::khr::RayTracingPipeline,
-                            > = match ray_tracing_enabled {
-                                true => {
-                                    //ray_tracing_pipeline_properties.
-                                    println!(
-                                        "    RayTracing shader_group_handle_size: {}",
-                                        ray_tracing_pipeline_properties.shader_group_handle_size
-                                    );
-                                    println!(
-                                        "    RayTracing max_ray_dispatch_invocation_count: {}",
+                    // open requested swapchain extensions (or implied ones)
+                    let swapchain_ext: Option<ash::extensions::khr::Swapchain> =
+                        match device_extensions.iter().any(|ext| {
+                            ext.as_str()
+                                == ash::extensions::khr::Swapchain::name()
+                                    .to_str()
+                                    .unwrap_or("")
+                        }) {
+                            true => Option::Some(ash::extensions::khr::Swapchain::new(
+                                instance.ash_handle(),
+                                &device,
+                            )),
+                            false => Option::None,
+                        };
+
+                    let raytracing_pipeline_ext: Option<ash::extensions::khr::RayTracingPipeline> =
+                        match ray_tracing_enabled {
+                            true => {
+                                //ray_tracing_pipeline_properties.
+                                println!(
+                                    "    RayTracing shader_group_handle_size: {}",
+                                    ray_tracing_pipeline_properties.shader_group_handle_size
+                                );
+                                println!(
+                                    "    RayTracing max_ray_dispatch_invocation_count: {}",
+                                    ray_tracing_pipeline_properties
+                                        .max_ray_dispatch_invocation_count
+                                );
+                                println!(
+                                    "    RayTracing max_ray_hit_attribute_size: {}",
+                                    ray_tracing_pipeline_properties.max_ray_hit_attribute_size
+                                );
+                                println!(
+                                    "    RayTracing max_ray_recursion_depth: {}",
+                                    ray_tracing_pipeline_properties.max_ray_recursion_depth
+                                );
+                                println!(
+                                    "    RayTracing max_shader_group_stride: {}",
+                                    ray_tracing_pipeline_properties.max_shader_group_stride
+                                );
+                                println!(
+                                    "    RayTracing shader_group_base_alignment: {}",
+                                    ray_tracing_pipeline_properties.shader_group_base_alignment
+                                );
+                                println!(
+                                    "    RayTracing shader_group_handle_alignment: {}",
+                                    ray_tracing_pipeline_properties.shader_group_handle_alignment
+                                );
+
+                                raytracing_info = Some(RaytracingInfo {
+                                    shader_group_handle_size: ray_tracing_pipeline_properties
+                                        .shader_group_handle_size,
+                                    max_ray_dispatch_invocation_count:
                                         ray_tracing_pipeline_properties
-                                            .max_ray_dispatch_invocation_count
-                                    );
-                                    println!(
-                                        "    RayTracing max_ray_hit_attribute_size: {}",
-                                        ray_tracing_pipeline_properties.max_ray_hit_attribute_size
-                                    );
-                                    println!(
-                                        "    RayTracing max_ray_recursion_depth: {}",
-                                        ray_tracing_pipeline_properties.max_ray_recursion_depth
-                                    );
-                                    println!(
-                                        "    RayTracing max_shader_group_stride: {}",
-                                        ray_tracing_pipeline_properties.max_shader_group_stride
-                                    );
-                                    println!(
-                                        "    RayTracing shader_group_base_alignment: {}",
-                                        ray_tracing_pipeline_properties.shader_group_base_alignment
-                                    );
-                                    println!(
-                                        "    RayTracing shader_group_handle_alignment: {}",
-                                        ray_tracing_pipeline_properties
-                                            .shader_group_handle_alignment
-                                    );
+                                            .max_ray_dispatch_invocation_count,
+                                    max_ray_hit_attribute_size: ray_tracing_pipeline_properties
+                                        .max_ray_hit_attribute_size,
+                                    max_ray_recursion_depth: ray_tracing_pipeline_properties
+                                        .max_ray_recursion_depth,
+                                    max_shader_group_stride: ray_tracing_pipeline_properties
+                                        .max_shader_group_stride,
+                                    shader_group_base_alignment: ray_tracing_pipeline_properties
+                                        .shader_group_base_alignment,
+                                    shader_group_handle_alignment: ray_tracing_pipeline_properties
+                                        .shader_group_handle_alignment,
+                                });
 
-                                    raytracing_info = Some(RaytracingInfo {
-                                        shader_group_handle_size: ray_tracing_pipeline_properties
-                                            .shader_group_handle_size,
-                                        max_ray_dispatch_invocation_count:
-                                            ray_tracing_pipeline_properties
-                                                .max_ray_dispatch_invocation_count,
-                                        max_ray_hit_attribute_size: ray_tracing_pipeline_properties
-                                            .max_ray_hit_attribute_size,
-                                        max_ray_recursion_depth: ray_tracing_pipeline_properties
-                                            .max_ray_recursion_depth,
-                                        max_shader_group_stride: ray_tracing_pipeline_properties
-                                            .max_shader_group_stride,
-                                        shader_group_base_alignment:
-                                            ray_tracing_pipeline_properties
-                                                .shader_group_base_alignment,
-                                        shader_group_handle_alignment:
-                                            ray_tracing_pipeline_properties
-                                                .shader_group_handle_alignment,
-                                    });
+                                Option::Some(ash::extensions::khr::RayTracingPipeline::new(
+                                    instance.ash_handle(),
+                                    &device,
+                                ))
+                            }
+                            false => Option::None,
+                        };
 
-                                    Option::Some(ash::extensions::khr::RayTracingPipeline::new(
-                                        instance.ash_handle(),
-                                        &device,
-                                    ))
-                                }
-                                false => Option::None,
-                            };
+                    let acceleration_structure_ext: Option<
+                        ash::extensions::khr::AccelerationStructure,
+                    > = match acceleration_structure_enabled {
+                        true => Option::Some(ash::extensions::khr::AccelerationStructure::new(
+                            instance.ash_handle(),
+                            &device,
+                        )),
+                        false => Option::None,
+                    };
 
-                            let acceleration_structure_ext: Option<
-                                ash::extensions::khr::AccelerationStructure,
-                            > = match acceleration_structure_enabled {
-                                true => {
-                                    Option::Some(ash::extensions::khr::AccelerationStructure::new(
-                                        instance.ash_handle(),
-                                        &device,
-                                    ))
-                                }
-                                false => Option::None,
-                            };
+                    let raytracing_maintenance_ext: Option<
+                        ash::extensions::khr::RayTracingMaintenance1,
+                    > = match device_extensions.iter().any(|ext| {
+                        ext.as_str()
+                            == ash::extensions::khr::RayTracingMaintenance1::name()
+                                .to_str()
+                                .unwrap_or("")
+                    }) {
+                        true => Option::Some(ash::extensions::khr::RayTracingMaintenance1::new(
+                            instance.ash_handle(),
+                            &device,
+                        )),
+                        false => Option::None,
+                    };
 
-                            let raytracing_maintenance_ext: Option<
-                                ash::extensions::khr::RayTracingMaintenance1,
-                            > = match device_extensions.iter().any(|ext| {
-                                ext.as_str()
-                                    == ash::extensions::khr::RayTracingMaintenance1::name()
-                                        .to_str()
-                                        .unwrap_or("")
-                            }) {
-                                true => {
-                                    Option::Some(ash::extensions::khr::RayTracingMaintenance1::new(
-                                        instance.ash_handle(),
-                                        &device,
-                                    ))
-                                }
-                                false => Option::None,
-                            };
+                    let mut obj_name_bytes = vec![];
 
-                            let mut obj_name_bytes = vec![];
+                    if let Some(ext) = instance.get_debug_ext_extension() {
+                        if let Some(name) = debug_name {
+                            for name_ch in name.as_bytes().iter() {
+                                obj_name_bytes.push(*name_ch);
+                            }
+                            obj_name_bytes.push(0x00);
 
-                            if let Some(ext) = instance.get_debug_ext_extension() {
-                                if let Some(name) = debug_name {
-                                    for name_ch in name.as_bytes().iter() {
-                                        obj_name_bytes.push(*name_ch);
-                                    }
-                                    obj_name_bytes.push(0x00);
+                            let object_name = std::ffi::CStr::from_bytes_with_nul_unchecked(
+                                obj_name_bytes.as_slice(),
+                            );
+                            // set device name for debugging
+                            let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::builder()
+                                .object_type(ash::vk::ObjectType::DEVICE)
+                                .object_handle(ash::vk::Handle::as_raw(device.handle()))
+                                .object_name(object_name)
+                                .build();
 
-                                    let object_name = std::ffi::CStr::from_bytes_with_nul_unchecked(
-                                        obj_name_bytes.as_slice(),
-                                    );
-                                    // set device name for debugging
-                                    let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::builder()
-                                        .object_type(ash::vk::ObjectType::DEVICE)
-                                        .object_handle(ash::vk::Handle::as_raw(device.handle()))
-                                        .object_name(object_name)
-                                        .build();
-
-                                    if let Err(err) =
-                                        ext.set_debug_utils_object_name(device.handle(), &dbg_info)
-                                    {
-                                        #[cfg(debug_assertions)]
-                                        {
-                                            println!("Error setting the Debug name for the newly created Device, will use handle. Error: {}", err)
-                                        }
-                                    }
+                            if let Err(err) =
+                                ext.set_debug_utils_object_name(device.handle(), &dbg_info)
+                            {
+                                #[cfg(debug_assertions)]
+                                {
+                                    println!("Error setting the Debug name for the newly created Device, will use handle. Error: {}", err)
                                 }
                             }
-
-                            #[cfg(not(feature = "better_mutex"))]
-                            let required_family_collection =
-                                Mutex::new(selected_device.required_family_collection);
-
-                            #[cfg(feature = "better_mutex")]
-                            let required_family_collection =
-                                const_mutex(selected_device.required_family_collection);
-
-                            Ok(Arc::new(Self {
-                                //_name_bytes: obj_name_bytes,
-                                required_family_collection,
-                                device,
-                                extensions: DeviceExtensions {
-                                    swapchain_khr_ext: swapchain_ext,
-                                    raytracing_pipeline_khr_ext: raytracing_pipeline_ext,
-                                    raytracing_maintenance_khr_ext: raytracing_maintenance_ext,
-                                    acceleration_structure_khr_ext: acceleration_structure_ext,
-                                },
-                                instance,
-                                physical_device: selected_device.selected_physical_device,
-                                ray_tracing_info: raytracing_info,
-                            }))
                         }
-                        Err(err) => Err(VulkanError::Vulkan(
-                            err.as_raw(),
-                            Some(format!("Error creating the logical device: {}", err)),
-                        )),
                     }
+
+                    #[cfg(not(feature = "better_mutex"))]
+                    let required_family_collection =
+                        Mutex::new(selected_device.required_family_collection);
+
+                    #[cfg(feature = "better_mutex")]
+                    let required_family_collection =
+                        const_mutex(selected_device.required_family_collection);
+
+                    Ok(Arc::new(Self {
+                        //_name_bytes: obj_name_bytes,
+                        required_family_collection,
+                        device,
+                        extensions: DeviceExtensions {
+                            swapchain_khr_ext: swapchain_ext,
+                            raytracing_pipeline_khr_ext: raytracing_pipeline_ext,
+                            raytracing_maintenance_khr_ext: raytracing_maintenance_ext,
+                            acceleration_structure_khr_ext: acceleration_structure_ext,
+                        },
+                        instance,
+                        supported_extension_names: selected_device.supported_extension_names,
+                        physical_device: selected_device.selected_physical_device,
+                        ray_tracing_info: raytracing_info,
+                    }))
                 }
             }
         }
