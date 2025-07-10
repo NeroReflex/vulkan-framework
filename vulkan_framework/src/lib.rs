@@ -36,3 +36,6 @@ pub mod swapchain;
 pub mod swapchain_image;
 pub mod synchronization;
 pub mod utils;
+
+// re-export ash so that the user can use it directly
+pub extern crate ash;
