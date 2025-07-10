@@ -18,7 +18,7 @@ impl DescriptorPoolSizesAcceletarionStructureKHR {
         if self.acceleration_structure() > 0 {
             pool_sizes.push(
                 ash::vk::DescriptorPoolSize::builder()
-                    .ty(ash::vk::DescriptorType::SAMPLER)
+                    .ty(ash::vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
                     .descriptor_count(self.acceleration_structure())
                     .build(),
             )
