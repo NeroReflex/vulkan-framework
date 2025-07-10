@@ -298,8 +298,8 @@ fn main() {
             println!("Stack allocator created");
             mem_pool
         }
-        Err(_err) => {
-            println!("Error creating the memory pool");
+        Err(err) => {
+            println!("Error creating the memory pool: {err}");
             return;
         }
     };
@@ -664,9 +664,6 @@ fn main() {
         }
     };
 
-    let fence = Fence::new(device.clone(), false, Some("MyFence")).unwrap();
-    println!("Fence created");
-
     let semaphore = Semaphore::new(device.clone(), Some("MySemaphore")).unwrap();
     println!("Semaphore created");
 
@@ -746,34 +743,39 @@ fn main() {
 
     let mut current_frame: usize = 0;
 
-    match queue.submit(&[command_buffer], &[], &[semaphore], fence.clone()) {
-        Ok(()) => {
-            println!("Command buffer submitted! GPU will work on that!");
+    // perform the rendering on the initial image
+    {
+        let fence = Fence::new(device.clone(), false, Some("MyFence")).unwrap();
+        println!("Fence created");
+        match queue.submit(&[command_buffer], &[], &[semaphore], fence.clone()) {
+            Ok(()) => {
+                println!("Command buffer submitted! GPU will work on that!");
 
-            'wait_for_fence: loop {
-                match Fence::wait_for_fences(
-                    &[fence.clone()],
-                    FenceWaitFor::All,
-                    Duration::from_nanos(100),
-                ) {
-                    Ok(_) => {
-                        fence.reset().unwrap();
-                        break 'wait_for_fence;
-                    }
-                    Err(err) => {
-                        if err.is_timeout() {
-                            continue 'wait_for_fence;
+                'wait_for_fence: loop {
+                    match Fence::wait_for_fences(
+                        &[fence.clone()],
+                        FenceWaitFor::All,
+                        Duration::from_nanos(100),
+                    ) {
+                        Ok(_) => {
+                            fence.reset().unwrap();
+                            break 'wait_for_fence;
                         }
+                        Err(err) => {
+                            if err.is_timeout() {
+                                continue 'wait_for_fence;
+                            }
 
-                        panic!("Error waiting for device to complete the task. Don't know what to do... Panic!");
+                            panic!("Error waiting for device to complete the task. Don't know what to do... Panic!");
+                        }
                     }
                 }
             }
-        }
-        Err(err) => {
-            panic!("Error submitting the command buffer to the queue: {err} -- No work will be done :(");
-        }
-    };
+            Err(err) => {
+                panic!("Error submitting the command buffer to the queue: {err} -- No work will be done :(");
+            }
+        };
+    }
 
     renderquad_descriptor_set
         .bind_resources(|renderquad_binder| {
