@@ -511,17 +511,19 @@ impl ClearValues {
     pub(crate) fn ash_clear(&self) -> ash::vk::ClearValue {
         let mut result = ash::vk::ClearValue::default();
 
-        if let Some(color) = self.color { match color {
-            ColorClearValues::Vec4(r, g, b, a) => {
-                result.color.float32 = [r, g, b, a];
+        if let Some(color) = self.color {
+            match color {
+                ColorClearValues::Vec4(r, g, b, a) => {
+                    result.color.float32 = [r, g, b, a];
+                }
+                ColorClearValues::IVec4(r, g, b, a) => {
+                    result.color.int32 = [r, g, b, a];
+                }
+                ColorClearValues::UVec4(r, g, b, a) => {
+                    result.color.uint32 = [r, g, b, a];
+                }
             }
-            ColorClearValues::IVec4(r, g, b, a) => {
-                result.color.int32 = [r, g, b, a];
-            }
-            ColorClearValues::UVec4(r, g, b, a) => {
-                result.color.uint32 = [r, g, b, a];
-            }
-        } }
+        }
 
         result
     }
