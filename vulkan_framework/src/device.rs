@@ -661,7 +661,7 @@ impl Device {
                     let mut raytracing_info: Option<RaytracingInfo> = Option::None;
 
                     let device_create_info = device_create_info_builder.build();
-                    return match instance.ash_handle().create_device(
+                    match instance.ash_handle().create_device(
                         selected_device.selected_physical_device.to_owned(),
                         &device_create_info,
                         instance.get_alloc_callbacks(),
@@ -832,7 +832,7 @@ impl Device {
                             err.as_raw(),
                             Some(format!("Error creating the logical device: {}", err)),
                         )),
-                    };
+                    }
                 }
             }
         }

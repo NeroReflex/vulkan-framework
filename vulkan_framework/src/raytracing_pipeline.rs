@@ -172,70 +172,61 @@ impl RaytracingPipeline {
                 }
 
                 // Intersection
-                match &maybe_intersection_shader {
-                    Option::Some(intersection_shader) => {
-                        stages_create_info.push(
-                            ash::vk::PipelineShaderStageCreateInfo::builder()
-                                .stage(ash::vk::ShaderStageFlags::INTERSECTION_KHR)
-                                .module(intersection_shader.ash_handle())
-                                .name(main_name)
-                                .build(),
-                        );
+                if let Option::Some(intersection_shader) = &maybe_intersection_shader {
+                    stages_create_info.push(
+                        ash::vk::PipelineShaderStageCreateInfo::builder()
+                            .stage(ash::vk::ShaderStageFlags::INTERSECTION_KHR)
+                            .module(intersection_shader.ash_handle())
+                            .name(main_name)
+                            .build(),
+                    );
 
-                        shader_group_create_info.push(
-                            ash::vk::RayTracingShaderGroupCreateInfoKHR::builder()
-                                .ty(ash::vk::RayTracingShaderGroupTypeKHR::GENERAL)
-                                .general_shader(shader_unused_khr)
-                                .closest_hit_shader(shader_unused_khr)
-                                .closest_hit_shader(shader_unused_khr)
-                                .any_hit_shader(shader_unused_khr)
-                                .intersection_shader((stages_create_info.len() - 1) as u32)
-                                .build(),
-                        );
-                    }
-                    None => {}
+                    shader_group_create_info.push(
+                        ash::vk::RayTracingShaderGroupCreateInfoKHR::builder()
+                            .ty(ash::vk::RayTracingShaderGroupTypeKHR::GENERAL)
+                            .general_shader(shader_unused_khr)
+                            .closest_hit_shader(shader_unused_khr)
+                            .closest_hit_shader(shader_unused_khr)
+                            .any_hit_shader(shader_unused_khr)
+                            .intersection_shader((stages_create_info.len() - 1) as u32)
+                            .build(),
+                    );
                 }
 
                 // AnyHit
-                match &maybe_anyhit_shader {
-                    Option::Some(anyhit_shader) => {
-                        stages_create_info.push(
-                            ash::vk::PipelineShaderStageCreateInfo::builder()
-                                .stage(ash::vk::ShaderStageFlags::INTERSECTION_KHR)
-                                .module(anyhit_shader.ash_handle())
-                                .name(main_name)
-                                .build(),
-                        );
+                if let Option::Some(anyhit_shader) = &maybe_anyhit_shader {
+                    stages_create_info.push(
+                        ash::vk::PipelineShaderStageCreateInfo::builder()
+                            .stage(ash::vk::ShaderStageFlags::INTERSECTION_KHR)
+                            .module(anyhit_shader.ash_handle())
+                            .name(main_name)
+                            .build(),
+                    );
 
-                        shader_group_create_info.push(
-                            ash::vk::RayTracingShaderGroupCreateInfoKHR::builder()
-                                .ty(ash::vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP)
-                                .general_shader(shader_unused_khr)
-                                .closest_hit_shader(shader_unused_khr)
-                                .closest_hit_shader(shader_unused_khr)
-                                .any_hit_shader((stages_create_info.len() - 1) as u32)
-                                .intersection_shader(shader_unused_khr)
-                                .build(),
-                        );
-                    }
-                    None => {}
+                    shader_group_create_info.push(
+                        ash::vk::RayTracingShaderGroupCreateInfoKHR::builder()
+                            .ty(ash::vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP)
+                            .general_shader(shader_unused_khr)
+                            .closest_hit_shader(shader_unused_khr)
+                            .closest_hit_shader(shader_unused_khr)
+                            .any_hit_shader((stages_create_info.len() - 1) as u32)
+                            .intersection_shader(shader_unused_khr)
+                            .build(),
+                    );
                 }
 
                 // Callable
                 let mut callable_shader_present = false;
-                match &maybe_callable_shader {
-                    Option::Some(callable_shader) => {
-                        callable_shader_present = true;
+                if let Option::Some(callable_shader) = &maybe_callable_shader {
+                    callable_shader_present = true;
 
-                        stages_create_info.push(
-                            ash::vk::PipelineShaderStageCreateInfo::builder()
-                                .stage(ash::vk::ShaderStageFlags::CALLABLE_KHR)
-                                .module(callable_shader.ash_handle())
-                                .name(main_name)
-                                .build(),
-                        );
-                    }
-                    None => {}
+                    stages_create_info.push(
+                        ash::vk::PipelineShaderStageCreateInfo::builder()
+                            .stage(ash::vk::ShaderStageFlags::CALLABLE_KHR)
+                            .module(callable_shader.ash_handle())
+                            .name(main_name)
+                            .build(),
+                    );
                 }
 
                 let create_info = ash::vk::RayTracingPipelineCreateInfoKHR::builder()

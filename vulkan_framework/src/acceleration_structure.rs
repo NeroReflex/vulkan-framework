@@ -157,9 +157,9 @@ pub enum VertexIndexing {
 impl VertexIndexing {
     pub(crate) fn ash_index_type(&self) -> ash::vk::IndexType {
         match self {
-            &VertexIndexing::None => ash::vk::IndexType::NONE_KHR,
-            &VertexIndexing::UInt16 => ash::vk::IndexType::UINT16,
-            &VertexIndexing::UInt32 => ash::vk::IndexType::UINT32,
+            VertexIndexing::None => ash::vk::IndexType::NONE_KHR,
+            VertexIndexing::UInt16 => ash::vk::IndexType::UINT16,
+            VertexIndexing::UInt32 => ash::vk::IndexType::UINT32,
         }
     }
 }
@@ -473,6 +473,12 @@ impl BottomLevelAccelerationStructure {
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct TopLevelBLASGroupDecl {
     array_of_pointers: bool,
+}
+
+impl Default for TopLevelBLASGroupDecl {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TopLevelBLASGroupDecl {
