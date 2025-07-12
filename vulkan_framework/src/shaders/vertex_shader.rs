@@ -70,8 +70,7 @@ impl VertexShader {
                 .is_accessible_by(&ShaderType::Vertex));
         }
 
-        let create_info = ash::vk::ShaderModuleCreateInfo::default()
-            .code(code);
+        let create_info = ash::vk::ShaderModuleCreateInfo::default().code(code);
 
         match unsafe {
             device.ash_handle().create_shader_module(

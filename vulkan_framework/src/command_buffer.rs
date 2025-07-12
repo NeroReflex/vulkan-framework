@@ -661,7 +661,7 @@ impl<'a> CommandBufferRecorder<'a> {
             };
 
             let transform_info = ash::vk::BufferDeviceAddressInfo::default()
-                    .buffer(g.transform_buffer().ash_handle());
+                .buffer(g.transform_buffer().ash_handle());
             let transform_buffer_device_addr = unsafe {
                 self.device
                     .ash_handle()
@@ -1335,8 +1335,7 @@ impl PrimaryCommandBuffer {
                                 .object_handle(command_buffer)
                                 .object_name(object_name);
 
-                            if let Err(err) = ext.set_debug_utils_object_name(&dbg_info,
-                            ) {
+                            if let Err(err) = ext.set_debug_utils_object_name(&dbg_info) {
                                 #[cfg(debug_assertions)]
                                 {
                                     println!("Error setting the Debug name for the newly created Command Pool, will use handle. Error: {}", err)

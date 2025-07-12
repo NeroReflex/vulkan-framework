@@ -50,8 +50,7 @@ impl PrivateShaderTrait for AnyHitShader {
 
 impl AnyHitShader {
     pub fn new<'a, 'b>(device: Arc<Device>, code: &[u32]) -> VulkanResult<Arc<Self>> {
-        let create_info = ash::vk::ShaderModuleCreateInfo::default()
-            .code(code);
+        let create_info = ash::vk::ShaderModuleCreateInfo::default().code(code);
 
         match unsafe {
             device.ash_handle().create_shader_module(

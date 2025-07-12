@@ -708,12 +708,12 @@ impl GraphicsPipeline {
                             .max_depth_bounds(max_depth_bounds)
                             .min_depth_bounds(min_depth_bounds)
                     }
-                    Option::None => depth_stencil_state_create_info_builder
-                        .depth_bounds_test_enable(false),
+                    Option::None => {
+                        depth_stencil_state_create_info_builder.depth_bounds_test_enable(false)
+                    }
                 }
             }
-            Option::None => depth_stencil_state_create_info_builder
-                .depth_test_enable(false),
+            Option::None => depth_stencil_state_create_info_builder.depth_test_enable(false),
         };
 
         let create_info = ash::vk::GraphicsPipelineCreateInfo::default()

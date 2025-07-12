@@ -351,7 +351,6 @@ impl BottomLevelAccelerationStructure {
 
         match device.ash_ext_acceleration_structure_khr() {
             Some(as_ext) => {
-
                 let mut build_sizes = ash::vk::AccelerationStructureBuildSizesInfoKHR::default();
 
                 unsafe {
@@ -359,7 +358,7 @@ impl BottomLevelAccelerationStructure {
                         allowed_building_devices.ash_flags(),
                         &geometry_info,
                         max_primitives_count.as_slice(),
-                        &mut build_sizes
+                        &mut build_sizes,
                     )
                 };
 
@@ -621,7 +620,7 @@ impl TopLevelAccelerationStructure {
                         allowed_building_devices.ash_flags(),
                         &geometry_info,
                         max_primitives_count.as_slice(),
-                        &mut build_sizes
+                        &mut build_sizes,
                     )
                 };
 
@@ -695,7 +694,7 @@ impl TopLevelAccelerationStructure {
                             .size(buffer.size())
                             .ty(ash::vk::AccelerationStructureTypeKHR::TOP_LEVEL)
                             .create_flags(ash::vk::AccelerationStructureCreateFlagsKHR::empty());
-                            //.device_address(buffer_device_addr)
+                        //.device_address(buffer_device_addr)
 
                         match unsafe {
                             as_ext.create_acceleration_structure(

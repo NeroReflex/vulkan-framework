@@ -164,8 +164,8 @@ impl Fence {
         starts_in_signaled_state: bool,
         debug_name: Option<&str>,
     ) -> VulkanResult<Arc<Self>> {
-        let create_info = ash::vk::FenceCreateInfo::default()
-            .flags(match starts_in_signaled_state {
+        let create_info =
+            ash::vk::FenceCreateInfo::default().flags(match starts_in_signaled_state {
                 true => ash::vk::FenceCreateFlags::SIGNALED,
                 false => ash::vk::FenceCreateFlags::from_raw(0x00u32),
             });
@@ -194,8 +194,7 @@ impl Fence {
                                 .object_handle(fence)
                                 .object_name(object_name);
 
-                            if let Err(err) = ext.set_debug_utils_object_name(&dbg_info
-                            ) {
+                            if let Err(err) = ext.set_debug_utils_object_name(&dbg_info) {
                                 #[cfg(debug_assertions)]
                                 {
                                     println!("Error setting the Debug name for the newly created Queue, will use handle. Error: {}", err)

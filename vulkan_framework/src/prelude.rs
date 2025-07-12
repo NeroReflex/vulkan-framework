@@ -34,30 +34,32 @@ impl Display for VulkanError {
             VulkanError::Framework(error) => match error {
                 FrameworkError::MallocFail => write!(f, "Framework error: MallocFail"),
                 FrameworkError::IncompatibleMemoryHeapType => {
-                                write!(f, "Framework error: IncompatibleMemoryHeapType")
-                            }
+                    write!(f, "Framework error: IncompatibleMemoryHeapType")
+                }
                 FrameworkError::UserInput(_maybe_details) => {
-                                write!(f, "Framework error: UserInput")
-                            }
+                    write!(f, "Framework error: UserInput")
+                }
                 FrameworkError::NoSuitableDeviceFound => {
-                                write!(f, "Framework error: NoSuitableDeviceFound")
-                            }
+                    write!(f, "Framework error: NoSuitableDeviceFound")
+                }
                 FrameworkError::NoSuitableMemoryHeapFound => {
-                                write!(f, "Framework error: NoSuitableMemoryHeapFound")
-                            }
+                    write!(f, "Framework error: NoSuitableMemoryHeapFound")
+                }
                 FrameworkError::ResourceFromIncompatibleDevice => {
-                                write!(f, "Framework error: ResourceFromIncompatibleDevice")
-                            }
+                    write!(f, "Framework error: ResourceFromIncompatibleDevice")
+                }
                 FrameworkError::CannotLoadVulkan => write!(f, "Framework error: CannotLoadVulkan"),
                 FrameworkError::CannotCreateVulkanInstance => {
-                                write!(f, "Framework error: CannotCreateVulkanInstance")
-                            }
+                    write!(f, "Framework error: CannotCreateVulkanInstance")
+                }
                 FrameworkError::MapMemoryError => write!(f, "Framework error: MapMemoryError"),
                 FrameworkError::IncompatibleInstanceVersion(_current_version, _wanted_version) => {
-                                write!(f, "Framework error: IncompatibleInstanceVersion")
-                            }
+                    write!(f, "Framework error: IncompatibleInstanceVersion")
+                }
                 FrameworkError::Unknown(_details) => write!(f, "Framework error: Unknown"),
-                FrameworkError::MalformedRenderpassDefinition => write!(f, "Framework error: Malformed renderpass definition"),
+                FrameworkError::MalformedRenderpassDefinition => {
+                    write!(f, "Framework error: Malformed renderpass definition")
+                }
             },
             VulkanError::Vulkan(code, maybe_str) => match maybe_str {
                 Some(str) => write!(f, "Vulkan error ({}): {}", code, str),

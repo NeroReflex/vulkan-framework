@@ -288,24 +288,36 @@ impl RenderPass {
                 Some(tmp) => {
                     subpass_definition.p_color_attachments = tmp.as_slice().as_ptr();
                     subpass_definition.color_attachment_count = tmp.len() as u32;
-                },
-                None => return Err(VulkanError::Framework(FrameworkError::MalformedRenderpassDefinition))
+                }
+                None => {
+                    return Err(VulkanError::Framework(
+                        FrameworkError::MalformedRenderpassDefinition,
+                    ))
+                }
             };
-            
+
             match input_attachment_references_by_subpass.last() {
                 Some(tmp) => {
                     subpass_definition.p_input_attachments = tmp.as_slice().as_ptr();
                     subpass_definition.input_attachment_count = tmp.len() as u32;
-                },
-                None => return Err(VulkanError::Framework(FrameworkError::MalformedRenderpassDefinition))
+                }
+                None => {
+                    return Err(VulkanError::Framework(
+                        FrameworkError::MalformedRenderpassDefinition,
+                    ))
+                }
             };
 
             if subpass_uses_depth_stencil_attachment {
                 match output_depth_stencil_attachment_references_by_subpass.last() {
                     Some(tmp) => {
                         subpass_definition.p_depth_stencil_attachment = tmp;
-                    },
-                    None => return Err(VulkanError::Framework(FrameworkError::MalformedRenderpassDefinition))
+                    }
+                    None => {
+                        return Err(VulkanError::Framework(
+                            FrameworkError::MalformedRenderpassDefinition,
+                        ))
+                    }
                 }
             }
 

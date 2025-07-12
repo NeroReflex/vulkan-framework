@@ -593,10 +593,7 @@ impl Device {
                     });
 
                     let ray_tracing_enabled = device_extensions.iter().any(|ext| {
-                        ext.as_str()
-                            == ash::khr::ray_tracing_pipeline::NAME
-                                .to_str()
-                                .unwrap_or("")
+                        ext.as_str() == ash::khr::ray_tracing_pipeline::NAME.to_str().unwrap_or("")
                     });
 
                     let mut features2 = ash::vk::PhysicalDeviceFeatures2::default();
@@ -692,21 +689,23 @@ impl Device {
 
                     // open requested swapchain extensions (or implied ones)
 
-                    let debug_utils_ext = instance.get_debug_ext_extension().map(|_ext| Arc::new(ash::ext::debug_utils::Device::new(instance.ash_handle(), &device)));
+                    let debug_utils_ext = instance.get_debug_ext_extension().map(|_ext| {
+                        Arc::new(ash::ext::debug_utils::Device::new(
+                            instance.ash_handle(),
+                            &device,
+                        ))
+                    });
 
-                    let swapchain_ext =
-                        match device_extensions.iter().any(|ext| {
-                            ext.as_str()
-                                == ash::khr::swapchain::NAME
-                                    .to_str()
-                                    .unwrap_or("")
-                        }) {
-                            true => Option::Some(ash::khr::swapchain::Device::new(
-                                instance.ash_handle(),
-                                &device,
-                            )),
-                            false => Option::None,
-                        };
+                    let swapchain_ext = match device_extensions
+                        .iter()
+                        .any(|ext| ext.as_str() == ash::khr::swapchain::NAME.to_str().unwrap_or(""))
+                    {
+                        true => Option::Some(ash::khr::swapchain::Device::new(
+                            instance.ash_handle(),
+                            &device,
+                        )),
+                        false => Option::None,
+                    };
 
                     let raytracing_pipeline_ext: Option<ash::khr::ray_tracing_pipeline::Device> =
                         match ray_tracing_enabled {
@@ -760,7 +759,10 @@ impl Device {
                                         .shader_group_handle_alignment,
                                 });
 
-                                Option::Some(ash::khr::ray_tracing_pipeline::Device::new(instance.ash_handle(), &device))
+                                Option::Some(ash::khr::ray_tracing_pipeline::Device::new(
+                                    instance.ash_handle(),
+                                    &device,
+                                ))
                             }
                             false => Option::None,
                         };
@@ -807,9 +809,7 @@ impl Device {
                                 .object_handle(device.handle())
                                 .object_name(object_name);
 
-                            if let Err(err) =
-                                ext.set_debug_utils_object_name(&dbg_info)
-                            {
+                            if let Err(err) = ext.set_debug_utils_object_name(&dbg_info) {
                                 #[cfg(debug_assertions)]
                                 {
                                     println!("Error setting the Debug name for the newly created Device, will use handle. Error: {}", err)

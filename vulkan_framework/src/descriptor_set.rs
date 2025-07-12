@@ -48,10 +48,7 @@ impl<'a> DescriptorSetWriter<'a> {
         }
     }
 
-    pub(crate) fn used_resources(
-        &self,
-    ) -> Vec<DescriptorSetBoundResource>
-    {
+    pub(crate) fn used_resources(&self) -> Vec<DescriptorSetBoundResource> {
         self.used_resources.iter().map(|res| res.clone()).collect()
     }
 
@@ -66,16 +63,18 @@ impl<'a> DescriptorSetWriter<'a> {
             .collect();
         self.acceleration_structures.push(as_handles);
 
-        let mut acceleration_structure_writer = ash::vk::WriteDescriptorSetAccelerationStructureKHR::default();
+        let mut acceleration_structure_writer =
+            ash::vk::WriteDescriptorSetAccelerationStructureKHR::default();
         match self.acceleration_structures.last() {
             Some(tmp) => {
                 acceleration_structure_writer.p_acceleration_structures = tmp.as_slice().as_ptr();
                 acceleration_structure_writer.acceleration_structure_count = tmp.len() as u32;
-            },
+            }
             None => {}
         };
 
-        self.acceleration_structure_writers.push(acceleration_structure_writer);
+        self.acceleration_structure_writers
+            .push(acceleration_structure_writer);
 
         let mut descriptor_writes = ash::vk::WriteDescriptorSet::default()
             .dst_set(self.descriptor_set.ash_handle())
@@ -86,7 +85,7 @@ impl<'a> DescriptorSetWriter<'a> {
             Some(tmp) => {
                 descriptor_writes.descriptor_count = 1;
                 descriptor_writes.p_next = (tmp as *const _) as *const std::ffi::c_void;
-            },
+            }
             None => {}
         }
 
@@ -129,7 +128,7 @@ impl<'a> DescriptorSetWriter<'a> {
             Some(tmp) => {
                 descriptor_writes.p_image_info = tmp.as_slice().as_ptr();
                 descriptor_writes.descriptor_count = tmp.len() as u32;
-            },
+            }
             None => {}
         };
 
@@ -168,7 +167,7 @@ impl<'a> DescriptorSetWriter<'a> {
             Some(tmp) => {
                 descriptor_writes.p_image_info = tmp.as_slice().as_ptr();
                 descriptor_writes.descriptor_count = tmp.len() as u32;
-            },
+            }
             None => {}
         };
 
@@ -212,7 +211,7 @@ impl<'a> DescriptorSetWriter<'a> {
             Some(tmp) => {
                 descriptor_writes.p_buffer_info = tmp.as_slice().as_ptr();
                 descriptor_writes.descriptor_count = tmp.len() as u32;
-            },
+            }
             None => {}
         };
 
@@ -256,7 +255,7 @@ impl<'a> DescriptorSetWriter<'a> {
             Some(tmp) => {
                 descriptor_writes.p_buffer_info = tmp.as_slice().as_ptr();
                 descriptor_writes.descriptor_count = tmp.len() as u32;
-            },
+            }
             None => {}
         };
 
@@ -294,7 +293,7 @@ impl<'a> DescriptorSetWriter<'a> {
             Some(tmp) => {
                 descriptor_writes.p_image_info = tmp.as_slice().as_ptr();
                 descriptor_writes.descriptor_count = tmp.len() as u32;
-            },
+            }
             None => {}
         };
 

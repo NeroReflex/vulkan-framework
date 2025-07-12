@@ -918,7 +918,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         raytracing_allocator
-            .write_raw_data(blas_instances_buffer.allocation_offset(), &[accel_structure_instance])
+            .write_raw_data(
+                blas_instances_buffer.allocation_offset(),
+                &[accel_structure_instance],
+            )
             .unwrap();
 
         let tlas_building = PrimaryCommandBuffer::new(command_pool, Some("TLAS_Builder")).unwrap();

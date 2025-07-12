@@ -1043,9 +1043,7 @@ impl Image {
                         .object_handle(image)
                         .object_name(object_name);
 
-                    if let Err(err) =
-                        ext.set_debug_utils_object_name(&dbg_info)
-                    {
+                    if let Err(err) = ext.set_debug_utils_object_name(&dbg_info) {
                         #[cfg(debug_assertions)]
                         {
                             println!("Error setting the Debug name for the newly created Image, will use handle. Error: {}", err)
@@ -1060,8 +1058,7 @@ impl Image {
         {
             unsafe { device.ash_handle().get_image_memory_requirements(image) }
         } else {
-            let requirements_info = ash::vk::ImageMemoryRequirementsInfo2::default()
-                .image(image);
+            let requirements_info = ash::vk::ImageMemoryRequirementsInfo2::default().image(image);
 
             let mut requirements = ash::vk::MemoryRequirements2::default();
 

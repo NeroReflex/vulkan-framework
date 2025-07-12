@@ -198,20 +198,19 @@ impl Instance {
                 };
 
                 // also enable debugging extension for debug build
-                let debug_ext = match instance_extensions.iter().any(|ext| {
-                    ext.as_str()
-                        == ash::ext::debug_utils::NAME
-                            .to_str()
-                            .unwrap_or("")
-                }) {
+                let debug_ext = match instance_extensions
+                    .iter()
+                    .any(|ext| ext.as_str() == ash::ext::debug_utils::NAME.to_str().unwrap_or(""))
+                {
                     true => Option::Some(ash::ext::debug_utils::Instance::new(&entry, &instance)),
                     false => Option::None,
                 };
 
                 // if requested enable the swapchain required extension(s)
-                let surface_ext = match instance_extensions.iter().any(|ext| {
-                    ext.as_str() == ash::khr::surface::NAME.to_str().unwrap_or("")
-                }) {
+                let surface_ext = match instance_extensions
+                    .iter()
+                    .any(|ext| ext.as_str() == ash::khr::surface::NAME.to_str().unwrap_or(""))
+                {
                     true => Option::Some(ash::khr::surface::Instance::new(&entry, &instance)),
                     false => Option::None,
                 };
