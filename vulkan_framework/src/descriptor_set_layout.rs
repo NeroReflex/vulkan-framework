@@ -109,9 +109,8 @@ impl DescriptorSetLayout {
         let bindings: Vec<ash::vk::DescriptorSetLayoutBinding> =
             descriptors.iter().map(|d| d.ash_handle()).collect();
 
-        let create_info = ash::vk::DescriptorSetLayoutCreateInfo::builder()
-            .bindings(bindings.as_slice())
-            .build();
+        let create_info = ash::vk::DescriptorSetLayoutCreateInfo::default()
+            .bindings(bindings.as_slice());
 
         match unsafe {
             device.ash_handle().create_descriptor_set_layout(

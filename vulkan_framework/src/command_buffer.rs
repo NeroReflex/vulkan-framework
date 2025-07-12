@@ -553,7 +553,7 @@ impl<'a> CommandBufferRecorder<'a> {
         for g in geometry_data.iter() {
             // TODO: assert from same device
 
-            let instances_info = ash::vk::BufferDeviceAddressInfo::builder()
+            let instances_info = ash::vk::BufferDeviceAddressInfo::default()
                 .buffer(g.instances_buffer().ash_handle());
             let instances_buffer_device_addr = unsafe {
                 self.device
@@ -566,26 +566,23 @@ impl<'a> CommandBufferRecorder<'a> {
             };
 
             geometries.push(
-                ash::vk::AccelerationStructureGeometryKHR::builder()
+                ash::vk::AccelerationStructureGeometryKHR::default()
                     // TODO: .flags()
                     .geometry_type(ash::vk::GeometryTypeKHR::INSTANCES)
                     .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
-                        instances: ash::vk::AccelerationStructureGeometryInstancesDataKHR::builder(
+                        instances: ash::vk::AccelerationStructureGeometryInstancesDataKHR::default(
                         )
                         .array_of_pointers(g.decl().array_of_pointers())
-                        .data(data_addr)
-                        .build(),
-                    })
-                    .build(),
+                        .data(data_addr),
+                    }),
             );
 
             range_infos.push(vec![
-                ash::vk::AccelerationStructureBuildRangeInfoKHR::builder()
+                ash::vk::AccelerationStructureBuildRangeInfoKHR::default()
                     .primitive_offset(g.primitive_offset())
                     .primitive_count(g.primitive_count())
                     .first_vertex(g.first_vertex())
-                    .transform_offset(g.transform_offset())
-                    .build(),
+                    .transform_offset(g.transform_offset()),
             ]);
 
             max_primitives_count.push(1);
@@ -596,15 +593,14 @@ impl<'a> CommandBufferRecorder<'a> {
         // Any VkDeviceOrHostAddressKHR members of pBuildInfo are ignored by this command,
         // except that the hostAddress member of VkAccelerationStructureGeometryTrianglesDataKHR::transformData
         // will be examined to check if it is NULL.
-        let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::builder()
+        let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::default()
             .geometries(geometries.as_slice())
             .flags(ash::vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
             .ty(ash::vk::AccelerationStructureTypeKHR::TOP_LEVEL)
             .mode(ash::vk::BuildAccelerationStructureModeKHR::BUILD)
             .src_acceleration_structure(ash::vk::AccelerationStructureKHR::null())
             .dst_acceleration_structure(tlas.ash_handle())
-            .scratch_data(scratch_buffer.addr())
-            .build();
+            .scratch_data(scratch_buffer.addr());
 
         let ranges_collection: Vec<&[ash::vk::AccelerationStructureBuildRangeInfoKHR]> =
             range_infos.iter().map(|r| r.as_slice()).collect();
@@ -641,7 +637,7 @@ impl<'a> CommandBufferRecorder<'a> {
             // TODO: assert from same device
 
             let vertex_info =
-                ash::vk::BufferDeviceAddressInfo::builder().buffer(g.vertex_buffer().ash_handle());
+                ash::vk::BufferDeviceAddressInfo::default().buffer(g.vertex_buffer().ash_handle());
             let vertex_buffer_device_addr = unsafe {
                 self.device
                     .ash_handle()
@@ -651,7 +647,7 @@ impl<'a> CommandBufferRecorder<'a> {
             let index_buffer_device_addr = match g.index_buffer() {
                 Some(buffer) => unsafe {
                     let index_info =
-                        ash::vk::BufferDeviceAddressInfo::builder().buffer(buffer.ash_handle());
+                        ash::vk::BufferDeviceAddressInfo::default().buffer(buffer.ash_handle());
 
                     self.device
                         .ash_handle()
@@ -664,8 +660,7 @@ impl<'a> CommandBufferRecorder<'a> {
                 }
             };
 
-            let transform_info: ash::vk::BufferDeviceAddressInfoBuilder<'_> =
-                ash::vk::BufferDeviceAddressInfo::builder()
+            let transform_info = ash::vk::BufferDeviceAddressInfo::default()
                     .buffer(g.transform_buffer().ash_handle());
             let transform_buffer_device_addr = unsafe {
                 self.device
@@ -674,11 +669,11 @@ impl<'a> CommandBufferRecorder<'a> {
             };
 
             geometries.push(
-                ash::vk::AccelerationStructureGeometryKHR::builder()
+                ash::vk::AccelerationStructureGeometryKHR::default()
                     // TODO: .flags()
                     .geometry_type(ash::vk::GeometryTypeKHR::TRIANGLES)
                     .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
-                        triangles: ash::vk::AccelerationStructureGeometryTrianglesDataKHR::builder(
+                        triangles: ash::vk::AccelerationStructureGeometryTrianglesDataKHR::default(
                         )
                         .index_type(g.decl().vertex_indexing().ash_index_type())
                         .max_vertex(g.decl().max_vertices())
@@ -686,25 +681,24 @@ impl<'a> CommandBufferRecorder<'a> {
                         .vertex_stride(g.decl().vertex_stride())
                         .vertex_data(ash::vk::DeviceOrHostAddressConstKHR {
                             device_address: vertex_buffer_device_addr,
-                        }) //
+                        })
+                        // mat4
                         .transform_data(ash::vk::DeviceOrHostAddressConstKHR {
                             device_address: transform_buffer_device_addr,
-                        }) // mat4
+                        })
+                        // [u32]
                         .index_data(ash::vk::DeviceOrHostAddressConstKHR {
                             device_address: index_buffer_device_addr,
-                        }) // [u32]
-                        .build(),
-                    })
-                    .build(),
+                        }),
+                    }),
             );
 
             range_infos.push(vec![
-                ash::vk::AccelerationStructureBuildRangeInfoKHR::builder()
+                ash::vk::AccelerationStructureBuildRangeInfoKHR::default()
                     .primitive_offset(g.primitive_offset())
                     .primitive_count(g.primitive_count())
                     .first_vertex(g.first_vertex())
-                    .transform_offset(g.transform_offset())
-                    .build(),
+                    .transform_offset(g.transform_offset()),
             ]);
 
             max_primitives_count.push(g.decl().max_triangles());
@@ -715,15 +709,14 @@ impl<'a> CommandBufferRecorder<'a> {
         // Any VkDeviceOrHostAddressKHR members of pBuildInfo are ignored by this command,
         // except that the hostAddress member of VkAccelerationStructureGeometryTrianglesDataKHR::transformData
         // will be examined to check if it is NULL.
-        let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::builder()
+        let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::default()
             .geometries(geometries.as_slice())
             .flags(ash::vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
             .ty(ash::vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL)
             .mode(ash::vk::BuildAccelerationStructureModeKHR::BUILD)
             .src_acceleration_structure(ash::vk::AccelerationStructureKHR::null())
             .dst_acceleration_structure(blas.ash_handle())
-            .scratch_data(scratch_buffer.addr())
-            .build();
+            .scratch_data(scratch_buffer.addr());
 
         let ranges_collection: Vec<&[ash::vk::AccelerationStructureBuildRangeInfoKHR]> =
             range_infos.iter().map(|r| r.as_slice()).collect();
@@ -891,14 +884,13 @@ impl<'a> CommandBufferRecorder<'a> {
                 Some(viewport) => {
                     assert!(graphics_pipeline.is_viewport_dynamic());
 
-                    let viewports = [ash::vk::Viewport::builder()
+                    let viewports = [ash::vk::Viewport::default()
                         .x(viewport.top_left_x())
                         .y(viewport.top_left_y())
                         .width(viewport.width())
                         .height(viewport.height())
                         .min_depth(viewport.min_depth())
-                        .max_depth(viewport.max_depth())
-                        .build()];
+                        .max_depth(viewport.max_depth())];
 
                     self.device.ash_handle().cmd_set_viewport(
                         self.command_buffer.ash_handle(),
@@ -917,20 +909,17 @@ impl<'a> CommandBufferRecorder<'a> {
 
                     let dimensions = scissor.dimensions();
 
-                    let scissors = [ash::vk::Rect2D::builder()
+                    let scissors = [ash::vk::Rect2D::default()
                         .offset(
-                            Offset2D::builder()
+                            Offset2D::default()
                                 .x(scissor.offset_x())
-                                .y(scissor.offset_y())
-                                .build(),
+                                .y(scissor.offset_y()),
                         )
                         .extent(
-                            ash::vk::Extent2D::builder()
+                            ash::vk::Extent2D::default()
                                 .width(dimensions.width())
-                                .height(dimensions.height())
-                                .build(),
-                        )
-                        .build()];
+                                .height(dimensions.height()),
+                        )];
 
                     self.device.ash_handle().cmd_set_scissor(
                         self.command_buffer.ash_handle(),
@@ -972,9 +961,8 @@ impl<'a> CommandBufferRecorder<'a> {
             .map(|iv: &Arc<ImageView>| iv.ash_handle())
             .collect::<Vec<ash::vk::ImageView>>();
 
-        let mut attachment_begin_info = ash::vk::RenderPassAttachmentBeginInfo::builder()
-            .attachments(ash_imageviews.as_slice())
-            .build();
+        let mut attachment_begin_info = ash::vk::RenderPassAttachmentBeginInfo::default()
+            .attachments(ash_imageviews.as_slice());
 
         let vulkan_instance_version = self.device.get_parent_instance().instance_vulkan_version();
 
@@ -983,23 +971,20 @@ impl<'a> CommandBufferRecorder<'a> {
                 && (vulkan_instance_version != InstanceAPIVersion::Version1_1)
         );
 
-        let render_pass_begin_info = ash::vk::RenderPassBeginInfo::builder()
+        let render_pass_begin_info = ash::vk::RenderPassBeginInfo::default()
             .push_next(&mut attachment_begin_info)
             .clear_values(ash_clear_values.as_slice())
             .framebuffer(ash::vk::Framebuffer::from_raw(framebuffer.native_handle()))
             .render_pass(framebuffer.get_parent_renderpass().ash_handle())
             .render_area(
-                ash::vk::Rect2D::builder()
-                    .offset(ash::vk::Offset2D::builder().x(0).y(0).build())
+                ash::vk::Rect2D::default()
+                    .offset(ash::vk::Offset2D::default().x(0).y(0))
                     .extent(
-                        ash::vk::Extent2D::builder()
+                        ash::vk::Extent2D::default()
                             .width(framebuffer.dimensions().width())
-                            .height(framebuffer.dimensions().height())
-                            .build(),
-                    )
-                    .build(),
-            )
-            .build();
+                            .height(framebuffer.dimensions().height()),
+                    ),
+            );
 
         self.used_resources
             .insert(CommandBufferReferencedResource::Framebuffer(framebuffer));
@@ -1026,22 +1011,19 @@ impl<'a> CommandBufferRecorder<'a> {
         let ash_clear_values: smallvec::SmallVec<[ash::vk::ClearValue; 32]> =
             clear_values.iter().map(|cv| cv.ash_clear()).collect();
 
-        let render_pass_begin_info = ash::vk::RenderPassBeginInfo::builder()
+        let render_pass_begin_info = ash::vk::RenderPassBeginInfo::default()
             .clear_values(ash_clear_values.as_slice())
             .framebuffer(ash::vk::Framebuffer::from_raw(framebuffer.native_handle()))
             .render_pass(framebuffer.get_parent_renderpass().ash_handle())
             .render_area(
-                ash::vk::Rect2D::builder()
-                    .offset(ash::vk::Offset2D::builder().x(0).y(0).build())
+                ash::vk::Rect2D::default()
+                    .offset(ash::vk::Offset2D::default().x(0).y(0))
                     .extent(
-                        ash::vk::Extent2D::builder()
+                        ash::vk::Extent2D::default()
                             .width(framebuffer.dimensions().width())
-                            .height(framebuffer.dimensions().height())
-                            .build(),
-                    )
-                    .build(),
-            )
-            .build();
+                            .height(framebuffer.dimensions().height()),
+                    ),
+            );
 
         self.used_resources
             .insert(CommandBufferReferencedResource::Framebuffer(framebuffer));
@@ -1066,17 +1048,16 @@ impl<'a> CommandBufferRecorder<'a> {
         extent: ImageDimensions,
         //srr: ImageSubresourceRange,
     ) {
-        let src_offset = ash::vk::Offset3D::builder().x(0).y(0).z(0).build();
+        let src_offset = ash::vk::Offset3D::default().x(0).y(0).z(0);
 
-        let dst_offset = ash::vk::Offset3D::builder().x(0).y(0).z(0).build();
+        let dst_offset = ash::vk::Offset3D::default().x(0).y(0).z(0);
 
-        let regions = ash::vk::ImageCopy::builder()
+        let regions = ash::vk::ImageCopy::default()
             .extent(extent.ash_extent_3d())
             .dst_subresource(dst_subresource.ash_subresource_layers())
             .src_subresource(src_subresource.ash_subresource_layers())
             .dst_offset(dst_offset)
-            .src_offset(src_offset)
-            .build();
+            .src_offset(src_offset);
 
         self.used_resources
             .insert(CommandBufferReferencedResource::Image(src.clone()));
@@ -1099,7 +1080,7 @@ impl<'a> CommandBufferRecorder<'a> {
     pub fn image_barrier(&mut self, dependency_info: ImageMemoryBarrier) {
         // TODO: check every resource is from the same device
 
-        let image_memory_barrier = ash::vk::ImageMemoryBarrier::builder()
+        let image_memory_barrier = ash::vk::ImageMemoryBarrier::default()
             .image(dependency_info.ash_image_handle())
             .old_layout(dependency_info.old_layout.ash_layout())
             .new_layout(dependency_info.new_layout.ash_layout())
@@ -1107,8 +1088,7 @@ impl<'a> CommandBufferRecorder<'a> {
             .dst_queue_family_index(dependency_info.ash_dst_queue_family())
             .src_access_mask(dependency_info.ash_src_access_mask_flags())
             .dst_access_mask(dependency_info.ash_dst_access_mask_flags())
-            .subresource_range(dependency_info.ash_subresource_range())
-            .build();
+            .subresource_range(dependency_info.ash_subresource_range());
 
         self.used_resources
             .insert(CommandBufferReferencedResource::Image(
@@ -1280,9 +1260,8 @@ impl PrimaryCommandBuffer {
             }
         };
 
-        let begin_info = ash::vk::CommandBufferBeginInfo::builder()
-            .flags(ash::vk::CommandBufferUsageFlags::empty() /*ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT*/)
-            .build();
+        let begin_info = ash::vk::CommandBufferBeginInfo::default()
+            .flags(ash::vk::CommandBufferUsageFlags::empty() /*ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT*/);
 
         match unsafe {
             device
@@ -1330,18 +1309,17 @@ impl PrimaryCommandBuffer {
     ) -> VulkanResult<Arc<Self>> {
         let device = command_pool.get_parent_queue_family().get_parent_device();
 
-        let create_info = ash::vk::CommandBufferAllocateInfo::builder()
+        let create_info = ash::vk::CommandBufferAllocateInfo::default()
             .command_pool(command_pool.ash_handle())
             .level(ash::vk::CommandBufferLevel::PRIMARY)
-            .command_buffer_count(1)
-            .build();
+            .command_buffer_count(1);
 
         match unsafe { device.ash_handle().allocate_command_buffers(&create_info) } {
             Ok(command_buffers) => {
                 let command_buffer = command_buffers[0];
 
                 let mut obj_name_bytes = vec![];
-                if let Some(ext) = device.get_parent_instance().get_debug_ext_extension() {
+                if let Some(ext) = device.ash_ext_debug_utils_ext() {
                     if let Some(name) = debug_name {
                         for name_ch in name.as_bytes().iter() {
                             obj_name_bytes.push(*name_ch);
@@ -1353,15 +1331,11 @@ impl PrimaryCommandBuffer {
                                 obj_name_bytes.as_slice(),
                             );
                             // set device name for debugging
-                            let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::builder()
-                                .object_type(ash::vk::ObjectType::COMMAND_BUFFER)
-                                .object_handle(ash::vk::Handle::as_raw(command_buffer))
-                                .object_name(object_name)
-                                .build();
+                            let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::default()
+                                .object_handle(command_buffer)
+                                .object_name(object_name);
 
-                            if let Err(err) = ext.set_debug_utils_object_name(
-                                device.ash_handle().handle(),
-                                &dbg_info,
+                            if let Err(err) = ext.set_debug_utils_object_name(&dbg_info,
                             ) {
                                 #[cfg(debug_assertions)]
                                 {

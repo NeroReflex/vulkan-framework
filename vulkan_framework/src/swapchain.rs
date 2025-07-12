@@ -159,10 +159,9 @@ impl DeviceSurfaceInfo {
         color_space: &SurfaceColorspaceSwapchainKHR,
         format: &ImageFormat,
     ) -> bool {
-        let fmt = ash::vk::SurfaceFormatKHR::builder()
+        let fmt = ash::vk::SurfaceFormatKHR::default()
             .format(format.ash_format())
-            .color_space(color_space.ash_colorspace())
-            .build();
+            .color_space(color_space.ash_colorspace());
 
         self.surface_formats.contains(&fmt)
     }
@@ -345,11 +344,12 @@ impl SwapchainKHR {
             })
             .collect::<smallvec::SmallVec<[ash::vk::Semaphore; 8]>>();
 
-        let present_info = ash::vk::PresentInfoKHR::builder()
-            .swapchains(&[self.ash_handle()])
-            .image_indices(&[index])
-            .wait_semaphores(native_semaphores.as_slice())
-            .build();
+        let swapchains = [self.ash_handle()];
+        let indexes = [index];
+        let present_info = ash::vk::PresentInfoKHR::default()
+            .swapchains(&swapchains)
+            .image_indices(&indexes)
+            .wait_semaphores(native_semaphores.as_slice());
 
         match self.get_parent_device().ash_ext_swapchain_khr() {
             Option::Some(ext) => {
@@ -535,16 +535,15 @@ impl SwapchainKHR {
                         && device_info.present_mode_supported(&present_mode)
                 );
 
-                let create_info = ash::vk::SwapchainCreateInfoKHR::builder()
+                let create_info = ash::vk::SwapchainCreateInfoKHR::default()
                     .old_swapchain(match &old_swapchain {
                         Some(old) => old.swapchain,
                         None => ash::vk::SwapchainKHR::from_raw(0),
                     })
                     .image_extent(
-                        ash::vk::Extent2D::builder()
+                        ash::vk::Extent2D::default()
                             .height(extent.height())
-                            .width(extent.width())
-                            .build(),
+                            .width(extent.width()),
                     )
                     .surface(*surface.ash_handle())
                     .queue_family_indices(queue_family_indexes.as_slice())
@@ -560,8 +559,7 @@ impl SwapchainKHR {
                     .clipped(clipped)
                     .pre_transform(transform.ash_transform())
                     .composite_alpha(composite_alpha.ash_alpha())
-                    .min_image_count(min_image_count)
-                    .build();
+                    .min_image_count(min_image_count);
 
                 //let surface_capabilities =
 

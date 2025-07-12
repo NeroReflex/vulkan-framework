@@ -75,20 +75,18 @@ impl ComputePipeline {
             }
         };
 
-        let shader_stage_info = ash::vk::PipelineShaderStageCreateInfo::builder()
+        let shader_stage_info = ash::vk::PipelineShaderStageCreateInfo::default()
             .stage(ash::vk::ShaderStageFlags::COMPUTE)
             .module(shader.ash_handle())
-            .name(name)
-            .build();
+            .name(name);
 
-        let create_info = [ash::vk::ComputePipelineCreateInfo::builder()
+        let create_info = [ash::vk::ComputePipelineCreateInfo::default()
             .layout(pipeline_layout.ash_handle())
             .stage(shader_stage_info)
             .base_pipeline_handle(match &base_pipeline {
                 Some(old_pipeline) => old_pipeline.ash_handle(),
                 None => ash::vk::Pipeline::null(),
-            })
-            .build()];
+            })];
 
         match unsafe {
             pipeline_layout
@@ -108,7 +106,7 @@ impl ComputePipeline {
                 let pipeline = pipelines[0];
 
                 let mut obj_name_bytes = vec![];
-                if let Some(ext) = device.get_parent_instance().get_debug_ext_extension() {
+                if let Some(ext) = device.ash_ext_debug_utils_ext() {
                     if let Some(name) = debug_name {
                         for name_ch in name.as_bytes().iter() {
                             obj_name_bytes.push(*name_ch);
@@ -120,15 +118,11 @@ impl ComputePipeline {
                                 obj_name_bytes.as_slice(),
                             );
                             // set device name for debugging
-                            let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::builder()
-                                .object_type(ash::vk::ObjectType::PIPELINE)
-                                .object_handle(ash::vk::Handle::as_raw(pipeline))
-                                .object_name(object_name)
-                                .build();
+                            let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::default()
+                                .object_handle(pipeline)
+                                .object_name(object_name);
 
-                            if let Err(err) = ext.set_debug_utils_object_name(
-                                device.ash_handle().handle(),
-                                &dbg_info,
+                            if let Err(err) = ext.set_debug_utils_object_name(&dbg_info,
                             ) {
                                 #[cfg(debug_assertions)]
                                 {

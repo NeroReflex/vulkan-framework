@@ -1,8 +1,6 @@
 use std::ffi::CStr;
 use std::sync::Arc;
 
-use ash::vk::Handle;
-
 use crate::device::{Device, DeviceOwned};
 
 use crate::image::{Image1DTrait, Image2DDimensions, Image2DTrait, ImageMultisampling};
@@ -508,21 +506,19 @@ impl GraphicsPipeline {
 
         for (binding_index, binding) in bindings.iter().enumerate() {
             vertex_binding_descriptions.push(
-                ash::vk::VertexInputBindingDescription::builder()
+                ash::vk::VertexInputBindingDescription::default()
                     .binding(binding_index as u32)
                     .input_rate(binding.input_rate().ash_input_rate())
-                    .stride(binding.stride())
-                    .build(),
+                    .stride(binding.stride()),
             );
 
             for attribute_on_binding in binding.attributes() {
                 vertex_attribute_descriptions.push(
-                    ash::vk::VertexInputAttributeDescription::builder()
+                    ash::vk::VertexInputAttributeDescription::default()
                         .binding(binding_index as u32)
                         .offset(attribute_on_binding.offset())
                         .location(attribute_on_binding.location())
-                        .format(attribute_on_binding.ash_format())
-                        .build(),
+                        .format(attribute_on_binding.ash_format()),
                 )
             }
         }
@@ -552,74 +548,63 @@ impl GraphicsPipeline {
         let pipeline_shader_stage_create_info: smallvec::SmallVec<
             [ash::vk::PipelineShaderStageCreateInfo; 8],
         > = smallvec::smallvec![
-            ash::vk::PipelineShaderStageCreateInfo::builder()
+            ash::vk::PipelineShaderStageCreateInfo::default()
                 .module(vertex_shader_module.ash_handle())
                 .name(vertex_shader_entry_name)
-                .stage(ash::vk::ShaderStageFlags::VERTEX)
-                .build(),
-            ash::vk::PipelineShaderStageCreateInfo::builder()
+                .stage(ash::vk::ShaderStageFlags::VERTEX),
+            ash::vk::PipelineShaderStageCreateInfo::default()
                 .module(fragment_shader_module.ash_handle())
                 .name(fragment_shader_entry_name)
                 .stage(ash::vk::ShaderStageFlags::FRAGMENT)
-                .build()
         ];
 
-        let vertex_input_state_create_info = ash::vk::PipelineVertexInputStateCreateInfo::builder()
+        let vertex_input_state_create_info = ash::vk::PipelineVertexInputStateCreateInfo::default()
             .vertex_attribute_descriptions(vertex_attribute_descriptions.as_slice())
-            .vertex_binding_descriptions(vertex_binding_descriptions.as_slice())
-            .build();
+            .vertex_binding_descriptions(vertex_binding_descriptions.as_slice());
 
-        let multisampling_create_info = ash::vk::PipelineMultisampleStateCreateInfo::builder()
-            .rasterization_samples(multisampling.ash_samples())
-            .build();
+        let multisampling_create_info = ash::vk::PipelineMultisampleStateCreateInfo::default()
+            .rasterization_samples(multisampling.ash_samples());
 
         let viewport_static = match viewport {
-            Some(viewport) => ash::vk::Viewport::builder()
+            Some(viewport) => ash::vk::Viewport::default()
                 .x(viewport.top_left_x())
                 .y(viewport.top_left_y())
                 .width(viewport.width())
                 .height(viewport.height())
                 .min_depth(viewport.min_depth())
-                .max_depth(viewport.max_depth())
-                .build(),
-            None => ash::vk::Viewport::builder()
+                .max_depth(viewport.max_depth()),
+            None => ash::vk::Viewport::default()
                 .x(0.0)
                 .y(0.0)
                 .width(32.0)
                 .height(32.0)
                 .min_depth(0.0f32)
-                .max_depth(1.0f32)
-                .build(),
+                .max_depth(1.0f32),
         };
 
         let scissor_static = match scissor {
             Some(scissor) => {
                 let dimensions = scissor.dimensions();
 
-                ash::vk::Rect2D::builder()
+                ash::vk::Rect2D::default()
                     .extent(
-                        ash::vk::Extent2D::builder()
+                        ash::vk::Extent2D::default()
                             .width(dimensions.width())
-                            .height(dimensions.height())
-                            .build(),
+                            .height(dimensions.height()),
                     )
                     .offset(
-                        ash::vk::Offset2D::builder()
+                        ash::vk::Offset2D::default()
                             .x(scissor.offset_x())
-                            .y(scissor.offset_y())
-                            .build(),
+                            .y(scissor.offset_y()),
                     )
-                    .build()
             }
-            None => ash::vk::Rect2D::builder()
+            None => ash::vk::Rect2D::default()
                 .extent(
-                    ash::vk::Extent2D::builder()
+                    ash::vk::Extent2D::default()
                         .width(viewport_static.width as u32)
-                        .height(viewport_static.height as u32)
-                        .build(),
+                        .height(viewport_static.height as u32),
                 )
-                .offset(ash::vk::Offset2D::builder().build())
-                .build(),
+                .offset(ash::vk::Offset2D::default()),
         };
 
         let is_viewport_dynamic = viewport.is_none();
@@ -635,14 +620,14 @@ impl GraphicsPipeline {
             dynamic_states.push(ash::vk::DynamicState::SCISSOR);
         }
 
-        let dynamic_state_create_info = ash::vk::PipelineDynamicStateCreateInfo::builder()
-            .dynamic_states(dynamic_states.as_slice())
-            .build();
+        let dynamic_state_create_info = ash::vk::PipelineDynamicStateCreateInfo::default()
+            .dynamic_states(dynamic_states.as_slice());
 
-        let mut viewport_state_create_info = ash::vk::PipelineViewportStateCreateInfo::builder()
-            .viewports(&[viewport_static])
-            .scissors(&[scissor_static])
-            .build();
+        let static_viewports = [viewport_static];
+        let static_scissors = [scissor_static];
+        let mut viewport_state_create_info = ash::vk::PipelineViewportStateCreateInfo::default()
+            .viewports(&static_viewports)
+            .scissors(&static_scissors);
 
         if is_viewport_dynamic {
             viewport_state_create_info.p_viewports = std::ptr::null();
@@ -655,7 +640,7 @@ impl GraphicsPipeline {
         }
 
         let rasterization_state_create_info_builder =
-            ash::vk::PipelineRasterizationStateCreateInfo::builder()
+            ash::vk::PipelineRasterizationStateCreateInfo::default()
                 .cull_mode(rasterizer.cull_mode().ash_flags())
                 .front_face(rasterizer.front_face().ash_flags())
                 .front_face(rasterizer.front_face().ash_flags())
@@ -673,15 +658,13 @@ impl GraphicsPipeline {
                     .depth_bias_slope_factor(depth_bias_slope_factor)
                     .depth_bias_enable(true)
                     .depth_clamp_enable(true)
-                    .build()
             }
-            None => rasterization_state_create_info_builder.build(),
+            None => rasterization_state_create_info_builder,
         };
 
-        let input_assembly_create_info = ash::vk::PipelineInputAssemblyStateCreateInfo::builder()
+        let input_assembly_create_info = ash::vk::PipelineInputAssemblyStateCreateInfo::default()
             .topology(ash::vk::PrimitiveTopology::TRIANGLE_LIST)
-            .primitive_restart_enable(false)
-            .build();
+            .primitive_restart_enable(false);
 
         let mut color_blend_attachment_state: smallvec::SmallVec<
             [ash::vk::PipelineColorBlendAttachmentState; 16],
@@ -691,7 +674,7 @@ impl GraphicsPipeline {
             .output_color_attachment_indeces_size()
         {
             color_blend_attachment_state.push(
-                ash::vk::PipelineColorBlendAttachmentState::builder()
+                ash::vk::PipelineColorBlendAttachmentState::default()
                     .color_write_mask(ash::vk::ColorComponentFlags::RGBA)
                     .blend_enable(false)
                     .src_color_blend_factor(ash::vk::BlendFactor::ONE)
@@ -699,19 +682,17 @@ impl GraphicsPipeline {
                     .color_blend_op(ash::vk::BlendOp::ADD)
                     .src_alpha_blend_factor(ash::vk::BlendFactor::ONE)
                     .dst_alpha_blend_factor(ash::vk::BlendFactor::ONE)
-                    .alpha_blend_op(ash::vk::BlendOp::ADD)
-                    .build(),
+                    .alpha_blend_op(ash::vk::BlendOp::ADD),
             );
         }
 
-        let color_blend_state_create_info = ash::vk::PipelineColorBlendStateCreateInfo::builder()
+        let color_blend_state_create_info = ash::vk::PipelineColorBlendStateCreateInfo::default()
             .logic_op_enable(false)
             .attachments(color_blend_attachment_state.as_slice())
-            .blend_constants([0.0, 0.0, 0.0, 0.0])
-            .build();
+            .blend_constants([0.0, 0.0, 0.0, 0.0]);
 
         let mut depth_stencil_state_create_info_builder =
-            ash::vk::PipelineDepthStencilStateCreateInfo::builder().stencil_test_enable(false);
+            ash::vk::PipelineDepthStencilStateCreateInfo::default().stencil_test_enable(false);
 
         let depth_stencil_state_create_info = match depth_configuration {
             Option::Some(depth_cfg) => {
@@ -726,19 +707,16 @@ impl GraphicsPipeline {
                             .depth_bounds_test_enable(true)
                             .max_depth_bounds(max_depth_bounds)
                             .min_depth_bounds(min_depth_bounds)
-                            .build()
                     }
                     Option::None => depth_stencil_state_create_info_builder
-                        .depth_bounds_test_enable(false)
-                        .build(),
+                        .depth_bounds_test_enable(false),
                 }
             }
             Option::None => depth_stencil_state_create_info_builder
-                .depth_test_enable(false)
-                .build(),
+                .depth_test_enable(false),
         };
 
-        let create_info = ash::vk::GraphicsPipelineCreateInfo::builder()
+        let create_info = ash::vk::GraphicsPipelineCreateInfo::default()
             .layout(pipeline_layout.ash_handle())
             .render_pass(renderpass.ash_handle())
             .subpass(subpass_index)
@@ -754,8 +732,7 @@ impl GraphicsPipeline {
             .base_pipeline_handle(match &base_pipeline {
                 Some(old_pipeline) => old_pipeline.ash_handle(),
                 None => ash::vk::Pipeline::null(),
-            })
-            .build();
+            });
 
         match unsafe {
             device.ash_handle().create_graphics_pipelines(
@@ -772,7 +749,7 @@ impl GraphicsPipeline {
                 let pipeline = pipelines[0];
 
                 let mut obj_name_bytes = vec![];
-                if let Some(ext) = device.get_parent_instance().get_debug_ext_extension() {
+                if let Some(ext) = device.ash_ext_debug_utils_ext() {
                     if let Some(name) = debug_name {
                         for name_ch in name.as_bytes().iter() {
                             obj_name_bytes.push(*name_ch);
@@ -784,16 +761,11 @@ impl GraphicsPipeline {
                                 obj_name_bytes.as_slice(),
                             );
                             // set device name for debugging
-                            let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::builder()
-                                .object_type(ash::vk::ObjectType::PIPELINE)
-                                .object_handle(ash::vk::Handle::as_raw(pipeline))
-                                .object_name(object_name)
-                                .build();
+                            let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::default()
+                                .object_handle(pipeline)
+                                .object_name(object_name);
 
-                            if let Err(err) = ext.set_debug_utils_object_name(
-                                device.ash_handle().handle(),
-                                &dbg_info,
-                            ) {
+                            if let Err(err) = ext.set_debug_utils_object_name(&dbg_info) {
                                 #[cfg(debug_assertions)]
                                 {
                                     println!("Error setting the Debug name for the newly created Pipeline, will use handle. Error: {}", err)

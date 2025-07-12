@@ -51,13 +51,12 @@ impl CommandPool {
     ) -> VulkanResult<Arc<Self>> {
         let device = queue_family.get_parent_device();
 
-        let create_info = ash::vk::CommandPoolCreateInfo::builder()
+        let create_info = ash::vk::CommandPoolCreateInfo::default()
             .queue_family_index(queue_family.get_family_index())
             .flags(
                 ash::vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER
                     | ash::vk::CommandPoolCreateFlags::TRANSIENT,
-            )
-            .build();
+            );
 
         match unsafe {
             device.ash_handle().create_command_pool(
@@ -67,7 +66,7 @@ impl CommandPool {
         } {
             Ok(command_pool) => {
                 let mut obj_name_bytes = vec![];
-                if let Some(ext) = device.get_parent_instance().get_debug_ext_extension() {
+                if let Some(ext) = device.ash_ext_debug_utils_ext() {
                     if let Some(name) = debug_name {
                         for name_ch in name.as_bytes().iter() {
                             obj_name_bytes.push(*name_ch);
@@ -79,15 +78,11 @@ impl CommandPool {
                                 obj_name_bytes.as_slice(),
                             );
                             // set device name for debugging
-                            let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::builder()
-                                .object_type(ash::vk::ObjectType::COMMAND_POOL)
-                                .object_handle(ash::vk::Handle::as_raw(command_pool))
-                                .object_name(object_name)
-                                .build();
+                            let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::default()
+                                .object_handle(command_pool)
+                                .object_name(object_name);
 
-                            if let Err(err) = ext.set_debug_utils_object_name(
-                                device.ash_handle().handle(),
-                                &dbg_info,
+                            if let Err(err) = ext.set_debug_utils_object_name(&dbg_info,
                             ) {
                                 #[cfg(debug_assertions)]
                                 {

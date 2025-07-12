@@ -56,14 +56,13 @@ impl Framebuffer {
             .map(|iv| iv.ash_handle())
             .collect::<smallvec::SmallVec<[ash::vk::ImageView; 16]>>();
 
-        let create_info = ash::vk::FramebufferCreateInfo::builder()
+        let create_info = ash::vk::FramebufferCreateInfo::default()
             .flags(ash::vk::FramebufferCreateFlags::empty())
             .render_pass(renderpass.ash_handle())
             .attachments(attachments.as_slice())
             .width(dimensions.width())
             .height(dimensions.height())
-            .layers(layers)
-            .build();
+            .layers(layers);
 
         match unsafe {
             renderpass
@@ -221,20 +220,18 @@ impl ImagelessFramebuffer {
             .iter()
             .enumerate()
             .map(|(idx, at)| {
-                ash::vk::FramebufferAttachmentImageInfo::builder()
+                ash::vk::FramebufferAttachmentImageInfo::default()
                     .flags(at.ash_flags())
                     .usage(at.ash_usage())
                     .width(at.width())
                     .height(at.height())
                     .layer_count(at.layer_count())
                     .view_formats(attachment_formats[idx].as_slice())
-                    .build()
             })
             .collect::<Vec<ash::vk::FramebufferAttachmentImageInfoKHR>>/* ::<smallvec::SmallVec<[ash::vk::FramebufferAttachmentImageInfoKHR; 8]>>*/();
 
-        let mut attachments_create_info = ash::vk::FramebufferAttachmentsCreateInfo::builder()
-            .attachment_image_infos(attachment_image_infos.as_slice())
-            .build();
+        let mut attachments_create_info = ash::vk::FramebufferAttachmentsCreateInfo::default()
+            .attachment_image_infos(attachment_image_infos.as_slice());
 
         let vulkan_instance_version = renderpass
             .get_parent_device()
@@ -251,15 +248,14 @@ impl ImagelessFramebuffer {
             ));
         }
 
-        let create_info = ash::vk::FramebufferCreateInfo::builder()
+        let create_info = ash::vk::FramebufferCreateInfo::default()
             .push_next(&mut attachments_create_info)
             .flags(ash::vk::FramebufferCreateFlags::IMAGELESS_KHR)
             .render_pass(renderpass.ash_handle())
             .width(dimensions.width())
             .height(dimensions.height())
             .layers(layers)
-            .attachment_count(attachment_image_infos.len() as u32)
-            .build();
+            .attachment_count(attachment_image_infos.len() as u32);
 
         match unsafe {
             renderpass

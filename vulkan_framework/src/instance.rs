@@ -26,8 +26,8 @@ pub(crate) struct InstanceData {
 }
 
 struct InstanceExtensions {
-    surface_khr_ext: Option<ash::extensions::khr::Surface>,
-    debug_ext_ext: Option<ash::extensions::ext::DebugUtils>,
+    surface_khr_ext: Option<ash::khr::surface::Instance>,
+    debug_ext_ext: Option<ash::ext::debug_utils::Instance>,
 }
 
 pub struct Instance {
@@ -53,7 +53,7 @@ impl Instance {
     }
 
     #[inline]
-    pub(crate) fn get_debug_ext_extension(&self) -> Option<&ash::extensions::ext::DebugUtils> {
+    pub(crate) fn get_debug_ext_extension(&self) -> Option<&ash::ext::debug_utils::Instance> {
         match self.extensions.debug_ext_ext.as_ref() {
             Some(debug_ext_ext) => Some(debug_ext_ext),
             None => None,
@@ -61,7 +61,7 @@ impl Instance {
     }
 
     #[inline]
-    pub(crate) fn get_surface_khr_extension(&self) -> Option<&ash::extensions::khr::Surface> {
+    pub(crate) fn get_surface_khr_extension(&self) -> Option<&ash::khr::surface::Instance> {
         match self.extensions.surface_khr_ext.as_ref() {
             Some(ext) => Some(ext),
             None => None,
@@ -167,31 +167,22 @@ impl Instance {
             .collect::<Vec<*const c_char>>();
 
         unsafe {
-            let app_info = ash::vk::ApplicationInfo {
-                s_type: ash::vk::StructureType::APPLICATION_INFO,
-                p_next: std::ptr::null(),
-                p_application_name: data.as_ref().application_name.as_ptr(),
-                application_version: 0,
-                p_engine_name: data.as_ref().engine_name.as_ptr(),
-                engine_version: 0,
-                api_version: match api_version {
-                    InstanceAPIVersion::Version1_0 => ash::vk::make_api_version(0, 1, 0, 0),
-                    InstanceAPIVersion::Version1_1 => ash::vk::make_api_version(0, 1, 1, 0),
-                    InstanceAPIVersion::Version1_2 => ash::vk::make_api_version(0, 1, 2, 0),
-                    InstanceAPIVersion::Version1_3 => ash::vk::make_api_version(0, 1, 3, 0),
-                },
+            let mut app_info = ash::vk::ApplicationInfo::default();
+            app_info.engine_version = 0;
+            app_info.application_version = 0;
+            app_info.p_engine_name = data.as_ref().engine_name.as_ptr();
+            app_info.p_application_name = data.as_ref().application_name.as_ptr();
+            app_info.api_version = match api_version {
+                InstanceAPIVersion::Version1_0 => ash::vk::make_api_version(0, 1, 0, 0),
+                InstanceAPIVersion::Version1_1 => ash::vk::make_api_version(0, 1, 1, 0),
+                InstanceAPIVersion::Version1_2 => ash::vk::make_api_version(0, 1, 2, 0),
+                InstanceAPIVersion::Version1_3 => ash::vk::make_api_version(0, 1, 3, 0),
             };
 
-            let create_info = ash::vk::InstanceCreateInfo {
-                s_type: ash::vk::StructureType::INSTANCE_CREATE_INFO,
-                p_next: std::ptr::null(),
-                flags: ash::vk::InstanceCreateFlags::default(),
-                p_application_info: &app_info as *const ash::vk::ApplicationInfo,
-                pp_enabled_layer_names: layers_ptr.as_ptr(),
-                enabled_layer_count: layers_ptr.len() as u32,
-                pp_enabled_extension_names: extensions_ptr.as_ptr(),
-                enabled_extension_count: extensions_ptr.len() as u32,
-            };
+            let mut create_info = ash::vk::InstanceCreateInfo::default()
+                .application_info(&app_info)
+                .enabled_extension_names(extensions_ptr.as_slice())
+                .enabled_layer_names(layers_ptr.as_slice());
 
             if let Ok(entry) = ash::Entry::load() {
                 let Ok(instance) = entry.create_instance(
@@ -209,19 +200,19 @@ impl Instance {
                 // also enable debugging extension for debug build
                 let debug_ext = match instance_extensions.iter().any(|ext| {
                     ext.as_str()
-                        == ash::extensions::ext::DebugUtils::name()
+                        == ash::ext::debug_utils::NAME
                             .to_str()
                             .unwrap_or("")
                 }) {
-                    true => Option::Some(ash::extensions::ext::DebugUtils::new(&entry, &instance)),
+                    true => Option::Some(ash::ext::debug_utils::Instance::new(&entry, &instance)),
                     false => Option::None,
                 };
 
                 // if requested enable the swapchain required extension(s)
                 let surface_ext = match instance_extensions.iter().any(|ext| {
-                    ext.as_str() == ash::extensions::khr::Surface::name().to_str().unwrap_or("")
+                    ext.as_str() == ash::khr::surface::NAME.to_str().unwrap_or("")
                 }) {
-                    true => Option::Some(ash::extensions::khr::Surface::new(&entry, &instance)),
+                    true => Option::Some(ash::khr::surface::Instance::new(&entry, &instance)),
                     false => Option::None,
                 };
 

@@ -125,6 +125,31 @@ impl MemoryHeap {
         true
     }
 
+    /// Copied from the official vulkan specification (findProperties method):
+    /// https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#memory-device 
+    fn find_properties(
+        memory_properties: ash::vk::PhysicalDeviceMemoryProperties,
+        memory_type_bits_requirement: u32,
+        required_properties: ash::vk::MemoryPropertyFlags
+    ) -> Option<u32> {
+        for memory_index in 0..memory_properties.memory_type_count {
+            let memory_type_bits = 1u32 << memory_index;
+
+            let is_required_memory_type = (memory_type_bits_requirement & memory_type_bits) != 0u32;
+
+            let properties = memory_properties.memory_types[memory_index as usize].property_flags;
+
+            let required_properties_raw = required_properties.as_raw();
+            let has_required_properties = (properties.as_raw() & required_properties_raw) == required_properties_raw;
+
+            if is_required_memory_type && has_required_properties {
+                return Some(memory_index)
+            }
+        }
+
+        None
+    }
+
     pub(crate) fn search_adequate_heap(
         device: &Arc<Device>,
         current_requested_memory_heap_descriptor: &ConcreteMemoryHeapDescriptor,

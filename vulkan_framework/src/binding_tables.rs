@@ -34,11 +34,10 @@ pub fn required_memory_type() -> MemoryType {
 
 impl RaytracingBindingTables {
     pub(crate) fn ash_callable_strided(&self) -> ash::vk::StridedDeviceAddressRegionKHR {
-        let mut result = ash::vk::StridedDeviceAddressRegionKHR::builder()
+        let mut result = ash::vk::StridedDeviceAddressRegionKHR::default()
             .stride(self.handle_size_aligned as u64)
             .size(self.handle_size_aligned as u64)
-            .device_address(self.callable_buffer_addr.unwrap_or(0))
-            .build();
+            .device_address(self.callable_buffer_addr.unwrap_or(0));
 
         if self.callable_buffer.is_none() {
             unsafe {
@@ -55,27 +54,24 @@ impl RaytracingBindingTables {
     }
 
     pub(crate) fn ash_raygen_strided(&self) -> ash::vk::StridedDeviceAddressRegionKHR {
-        ash::vk::StridedDeviceAddressRegionKHR::builder()
+        ash::vk::StridedDeviceAddressRegionKHR::default()
             .stride(self.handle_size_aligned as u64)
             .size(self.handle_size_aligned as u64)
             .device_address(self.raygen_buffer_addr)
-            .build()
     }
 
     pub(crate) fn ash_miss_strided(&self) -> ash::vk::StridedDeviceAddressRegionKHR {
-        ash::vk::StridedDeviceAddressRegionKHR::builder()
+        ash::vk::StridedDeviceAddressRegionKHR::default()
             .stride(self.handle_size_aligned as u64)
             .size(self.handle_size_aligned as u64)
             .device_address(self.miss_buffer_addr)
-            .build()
     }
 
     pub(crate) fn ash_closesthit_strided(&self) -> ash::vk::StridedDeviceAddressRegionKHR {
-        ash::vk::StridedDeviceAddressRegionKHR::builder()
+        ash::vk::StridedDeviceAddressRegionKHR::default()
             .stride(self.handle_size_aligned as u64)
             .size(self.handle_size_aligned as u64)
             .device_address(self.closesthit_buffer_addr)
-            .build()
     }
 
     /**
@@ -137,7 +133,7 @@ impl RaytracingBindingTables {
                                 )
                                 .unwrap();
                             let raygen_buffer_addr = unsafe {
-                                let info = ash::vk::BufferDeviceAddressInfo::builder()
+                                let info = ash::vk::BufferDeviceAddressInfo::default()
                                     .buffer(raygen_buffer.ash_handle());
 
                                 let device_addr = raytracing_pipeline
@@ -158,7 +154,7 @@ impl RaytracingBindingTables {
                                 )
                                 .unwrap();
                             let miss_buffer_addr = unsafe {
-                                let info = ash::vk::BufferDeviceAddressInfo::builder()
+                                let info = ash::vk::BufferDeviceAddressInfo::default()
                                     .buffer(miss_buffer.ash_handle());
 
                                 let device_addr = raytracing_pipeline
@@ -179,7 +175,7 @@ impl RaytracingBindingTables {
                                 )
                                 .unwrap();
                             let closesthit_buffer_addr = unsafe {
-                                let info = ash::vk::BufferDeviceAddressInfo::builder()
+                                let info = ash::vk::BufferDeviceAddressInfo::default()
                                     .buffer(closesthit_buffer.ash_handle());
 
                                 let device_addr = raytracing_pipeline
@@ -204,7 +200,7 @@ impl RaytracingBindingTables {
                                         .unwrap();
 
                                     unsafe {
-                                        let info = ash::vk::BufferDeviceAddressInfo::builder()
+                                        let info = ash::vk::BufferDeviceAddressInfo::default()
                                             .buffer(cb.ash_handle());
 
                                         let device_addr = raytracing_pipeline

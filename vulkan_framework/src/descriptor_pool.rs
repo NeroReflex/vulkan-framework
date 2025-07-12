@@ -17,10 +17,9 @@ impl DescriptorPoolSizesAcceletarionStructureKHR {
 
         if self.acceleration_structure() > 0 {
             pool_sizes.push(
-                ash::vk::DescriptorPoolSize::builder()
+                ash::vk::DescriptorPoolSize::default()
                     .ty(ash::vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
-                    .descriptor_count(self.acceleration_structure())
-                    .build(),
+                    .descriptor_count(self.acceleration_structure()),
             )
         }
 
@@ -58,82 +57,73 @@ impl DescriptorPoolSizesConcreteDescriptor {
 
         if self.sampler() > 0 {
             pool_sizes.push(
-                ash::vk::DescriptorPoolSize::builder()
+                ash::vk::DescriptorPoolSize::default()
                     .ty(ash::vk::DescriptorType::SAMPLER)
-                    .descriptor_count(self.sampler())
-                    .build(),
+                    .descriptor_count(self.sampler()),
             )
         }
 
         if self.combined_image_sampler() > 0 {
             pool_sizes.push(
-                ash::vk::DescriptorPoolSize::builder()
+                ash::vk::DescriptorPoolSize::default()
                     .ty(ash::vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                    .descriptor_count(self.combined_image_sampler())
-                    .build(),
+                    .descriptor_count(self.combined_image_sampler()),
             )
         }
 
         if self.sampled_image() > 0 {
             pool_sizes.push(
-                ash::vk::DescriptorPoolSize::builder()
+                ash::vk::DescriptorPoolSize::default()
                     .ty(ash::vk::DescriptorType::SAMPLED_IMAGE)
-                    .descriptor_count(self.sampled_image())
-                    .build(),
+                    .descriptor_count(self.sampled_image()),
             )
         }
 
         if self.storage_image() > 0 {
             pool_sizes.push(
-                ash::vk::DescriptorPoolSize::builder()
+                ash::vk::DescriptorPoolSize::default()
                     .ty(ash::vk::DescriptorType::STORAGE_IMAGE)
-                    .descriptor_count(self.storage_image())
-                    .build(),
+                    .descriptor_count(self.storage_image()),
             )
         }
 
         if self.uniform_texel_buffer() > 0 {
             pool_sizes.push(
-                ash::vk::DescriptorPoolSize::builder()
+                ash::vk::DescriptorPoolSize::default()
                     .ty(ash::vk::DescriptorType::UNIFORM_TEXEL_BUFFER)
-                    .descriptor_count(self.uniform_texel_buffer())
-                    .build(),
+                    .descriptor_count(self.uniform_texel_buffer()),
             )
         }
 
         if self.storage_texel_buffer() > 0 {
             pool_sizes.push(
-                ash::vk::DescriptorPoolSize::builder()
+                ash::vk::DescriptorPoolSize::default()
                     .ty(ash::vk::DescriptorType::STORAGE_TEXEL_BUFFER)
-                    .descriptor_count(self.storage_texel_buffer())
-                    .build(),
+                    .descriptor_count(self.storage_texel_buffer()),
             )
         }
 
         if self.storage_buffer() > 0 {
             pool_sizes.push(
-                ash::vk::DescriptorPoolSize::builder()
+                ash::vk::DescriptorPoolSize::default()
                     .ty(ash::vk::DescriptorType::STORAGE_BUFFER)
-                    .descriptor_count(self.storage_buffer())
-                    .build(),
+                    .descriptor_count(self.storage_buffer()),
             )
         }
 
         if self.uniform_buffer() > 0 {
             pool_sizes.push(
-                ash::vk::DescriptorPoolSize::builder()
+                ash::vk::DescriptorPoolSize::default()
                     .ty(ash::vk::DescriptorType::UNIFORM_BUFFER)
-                    .descriptor_count(self.uniform_buffer())
-                    .build(),
+                    .descriptor_count(self.uniform_buffer()),
             )
         }
 
         if self.input_attachment() > 0 {
             pool_sizes.push(
-                ash::vk::DescriptorPoolSize::builder()
+                ash::vk::DescriptorPoolSize::default()
                     .ty(ash::vk::DescriptorType::INPUT_ATTACHMENT)
-                    .descriptor_count(self.input_attachment())
-                    .build(),
+                    .descriptor_count(self.input_attachment()),
             )
         }
 
@@ -282,11 +272,10 @@ impl DescriptorPool {
         debug_name: Option<&str>,
     ) -> VulkanResult<Arc<Self>> {
         let pool_sizes = descriptor.ash_pool_sizes();
-        let create_info = ash::vk::DescriptorPoolCreateInfo::builder()
+        let create_info = ash::vk::DescriptorPoolCreateInfo::default()
             .flags(ash::vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET | descriptor.ash_flags())
             .max_sets(descriptor.max_sets)
-            .pool_sizes(pool_sizes.as_slice())
-            .build();
+            .pool_sizes(pool_sizes.as_slice());
 
         match unsafe {
             device.ash_handle().create_descriptor_pool(
@@ -296,7 +285,7 @@ impl DescriptorPool {
         } {
             Ok(pool) => {
                 let mut obj_name_bytes = vec![];
-                if let Some(ext) = device.get_parent_instance().get_debug_ext_extension() {
+                if let Some(ext) = device.ash_ext_debug_utils_ext() {
                     if let Some(name) = debug_name {
                         for name_ch in name.as_bytes().iter() {
                             obj_name_bytes.push(*name_ch);
@@ -308,15 +297,11 @@ impl DescriptorPool {
                                 obj_name_bytes.as_slice(),
                             );
                             // set device name for debugging
-                            let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::builder()
-                                .object_type(ash::vk::ObjectType::DESCRIPTOR_POOL)
-                                .object_handle(ash::vk::Handle::as_raw(pool))
-                                .object_name(object_name)
-                                .build();
+                            let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::default()
+                                .object_handle(pool)
+                                .object_name(object_name);
 
-                            if let Err(err) = ext.set_debug_utils_object_name(
-                                device.ash_handle().handle(),
-                                &dbg_info,
+                            if let Err(err) = ext.set_debug_utils_object_name(&dbg_info,
                             ) {
                                 #[cfg(debug_assertions)]
                                 {

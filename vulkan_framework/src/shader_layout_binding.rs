@@ -76,12 +76,11 @@ impl BindingDescriptor {
     }
 
     pub(crate) fn ash_handle(&self) -> ash::vk::DescriptorSetLayoutBinding {
-        ash::vk::DescriptorSetLayoutBinding::builder()
+        ash::vk::DescriptorSetLayoutBinding::default()
             .binding(self.binding_point)
             .stage_flags(self.shader_access.ash_stage_access_mask())
             .descriptor_count(self.binding_count)
             .descriptor_type(self.binding_type.ash_descriptor_type())
-            .build()
     }
 
     pub fn binding_range(&self) -> (u32, u32) {

@@ -243,12 +243,11 @@ impl ImageView {
             layer_count: subrange_layer_count,
         };
 
-        let create_info = ash::vk::ImageViewCreateInfo::builder()
+        let create_info = ash::vk::ImageViewCreateInfo::default()
             .image(ash::vk::Image::from_raw(image.native_handle()))
             .format(image.format().ash_format())
             .subresource_range(srr)
-            .view_type(view_type.ash_viewtype())
-            .build();
+            .view_type(view_type.ash_viewtype());
 
         match unsafe {
             device.ash_handle().create_image_view(
@@ -258,7 +257,7 @@ impl ImageView {
         } {
             Ok(image_view) => {
                 let mut obj_name_bytes = vec![];
-                if let Some(ext) = device.get_parent_instance().get_debug_ext_extension() {
+                if let Some(ext) = device.ash_ext_debug_utils_ext() {
                     if let Some(name) = debug_name {
                         for name_ch in name.as_bytes().iter() {
                             obj_name_bytes.push(*name_ch);
@@ -270,16 +269,11 @@ impl ImageView {
                                 obj_name_bytes.as_slice(),
                             );
                             // set device name for debugging
-                            let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::builder()
-                                .object_type(ash::vk::ObjectType::IMAGE_VIEW)
-                                .object_handle(ash::vk::Handle::as_raw(image_view))
-                                .object_name(object_name)
-                                .build();
+                            let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::default()
+                                .object_handle(image_view)
+                                .object_name(object_name);
 
-                            if let Err(err) = ext.set_debug_utils_object_name(
-                                device.ash_handle().handle(),
-                                &dbg_info,
-                            ) {
+                            if let Err(err) = ext.set_debug_utils_object_name(&dbg_info) {
                                 #[cfg(debug_assertions)]
                                 {
                                     println!("Error setting the Debug name for the newly created Queue, will use handle. Error: {}", err)

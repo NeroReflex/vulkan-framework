@@ -49,9 +49,8 @@ impl PrivateShaderTrait for RaygenShader {
 
 impl RaygenShader {
     pub fn new(device: Arc<Device>, code: &[u32]) -> VulkanResult<Arc<Self>> {
-        let create_info = ash::vk::ShaderModuleCreateInfo::builder()
-            .code(code)
-            .build();
+        let create_info = ash::vk::ShaderModuleCreateInfo::default()
+            .code(code);
 
         match unsafe {
             device.ash_handle().create_shader_module(

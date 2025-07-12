@@ -25,20 +25,16 @@ pub struct DescriptorSetWriter<'a> {
     descriptor_set: &'a DescriptorSet,
     acceleration_structures: smallvec::SmallVec<[Vec<ash::vk::AccelerationStructureKHR>; 4]>,
     acceleration_structure_writers:
-        smallvec::SmallVec<[ash::vk::WriteDescriptorSetAccelerationStructureKHR; 4]>,
+        smallvec::SmallVec<[ash::vk::WriteDescriptorSetAccelerationStructureKHR<'a>; 4]>,
     images_writers: smallvec::SmallVec<[Vec<ash::vk::DescriptorImageInfo>; 32]>,
     buffers_writers: smallvec::SmallVec<[Vec<ash::vk::DescriptorBufferInfo>; 32]>,
-    writer: smallvec::SmallVec<[ash::vk::WriteDescriptorSet; 32]>,
+    writer: smallvec::SmallVec<[ash::vk::WriteDescriptorSet<'a>; 32]>,
     used_resources: smallvec::SmallVec<[DescriptorSetBoundResource; 32]>,
 }
 
 impl<'a> DescriptorSetWriter<'a> {
     pub(crate) fn new(descriptor_set: &'a DescriptorSet, size: u32) -> Self {
         Self {
-            /*device: descriptor_set
-            .get_parent_descriptor_pool()
-            .get_parent_device()
-            .clone(),*/
             descriptor_set,
             acceleration_structures: smallvec::smallvec![],
             acceleration_structure_writers: smallvec::smallvec![],
@@ -52,13 +48,11 @@ impl<'a> DescriptorSetWriter<'a> {
         }
     }
 
-    pub(crate) fn ref_used_resources<'b>(
-        &'a self,
-    ) -> impl Iterator<Item = &'a DescriptorSetBoundResource>
-    where
-        'b: 'a,
+    pub(crate) fn used_resources(
+        &self,
+    ) -> Vec<DescriptorSetBoundResource>
     {
-        self.used_resources.iter()
+        self.used_resources.iter().map(|res| res.clone()).collect()
     }
 
     pub fn bind_tlas(
@@ -72,24 +66,29 @@ impl<'a> DescriptorSetWriter<'a> {
             .collect();
         self.acceleration_structures.push(as_handles);
 
-        self.acceleration_structure_writers.push(
-            ash::vk::WriteDescriptorSetAccelerationStructureKHR::builder()
-                .acceleration_structures(
-                    self.acceleration_structures[self.acceleration_structures.len() - 1].as_slice(),
-                )
-                .build(),
-        );
+        let mut acceleration_structure_writer = ash::vk::WriteDescriptorSetAccelerationStructureKHR::default();
+        match self.acceleration_structures.last() {
+            Some(tmp) => {
+                acceleration_structure_writer.p_acceleration_structures = tmp.as_slice().as_ptr();
+                acceleration_structure_writer.acceleration_structure_count = tmp.len() as u32;
+            },
+            None => {}
+        };
 
-        let mut descriptor_writes = ash::vk::WriteDescriptorSet::builder()
+        self.acceleration_structure_writers.push(acceleration_structure_writer);
+
+        let mut descriptor_writes = ash::vk::WriteDescriptorSet::default()
             .dst_set(self.descriptor_set.ash_handle())
             .dst_binding(first_layout_id)
-            .descriptor_type(ash::vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
-            .build();
+            .descriptor_type(ash::vk::DescriptorType::ACCELERATION_STRUCTURE_KHR);
 
-        descriptor_writes.p_next = (&self.acceleration_structure_writers
-            [self.acceleration_structure_writers.len() - 1]
-            as *const _) as *const std::ffi::c_void;
-        descriptor_writes.descriptor_count = 1;
+        match self.acceleration_structure_writers.last() {
+            Some(tmp) => {
+                descriptor_writes.descriptor_count = 1;
+                descriptor_writes.p_next = (tmp as *const _) as *const std::ffi::c_void;
+            },
+            None => {}
+        }
 
         self.writer.push(descriptor_writes);
     }
@@ -112,22 +111,27 @@ impl<'a> DescriptorSetWriter<'a> {
                         image_sampler.clone(),
                     ));
 
-                ash::vk::DescriptorImageInfo::builder()
+                ash::vk::DescriptorImageInfo::default()
                     .image_view(image_view.ash_handle())
                     .sampler(image_sampler.ash_handle())
                     .image_layout(image_layout.ash_layout())
-                    .build()
             })
             .collect();
 
         self.images_writers.push(descriptors);
 
-        let descriptor_writes = ash::vk::WriteDescriptorSet::builder()
+        let mut descriptor_writes = ash::vk::WriteDescriptorSet::default()
             .dst_set(self.descriptor_set.ash_handle())
             .dst_binding(first_layout_id)
-            .descriptor_type(ash::vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-            .image_info(self.images_writers[self.images_writers.len() - 1].as_slice())
-            .build();
+            .descriptor_type(ash::vk::DescriptorType::COMBINED_IMAGE_SAMPLER);
+
+        match self.images_writers.last() {
+            Some(tmp) => {
+                descriptor_writes.p_image_info = tmp.as_slice().as_ptr();
+                descriptor_writes.descriptor_count = tmp.len() as u32;
+            },
+            None => {}
+        };
 
         self.writer.push(descriptor_writes);
     }
@@ -147,21 +151,26 @@ impl<'a> DescriptorSetWriter<'a> {
                 self.used_resources[(first_layout_id as usize) + index] =
                     DescriptorSetBoundResource::ImageView(image_view.clone());
 
-                ash::vk::DescriptorImageInfo::builder()
+                ash::vk::DescriptorImageInfo::default()
                     .image_view(image_view.ash_handle())
                     .image_layout(image_layout.ash_layout())
-                    .build()
             })
             .collect();
 
         self.images_writers.push(descriptors);
 
-        let descriptor_writes = ash::vk::WriteDescriptorSet::builder()
+        let mut descriptor_writes = ash::vk::WriteDescriptorSet::default()
             .dst_set(self.descriptor_set.ash_handle())
             .dst_binding(first_layout_id)
-            .descriptor_type(ash::vk::DescriptorType::SAMPLED_IMAGE)
-            .image_info(self.images_writers[self.images_writers.len() - 1].as_slice())
-            .build();
+            .descriptor_type(ash::vk::DescriptorType::SAMPLED_IMAGE);
+
+        match self.images_writers.last() {
+            Some(tmp) => {
+                descriptor_writes.p_image_info = tmp.as_slice().as_ptr();
+                descriptor_writes.descriptor_count = tmp.len() as u32;
+            },
+            None => {}
+        };
 
         self.writer.push(descriptor_writes);
     }
@@ -182,25 +191,30 @@ impl<'a> DescriptorSetWriter<'a> {
                 self.used_resources[(first_layout_id as usize) + index] =
                     DescriptorSetBoundResource::Buffer(buffer.clone());
 
-                ash::vk::DescriptorBufferInfo::builder()
+                ash::vk::DescriptorBufferInfo::default()
                     .range(match size {
                         Option::Some(sz) => sz,
                         Option::None => buffer.size(),
                     })
                     .buffer(ash::vk::Buffer::from_raw(buffer.native_handle()))
                     .offset(offset.unwrap_or(0))
-                    .build()
             })
             .collect();
 
         self.buffers_writers.push(descriptors);
 
-        let descriptor_writes = ash::vk::WriteDescriptorSet::builder()
+        let mut descriptor_writes = ash::vk::WriteDescriptorSet::default()
             .dst_set(self.descriptor_set.ash_handle())
             .dst_binding(first_layout_id)
-            .descriptor_type(ash::vk::DescriptorType::UNIFORM_BUFFER)
-            .buffer_info(self.buffers_writers[self.buffers_writers.len() - 1].as_slice())
-            .build();
+            .descriptor_type(ash::vk::DescriptorType::UNIFORM_BUFFER);
+
+        match self.buffers_writers.last() {
+            Some(tmp) => {
+                descriptor_writes.p_buffer_info = tmp.as_slice().as_ptr();
+                descriptor_writes.descriptor_count = tmp.len() as u32;
+            },
+            None => {}
+        };
 
         self.writer.push(descriptor_writes);
     }
@@ -221,25 +235,30 @@ impl<'a> DescriptorSetWriter<'a> {
                 self.used_resources[(first_layout_id as usize) + index] =
                     DescriptorSetBoundResource::Buffer(buffer.clone());
 
-                ash::vk::DescriptorBufferInfo::builder()
+                ash::vk::DescriptorBufferInfo::default()
                     .range(match size {
                         Option::Some(sz) => sz,
                         Option::None => buffer.size(),
                     })
                     .buffer(ash::vk::Buffer::from_raw(buffer.native_handle()))
                     .offset(offset.unwrap_or(0))
-                    .build()
             })
             .collect();
 
         self.buffers_writers.push(descriptors);
 
-        let descriptor_writes = ash::vk::WriteDescriptorSet::builder()
+        let mut descriptor_writes = ash::vk::WriteDescriptorSet::default()
             .dst_set(self.descriptor_set.ash_handle())
             .dst_binding(first_layout_id)
-            .descriptor_type(ash::vk::DescriptorType::STORAGE_BUFFER)
-            .buffer_info(self.buffers_writers[self.buffers_writers.len() - 1].as_slice())
-            .build();
+            .descriptor_type(ash::vk::DescriptorType::STORAGE_BUFFER);
+
+        match self.buffers_writers.last() {
+            Some(tmp) => {
+                descriptor_writes.p_buffer_info = tmp.as_slice().as_ptr();
+                descriptor_writes.descriptor_count = tmp.len() as u32;
+            },
+            None => {}
+        };
 
         self.writer.push(descriptor_writes);
     }
@@ -258,21 +277,26 @@ impl<'a> DescriptorSetWriter<'a> {
                 self.used_resources[(first_layout_id as usize) + index] =
                     DescriptorSetBoundResource::ImageView(image.clone());
 
-                ash::vk::DescriptorImageInfo::builder()
+                ash::vk::DescriptorImageInfo::default()
                     .image_layout(layout.ash_layout())
                     .image_view(image.ash_handle())
-                    .build()
             })
             .collect();
 
         self.images_writers.push(descriptors);
 
-        let descriptor_writes = ash::vk::WriteDescriptorSet::builder()
+        let mut descriptor_writes = ash::vk::WriteDescriptorSet::default()
             .dst_set(self.descriptor_set.ash_handle())
             .dst_binding(first_layout_id)
-            .descriptor_type(ash::vk::DescriptorType::STORAGE_IMAGE)
-            .image_info(self.images_writers[self.images_writers.len() - 1].as_slice())
-            .build();
+            .descriptor_type(ash::vk::DescriptorType::STORAGE_IMAGE);
+
+        match self.images_writers.last() {
+            Some(tmp) => {
+                descriptor_writes.p_image_info = tmp.as_slice().as_ptr();
+                descriptor_writes.descriptor_count = tmp.len() as u32;
+            },
+            None => {}
+        };
 
         self.writer.push(descriptor_writes);
     }
@@ -354,7 +378,7 @@ impl DescriptorSet {
                 .update_descriptor_sets(writer.writer.as_slice(), &[])
         };
 
-        for (idx, res) in writer.ref_used_resources().enumerate() {
+        for (idx, res) in writer.used_resources().iter().enumerate() {
             match res {
                 DescriptorSetBoundResource::None => {}
                 updated_resource => {
@@ -387,10 +411,10 @@ impl DescriptorSet {
             ))));
         }
 
-        let create_info = ash::vk::DescriptorSetAllocateInfo::builder()
+        let layouts = [layout.ash_handle()];
+        let create_info = ash::vk::DescriptorSetAllocateInfo::default()
             .descriptor_pool(pool.ash_handle())
-            .set_layouts([layout.ash_handle()].as_slice())
-            .build();
+            .set_layouts(&layouts);
 
         match unsafe {
             pool.get_parent_device()

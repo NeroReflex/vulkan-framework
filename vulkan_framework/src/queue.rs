@@ -5,7 +5,6 @@ use crate::{
     command_buffer::CommandBufferTrait,
     device::DeviceOwned,
     fence::Fence,
-    instance::InstanceOwned,
     pipeline_stage::PipelineStages,
     prelude::{VulkanError, VulkanResult},
     queue_family::*,
@@ -87,12 +86,11 @@ impl Queue {
             })
             .collect::<Vec<ash::vk::CommandBuffer>>();
 
-        let submit_info = ash::vk::SubmitInfo::builder()
+        let submit_info = ash::vk::SubmitInfo::default()
             .command_buffers(cmd_buffers.as_slice())
             .signal_semaphores(signal_semaphores.as_slice())
             .wait_dst_stage_mask(wait_stages.as_slice())
-            .wait_semaphores(wait_sems.as_slice())
-            .build();
+            .wait_semaphores(wait_sems.as_slice());
 
         let submits = [submit_info];
 
@@ -144,9 +142,8 @@ impl Queue {
                 let mut obj_name_bytes = vec![];
 
                 let device = queue_family.get_parent_device();
-                let instance = device.get_parent_instance();
 
-                if let Some(ext) = instance.get_debug_ext_extension() {
+                if let Some(ext) = device.ash_ext_debug_utils_ext() {
                     if let Some(name) = debug_name {
                         for name_ch in name.as_bytes().iter() {
                             obj_name_bytes.push(*name_ch);
@@ -158,16 +155,11 @@ impl Queue {
                                 obj_name_bytes.as_slice(),
                             );
                             // set device name for debugging
-                            let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::builder()
-                                .object_type(ash::vk::ObjectType::QUEUE)
-                                .object_handle(ash::vk::Handle::as_raw(queue))
-                                .object_name(object_name)
-                                .build();
+                            let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::default()
+                                .object_handle(queue)
+                                .object_name(object_name);
 
-                            if let Err(err) = ext.set_debug_utils_object_name(
-                                device.ash_handle().handle(),
-                                &dbg_info,
-                            ) {
+                            if let Err(err) = ext.set_debug_utils_object_name(&dbg_info) {
                                 #[cfg(debug_assertions)]
                                 {
                                     println!("Error setting the Debug name for the newly created Queue, will use handle. Error: {}", err);

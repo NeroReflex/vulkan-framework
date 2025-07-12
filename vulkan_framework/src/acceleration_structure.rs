@@ -82,7 +82,7 @@ impl DeviceScratchBuffer {
             None,
         ) {
             Ok(buffer) => {
-                let info = ash::vk::BufferDeviceAddressInfo::builder().buffer(buffer.ash_handle());
+                let info = ash::vk::BufferDeviceAddressInfo::default().buffer(buffer.ash_handle());
 
                 let buffer_device_addr = unsafe {
                     memory_pool
@@ -208,18 +208,16 @@ impl BottomLevelTrianglesGroupDecl {
     }
 
     pub(crate) fn ash_geometry(&self) -> ash::vk::AccelerationStructureGeometryKHR {
-        ash::vk::AccelerationStructureGeometryKHR::builder()
+        ash::vk::AccelerationStructureGeometryKHR::default()
             // TODO: .flags()
             .geometry_type(ash::vk::GeometryTypeKHR::TRIANGLES)
             .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
-                triangles: ash::vk::AccelerationStructureGeometryTrianglesDataKHR::builder()
+                triangles: ash::vk::AccelerationStructureGeometryTrianglesDataKHR::default()
                     .index_type(self.vertex_indexing().ash_index_type())
                     .max_vertex(self.max_vertices())
                     .vertex_format(self.vertex_format.ash_format())
-                    .vertex_stride(self.vertex_stride)
-                    .build(),
+                    .vertex_stride(self.vertex_stride),
             })
-            .build()
     }
 }
 
@@ -346,19 +344,22 @@ impl BottomLevelAccelerationStructure {
         // Any VkDeviceOrHostAddressKHR members of pBuildInfo are ignored by this command,
         // except that the hostAddress member of VkAccelerationStructureGeometryTrianglesDataKHR::transformData
         // will be examined to check if it is NULL.
-        let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::builder()
+        let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::default()
             .geometries(geometries.as_slice())
             .flags(ash::vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
-            .ty(ash::vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL)
-            .build();
+            .ty(ash::vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL);
 
         match device.ash_ext_acceleration_structure_khr() {
             Some(as_ext) => {
-                let build_sizes = unsafe {
+
+                let mut build_sizes = ash::vk::AccelerationStructureBuildSizesInfoKHR::default();
+
+                unsafe {
                     as_ext.get_acceleration_structure_build_sizes(
                         allowed_building_devices.ash_flags(),
                         &geometry_info,
                         max_primitives_count.as_slice(),
+                        &mut build_sizes
                     )
                 };
 
@@ -414,7 +415,7 @@ impl BottomLevelAccelerationStructure {
             None,
         ) {
             Ok(buffer) => {
-                let info = ash::vk::BufferDeviceAddressInfo::builder().buffer(buffer.ash_handle());
+                let info = ash::vk::BufferDeviceAddressInfo::default().buffer(buffer.ash_handle());
 
                 let _buffer_device_addr =
                     unsafe { device.ash_handle().get_buffer_device_address(&info) };
@@ -426,14 +427,13 @@ impl BottomLevelAccelerationStructure {
                 match device.ash_ext_acceleration_structure_khr() {
                     Some(as_ext) => {
                         // If deviceAddress is not zero, createFlags must include VK_ACCELERATION_STRUCTURE_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT_KHR
-                        let create_info = ash::vk::AccelerationStructureCreateInfoKHR::builder()
+                        let create_info = ash::vk::AccelerationStructureCreateInfoKHR::default()
                             .buffer(buffer.ash_handle())
                             .offset(0)
                             .size(buffer.size())
                             .ty(ash::vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL)
-                            .create_flags(ash::vk::AccelerationStructureCreateFlagsKHR::empty())
+                            .create_flags(ash::vk::AccelerationStructureCreateFlagsKHR::empty());
                             //.device_address(buffer_device_addr)
-                            .build();
 
                         match unsafe {
                             as_ext.create_acceleration_structure(
@@ -442,9 +442,8 @@ impl BottomLevelAccelerationStructure {
                             )
                         } {
                             Ok(handle) => {
-                                let info = ash::vk::AccelerationStructureDeviceAddressInfoKHR::builder()
-                                    .acceleration_structure(handle)
-                                    .build();
+                                let info = ash::vk::AccelerationStructureDeviceAddressInfoKHR::default()
+                                    .acceleration_structure(handle);
                                 Ok(Arc::new(Self {
                                     handle,
                                     buffer,
@@ -483,15 +482,13 @@ impl Default for TopLevelBLASGroupDecl {
 
 impl TopLevelBLASGroupDecl {
     pub(crate) fn ash_geometry(&self) -> ash::vk::AccelerationStructureGeometryKHR {
-        ash::vk::AccelerationStructureGeometryKHR::builder()
+        ash::vk::AccelerationStructureGeometryKHR::default()
             // TODO: .flags()
             .geometry_type(ash::vk::GeometryTypeKHR::INSTANCES)
             .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
-                instances: ash::vk::AccelerationStructureGeometryInstancesDataKHR::builder()
-                    .array_of_pointers(self.array_of_pointers())
-                    .build(),
+                instances: ash::vk::AccelerationStructureGeometryInstancesDataKHR::default()
+                    .array_of_pointers(self.array_of_pointers()),
             })
-            .build()
     }
 
     pub fn array_of_pointers(&self) -> bool {
@@ -610,19 +607,21 @@ impl TopLevelAccelerationStructure {
         // Any VkDeviceOrHostAddressKHR members of pBuildInfo are ignored by this command,
         // except that the hostAddress member of VkAccelerationStructureGeometryTrianglesDataKHR::transformData
         // will be examined to check if it is NULL.
-        let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::builder()
+        let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::default()
             .geometries(geometries.as_slice())
             .flags(ash::vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
-            .ty(ash::vk::AccelerationStructureTypeKHR::TOP_LEVEL)
-            .build();
+            .ty(ash::vk::AccelerationStructureTypeKHR::TOP_LEVEL);
 
         match device.ash_ext_acceleration_structure_khr() {
             Some(as_ext) => {
-                let build_sizes = unsafe {
+                let mut build_sizes = ash::vk::AccelerationStructureBuildSizesInfoKHR::default();
+
+                unsafe {
                     as_ext.get_acceleration_structure_build_sizes(
                         allowed_building_devices.ash_flags(),
                         &geometry_info,
                         max_primitives_count.as_slice(),
+                        &mut build_sizes
                     )
                 };
 
@@ -678,7 +677,7 @@ impl TopLevelAccelerationStructure {
             None,
         ) {
             Ok(buffer) => {
-                let info = ash::vk::BufferDeviceAddressInfo::builder().buffer(buffer.ash_handle());
+                let info = ash::vk::BufferDeviceAddressInfo::default().buffer(buffer.ash_handle());
 
                 let buffer_device_addr =
                     unsafe { device.ash_handle().get_buffer_device_address(&info) };
@@ -690,14 +689,13 @@ impl TopLevelAccelerationStructure {
                 match device.ash_ext_acceleration_structure_khr() {
                     Some(as_ext) => {
                         // If deviceAddress is not zero, createFlags must include VK_ACCELERATION_STRUCTURE_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT_KHR
-                        let create_info = ash::vk::AccelerationStructureCreateInfoKHR::builder()
+                        let create_info = ash::vk::AccelerationStructureCreateInfoKHR::default()
                             .buffer(buffer.ash_handle())
                             .offset(0)
                             .size(buffer.size())
                             .ty(ash::vk::AccelerationStructureTypeKHR::TOP_LEVEL)
-                            .create_flags(ash::vk::AccelerationStructureCreateFlagsKHR::empty())
+                            .create_flags(ash::vk::AccelerationStructureCreateFlagsKHR::empty());
                             //.device_address(buffer_device_addr)
-                            .build();
 
                         match unsafe {
                             as_ext.create_acceleration_structure(

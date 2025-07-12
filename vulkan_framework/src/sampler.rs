@@ -107,7 +107,7 @@ impl Sampler {
         mipmap_mode: MipmapMode,
         max_anisotropy: f32,
     ) -> VulkanResult<Arc<Self>> {
-        let create_info = ash::vk::SamplerCreateInfo::builder()
+        let create_info = ash::vk::SamplerCreateInfo::default()
             .border_color(ash::vk::BorderColor::INT_OPAQUE_BLACK)
             .anisotropy_enable(max_anisotropy > 1.0)
             .max_anisotropy(max_anisotropy)
@@ -117,8 +117,7 @@ impl Sampler {
             .address_mode_w(ash::vk::SamplerAddressMode::REPEAT)
             .mipmap_mode(mipmap_mode.ash_flags())
             .mag_filter(mag_filter.ash_flags())
-            .min_filter(min_filter.ash_flags())
-            .build();
+            .min_filter(min_filter.ash_flags());
 
         match unsafe {
             device.ash_handle().create_sampler(

@@ -55,7 +55,7 @@ pub struct AttachmentDescription {
 
 impl AttachmentDescription {
     pub(crate) fn ash_description(&self) -> ash::vk::AttachmentDescription {
-        ash::vk::AttachmentDescription::builder()
+        ash::vk::AttachmentDescription::default()
             .format(self.format.ash_format())
             .samples(self.samples.ash_samples())
             .initial_layout(self.initial_layout.ash_layout())
@@ -64,7 +64,6 @@ impl AttachmentDescription {
             .store_op(self.store_op.ash_op())
             .stencil_load_op(self.stencil_load_op.ash_op())
             .stencil_store_op(self.stencil_store_op.ash_op())
-            .build()
     }
 
     pub fn new(
@@ -227,10 +226,9 @@ impl RenderPass {
                 }
 
                 color_attachment_of_subpass.push(
-                    ash::vk::AttachmentReference::builder()
+                    ash::vk::AttachmentReference::default()
                         .attachment(*color_attachment)
-                        .layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                        .build(),
+                        .layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL),
                 )
             }
             output_color_attachment_references_by_subpass.push(color_attachment_of_subpass);
@@ -246,10 +244,9 @@ impl RenderPass {
                 }
 
                 input_attachment_of_subpass.push(
-                    ash::vk::AttachmentReference::builder()
+                    ash::vk::AttachmentReference::default()
                         .attachment(*input_attachment)
-                        .layout(ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                        .build(),
+                        .layout(ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL),
                 )
             }
             input_attachment_references_by_subpass.push(input_attachment_of_subpass);
@@ -263,46 +260,61 @@ impl RenderPass {
                 subpass_uses_depth_stencil_attachment = true;
 
                 output_depth_stencil_attachment_references_by_subpass.push(
-                    ash::vk::AttachmentReference::builder()
+                    ash::vk::AttachmentReference::default()
                         .attachment(depth_stencil_attachment_index)
-                        .layout(ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-                        .build(),
+                        .layout(ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL),
                 )
             } else {
                 output_depth_stencil_attachment_references_by_subpass.push(
-                    ash::vk::AttachmentReference::builder()
+                    ash::vk::AttachmentReference::default()
                         .attachment(0)
-                        .layout(ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-                        .build(),
+                        .layout(ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL),
                 )
             }
 
-            let mut subpass_definition = ash::vk::SubpassDescription::builder()
+            let mut subpass_definition = ash::vk::SubpassDescription::default()
                 .pipeline_bind_point(ash::vk::PipelineBindPoint::GRAPHICS)
+                /*
                 .color_attachments(
-                    output_color_attachment_references_by_subpass
-                        [output_color_attachment_references_by_subpass.len() - 1]
-                        .as_slice(),
+                    output_color_attachment_references_by_subpass.last().unwrap().as_slice(),
                 )
                 .input_attachments(
-                    input_attachment_references_by_subpass
-                        [input_attachment_references_by_subpass.len() - 1]
-                        .as_slice(),
-                );
+                    input_attachment_references_by_subpass.last().unwrap().as_slice(),
+                )
+                */
+            ;
+
+            match output_color_attachment_references_by_subpass.last() {
+                Some(tmp) => {
+                    subpass_definition.p_color_attachments = tmp.as_slice().as_ptr();
+                    subpass_definition.color_attachment_count = tmp.len() as u32;
+                },
+                None => return Err(VulkanError::Framework(FrameworkError::MalformedRenderpassDefinition))
+            };
+            
+            match input_attachment_references_by_subpass.last() {
+                Some(tmp) => {
+                    subpass_definition.p_input_attachments = tmp.as_slice().as_ptr();
+                    subpass_definition.input_attachment_count = tmp.len() as u32;
+                },
+                None => return Err(VulkanError::Framework(FrameworkError::MalformedRenderpassDefinition))
+            };
+
             if subpass_uses_depth_stencil_attachment {
-                subpass_definition = subpass_definition.depth_stencil_attachment(
-                    &output_depth_stencil_attachment_references_by_subpass
-                        [output_depth_stencil_attachment_references_by_subpass.len() - 1],
-                );
+                match output_depth_stencil_attachment_references_by_subpass.last() {
+                    Some(tmp) => {
+                        subpass_definition.p_depth_stencil_attachment = tmp;
+                    },
+                    None => return Err(VulkanError::Framework(FrameworkError::MalformedRenderpassDefinition))
+                }
             }
 
-            subpass_definitions.push(subpass_definition.build())
+            subpass_definitions.push(subpass_definition)
         }
 
-        let create_info = ash::vk::RenderPassCreateInfo::builder()
+        let create_info = ash::vk::RenderPassCreateInfo::default()
             .attachments(attachment_descriptors.as_slice())
-            .subpasses(subpass_definitions.as_slice())
-            .build();
+            .subpasses(subpass_definitions.as_slice());
 
         match unsafe {
             device.ash_handle().create_render_pass(

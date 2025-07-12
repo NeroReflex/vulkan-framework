@@ -1,4 +1,3 @@
-use crate::memory_heap::{ConcreteMemoryHeapDescriptor, MemoryType};
 use crate::prelude::{FrameworkError, VulkanError, VulkanResult};
 use crate::{instance::*, queue_family::*};
 
@@ -21,16 +20,17 @@ pub trait DeviceOwned {
 }
 
 struct DeviceExtensions {
-    swapchain_khr_ext: Option<ash::extensions::khr::Swapchain>,
-    raytracing_pipeline_khr_ext: Option<ash::extensions::khr::RayTracingPipeline>,
-    raytracing_maintenance_khr_ext: Option<ash::extensions::khr::RayTracingMaintenance1>,
-    acceleration_structure_khr_ext: Option<ash::extensions::khr::AccelerationStructure>,
+    debug_utils_khr_ext: Option<Arc<ash::ext::debug_utils::Device>>,
+    swapchain_khr_ext: Option<ash::khr::swapchain::Device>,
+    raytracing_pipeline_khr_ext: Option<ash::khr::ray_tracing_pipeline::Device>,
+    raytracing_maintenance_khr_ext: Option<ash::khr::ray_tracing_maintenance1::Device>,
+    acceleration_structure_khr_ext: Option<ash::khr::acceleration_structure::Device>,
 }
 
-struct DeviceData {
+struct DeviceData<'a> {
     selected_physical_device: ash::vk::PhysicalDevice,
     selected_device_features: ash::vk::PhysicalDeviceFeatures,
-    selected_queues: Vec<ash::vk::DeviceQueueCreateInfo>,
+    selected_queues: Vec<ash::vk::DeviceQueueCreateInfo<'a>>,
     required_family_collection: Vec<Option<(u32, ConcreteQueueFamilyDescriptor)>>,
     supported_extension_names: Vec<String>,
     enabled_extensions: Vec<Vec<c_char>>,
@@ -112,25 +112,29 @@ impl Device {
         ash::vk::Handle::as_raw(self.device.handle())
     }
 
-    pub(crate) fn ash_ext_swapchain_khr(&self) -> &Option<ash::extensions::khr::Swapchain> {
+    pub(crate) fn ash_ext_debug_utils_ext(&self) -> &Option<Arc<ash::ext::debug_utils::Device>> {
+        &self.extensions.debug_utils_khr_ext
+    }
+
+    pub(crate) fn ash_ext_swapchain_khr(&self) -> &Option<ash::khr::swapchain::Device> {
         &self.extensions.swapchain_khr_ext
     }
 
     pub(crate) fn ash_ext_raytracing_maintenance1_khr(
         &self,
-    ) -> &Option<ash::extensions::khr::RayTracingMaintenance1> {
+    ) -> &Option<ash::khr::ray_tracing_maintenance1::Device> {
         &self.extensions.raytracing_maintenance_khr_ext
     }
 
     pub(crate) fn ash_ext_raytracing_pipeline_khr(
         &self,
-    ) -> &Option<ash::extensions::khr::RayTracingPipeline> {
+    ) -> &Option<ash::khr::ray_tracing_pipeline::Device> {
         &self.extensions.raytracing_pipeline_khr_ext
     }
 
     pub(crate) fn ash_ext_acceleration_structure_khr(
         &self,
-    ) -> &Option<ash::extensions::khr::AccelerationStructure> {
+    ) -> &Option<ash::khr::acceleration_structure::Device> {
         &self.extensions.acceleration_structure_khr_ext
     }
 
@@ -176,7 +180,7 @@ impl Device {
         operations: I,
         _instance: &ash::Instance,
         device: &ash::vk::PhysicalDevice,
-        surface_extension: Option<&ash::extensions::khr::Surface>,
+        surface_extension: Option<&ash::khr::surface::Instance>,
         queue_family: &ash::vk::QueueFamilyProperties,
         family_index: u32,
         max_queues: u32,
@@ -503,13 +507,12 @@ impl Device {
                             match selected_queue_family {
                                 Some((family_index, _)) => {
                                     let queue_create_info =
-                                        ash::vk::DeviceQueueCreateInfo::builder()
+                                        ash::vk::DeviceQueueCreateInfo::default()
                                             .queue_family_index(family_index as u32)
                                             .queue_priorities(
                                                 current_requested_queue_family_descriptor
                                                     .get_queue_priorities(),
-                                            )
-                                            .build();
+                                            );
 
                                     selected_queues.push(queue_create_info);
                                     required_family_collection.push(Option::Some((
@@ -577,21 +580,21 @@ impl Device {
                         .map(|str| str.as_ptr())
                         .collect::<Vec<*const c_char>>();
 
-                    let mut device_create_info_builder = ash::vk::DeviceCreateInfo::builder()
+                    let mut device_create_info_builder = ash::vk::DeviceCreateInfo::default()
                         .queue_create_infos(selected_device.selected_queues.as_slice())
                         .enabled_layer_names(layers_ptr.as_slice())
                         .enabled_extension_names(extensions_ptr.as_slice());
 
                     let acceleration_structure_enabled = device_extensions.iter().any(|ext| {
                         ext.as_str()
-                            == ash::extensions::khr::AccelerationStructure::name()
+                            == ash::khr::acceleration_structure::NAME
                                 .to_str()
                                 .unwrap_or("")
                     });
 
                     let ray_tracing_enabled = device_extensions.iter().any(|ext| {
                         ext.as_str()
-                            == ash::extensions::khr::RayTracingPipeline::name()
+                            == ash::khr::ray_tracing_pipeline::NAME
                                 .to_str()
                                 .unwrap_or("")
                     });
@@ -672,7 +675,7 @@ impl Device {
 
                     let mut raytracing_info: Option<RaytracingInfo> = Option::None;
 
-                    let device_create_info = device_create_info_builder.build();
+                    let device_create_info = device_create_info_builder;
                     let device = instance
                         .ash_handle()
                         .create_device(
@@ -688,21 +691,24 @@ impl Device {
                         })?;
 
                     // open requested swapchain extensions (or implied ones)
-                    let swapchain_ext: Option<ash::extensions::khr::Swapchain> =
+
+                    let debug_utils_ext = instance.get_debug_ext_extension().map(|_ext| Arc::new(ash::ext::debug_utils::Device::new(instance.ash_handle(), &device)));
+
+                    let swapchain_ext =
                         match device_extensions.iter().any(|ext| {
                             ext.as_str()
-                                == ash::extensions::khr::Swapchain::name()
+                                == ash::khr::swapchain::NAME
                                     .to_str()
                                     .unwrap_or("")
                         }) {
-                            true => Option::Some(ash::extensions::khr::Swapchain::new(
+                            true => Option::Some(ash::khr::swapchain::Device::new(
                                 instance.ash_handle(),
                                 &device,
                             )),
                             false => Option::None,
                         };
 
-                    let raytracing_pipeline_ext: Option<ash::extensions::khr::RayTracingPipeline> =
+                    let raytracing_pipeline_ext: Option<ash::khr::ray_tracing_pipeline::Device> =
                         match ray_tracing_enabled {
                             true => {
                                 //ray_tracing_pipeline_properties.
@@ -754,18 +760,15 @@ impl Device {
                                         .shader_group_handle_alignment,
                                 });
 
-                                Option::Some(ash::extensions::khr::RayTracingPipeline::new(
-                                    instance.ash_handle(),
-                                    &device,
-                                ))
+                                Option::Some(ash::khr::ray_tracing_pipeline::Device::new(instance.ash_handle(), &device))
                             }
                             false => Option::None,
                         };
 
                     let acceleration_structure_ext: Option<
-                        ash::extensions::khr::AccelerationStructure,
+                        ash::khr::acceleration_structure::Device,
                     > = match acceleration_structure_enabled {
-                        true => Option::Some(ash::extensions::khr::AccelerationStructure::new(
+                        true => Option::Some(ash::khr::acceleration_structure::Device::new(
                             instance.ash_handle(),
                             &device,
                         )),
@@ -773,14 +776,14 @@ impl Device {
                     };
 
                     let raytracing_maintenance_ext: Option<
-                        ash::extensions::khr::RayTracingMaintenance1,
+                        ash::khr::ray_tracing_maintenance1::Device,
                     > = match device_extensions.iter().any(|ext| {
                         ext.as_str()
-                            == ash::extensions::khr::RayTracingMaintenance1::name()
+                            == ash::khr::ray_tracing_maintenance1::NAME
                                 .to_str()
                                 .unwrap_or("")
                     }) {
-                        true => Option::Some(ash::extensions::khr::RayTracingMaintenance1::new(
+                        true => Option::Some(ash::khr::ray_tracing_maintenance1::Device::new(
                             instance.ash_handle(),
                             &device,
                         )),
@@ -789,7 +792,7 @@ impl Device {
 
                     let mut obj_name_bytes = vec![];
 
-                    if let Some(ext) = instance.get_debug_ext_extension() {
+                    if let Some(ext) = debug_utils_ext.clone() {
                         if let Some(name) = debug_name {
                             for name_ch in name.as_bytes().iter() {
                                 obj_name_bytes.push(*name_ch);
@@ -800,14 +803,12 @@ impl Device {
                                 obj_name_bytes.as_slice(),
                             );
                             // set device name for debugging
-                            let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::builder()
-                                .object_type(ash::vk::ObjectType::DEVICE)
-                                .object_handle(ash::vk::Handle::as_raw(device.handle()))
-                                .object_name(object_name)
-                                .build();
+                            let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::default()
+                                .object_handle(device.handle())
+                                .object_name(object_name);
 
                             if let Err(err) =
-                                ext.set_debug_utils_object_name(device.handle(), &dbg_info)
+                                ext.set_debug_utils_object_name(&dbg_info)
                             {
                                 #[cfg(debug_assertions)]
                                 {
@@ -834,6 +835,7 @@ impl Device {
                             raytracing_pipeline_khr_ext: raytracing_pipeline_ext,
                             raytracing_maintenance_khr_ext: raytracing_maintenance_ext,
                             acceleration_structure_khr_ext: acceleration_structure_ext,
+                            debug_utils_khr_ext: debug_utils_ext,
                         },
                         instance,
                         supported_extension_names: selected_device.supported_extension_names,
