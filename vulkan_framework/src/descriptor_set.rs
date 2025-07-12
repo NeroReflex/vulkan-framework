@@ -177,14 +177,12 @@ impl<'a> DescriptorSetWriter<'a> {
     pub fn bind_uniform_buffer(
         &mut self,
         first_layout_id: u32,
-        buffers: &[Arc<dyn BufferTrait>],
-        offset: Option<u64>,
-        size: Option<u64>,
+        buffers: &[(Arc<dyn BufferTrait>, Option<u64>, Option<u64>)],
     ) {
         let descriptors: Vec<ash::vk::DescriptorBufferInfo> = buffers
             .iter()
             .enumerate()
-            .map(|(index, buffer)| {
+            .map(|(index, (buffer, offset, size))| {
                 // TODO: assert usage has VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT bit set
 
                 self.used_resources[(first_layout_id as usize) + index] =
@@ -192,7 +190,7 @@ impl<'a> DescriptorSetWriter<'a> {
 
                 ash::vk::DescriptorBufferInfo::default()
                     .range(match size {
-                        Option::Some(sz) => sz,
+                        Option::Some(sz) => sz.to_owned(),
                         Option::None => buffer.size(),
                     })
                     .buffer(ash::vk::Buffer::from_raw(buffer.native_handle()))
@@ -206,50 +204,6 @@ impl<'a> DescriptorSetWriter<'a> {
             .dst_set(self.descriptor_set.ash_handle())
             .dst_binding(first_layout_id)
             .descriptor_type(ash::vk::DescriptorType::UNIFORM_BUFFER);
-
-        match self.buffers_writers.last() {
-            Some(tmp) => {
-                descriptor_writes.p_buffer_info = tmp.as_slice().as_ptr();
-                descriptor_writes.descriptor_count = tmp.len() as u32;
-            }
-            None => {}
-        };
-
-        self.writer.push(descriptor_writes);
-    }
-
-    pub fn bind_storage_buffers(
-        &mut self,
-        first_layout_id: u32,
-        buffers: &[Arc<dyn BufferTrait>],
-        offset: Option<u64>,
-        size: Option<u64>,
-    ) {
-        let descriptors: Vec<ash::vk::DescriptorBufferInfo> = buffers
-            .iter()
-            .enumerate()
-            .map(|(index, buffer)| {
-                // TODO: assert usage has VK_BUFFER_USAGE_STORAGE_BUFFER_BIT bit set
-
-                self.used_resources[(first_layout_id as usize) + index] =
-                    DescriptorSetBoundResource::Buffer(buffer.clone());
-
-                ash::vk::DescriptorBufferInfo::default()
-                    .range(match size {
-                        Option::Some(sz) => sz,
-                        Option::None => buffer.size(),
-                    })
-                    .buffer(ash::vk::Buffer::from_raw(buffer.native_handle()))
-                    .offset(offset.unwrap_or(0))
-            })
-            .collect();
-
-        self.buffers_writers.push(descriptors);
-
-        let mut descriptor_writes = ash::vk::WriteDescriptorSet::default()
-            .dst_set(self.descriptor_set.ash_handle())
-            .dst_binding(first_layout_id)
-            .descriptor_type(ash::vk::DescriptorType::STORAGE_BUFFER);
 
         match self.buffers_writers.last() {
             Some(tmp) => {
@@ -292,6 +246,48 @@ impl<'a> DescriptorSetWriter<'a> {
         match self.images_writers.last() {
             Some(tmp) => {
                 descriptor_writes.p_image_info = tmp.as_slice().as_ptr();
+                descriptor_writes.descriptor_count = tmp.len() as u32;
+            }
+            None => {}
+        };
+
+        self.writer.push(descriptor_writes);
+    }
+
+    pub fn bind_storage_buffers(
+        &mut self,
+        first_layout_id: u32,
+        buffers: &[(Arc<dyn BufferTrait>, Option<u64>, Option<u64>)],
+    ) {
+        let descriptors: Vec<ash::vk::DescriptorBufferInfo> = buffers
+            .iter()
+            .enumerate()
+            .map(|(index, (buffer, offset, size))| {
+                // TODO: assert usage has VK_BUFFER_USAGE_STORAGE_BUFFER_BIT bit set
+
+                self.used_resources[(first_layout_id as usize) + index] =
+                    DescriptorSetBoundResource::Buffer(buffer.clone());
+
+                ash::vk::DescriptorBufferInfo::default()
+                    .range(match size {
+                        Option::Some(sz) => sz.to_owned(),
+                        Option::None => buffer.size(),
+                    })
+                    .buffer(ash::vk::Buffer::from_raw(buffer.native_handle()))
+                    .offset(offset.unwrap_or(0))
+            })
+            .collect();
+
+        self.buffers_writers.push(descriptors);
+
+        let mut descriptor_writes = ash::vk::WriteDescriptorSet::default()
+            .dst_set(self.descriptor_set.ash_handle())
+            .dst_binding(first_layout_id)
+            .descriptor_type(ash::vk::DescriptorType::STORAGE_BUFFER);
+
+        match self.buffers_writers.last() {
+            Some(tmp) => {
+                descriptor_writes.p_buffer_info = tmp.as_slice().as_ptr();
                 descriptor_writes.descriptor_count = tmp.len() as u32;
             }
             None => {}
