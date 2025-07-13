@@ -17,9 +17,52 @@ pub enum FrameworkError {
     CannotCreateVulkanInstance,
     MapMemoryError,
     DescriptorSetBindingOutOfRange,
+    DescriptorSetBindingDuplicated,
     IncompatibleInstanceVersion(InstanceAPIVersion, InstanceAPIVersion),
     MalformedRenderpassDefinition,
     Unknown(Option<String>),
+}
+
+impl Display for FrameworkError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FrameworkError::MallocFail => write!(f, "MallocFail"),
+            FrameworkError::IncompatibleMemoryHeapType => {
+                write!(f, "IncompatibleMemoryHeapType")
+            }
+            FrameworkError::UserInput(_maybe_details) => {
+                write!(f, "UserInput")
+            }
+            FrameworkError::NoSuitableDeviceFound => {
+                write!(f, "NoSuitableDeviceFound")
+            }
+            FrameworkError::NoSuitableMemoryHeapFound => {
+                write!(f, "NoSuitableMemoryHeapFound")
+            }
+            FrameworkError::ResourceFromIncompatibleDevice => {
+                write!(f, "ResourceFromIncompatibleDevice")
+            }
+            FrameworkError::CannotLoadVulkan => write!(f, "CannotLoadVulkan"),
+            FrameworkError::CannotCreateVulkanInstance => {
+                write!(f, "CannotCreateVulkanInstance")
+            }
+            FrameworkError::MapMemoryError => write!(f, "MapMemoryError"),
+            FrameworkError::IncompatibleInstanceVersion(_current_version, _wanted_version) => {
+                write!(f, "IncompatibleInstanceVersion")
+            }
+            FrameworkError::Unknown(_details) => write!(f, "Unknown"),
+            FrameworkError::MalformedRenderpassDefinition => {
+                write!(f, "Malformed renderpass definition")
+            }
+            FrameworkError::DescriptorSetBindingOutOfRange => {
+                write!(f, "descriptor set binding is out of range")
+            }
+            FrameworkError::DescriptorSetBindingDuplicated => write!(
+                f,
+                "descriptor set binding is being used twice in the same write"
+            ),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -32,39 +75,7 @@ pub enum VulkanError {
 impl Display for VulkanError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            VulkanError::Framework(error) => match error {
-                FrameworkError::MallocFail => write!(f, "Framework error: MallocFail"),
-                FrameworkError::IncompatibleMemoryHeapType => {
-                    write!(f, "Framework error: IncompatibleMemoryHeapType")
-                }
-                FrameworkError::UserInput(_maybe_details) => {
-                    write!(f, "Framework error: UserInput")
-                }
-                FrameworkError::NoSuitableDeviceFound => {
-                    write!(f, "Framework error: NoSuitableDeviceFound")
-                }
-                FrameworkError::NoSuitableMemoryHeapFound => {
-                    write!(f, "Framework error: NoSuitableMemoryHeapFound")
-                }
-                FrameworkError::ResourceFromIncompatibleDevice => {
-                    write!(f, "Framework error: ResourceFromIncompatibleDevice")
-                }
-                FrameworkError::CannotLoadVulkan => write!(f, "Framework error: CannotLoadVulkan"),
-                FrameworkError::CannotCreateVulkanInstance => {
-                    write!(f, "Framework error: CannotCreateVulkanInstance")
-                }
-                FrameworkError::MapMemoryError => write!(f, "Framework error: MapMemoryError"),
-                FrameworkError::IncompatibleInstanceVersion(_current_version, _wanted_version) => {
-                    write!(f, "Framework error: IncompatibleInstanceVersion")
-                }
-                FrameworkError::Unknown(_details) => write!(f, "Framework error: Unknown"),
-                FrameworkError::MalformedRenderpassDefinition => {
-                    write!(f, "Framework error: Malformed renderpass definition")
-                }
-                FrameworkError::DescriptorSetBindingOutOfRange => {
-                    write!(f, "Framework error: descriptor set binding is out of range")
-                }
-            },
+            VulkanError::Framework(error) => write!(f, "Framework error: {error}"),
             VulkanError::Vulkan(code, maybe_str) => match maybe_str {
                 Some(str) => write!(f, "Vulkan error ({}): {}", code, str),
                 None => write!(f, "Vulkan error ({})", code),

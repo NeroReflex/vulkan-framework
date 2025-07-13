@@ -52,7 +52,7 @@ pub struct DescriptorSetWriter<'a> {
         ); 8],
     >,
 
-    used_resources: smallvec::SmallVec<[DescriptorSetBoundResource; 32]>,
+    used_resources: smallvec::SmallVec<[Option<DescriptorSetBoundResource>; 32]>,
 }
 
 impl<'a> DescriptorSetWriter<'a> {
@@ -65,14 +65,14 @@ impl<'a> DescriptorSetWriter<'a> {
             storage_images: smallvec::smallvec![],
             uniform_buffers: smallvec::smallvec![],
             storage_buffers: smallvec::smallvec![],
-            used_resources: (0..size)
-                .map(|_idx| DescriptorSetBoundResource::None)
-                .collect(),
+            used_resources: (0..size).map(|_idx| Option::default()).collect(),
         }
     }
 
-    pub(crate) fn used_resources(&self) -> Vec<DescriptorSetBoundResource> {
-        self.used_resources.iter().map(|res| res.clone()).collect()
+    pub(crate) fn used_resources(
+        &self,
+    ) -> &smallvec::SmallVec<[Option<DescriptorSetBoundResource>; 32]> {
+        &self.used_resources
     }
 
     pub fn bind_tlas(
@@ -84,6 +84,17 @@ impl<'a> DescriptorSetWriter<'a> {
             return Err(VulkanError::Framework(
                 FrameworkError::DescriptorSetBindingOutOfRange,
             ));
+        }
+
+        for (idx, el) in tlas_collection.iter().enumerate() {
+            if self.used_resources[first_layout_id as usize + idx]
+                .replace(DescriptorSetBoundResource::TLAS(el.clone()))
+                .is_some()
+            {
+                return Err(VulkanError::Framework(
+                    FrameworkError::DescriptorSetBindingDuplicated,
+                ));
+            }
         }
 
         Ok(self
@@ -102,6 +113,17 @@ impl<'a> DescriptorSetWriter<'a> {
             ));
         }
 
+        for (idx, (_, image_view, sampler)) in images.iter().enumerate() {
+            if self.used_resources[first_layout_id as usize + idx]
+                .replace(DescriptorSetBoundResource::CombinedImageViewSampler((image_view.clone(), sampler.clone())))
+                .is_some()
+            {
+                return Err(VulkanError::Framework(
+                    FrameworkError::DescriptorSetBindingDuplicated,
+                ));
+            }
+        }
+
         Ok(self
             .combined_image_sampler
             .push((first_layout_id, images.iter().cloned().collect())))
@@ -116,6 +138,17 @@ impl<'a> DescriptorSetWriter<'a> {
             return Err(VulkanError::Framework(
                 FrameworkError::DescriptorSetBindingOutOfRange,
             ));
+        }
+
+        for (idx, (_, image_view)) in images.iter().enumerate() {
+            if self.used_resources[first_layout_id as usize + idx]
+                .replace(DescriptorSetBoundResource::ImageView(image_view.clone()))
+                .is_some()
+            {
+                return Err(VulkanError::Framework(
+                    FrameworkError::DescriptorSetBindingDuplicated,
+                ));
+            }
         }
 
         Ok(self
@@ -134,6 +167,17 @@ impl<'a> DescriptorSetWriter<'a> {
             ));
         }
 
+        for (idx, (_, image_view)) in images.iter().enumerate() {
+            if self.used_resources[first_layout_id as usize + idx]
+                .replace(DescriptorSetBoundResource::ImageView(image_view.clone()))
+                .is_some()
+            {
+                return Err(VulkanError::Framework(
+                    FrameworkError::DescriptorSetBindingDuplicated,
+                ));
+            }
+        }
+
         Ok(self
             .storage_images
             .push((first_layout_id, images.iter().cloned().collect())))
@@ -148,6 +192,17 @@ impl<'a> DescriptorSetWriter<'a> {
             return Err(VulkanError::Framework(
                 FrameworkError::DescriptorSetBindingOutOfRange,
             ));
+        }
+
+        for (idx, (buffer, _, _)) in buffers.iter().enumerate() {
+            if self.used_resources[first_layout_id as usize + idx]
+                .replace(DescriptorSetBoundResource::Buffer(buffer.clone()))
+                .is_some()
+            {
+                return Err(VulkanError::Framework(
+                    FrameworkError::DescriptorSetBindingDuplicated,
+                ));
+            }
         }
 
         Ok(self.uniform_buffers.push((
@@ -182,6 +237,17 @@ impl<'a> DescriptorSetWriter<'a> {
             ));
         }
 
+        for (idx, (buffer, _, _)) in buffers.iter().enumerate() {
+            if self.used_resources[first_layout_id as usize + idx]
+                .replace(DescriptorSetBoundResource::Buffer(buffer.clone()))
+                .is_some()
+            {
+                return Err(VulkanError::Framework(
+                    FrameworkError::DescriptorSetBindingDuplicated,
+                ));
+            }
+        }
+
         Ok(self.uniform_buffers.push((
             first_layout_id,
             buffers
@@ -206,7 +272,7 @@ impl<'a> DescriptorSetWriter<'a> {
 
 #[derive(Clone)]
 pub enum DescriptorSetBoundResource {
-    None,
+    TLAS(Arc<TopLevelAccelerationStructure>),
     Buffer(Arc<dyn BufferTrait>),
     CombinedImageViewSampler((Arc<ImageView>, Arc<Sampler>)),
     ImageView(Arc<ImageView>),
@@ -216,7 +282,7 @@ pub struct DescriptorSet {
     pool: Arc<DescriptorPool>,
     layout: Arc<DescriptorSetLayout>,
     descriptor_set: ash::vk::DescriptorSet,
-    bound_resources: Mutex<Vec<DescriptorSetBoundResource>>,
+    bound_resources: Mutex<smallvec::SmallVec<[Option<DescriptorSetBoundResource>; 32]>>,
 }
 
 impl DescriptorSetLayoutDependant for DescriptorSet {
@@ -491,9 +557,9 @@ impl DescriptorSet {
 
         for (idx, res) in writer.used_resources().iter().enumerate() {
             match res {
-                DescriptorSetBoundResource::None => {}
-                updated_resource => {
-                    (*lck)[idx] = updated_resource.clone();
+                None => {}
+                Some(updated_resource) => {
+                    (*lck)[idx] = Some(updated_resource.clone());
                 }
             }
         }
@@ -533,9 +599,7 @@ impl DescriptorSet {
                 .allocate_descriptor_sets(&create_info)
         } {
             Ok(descriptor_set) => {
-                let guarded_resource = (0..(max_idx + 1))
-                    .map(|_idx| DescriptorSetBoundResource::None)
-                    .collect();
+                let guarded_resource = (0..(max_idx + 1)).map(|_idx| Option::default()).collect();
 
                 #[cfg(feature = "better_mutex")]
                 let bound_resources = const_mutex(guarded_resource);
