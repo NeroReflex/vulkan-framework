@@ -288,60 +288,27 @@ pub trait BufferTrait: Send + Sync + DeviceOwned {
 }
 
 pub struct Buffer {
-    memory_pool: Arc<MemoryPool>,
-    reserved_memory_from_pool: AllocationResult,
+    device: Arc<Device>,
     descriptor: ConcreteBufferDescriptor,
     buffer: ash::vk::Buffer,
 }
 
 impl Drop for Buffer {
     fn drop(&mut self) {
-        let device = self
-            .memory_pool
-            .get_parent_memory_heap()
-            .get_parent_device();
+        let device = self.get_parent_device();
+
         unsafe {
             device.ash_handle().destroy_buffer(
                 self.buffer,
                 device.get_parent_instance().get_alloc_callbacks(),
             )
         }
-
-        self.memory_pool
-            .get_memory_allocator()
-            .dealloc(&mut self.reserved_memory_from_pool)
-    }
-}
-
-impl MemoryPoolBacked for Buffer {
-    fn get_backing_memory_pool(&self) -> Arc<MemoryPool> {
-        self.memory_pool.clone()
-    }
-
-    fn allocation_offset(&self) -> u64 {
-        self.reserved_memory_from_pool.offset_in_pool()
-    }
-
-    fn allocation_size(&self) -> u64 {
-        self.reserved_memory_from_pool.size()
     }
 }
 
 impl DeviceOwned for Buffer {
     fn get_parent_device(&self) -> Arc<Device> {
-        self.memory_pool
-            .get_parent_memory_heap()
-            .get_parent_device()
-    }
-}
-
-impl BufferTrait for Buffer {
-    fn size(&self) -> u64 {
-        self.descriptor.ash_size()
-    }
-
-    fn native_handle(&self) -> u64 {
-        ash::vk::Handle::as_raw(self.buffer)
+        self.device.clone()
     }
 }
 
@@ -350,12 +317,16 @@ impl Buffer {
         self.buffer
     }
 
+    pub(crate) fn descriptor(&self) -> &ConcreteBufferDescriptor {
+        &self.descriptor
+    }
+
     pub fn new(
-        memory_pool: Arc<MemoryPool>,
+        device: Arc<Device>,
         descriptor: ConcreteBufferDescriptor,
         sharing: Option<&[std::sync::Weak<QueueFamily>]>,
         debug_name: Option<&str>,
-    ) -> VulkanResult<Arc<Self>> {
+    ) -> VulkanResult<Self> {
         let mut queue_family_indices = Vec::<u32>::new();
         if let Some(weak_queue_family_iter) = sharing {
             for allowed_queue_family in weak_queue_family_iter {
@@ -378,8 +349,6 @@ impl Buffer {
                 false => ash::vk::SharingMode::CONCURRENT,
             })
             .queue_family_indices(queue_family_indices.as_ref());
-
-        let device = memory_pool.get_parent_memory_heap().get_parent_device();
 
         let buffer = match unsafe {
             device.ash_handle().create_buffer(
@@ -422,14 +391,44 @@ impl Buffer {
             }
         }
 
+        Ok(Self {
+            device,
+            descriptor,
+            buffer,
+        })
+    }
+}
+
+pub struct AllocatedBuffer {
+    memory_pool: Arc<MemoryPool>,
+    reserved_memory_from_pool: AllocationResult,
+    buffer: Buffer,
+}
+
+impl AllocatedBuffer {
+    pub(crate) fn ash_handle(&self) -> ash::vk::Buffer {
+        self.buffer.ash_handle()
+    }
+
+    pub fn new(memory_pool: Arc<MemoryPool>, buffer: Buffer) -> VulkanResult<Arc<Self>> {
+        let device = memory_pool.get_parent_memory_heap().get_parent_device();
+
+        if buffer.get_parent_device() != memory_pool.get_parent_memory_heap().get_parent_device() {
+            return Err(VulkanError::Framework(
+                FrameworkError::MemoryHeapAndResourceNotFromTheSameDevice,
+            ));
+        }
+
         unsafe {
             let requirements = if device.get_parent_instance().instance_vulkan_version()
                 == InstanceAPIVersion::Version1_0
             {
-                device.ash_handle().get_buffer_memory_requirements(buffer)
+                device
+                    .ash_handle()
+                    .get_buffer_memory_requirements(buffer.ash_handle())
             } else {
                 let requirements_info =
-                    ash::vk::BufferMemoryRequirementsInfo2::default().buffer(buffer);
+                    ash::vk::BufferMemoryRequirementsInfo2::default().buffer(buffer.ash_handle());
 
                 let mut requirements = ash::vk::MemoryRequirements2::default();
 
@@ -455,7 +454,7 @@ impl Buffer {
             {
                 Some(reserved_memory_from_pool) => {
                     match device.ash_handle().bind_buffer_memory(
-                        buffer,
+                        buffer.ash_handle(),
                         memory_pool.ash_handle(),
                         reserved_memory_from_pool.offset_in_pool(),
                     ) {
@@ -463,28 +462,50 @@ impl Buffer {
                             memory_pool,
                             reserved_memory_from_pool,
                             buffer,
-                            descriptor,
                         })),
-                        Err(err) => {
-                            // the buffer will not let this function, destroy it or it will leak
-                            device.ash_handle().destroy_buffer(
-                                buffer,
-                                device.get_parent_instance().get_alloc_callbacks(),
-                            );
-
-                            Err(VulkanError::Vulkan(err.as_raw(), Some(String::from("Error allocating memory on the device: {}, probably this is due to an incorrect implementation of the memory allocation algorithm"))))
-                        }
+                        Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(String::from("Error allocating memory on the device: {}, probably this is due to an incorrect implementation of the memory allocation algorithm"))))
                     }
                 }
-                None => {
-                    // the buffer will not let this function, destroy it or it will leak
-                    device
-                        .ash_handle()
-                        .destroy_buffer(buffer, device.get_parent_instance().get_alloc_callbacks());
-
-                    Err(VulkanError::Framework(FrameworkError::MallocFail))
-                }
+                None => Err(VulkanError::Framework(FrameworkError::MallocFail)),
             }
         }
+    }
+}
+
+impl Drop for AllocatedBuffer {
+    fn drop(&mut self) {
+        self.memory_pool
+            .get_memory_allocator()
+            .dealloc(&mut self.reserved_memory_from_pool)
+    }
+}
+
+impl MemoryPoolBacked for AllocatedBuffer {
+    fn get_backing_memory_pool(&self) -> Arc<MemoryPool> {
+        self.memory_pool.clone()
+    }
+
+    fn allocation_offset(&self) -> u64 {
+        self.reserved_memory_from_pool.offset_in_pool()
+    }
+
+    fn allocation_size(&self) -> u64 {
+        self.reserved_memory_from_pool.size()
+    }
+}
+
+impl DeviceOwned for AllocatedBuffer {
+    fn get_parent_device(&self) -> Arc<Device> {
+        self.buffer.get_parent_device()
+    }
+}
+
+impl BufferTrait for AllocatedBuffer {
+    fn size(&self) -> u64 {
+        self.buffer.descriptor().ash_size()
+    }
+
+    fn native_handle(&self) -> u64 {
+        ash::vk::Handle::as_raw(self.buffer.ash_handle())
     }
 }

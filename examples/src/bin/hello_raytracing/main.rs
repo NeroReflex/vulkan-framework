@@ -9,7 +9,7 @@ use vulkan_framework::{
         TopLevelBLASGroupData, TopLevelBLASGroupDecl, VertexIndexing,
     },
     binding_tables::{required_memory_type, RaytracingBindingTables},
-    buffer::{Buffer, BufferUsage, ConcreteBufferDescriptor},
+    buffer::{AllocatedBuffer, Buffer, BufferUsage, ConcreteBufferDescriptor},
     command_buffer::{
         AccessFlag, AccessFlags, AccessFlagsSpecifier, ClearValues, ColorClearValues,
         CommandBufferRecorder, ImageMemoryBarrier, PrimaryCommandBuffer,
@@ -774,7 +774,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap();
 
         let vertex_buffer = Buffer::new(
-            raytracing_allocator.clone(),
+            dev.clone(),
             ConcreteBufferDescriptor::new(
                 BufferUsage::Unmanaged(
                     (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
@@ -789,8 +789,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .unwrap();
 
+        let vertex_buffer =
+            AllocatedBuffer::new(raytracing_allocator.clone(), vertex_buffer).unwrap();
+
         let index_buffer = Buffer::new(
-            raytracing_allocator.clone(),
+            dev.clone(),
             ConcreteBufferDescriptor::new(
                 BufferUsage::Unmanaged(
                     (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
@@ -805,8 +808,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .unwrap();
 
+        let index_buffer =
+            AllocatedBuffer::new(raytracing_allocator.clone(), index_buffer).unwrap();
+
         let transform_buffer = Buffer::new(
-            raytracing_allocator.clone(),
+            dev.clone(),
             ConcreteBufferDescriptor::new(
                 BufferUsage::Unmanaged(
                     (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
@@ -820,6 +826,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             None,
         )
         .unwrap();
+
+        let transform_buffer =
+            AllocatedBuffer::new(raytracing_allocator.clone(), transform_buffer).unwrap();
 
         let blas = BottomLevelAccelerationStructure::new(
             raytracing_allocator.clone(),
@@ -902,7 +911,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         let blas_instances_buffer = Buffer::new(
-            raytracing_allocator.clone(),
+            dev.clone(),
             ConcreteBufferDescriptor::new(
                 BufferUsage::Unmanaged(
                     (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
@@ -916,6 +925,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             None,
         )
         .unwrap();
+
+        let blas_instances_buffer =
+            AllocatedBuffer::new(raytracing_allocator.clone(), blas_instances_buffer).unwrap();
 
         let accel_structure_instance = ash::vk::AccelerationStructureInstanceKHR {
             transform: ash::vk::TransformMatrixKHR {
