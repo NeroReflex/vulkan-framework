@@ -115,7 +115,10 @@ impl<'a> DescriptorSetWriter<'a> {
 
         for (idx, (_, image_view, sampler)) in images.iter().enumerate() {
             if self.used_resources[first_layout_id as usize + idx]
-                .replace(DescriptorSetBoundResource::CombinedImageViewSampler((image_view.clone(), sampler.clone())))
+                .replace(DescriptorSetBoundResource::CombinedImageViewSampler((
+                    image_view.clone(),
+                    sampler.clone(),
+                )))
                 .is_some()
             {
                 return Err(VulkanError::Framework(

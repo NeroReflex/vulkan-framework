@@ -891,54 +891,14 @@ pub trait ImageOwned {
 }
 
 pub struct Image {
-    memory_pool: Arc<MemoryPool>,
-    reserved_memory_from_pool: AllocationResult,
+    device: Arc<Device>,
     image: ash::vk::Image,
     descriptor: ConcreteImageDescriptor,
 }
 
 impl DeviceOwned for Image {
     fn get_parent_device(&self) -> Arc<Device> {
-        self.get_backing_memory_pool()
-            .get_parent_memory_heap()
-            .get_parent_device()
-    }
-}
-
-impl ImageTrait for Image {
-    #[inline]
-    fn native_handle(&self) -> u64 {
-        ash::vk::Handle::as_raw(self.image)
-    }
-
-    #[inline]
-    fn flags(&self) -> ImageFlags {
-        self.descriptor.img_flags
-    }
-
-    #[inline]
-    fn usage(&self) -> ImageUsage {
-        self.descriptor.img_usage
-    }
-
-    #[inline]
-    fn format(&self) -> ImageFormat {
-        self.descriptor.img_format
-    }
-
-    #[inline]
-    fn dimensions(&self) -> ImageDimensions {
-        self.descriptor.img_dimensions
-    }
-
-    #[inline]
-    fn layers_count(&self) -> u32 {
-        self.descriptor.img_layers
-    }
-
-    #[inline]
-    fn mip_levels_count(&self) -> u32 {
-        self.descriptor.img_mip_levels
+        self.device.clone()
     }
 }
 
@@ -951,23 +911,21 @@ impl Image {
         self.descriptor.ash_format()
     }
 
+    pub(crate) fn descriptor(&self) -> &ConcreteImageDescriptor {
+        &self.descriptor
+    }
+
     /**
-     * Create a new Image from the provided memory pool.
-     *
-     * The creation process is expected to fail if the memory pool does not allow allocation for such resource,
-     * either because the allocation fails (for example due to lack of memory) or because such image
-     * has memory requirements that cannot be met.
+     * Create a new Image on the specified device.
      *
      * The resulting image has the initial layout of VK_IMAGE_LAYOUT_UNDEFINED.
-     *
-     *
      */
     pub fn new(
-        memory_pool: Arc<MemoryPool>,
+        device: Arc<Device>,
         descriptor: ConcreteImageDescriptor,
         sharing: Option<&[std::sync::Weak<QueueFamily>]>,
         debug_name: Option<&str>,
-    ) -> VulkanResult<Arc<Self>> {
+    ) -> VulkanResult<Self> {
         if descriptor.img_layers == 0 {
             return Err(VulkanError::Framework(FrameworkError::UserInput(Some(
                 "Error creating image: number of layers must be at least 1".to_string(),
@@ -1010,8 +968,6 @@ impl Image {
             .queue_family_indices(queue_family_indices.as_ref())
             .tiling(descriptor.ash_tiling());
 
-        let device = memory_pool.get_parent_memory_heap().get_parent_device();
-
         let image = unsafe {
             match device.ash_handle().create_image(
                 &create_info,
@@ -1053,12 +1009,65 @@ impl Image {
             }
         }
 
+        Ok(Self {
+            device,
+            image,
+            descriptor,
+        })
+    }
+}
+
+impl Drop for Image {
+    fn drop(&mut self) {
+        let device = self.get_parent_device();
+
+        unsafe {
+            device.ash_handle().destroy_image(
+                self.image,
+                device.get_parent_instance().get_alloc_callbacks(),
+            );
+        }
+    }
+}
+
+pub struct AllocatedImage {
+    memory_pool: Arc<MemoryPool>,
+    reserved_memory_from_pool: AllocationResult,
+    image: Image,
+}
+
+impl DeviceOwned for AllocatedImage {
+    fn get_parent_device(&self) -> Arc<Device> {
+        self.get_backing_memory_pool()
+            .get_parent_memory_heap()
+            .get_parent_device()
+    }
+}
+
+impl AllocatedImage {
+    /**
+     * Allocate the given Image on the provided memory pool.
+     *
+     * The creation process is expected to fail if the memory pool does not allow allocation for such resource,
+     * either because the allocation fails (for example due to lack of memory) or because such image
+     * has memory requirements that cannot be met.
+     */
+    pub fn new(memory_pool: Arc<MemoryPool>, image: Image) -> VulkanResult<Arc<Self>> {
+        let device = memory_pool.get_parent_memory_heap().get_parent_device();
+
+        //assert_eq!(image.get_parent_device().ash_handle(), memory_pool.get_parent_memory_heap().get_parent_device().ash_handle());
+
         let requirements = if device.get_parent_instance().instance_vulkan_version()
             == InstanceAPIVersion::Version1_0
         {
-            unsafe { device.ash_handle().get_image_memory_requirements(image) }
+            unsafe {
+                device
+                    .ash_handle()
+                    .get_image_memory_requirements(image.ash_native())
+            }
         } else {
-            let requirements_info = ash::vk::ImageMemoryRequirementsInfo2::default().image(image);
+            let requirements_info =
+                ash::vk::ImageMemoryRequirementsInfo2::default().image(image.ash_native());
 
             let mut requirements = ash::vk::MemoryRequirements2::default();
 
@@ -1087,7 +1096,7 @@ impl Image {
             Some(reserved_memory_from_pool) => {
                 match unsafe {
                     device.ash_handle().bind_image_memory(
-                        image,
+                        image.ash_native(),
                         memory_pool.ash_handle(),
                         reserved_memory_from_pool.offset_in_pool(),
                     )
@@ -1096,56 +1105,16 @@ impl Image {
                         memory_pool,
                         reserved_memory_from_pool,
                         image,
-                        descriptor,
                     })),
-                    Err(err) => {
-                        // the image will not let this function, destroy it or it will leak
-                        unsafe {
-                            device.ash_handle().destroy_image(
-                                image,
-                                device.get_parent_instance().get_alloc_callbacks(),
-                            )
-                        }
-
-                        Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error allocating memory on the device: {}, probably this is due to an incorrect implementation of the memory allocation algorithm", err))))
-                    }
+                    Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error allocating memory on the device: {}, probably this is due to an incorrect implementation of the memory allocation algorithm", err)))),
                 }
             }
-            None => {
-                // the image will not let this function, destroy it or it will leak
-                unsafe {
-                    device
-                        .ash_handle()
-                        .destroy_image(image, device.get_parent_instance().get_alloc_callbacks());
-                }
-
-                Err(VulkanError::Framework(FrameworkError::MallocFail))
-            }
+            None => Err(VulkanError::Framework(FrameworkError::MallocFail)),
         }
     }
 }
 
-impl Drop for Image {
-    fn drop(&mut self) {
-        let device = self
-            .memory_pool
-            .get_parent_memory_heap()
-            .get_parent_device();
-
-        unsafe {
-            device.ash_handle().destroy_image(
-                self.image,
-                device.get_parent_instance().get_alloc_callbacks(),
-            );
-        }
-
-        self.memory_pool
-            .get_memory_allocator()
-            .dealloc(&mut self.reserved_memory_from_pool)
-    }
-}
-
-impl MemoryPoolBacked for Image {
+impl MemoryPoolBacked for AllocatedImage {
     fn get_backing_memory_pool(&self) -> Arc<MemoryPool> {
         self.memory_pool.clone()
     }
@@ -1156,5 +1125,50 @@ impl MemoryPoolBacked for Image {
 
     fn allocation_size(&self) -> u64 {
         self.reserved_memory_from_pool.size()
+    }
+}
+
+impl Drop for AllocatedImage {
+    fn drop(&mut self) {
+        self.memory_pool
+            .get_memory_allocator()
+            .dealloc(&mut self.reserved_memory_from_pool)
+    }
+}
+
+impl ImageTrait for AllocatedImage {
+    #[inline]
+    fn native_handle(&self) -> u64 {
+        ash::vk::Handle::as_raw(self.image.ash_native())
+    }
+
+    #[inline]
+    fn flags(&self) -> ImageFlags {
+        self.image.descriptor().img_flags
+    }
+
+    #[inline]
+    fn usage(&self) -> ImageUsage {
+        self.image.descriptor().img_usage
+    }
+
+    #[inline]
+    fn format(&self) -> ImageFormat {
+        self.image.descriptor().img_format
+    }
+
+    #[inline]
+    fn dimensions(&self) -> ImageDimensions {
+        self.image.descriptor().img_dimensions
+    }
+
+    #[inline]
+    fn layers_count(&self) -> u32 {
+        self.image.descriptor().img_layers
+    }
+
+    #[inline]
+    fn mip_levels_count(&self) -> u32 {
+        self.image.descriptor().img_mip_levels
     }
 }

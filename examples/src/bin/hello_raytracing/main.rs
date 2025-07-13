@@ -365,6 +365,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let swapchain_extent = Image2DDimensions::new(WIDTH, HEIGHT);
 
+        let rt_image_handles = (0..swapchain_images_count)
+            .map(|_idx| {
+                vulkan_framework::image::Image::new(
+                    dev.clone(),
+                    ConcreteImageDescriptor::new(
+                        ImageDimensions::Image2D {
+                            extent: swapchain_extent,
+                        },
+                        ImageUsage::Managed(ImageUsageSpecifier::new(
+                            false, false, true, true, false, false, false, false,
+                        )),
+                        ImageMultisampling::SamplesPerPixel1,
+                        1,
+                        1,
+                        ImageFormat::r32g32b32a32_sfloat,
+                        ImageFlags::empty(),
+                        ImageTiling::Optimal,
+                    ),
+                    None,
+                    Some("Test Image"),
+                )
+                .unwrap()
+            })
+            .collect::<Vec<_>>();
+
         let swapchain = SwapchainKHR::new(
             &device_swapchain_info,
             &[queue_family.clone()],
@@ -385,30 +410,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap();
         println!("Swapchain created!");
 
-        let rt_images = (0..swapchain_images_count)
-            .map(|_idx| {
-                vulkan_framework::image::Image::new(
+        let rt_images = rt_image_handles
+            .into_iter()
+            .map(|rt_image_handle| {
+                vulkan_framework::image::AllocatedImage::new(
                     device_local_default_allocator.clone(),
-                    ConcreteImageDescriptor::new(
-                        ImageDimensions::Image2D {
-                            extent: swapchain_extent,
-                        },
-                        ImageUsage::Managed(ImageUsageSpecifier::new(
-                            false, false, true, true, false, false, false, false,
-                        )),
-                        ImageMultisampling::SamplesPerPixel1,
-                        1,
-                        1,
-                        ImageFormat::r32g32b32a32_sfloat,
-                        ImageFlags::empty(),
-                        ImageTiling::Optimal,
-                    ),
-                    None,
-                    Some("Test Image"),
+                    rt_image_handle,
                 )
                 .unwrap()
             })
-            .collect::<Vec<Arc<vulkan_framework::image::Image>>>();
+            .collect::<Vec<_>>();
 
         let rt_image_views = rt_images
             .iter()
@@ -427,7 +438,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 )
                 .unwrap()
             })
-            .collect::<Vec<Arc<ImageView>>>();
+            .collect::<Vec<_>>();
 
         let swapchain_images = ImageSwapchainKHR::extract(swapchain.clone()).unwrap();
         println!("Swapchain images extracted!");
@@ -463,14 +474,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 )
                 .unwrap()
             })
-            .collect::<Vec<Arc<Semaphore>>>();
+            .collect::<Vec<_>>();
 
         // this tells me when the present operation can start
         let present_ready = (0..swapchain_images_count)
             .map(|idx| {
                 Semaphore::new(dev.clone(), Some(format!("present_ready[{idx}]").as_str())).unwrap()
             })
-            .collect::<Vec<Arc<Semaphore>>>();
+            .collect::<Vec<_>>();
 
         let swapchain_fences = (0..swapchain_images_count)
             .map(|idx| {
@@ -481,7 +492,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 )
                 .unwrap()
             })
-            .collect::<Vec<Arc<Fence>>>();
+            .collect::<Vec<_>>();
 
         let command_pool = CommandPool::new(queue_family.clone(), Some("My command pool")).unwrap();
 
@@ -493,7 +504,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 )
                 .unwrap()
             })
-            .collect::<Vec<Arc<PrimaryCommandBuffer>>>();
+            .collect::<Vec<_>>();
 
         let rt_output_image_descriptor = BindingDescriptor::new(
             ShaderStagesAccess::from(&[], &[ShaderStageRayTracingKHR::RayGen]),
@@ -550,7 +561,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 )
                 .unwrap()
             })
-            .collect::<Vec<Arc<ImageView>>>();
+            .collect::<Vec<_>>();
 
         let renderquad_sampler = vulkan_framework::sampler::Sampler::new(
             dev.clone(),
@@ -641,7 +652,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 result
             })
-            .collect::<Vec<Arc<DescriptorSet>>>();
+            .collect::<Vec<_>>();
 
         let renderquad_vertex_shader = VertexShader::new(
             dev.clone(),
@@ -709,7 +720,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 )
                 .unwrap()
             })
-            .collect::<Vec<Arc<Framebuffer>>>();
+            .collect::<Vec<_>>();
 
         let raygen_shader = RaygenShader::new(dev.clone(), RAYGEN_SPV).unwrap();
         //let intersection_shader = IntersectionShader::new(dev.clone(), INTERSECTION_SPV).unwrap();
@@ -737,7 +748,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 RaytracingBindingTables::new(pipeline.clone(), raytracing_allocator.clone())
                     .unwrap()
             })
-            .collect::<Vec<Arc<RaytracingBindingTables>>>();
+            .collect::<Vec<_>>();
 
         let triangle_decl = BottomLevelTrianglesGroupDecl::new(
             VertexIndexing::UInt32,
@@ -966,7 +977,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         continue;
                     }
 
-                    panic!("{}", err)
+                    panic!("error in waiting for fence: {err}")
                 }
             }
         }
@@ -992,7 +1003,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 result
             })
-            .collect::<Vec<Arc<DescriptorSet>>>();
+            .collect::<Vec<_>>();
 
         let mut current_frame: usize = 0;
 

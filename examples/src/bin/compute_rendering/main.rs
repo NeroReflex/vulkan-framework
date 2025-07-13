@@ -30,6 +30,7 @@ use vulkan_framework::graphics_pipeline::PolygonMode;
 use vulkan_framework::graphics_pipeline::Rasterizer;
 use vulkan_framework::graphics_pipeline::Scissor;
 use vulkan_framework::graphics_pipeline::Viewport;
+use vulkan_framework::image::AllocatedImage;
 use vulkan_framework::image::ConcreteImageDescriptor;
 use vulkan_framework::image::Image;
 use vulkan_framework::image::Image2DDimensions;
@@ -350,8 +351,8 @@ fn main() {
     .unwrap();
     println!("Swapchain created!");
 
-    let image = Image::new(
-        stack_allocator,
+    let image_handle = Image::new(
+        device.clone(),
         ConcreteImageDescriptor::new(
             ImageDimensions::Image2D {
                 extent: Image2DDimensions::new(1024, 1024),
@@ -368,6 +369,12 @@ fn main() {
         ),
         None,
         Some("Test Image"),
+    )
+    .unwrap();
+
+    let image = AllocatedImage::new(
+        stack_allocator,
+        image_handle
     )
     .unwrap();
 
