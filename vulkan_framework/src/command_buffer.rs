@@ -23,7 +23,6 @@ use crate::{
         ImageLayout, ImageSubresourceLayers, ImageSubresourceRange, ImageTrait,
     },
     image_view::ImageView,
-    instance::{InstanceAPIVersion, InstanceOwned},
     pipeline_layout::PipelineLayout,
     pipeline_stage::PipelineStages,
     prelude::{FrameworkError, VulkanError, VulkanResult},
@@ -963,13 +962,6 @@ impl<'a> CommandBufferRecorder<'a> {
 
         let mut attachment_begin_info = ash::vk::RenderPassAttachmentBeginInfo::default()
             .attachments(ash_imageviews.as_slice());
-
-        let vulkan_instance_version = self.device.get_parent_instance().instance_vulkan_version();
-
-        assert!(
-            (vulkan_instance_version != InstanceAPIVersion::Version1_0)
-                && (vulkan_instance_version != InstanceAPIVersion::Version1_1)
-        );
 
         let render_pass_begin_info = ash::vk::RenderPassBeginInfo::default()
             .push_next(&mut attachment_begin_info)

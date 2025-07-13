@@ -1,18 +1,11 @@
 use crate::prelude::{FrameworkError, VulkanError, VulkanResult};
 
+use std::ffi::CStr;
 use std::os::raw::c_char;
 use std::string::String;
 use std::vec::Vec;
 
 use std::sync::Arc;
-
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub enum InstanceAPIVersion {
-    Version1_0,
-    Version1_1,
-    Version1_2,
-    Version1_3,
-}
 
 pub trait InstanceOwned {
     fn get_parent_instance(&self) -> Arc<Instance>;
@@ -35,7 +28,6 @@ pub struct Instance {
     entry: ash::Entry,
     instance: ash::Instance,
     extensions: InstanceExtensions,
-    version: InstanceAPIVersion,
 }
 
 impl Drop for Instance {
@@ -47,11 +39,6 @@ impl Drop for Instance {
 }
 
 impl Instance {
-    #[inline]
-    pub fn instance_vulkan_version(&self) -> InstanceAPIVersion {
-        self.version
-    }
-
     #[inline]
     pub(crate) fn get_debug_ext_extension(&self) -> Option<&ash::ext::debug_utils::Instance> {
         match self.extensions.debug_ext_ext.as_ref() {
@@ -109,7 +96,6 @@ impl Instance {
         instance_extensions: &[String],
         engine_name: &String,
         app_name: &String,
-        api_version: &InstanceAPIVersion,
     ) -> VulkanResult<Arc<Self>> {
         // TODO: allow the user to provide its own in a way that Instance remains Send + Sync
         let alloc_callbacks: Option<ash::vk::AllocationCallbacks> = None;
@@ -167,19 +153,14 @@ impl Instance {
             .collect::<Vec<*const c_char>>();
 
         unsafe {
-            let mut app_info = ash::vk::ApplicationInfo::default();
-            app_info.engine_version = 0;
-            app_info.application_version = 0;
-            app_info.p_engine_name = data.as_ref().engine_name.as_ptr();
-            app_info.p_application_name = data.as_ref().application_name.as_ptr();
-            app_info.api_version = match api_version {
-                InstanceAPIVersion::Version1_0 => ash::vk::make_api_version(0, 1, 0, 0),
-                InstanceAPIVersion::Version1_1 => ash::vk::make_api_version(0, 1, 1, 0),
-                InstanceAPIVersion::Version1_2 => ash::vk::make_api_version(0, 1, 2, 0),
-                InstanceAPIVersion::Version1_3 => ash::vk::make_api_version(0, 1, 3, 0),
-            };
+            let app_info = ash::vk::ApplicationInfo::default()
+                .engine_version(0)
+                .application_version(0)
+                .api_version(ash::vk::make_api_version(0, 1, 3, 0))
+                .application_name(CStr::from_ptr(data.as_ref().application_name.as_ptr()))
+                .engine_name(CStr::from_ptr(data.as_ref().engine_name.as_ptr()));
 
-            let mut create_info = ash::vk::InstanceCreateInfo::default()
+            let create_info = ash::vk::InstanceCreateInfo::default()
                 .application_info(&app_info)
                 .enabled_extension_names(extensions_ptr.as_slice())
                 .enabled_layer_names(layers_ptr.as_slice());
@@ -224,7 +205,6 @@ impl Instance {
                         surface_khr_ext: surface_ext,
                         debug_ext_ext: debug_ext,
                     },
-                    version: *api_version,
                 }));
             }
 

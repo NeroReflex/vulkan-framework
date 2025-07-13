@@ -72,7 +72,6 @@ fn main() {
     let mut instance_extensions = vec![String::from("VK_EXT_debug_utils")];
     let engine_name = String::from("None");
     let app_name = String::from("hello_window");
-    let api_version = vulkan_framework::instance::InstanceAPIVersion::Version1_0;
 
     let device_extensions: Vec<String> = vec![String::from("VK_KHR_swapchain")];
     let device_layers: Vec<String> = vec![];
@@ -124,7 +123,6 @@ fn main() {
             instance_extensions.as_slice(),
             &engine_name,
             &app_name,
-            &api_version,
         )
         .unwrap();
         println!("Vulkan instance created");

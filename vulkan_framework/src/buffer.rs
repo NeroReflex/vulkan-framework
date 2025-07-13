@@ -1,6 +1,6 @@
 use crate::{
     device::{Device, DeviceOwned},
-    instance::{InstanceAPIVersion, InstanceOwned},
+    instance::InstanceOwned,
     memory_allocator::AllocationResult,
     memory_heap::MemoryHeapOwned,
     memory_pool::{MemoryPool, MemoryPoolBacked},
@@ -419,56 +419,49 @@ impl AllocatedBuffer {
             ));
         }
 
+        let requirements_info =
+            ash::vk::BufferMemoryRequirementsInfo2::default().buffer(buffer.ash_handle());
+
+        let mut requirements = ash::vk::MemoryRequirements2::default();
+
         unsafe {
-            let requirements = if device.get_parent_instance().instance_vulkan_version()
-                == InstanceAPIVersion::Version1_0
-            {
-                device
-                    .ash_handle()
-                    .get_buffer_memory_requirements(buffer.ash_handle())
-            } else {
-                let requirements_info =
-                    ash::vk::BufferMemoryRequirementsInfo2::default().buffer(buffer.ash_handle());
-
-                let mut requirements = ash::vk::MemoryRequirements2::default();
-
-                device
-                    .ash_handle()
-                    .get_buffer_memory_requirements2(&requirements_info, &mut requirements);
-
-                requirements.memory_requirements
-            };
-
-            if !memory_pool
-                .get_parent_memory_heap()
-                .check_memory_requirements_are_satified(requirements.memory_type_bits)
-            {
-                return Err(VulkanError::Framework(
-                    FrameworkError::IncompatibleMemoryHeapType,
-                ));
-            }
-
-            match memory_pool
-                .get_memory_allocator()
-                .alloc(requirements.size, requirements.alignment)
-            {
-                Some(reserved_memory_from_pool) => {
-                    match device.ash_handle().bind_buffer_memory(
-                        buffer.ash_handle(),
-                        memory_pool.ash_handle(),
-                        reserved_memory_from_pool.offset_in_pool(),
-                    ) {
-                        Ok(_) => Ok(Arc::new(Self {
-                            memory_pool,
-                            reserved_memory_from_pool,
-                            buffer,
-                        })),
-                        Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(String::from("Error allocating memory on the device: {}, probably this is due to an incorrect implementation of the memory allocation algorithm"))))
-                    }
-                }
-                None => Err(VulkanError::Framework(FrameworkError::MallocFail)),
-            }
+            device
+                .ash_handle()
+                .get_buffer_memory_requirements2(&requirements_info, &mut requirements);
         }
+
+        if !memory_pool
+            .get_parent_memory_heap()
+            .check_memory_requirements_are_satified(
+                requirements.memory_requirements.memory_type_bits,
+            )
+        {
+            return Err(VulkanError::Framework(
+                FrameworkError::IncompatibleMemoryHeapType,
+            ));
+        }
+
+        let reserved_memory_from_pool = memory_pool
+            .get_memory_allocator()
+            .alloc(
+                requirements.memory_requirements.size,
+                requirements.memory_requirements.alignment,
+            )
+            .ok_or(VulkanError::Framework(FrameworkError::MallocFail))?;
+
+        unsafe {
+            device.ash_handle().bind_buffer_memory(
+                buffer.ash_handle(),
+                memory_pool.ash_handle(),
+                reserved_memory_from_pool.offset_in_pool(),
+            )
+        }.map_err(|err| VulkanError::Vulkan(err.as_raw(), Some(String::from("Error allocating memory on the device: {}, probably this is due to an incorrect implementation of the memory allocation algorithm"))))?;
+
+        Ok(Arc::new(Self {
+            memory_pool,
+            reserved_memory_from_pool,
+            buffer,
+        }))
     }
 }
 

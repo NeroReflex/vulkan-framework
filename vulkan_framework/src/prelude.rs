@@ -1,7 +1,5 @@
 use std::fmt::Display;
 
-use crate::instance::InstanceAPIVersion;
-
 pub type VulkanResult<T> = Result<T, VulkanError>;
 
 #[derive(Debug)]
@@ -18,7 +16,6 @@ pub enum FrameworkError {
     MapMemoryError,
     DescriptorSetBindingOutOfRange,
     DescriptorSetBindingDuplicated,
-    IncompatibleInstanceVersion(InstanceAPIVersion, InstanceAPIVersion),
     MalformedRenderpassDefinition,
     MemoryHeapAndResourceNotFromTheSameDevice,
     Unknown(Option<String>),
@@ -48,9 +45,6 @@ impl Display for FrameworkError {
                 write!(f, "CannotCreateVulkanInstance")
             }
             FrameworkError::MapMemoryError => write!(f, "MapMemoryError"),
-            FrameworkError::IncompatibleInstanceVersion(_current_version, _wanted_version) => {
-                write!(f, "IncompatibleInstanceVersion")
-            }
             FrameworkError::Unknown(_details) => write!(f, "Unknown"),
             FrameworkError::MalformedRenderpassDefinition => {
                 write!(f, "Malformed renderpass definition")

@@ -610,65 +610,38 @@ impl Device {
                     let mut ray_tracing_pipeline_properties =
                         ash::vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
 
-                    if (instance.instance_vulkan_version() != InstanceAPIVersion::Version1_0)
-                        && (instance.instance_vulkan_version() != InstanceAPIVersion::Version1_1)
-                    {
-                    }
-
                     // Enable raytracing if required extensions have been requested
-                    if instance.instance_vulkan_version() != InstanceAPIVersion::Version1_0 {
-                        if acceleration_structure_enabled {
-                            if ray_tracing_enabled {
-                                properties2.p_next = &mut ray_tracing_pipeline_properties
-                                    as *mut ash::vk::PhysicalDeviceRayTracingPipelinePropertiesKHR
-                                    as *mut std::ffi::c_void;
-                                accel_structure_features.p_next = &mut ray_tracing_pipeline_features
-                                    as *mut ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR
-                                    as *mut std::ffi::c_void;
+                    if acceleration_structure_enabled {
+                        if ray_tracing_enabled {
+                            properties2 =
+                                properties2.push_next(&mut ray_tracing_pipeline_properties);
 
-                                if (instance.instance_vulkan_version()
-                                    != InstanceAPIVersion::Version1_0)
-                                    && (instance.instance_vulkan_version()
-                                        != InstanceAPIVersion::Version1_1)
-                                {
-                                    ray_tracing_pipeline_features.p_next = &mut get_device_address_features as *mut ash::vk::PhysicalDeviceBufferDeviceAddressFeatures as *mut std::ffi::c_void;
-                                }
-                            }
+                            accel_structure_features.p_next = &mut ray_tracing_pipeline_features
+                                as *mut ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR
+                                as *mut std::ffi::c_void;
 
-                            if instance.instance_vulkan_version() != InstanceAPIVersion::Version1_1
-                            {
-                                features2.p_next = &mut accel_structure_features
-                                    as *mut ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR
-                                    as *mut std::ffi::c_void;
-                            }
-                        }
-
-                        if instance.instance_vulkan_version() != InstanceAPIVersion::Version1_1 {
-                            get_imageless_framebuffer_features.p_next = features2.p_next;
-                            features2.p_next = &mut get_imageless_framebuffer_features
-                                as *mut ash::vk::PhysicalDeviceImagelessFramebufferFeatures
+                            ray_tracing_pipeline_features.p_next = &mut get_device_address_features
+                                as *mut ash::vk::PhysicalDeviceBufferDeviceAddressFeatures
                                 as *mut std::ffi::c_void;
                         }
-
-                        if instance.instance_vulkan_version() == InstanceAPIVersion::Version1_0 {
-                            device_create_info_builder = device_create_info_builder
-                                .enabled_features(&selected_device.selected_device_features);
-                        } else {
-                            instance.ash_handle().get_physical_device_features2(
-                                selected_device.selected_physical_device,
-                                &mut features2,
-                            );
-                            instance.ash_handle().get_physical_device_properties2(
-                                selected_device.selected_physical_device,
-                                &mut properties2,
-                            );
-                            device_create_info_builder =
-                                device_create_info_builder.push_next(&mut features2);
-                        }
-                    } else {
-                        device_create_info_builder = device_create_info_builder
-                            .enabled_features(&selected_device.selected_device_features);
+                        features2 = features2.push_next(&mut accel_structure_features);
                     }
+
+                    get_imageless_framebuffer_features.p_next = features2.p_next;
+                    features2.p_next = &mut get_imageless_framebuffer_features
+                        as *mut ash::vk::PhysicalDeviceImagelessFramebufferFeatures
+                        as *mut std::ffi::c_void;
+
+                    instance.ash_handle().get_physical_device_features2(
+                        selected_device.selected_physical_device,
+                        &mut features2,
+                    );
+                    instance.ash_handle().get_physical_device_properties2(
+                        selected_device.selected_physical_device,
+                        &mut properties2,
+                    );
+                    device_create_info_builder =
+                        device_create_info_builder.push_next(&mut features2);
 
                     let mut raytracing_info: Option<RaytracingInfo> = Option::None;
 

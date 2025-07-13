@@ -4,8 +4,8 @@ use crate::{
     device::DeviceOwned,
     image::{Image1DTrait, Image2DDimensions, Image2DTrait, ImageFlags, ImageFormat, ImageUsage},
     image_view::ImageView,
-    instance::{InstanceAPIVersion, InstanceOwned},
-    prelude::{FrameworkError, VulkanError, VulkanResult},
+    instance::InstanceOwned,
+    prelude::VulkanResult,
     renderpass::{RenderPass, RenderPassCompatible},
 };
 
@@ -232,21 +232,6 @@ impl ImagelessFramebuffer {
 
         let mut attachments_create_info = ash::vk::FramebufferAttachmentsCreateInfo::default()
             .attachment_image_infos(attachment_image_infos.as_slice());
-
-        let vulkan_instance_version = renderpass
-            .get_parent_device()
-            .get_parent_instance()
-            .instance_vulkan_version();
-        if (vulkan_instance_version == InstanceAPIVersion::Version1_0)
-            || (vulkan_instance_version == InstanceAPIVersion::Version1_1)
-        {
-            return Err(VulkanError::Framework(
-                FrameworkError::IncompatibleInstanceVersion(
-                    vulkan_instance_version,
-                    InstanceAPIVersion::Version1_2,
-                ),
-            ));
-        }
 
         let create_info = ash::vk::FramebufferCreateInfo::default()
             .push_next(&mut attachments_create_info)

@@ -2,7 +2,7 @@ use ash::vk;
 
 use crate::{
     device::DeviceOwned,
-    instance::{InstanceAPIVersion, InstanceOwned},
+    instance::InstanceOwned,
     memory_allocator::*,
     memory_heap::{MemoryHeap, MemoryHeapOwned},
     prelude::{VulkanError, VulkanResult},
@@ -179,20 +179,8 @@ impl MemoryPool {
             .flags(ash::vk::MemoryAllocateFlags::DEVICE_ADDRESS);
 
         if features.device_addressable() {
-            let instance_ver = device.get_parent_instance().instance_vulkan_version();
-            if (instance_ver != InstanceAPIVersion::Version1_0)
-                && (instance_ver != InstanceAPIVersion::Version1_1)
-            {
-                create_info.p_next = &mut memory_flags as *mut ash::vk::MemoryAllocateFlagsInfo
-                    as *mut std::ffi::c_void;
-            } else {
-                return Err(VulkanError::Framework(
-                    crate::prelude::FrameworkError::IncompatibleInstanceVersion(
-                        instance_ver,
-                        InstanceAPIVersion::Version1_2,
-                    ),
-                ));
-            }
+            create_info.p_next =
+                &mut memory_flags as *mut ash::vk::MemoryAllocateFlagsInfo as *mut std::ffi::c_void;
         }
 
         unsafe {

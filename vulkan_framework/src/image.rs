@@ -2,7 +2,7 @@ use ash::vk::{Extent3D, ImageType};
 
 use crate::{
     device::{Device, DeviceOwned},
-    instance::{InstanceAPIVersion, InstanceOwned},
+    instance::InstanceOwned,
     memory_allocator::AllocationResult,
     memory_heap::MemoryHeapOwned,
     memory_pool::{MemoryPool, MemoryPoolBacked},
@@ -1061,60 +1061,49 @@ impl AllocatedImage {
             ));
         }
 
-        let requirements = if device.get_parent_instance().instance_vulkan_version()
-            == InstanceAPIVersion::Version1_0
-        {
-            unsafe {
-                device
-                    .ash_handle()
-                    .get_image_memory_requirements(image.ash_native())
-            }
-        } else {
-            let requirements_info =
-                ash::vk::ImageMemoryRequirementsInfo2::default().image(image.ash_native());
+        let requirements_info =
+            ash::vk::ImageMemoryRequirementsInfo2::default().image(image.ash_native());
 
-            let mut requirements = ash::vk::MemoryRequirements2::default();
+        let mut requirements = ash::vk::MemoryRequirements2::default();
 
-            unsafe {
-                device
-                    .ash_handle()
-                    .get_image_memory_requirements2(&requirements_info, &mut requirements);
-            }
-
-            requirements.memory_requirements
-        };
+        unsafe {
+            device
+                .ash_handle()
+                .get_image_memory_requirements2(&requirements_info, &mut requirements);
+        }
 
         if !memory_pool
             .get_parent_memory_heap()
-            .check_memory_requirements_are_satified(requirements.memory_type_bits)
+            .check_memory_requirements_are_satified(
+                requirements.memory_requirements.memory_type_bits,
+            )
         {
             return Err(VulkanError::Framework(
                 FrameworkError::IncompatibleMemoryHeapType,
             ));
         }
 
-        match memory_pool
+        let reserved_memory_from_pool = memory_pool
             .get_memory_allocator()
-            .alloc(requirements.size, requirements.alignment)
-        {
-            Some(reserved_memory_from_pool) => {
-                match unsafe {
-                    device.ash_handle().bind_image_memory(
-                        image.ash_native(),
-                        memory_pool.ash_handle(),
-                        reserved_memory_from_pool.offset_in_pool(),
-                    )
-                } {
-                    Ok(_) => Ok(Arc::new(Self {
-                        memory_pool,
-                        reserved_memory_from_pool,
-                        image,
-                    })),
-                    Err(err) => Err(VulkanError::Vulkan(err.as_raw(), Some(format!("Error allocating memory on the device: {}, probably this is due to an incorrect implementation of the memory allocation algorithm", err)))),
-                }
-            }
-            None => Err(VulkanError::Framework(FrameworkError::MallocFail)),
-        }
+            .alloc(
+                requirements.memory_requirements.size,
+                requirements.memory_requirements.alignment,
+            )
+            .ok_or(VulkanError::Framework(FrameworkError::MallocFail))?;
+
+        unsafe {
+            device.ash_handle().bind_image_memory(
+                image.ash_native(),
+                memory_pool.ash_handle(),
+                reserved_memory_from_pool.offset_in_pool(),
+            )
+        }.map_err(|err| VulkanError::Vulkan(err.as_raw(), Some(format!("Error allocating memory on the device: {}, probably this is due to an incorrect implementation of the memory allocation algorithm", err))))?;
+
+        Ok(Arc::new(Self {
+            memory_pool,
+            reserved_memory_from_pool,
+            image,
+        }))
     }
 }
 
