@@ -128,16 +128,17 @@ impl MemoryHeap {
     /// Copied from the official vulkan specification (findProperties method):
     /// https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#memory-device
     fn find_properties(
-        memory_properties: ash::vk::PhysicalDeviceMemoryProperties,
+        device_memory_properties: &ash::vk::PhysicalDeviceMemoryProperties,
         memory_type_bits_requirement: u32,
         required_properties: ash::vk::MemoryPropertyFlags,
     ) -> Option<u32> {
-        for memory_index in 0..memory_properties.memory_type_count {
+        for memory_index in 0..device_memory_properties.memory_type_count {
             let memory_type_bits = 1u32 << memory_index;
 
             let is_required_memory_type = (memory_type_bits_requirement & memory_type_bits) != 0u32;
 
-            let properties = memory_properties.memory_types[memory_index as usize].property_flags;
+            let properties =
+                device_memory_properties.memory_types[memory_index as usize].property_flags;
 
             let required_properties_raw = required_properties.as_raw();
             let has_required_properties =
@@ -152,16 +153,9 @@ impl MemoryHeap {
     }
 
     pub(crate) fn search_adequate_heap(
-        device: &Arc<Device>,
         current_requested_memory_heap_descriptor: &ConcreteMemoryHeapDescriptor,
+        device_memory_properties: &ash::vk::PhysicalDeviceMemoryProperties,
     ) -> Option<(u32, u32, u32)> {
-        let device_memory_properties = unsafe {
-            device
-                .get_parent_instance()
-                .ash_handle()
-                .get_physical_device_memory_properties(device.physical_device.to_owned())
-        };
-
         let requested_size = current_requested_memory_heap_descriptor.memory_minimum_size();
 
         'suitable_heap_search: for (memory_type_index, heap_descriptor) in
@@ -261,17 +255,24 @@ impl MemoryHeap {
         device: Arc<Device>,
         descriptor: ConcreteMemoryHeapDescriptor,
     ) -> VulkanResult<Arc<Self>> {
-        match Self::search_adequate_heap(&device, &descriptor) {
-            Some((heap_index, heap_type_index, heap_property_flags)) => Ok(Arc::new(Self {
-                device,
-                descriptor,
-                heap_index,
-                heap_type_index,
-                heap_property_flags,
-            })),
-            None => Err(VulkanError::Framework(
-                FrameworkError::NoSuitableMemoryHeapFound,
-            )),
-        }
+        let device_memory_properties = unsafe {
+            device
+                .get_parent_instance()
+                .ash_handle()
+                .get_physical_device_memory_properties(device.physical_device.to_owned())
+        };
+
+        let (heap_index, heap_type_index, heap_property_flags) =
+            Self::search_adequate_heap(&descriptor, &device_memory_properties).ok_or(
+                VulkanError::Framework(FrameworkError::NoSuitableMemoryHeapFound),
+            )?;
+
+        Ok(Arc::new(Self {
+            device,
+            descriptor,
+            heap_index,
+            heap_type_index,
+            heap_property_flags,
+        }))
     }
 }
