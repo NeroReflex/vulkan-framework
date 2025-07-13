@@ -23,12 +23,35 @@ use crate::{
 pub struct DescriptorSetWriter<'a> {
     //device: Arc<Device>,
     descriptor_set: &'a DescriptorSet,
-    acceleration_structures: smallvec::SmallVec<[Vec<ash::vk::AccelerationStructureKHR>; 4]>,
-    acceleration_structure_writers:
-        smallvec::SmallVec<[ash::vk::WriteDescriptorSetAccelerationStructureKHR<'a>; 4]>,
-    images_writers: smallvec::SmallVec<[Vec<ash::vk::DescriptorImageInfo>; 32]>,
-    buffers_writers: smallvec::SmallVec<[Vec<ash::vk::DescriptorBufferInfo>; 32]>,
-    writer: smallvec::SmallVec<[ash::vk::WriteDescriptorSet<'a>; 32]>,
+    pub(crate) acceleration_structures: smallvec::SmallVec<
+        [(
+            u32,
+            smallvec::SmallVec<[Arc<TopLevelAccelerationStructure>; 4]>,
+        ); 32],
+    >,
+    pub(crate) combined_image_sampler: smallvec::SmallVec<
+        [(
+            u32,
+            smallvec::SmallVec<[(ImageLayout, Arc<ImageView>, Arc<Sampler>); 4]>,
+        ); 32],
+    >,
+    pub(crate) sampled_images:
+        smallvec::SmallVec<[(u32, smallvec::SmallVec<[(ImageLayout, Arc<ImageView>); 4]>); 32]>,
+    pub(crate) storage_images:
+        smallvec::SmallVec<[(u32, smallvec::SmallVec<[(ImageLayout, Arc<ImageView>); 4]>); 32]>,
+    pub(crate) uniform_buffers: smallvec::SmallVec<
+        [(
+            u32,
+            smallvec::SmallVec<[(Arc<dyn BufferTrait>, u64, u64); 4]>,
+        ); 32],
+    >,
+    pub(crate) storage_buffers: smallvec::SmallVec<
+        [(
+            u32,
+            smallvec::SmallVec<[(Arc<dyn BufferTrait>, u64, u64); 4]>,
+        ); 32],
+    >,
+
     used_resources: smallvec::SmallVec<[DescriptorSetBoundResource; 32]>,
 }
 
@@ -37,11 +60,11 @@ impl<'a> DescriptorSetWriter<'a> {
         Self {
             descriptor_set,
             acceleration_structures: smallvec::smallvec![],
-            acceleration_structure_writers: smallvec::smallvec![],
-            images_writers: smallvec::smallvec![],
-            buffers_writers: smallvec::smallvec![],
-            writer: smallvec::smallvec![],
-            //binder: ash::vk::WriteDescriptorSet::builder(),
+            combined_image_sampler: smallvec::smallvec![],
+            sampled_images: smallvec::smallvec![],
+            storage_images: smallvec::smallvec![],
+            uniform_buffers: smallvec::smallvec![],
+            storage_buffers: smallvec::smallvec![],
             used_resources: (0..size)
                 .map(|_idx| DescriptorSetBoundResource::None)
                 .collect(),
@@ -57,39 +80,8 @@ impl<'a> DescriptorSetWriter<'a> {
         first_layout_id: u32,
         tlas_collection: &[Arc<TopLevelAccelerationStructure>],
     ) {
-        let as_handles = tlas_collection
-            .iter()
-            .map(|accel_structure| accel_structure.ash_handle())
-            .collect();
-        self.acceleration_structures.push(as_handles);
-
-        let mut acceleration_structure_writer =
-            ash::vk::WriteDescriptorSetAccelerationStructureKHR::default();
-        match self.acceleration_structures.last() {
-            Some(tmp) => {
-                acceleration_structure_writer.p_acceleration_structures = tmp.as_slice().as_ptr();
-                acceleration_structure_writer.acceleration_structure_count = tmp.len() as u32;
-            }
-            None => {}
-        };
-
-        self.acceleration_structure_writers
-            .push(acceleration_structure_writer);
-
-        let mut descriptor_writes = ash::vk::WriteDescriptorSet::default()
-            .dst_set(self.descriptor_set.ash_handle())
-            .dst_binding(first_layout_id)
-            .descriptor_type(ash::vk::DescriptorType::ACCELERATION_STRUCTURE_KHR);
-
-        match self.acceleration_structure_writers.last() {
-            Some(tmp) => {
-                descriptor_writes.descriptor_count = 1;
-                descriptor_writes.p_next = (tmp as *const _) as *const std::ffi::c_void;
-            }
-            None => {}
-        }
-
-        self.writer.push(descriptor_writes);
+        self.acceleration_structures
+            .push((first_layout_id, tlas_collection.iter().cloned().collect()));
     }
 
     pub fn bind_combined_images_samplers(
@@ -97,42 +89,8 @@ impl<'a> DescriptorSetWriter<'a> {
         first_layout_id: u32,
         images: &[(ImageLayout, Arc<ImageView>, Arc<Sampler>)],
     ) {
-        let descriptors: Vec<ash::vk::DescriptorImageInfo> = images
-            .iter()
-            .enumerate()
-            .map(|(index, image)| {
-                // TODO: assert usage has VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT bit set
-                let (image_layout, image_view, image_sampler) = image;
-
-                self.used_resources[(first_layout_id as usize) + index] =
-                    DescriptorSetBoundResource::CombinedImageViewSampler((
-                        image_view.clone(),
-                        image_sampler.clone(),
-                    ));
-
-                ash::vk::DescriptorImageInfo::default()
-                    .image_view(image_view.ash_handle())
-                    .sampler(image_sampler.ash_handle())
-                    .image_layout(image_layout.ash_layout())
-            })
-            .collect();
-
-        self.images_writers.push(descriptors);
-
-        let mut descriptor_writes = ash::vk::WriteDescriptorSet::default()
-            .dst_set(self.descriptor_set.ash_handle())
-            .dst_binding(first_layout_id)
-            .descriptor_type(ash::vk::DescriptorType::COMBINED_IMAGE_SAMPLER);
-
-        match self.images_writers.last() {
-            Some(tmp) => {
-                descriptor_writes.p_image_info = tmp.as_slice().as_ptr();
-                descriptor_writes.descriptor_count = tmp.len() as u32;
-            }
-            None => {}
-        };
-
-        self.writer.push(descriptor_writes);
+        self.combined_image_sampler
+            .push((first_layout_id, images.iter().cloned().collect()))
     }
 
     pub fn bind_sampled_images(
@@ -140,80 +98,8 @@ impl<'a> DescriptorSetWriter<'a> {
         first_layout_id: u32,
         images: &[(ImageLayout, Arc<ImageView>)],
     ) {
-        let descriptors: Vec<ash::vk::DescriptorImageInfo> = images
-            .iter()
-            .enumerate()
-            .map(|(index, image)| {
-                // TODO: assert usage has VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT bit set
-                let (image_layout, image_view) = image;
-
-                self.used_resources[(first_layout_id as usize) + index] =
-                    DescriptorSetBoundResource::ImageView(image_view.clone());
-
-                ash::vk::DescriptorImageInfo::default()
-                    .image_view(image_view.ash_handle())
-                    .image_layout(image_layout.ash_layout())
-            })
-            .collect();
-
-        self.images_writers.push(descriptors);
-
-        let mut descriptor_writes = ash::vk::WriteDescriptorSet::default()
-            .dst_set(self.descriptor_set.ash_handle())
-            .dst_binding(first_layout_id)
-            .descriptor_type(ash::vk::DescriptorType::SAMPLED_IMAGE);
-
-        match self.images_writers.last() {
-            Some(tmp) => {
-                descriptor_writes.p_image_info = tmp.as_slice().as_ptr();
-                descriptor_writes.descriptor_count = tmp.len() as u32;
-            }
-            None => {}
-        };
-
-        self.writer.push(descriptor_writes);
-    }
-
-    pub fn bind_uniform_buffer(
-        &mut self,
-        first_layout_id: u32,
-        buffers: &[(Arc<dyn BufferTrait>, Option<u64>, Option<u64>)],
-    ) {
-        let descriptors: Vec<ash::vk::DescriptorBufferInfo> = buffers
-            .iter()
-            .enumerate()
-            .map(|(index, (buffer, offset, size))| {
-                // TODO: assert usage has VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT bit set
-
-                self.used_resources[(first_layout_id as usize) + index] =
-                    DescriptorSetBoundResource::Buffer(buffer.clone());
-
-                ash::vk::DescriptorBufferInfo::default()
-                    .range(match size {
-                        Option::Some(sz) => sz.to_owned(),
-                        Option::None => buffer.size(),
-                    })
-                    .buffer(ash::vk::Buffer::from_raw(buffer.native_handle()))
-                    .offset(offset.unwrap_or(0))
-            })
-            .collect();
-
-        self.buffers_writers.push(descriptors);
-
-        let mut descriptor_writes = ash::vk::WriteDescriptorSet::default()
-            .dst_set(self.descriptor_set.ash_handle())
-            .dst_binding(first_layout_id)
-            .descriptor_type(ash::vk::DescriptorType::UNIFORM_BUFFER);
-
-        match self.buffers_writers.last() {
-            Some(tmp) => {
-                descriptor_writes.p_buffer_info = tmp.as_slice().as_ptr();
-                descriptor_writes.descriptor_count = tmp.len() as u32;
-            }
-            None => {}
-        };
-
-        self.writer.push(descriptor_writes);
+        self.sampled_images
+            .push((first_layout_id, images.iter().cloned().collect()))
     }
 
     pub fn bind_storage_images(
@@ -221,37 +107,34 @@ impl<'a> DescriptorSetWriter<'a> {
         first_layout_id: u32,
         images: &[(ImageLayout, Arc<ImageView>)],
     ) {
-        let descriptors: Vec<ash::vk::DescriptorImageInfo> = images
-            .iter()
-            .enumerate()
-            .map(|(index, (layout, image))| {
-                // TODO: assert usage has the right bit set and layout is not ImageLayout::Unspecified
+        self.storage_images
+            .push((first_layout_id, images.iter().cloned().collect()))
+    }
 
-                self.used_resources[(first_layout_id as usize) + index] =
-                    DescriptorSetBoundResource::ImageView(image.clone());
+    pub fn bind_uniform_buffer(
+        &mut self,
+        first_layout_id: u32,
+        buffers: &[(Arc<dyn BufferTrait>, Option<u64>, Option<u64>)],
+    ) {
+        self.uniform_buffers.push((
+            first_layout_id,
+            buffers
+                .iter()
+                .map(|(buffer, maybe_offset, maybe_size)| {
+                    let offset = match maybe_offset {
+                        Some(offset) => offset.to_owned(),
+                        None => 0u64,
+                    };
 
-                ash::vk::DescriptorImageInfo::default()
-                    .image_layout(layout.ash_layout())
-                    .image_view(image.ash_handle())
-            })
-            .collect();
+                    let size = match maybe_size {
+                        Some(sz) => u64::min(sz.to_owned(), buffer.size() - offset),
+                        None => buffer.size() - offset,
+                    };
 
-        self.images_writers.push(descriptors);
-
-        let mut descriptor_writes = ash::vk::WriteDescriptorSet::default()
-            .dst_set(self.descriptor_set.ash_handle())
-            .dst_binding(first_layout_id)
-            .descriptor_type(ash::vk::DescriptorType::STORAGE_IMAGE);
-
-        match self.images_writers.last() {
-            Some(tmp) => {
-                descriptor_writes.p_image_info = tmp.as_slice().as_ptr();
-                descriptor_writes.descriptor_count = tmp.len() as u32;
-            }
-            None => {}
-        };
-
-        self.writer.push(descriptor_writes);
+                    (buffer.to_owned(), offset, size)
+                })
+                .collect(),
+        ))
     }
 
     pub fn bind_storage_buffers(
@@ -259,41 +142,25 @@ impl<'a> DescriptorSetWriter<'a> {
         first_layout_id: u32,
         buffers: &[(Arc<dyn BufferTrait>, Option<u64>, Option<u64>)],
     ) {
-        let descriptors: Vec<ash::vk::DescriptorBufferInfo> = buffers
-            .iter()
-            .enumerate()
-            .map(|(index, (buffer, offset, size))| {
-                // TODO: assert usage has VK_BUFFER_USAGE_STORAGE_BUFFER_BIT bit set
+        self.uniform_buffers.push((
+            first_layout_id,
+            buffers
+                .iter()
+                .map(|(buffer, maybe_offset, maybe_size)| {
+                    let offset = match maybe_offset {
+                        Some(offset) => offset.to_owned(),
+                        None => 0u64,
+                    };
 
-                self.used_resources[(first_layout_id as usize) + index] =
-                    DescriptorSetBoundResource::Buffer(buffer.clone());
+                    let size = match maybe_size {
+                        Some(sz) => u64::min(sz.to_owned(), buffer.size() - offset),
+                        None => buffer.size() - offset,
+                    };
 
-                ash::vk::DescriptorBufferInfo::default()
-                    .range(match size {
-                        Option::Some(sz) => sz.to_owned(),
-                        Option::None => buffer.size(),
-                    })
-                    .buffer(ash::vk::Buffer::from_raw(buffer.native_handle()))
-                    .offset(offset.unwrap_or(0))
-            })
-            .collect();
-
-        self.buffers_writers.push(descriptors);
-
-        let mut descriptor_writes = ash::vk::WriteDescriptorSet::default()
-            .dst_set(self.descriptor_set.ash_handle())
-            .dst_binding(first_layout_id)
-            .descriptor_type(ash::vk::DescriptorType::STORAGE_BUFFER);
-
-        match self.buffers_writers.last() {
-            Some(tmp) => {
-                descriptor_writes.p_buffer_info = tmp.as_slice().as_ptr();
-                descriptor_writes.descriptor_count = tmp.len() as u32;
-            }
-            None => {}
-        };
-
-        self.writer.push(descriptor_writes);
+                    (buffer.to_owned(), offset, size)
+                })
+                .collect(),
+        ))
     }
 }
 
@@ -345,6 +212,218 @@ impl DescriptorSet {
         self.descriptor_set
     }
 
+    pub fn perform_binding(&self, writer: &mut DescriptorSetWriter) -> VulkanResult<()> {
+        let acceleration_structures: smallvec::SmallVec<
+            [(
+                u32,
+                smallvec::SmallVec<[ash::vk::AccelerationStructureKHR; 8]>,
+            ); 4],
+        > = writer
+            .acceleration_structures
+            .iter()
+            .map(|(layout_idenx, accel_structures)| {
+                (
+                    layout_idenx.to_owned(),
+                    accel_structures
+                        .iter()
+                        .map(|accel_s| accel_s.ash_handle())
+                        .collect(),
+                )
+            })
+            .collect();
+
+        let mut vk_acceleration_structure_writers: smallvec::SmallVec<
+            [(u32, ash::vk::WriteDescriptorSetAccelerationStructureKHR); 4],
+        > = acceleration_structures
+            .iter()
+            .map(|(first_index, accel_structures)| {
+                (
+                    first_index.to_owned(),
+                    ash::vk::WriteDescriptorSetAccelerationStructureKHR::default()
+                        .acceleration_structures(accel_structures.as_slice()),
+                )
+            })
+            .collect();
+
+        let vk_combined_image_sampler_writers: smallvec::SmallVec<
+            [(u32, smallvec::SmallVec<[ash::vk::DescriptorImageInfo; 8]>); 4],
+        > = writer
+            .combined_image_sampler
+            .iter()
+            .map(|(first_layout_id, images)| {
+                (
+                    first_layout_id.to_owned(),
+                    images
+                        .iter()
+                        .map(|(image_layout, image_view, image_sampler)| {
+                            ash::vk::DescriptorImageInfo::default()
+                                .image_view(image_view.ash_handle())
+                                .sampler(image_sampler.ash_handle())
+                                .image_layout(image_layout.ash_layout())
+                        })
+                        .collect(),
+                )
+            })
+            .collect();
+
+        let vk_sampled_images_writers: smallvec::SmallVec<
+            [(u32, smallvec::SmallVec<[ash::vk::DescriptorImageInfo; 8]>); 4],
+        > = writer
+            .sampled_images
+            .iter()
+            .map(|(first_layout_id, images)| {
+                (
+                    first_layout_id.to_owned(),
+                    images
+                        .iter()
+                        .map(|(image_layout, image_view)| {
+                            ash::vk::DescriptorImageInfo::default()
+                                .image_view(image_view.ash_handle())
+                                .image_layout(image_layout.ash_layout())
+                        })
+                        .collect(),
+                )
+            })
+            .collect();
+
+        let vk_storage_images_writers: smallvec::SmallVec<
+            [(u32, smallvec::SmallVec<[ash::vk::DescriptorImageInfo; 8]>); 4],
+        > = writer
+            .storage_images
+            .iter()
+            .map(|(first_layout_id, images)| {
+                (
+                    first_layout_id.to_owned(),
+                    images
+                        .iter()
+                        .map(|(image_layout, image_view)| {
+                            ash::vk::DescriptorImageInfo::default()
+                                .image_view(image_view.ash_handle())
+                                .image_layout(image_layout.ash_layout())
+                        })
+                        .collect(),
+                )
+            })
+            .collect();
+
+        let vk_storage_buffer_writers: smallvec::SmallVec<
+            [(u32, smallvec::SmallVec<[ash::vk::DescriptorBufferInfo; 8]>); 4],
+        > = writer
+            .storage_buffers
+            .iter()
+            .map(|(first_layout_id, images)| {
+                (
+                    first_layout_id.to_owned(),
+                    images
+                        .iter()
+                        .map(|(buffer, offset, range)| {
+                            ash::vk::DescriptorBufferInfo::default()
+                                .range(range.to_owned())
+                                .buffer(ash::vk::Buffer::from_raw(buffer.native_handle()))
+                                .offset(offset.to_owned())
+                        })
+                        .collect(),
+                )
+            })
+            .collect();
+
+        let vk_uniform_buffer_writers: smallvec::SmallVec<
+            [(u32, smallvec::SmallVec<[ash::vk::DescriptorBufferInfo; 8]>); 4],
+        > = writer
+            .uniform_buffers
+            .iter()
+            .map(|(first_layout_id, images)| {
+                (
+                    first_layout_id.to_owned(),
+                    images
+                        .iter()
+                        .map(|(buffer, offset, range)| {
+                            ash::vk::DescriptorBufferInfo::default()
+                                .range(range.to_owned())
+                                .buffer(ash::vk::Buffer::from_raw(buffer.native_handle()))
+                                .offset(offset.to_owned())
+                        })
+                        .collect(),
+                )
+            })
+            .collect();
+
+        let vk_writers: smallvec::SmallVec<[ash::vk::WriteDescriptorSet; 24]> =
+            vk_acceleration_structure_writers
+                .iter_mut()
+                .map(|(first_layout_id, structure)| {
+                    ash::vk::WriteDescriptorSet::default()
+                        .dst_set(self.ash_handle())
+                        .descriptor_type(ash::vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
+                        .dst_binding(first_layout_id.to_owned())
+                        .descriptor_count(1)
+                        .push_next(structure)
+                })
+                .chain(vk_combined_image_sampler_writers.iter().map(
+                    |(first_layout_id, image_info)| {
+                        ash::vk::WriteDescriptorSet::default()
+                            .dst_set(self.ash_handle())
+                            .dst_binding(first_layout_id.to_owned())
+                            .descriptor_type(ash::vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                            .image_info(image_info.as_slice())
+                    },
+                ))
+                .chain(
+                    vk_sampled_images_writers
+                        .iter()
+                        .map(|(first_layout_id, image_info)| {
+                            ash::vk::WriteDescriptorSet::default()
+                                .dst_set(self.ash_handle())
+                                .dst_binding(first_layout_id.to_owned())
+                                .descriptor_type(ash::vk::DescriptorType::SAMPLED_IMAGE)
+                                .image_info(image_info.as_slice())
+                        }),
+                )
+                .chain(
+                    vk_storage_images_writers
+                        .iter()
+                        .map(|(first_layout_id, image_info)| {
+                            ash::vk::WriteDescriptorSet::default()
+                                .dst_set(self.ash_handle())
+                                .dst_binding(first_layout_id.to_owned())
+                                .descriptor_type(ash::vk::DescriptorType::STORAGE_IMAGE)
+                                .image_info(image_info.as_slice())
+                        }),
+                )
+                .chain(
+                    vk_storage_buffer_writers
+                        .iter()
+                        .map(|(first_layout_id, buffer_info)| {
+                            ash::vk::WriteDescriptorSet::default()
+                                .dst_set(self.ash_handle())
+                                .dst_binding(first_layout_id.to_owned())
+                                .descriptor_type(ash::vk::DescriptorType::STORAGE_BUFFER)
+                                .buffer_info(buffer_info.as_slice())
+                        }),
+                )
+                .chain(
+                    vk_uniform_buffer_writers
+                        .iter()
+                        .map(|(first_layout_id, buffer_info)| {
+                            ash::vk::WriteDescriptorSet::default()
+                                .dst_set(self.ash_handle())
+                                .dst_binding(first_layout_id.to_owned())
+                                .descriptor_type(ash::vk::DescriptorType::UNIFORM_BUFFER)
+                                .buffer_info(buffer_info.as_slice())
+                        }),
+                )
+                .collect();
+
+        unsafe {
+            self.get_parent_descriptor_pool()
+                .get_parent_device()
+                .ash_handle()
+                .update_descriptor_sets(vk_writers.as_slice(), &[])
+        };
+
+        Ok(())
+    }
+
     pub fn bind_resources<F>(&self, f: F) -> VulkanResult<()>
     where
         F: FnOnce(&mut DescriptorSetWriter),
@@ -366,12 +445,7 @@ impl DescriptorSet {
 
         f(&mut writer);
 
-        unsafe {
-            self.get_parent_descriptor_pool()
-                .get_parent_device()
-                .ash_handle()
-                .update_descriptor_sets(writer.writer.as_slice(), &[])
-        };
+        self.perform_binding(&mut writer)?;
 
         for (idx, res) in writer.used_resources().iter().enumerate() {
             match res {
