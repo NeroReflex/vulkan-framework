@@ -40,22 +40,20 @@ impl RaytracingBindingTables {
     pub(crate) fn ash_callable_strided(&self) -> ash::vk::StridedDeviceAddressRegionKHR {
         let mut result = ash::vk::StridedDeviceAddressRegionKHR::default()
             .stride(self.handle_size_aligned as u64)
-            .size(self.handle_size_aligned as u64);
+            .size(self.handle_size_aligned as u64)
+            .device_address(match &self.callable {
+                Some(cb) => cb.callable_buffer_addr,
+                None => 0
+            });
 
-        match &self.callable {
-            Some(cb) => {
-                result = result.device_address(cb.callable_buffer_addr);
-            }
-            None => {
-                result = result.device_address(0);
-                unsafe {
-                    result = std::mem::transmute(vec![
-                        0;
-                        core::mem::size_of::<
-                            ash::vk::StridedDeviceAddressRegionKHR,
-                        >()
-                    ]);
-                }
+        if self.callable.is_none() {
+            unsafe {
+                result = std::mem::transmute(vec![
+                    0;
+                    core::mem::size_of::<
+                        ash::vk::StridedDeviceAddressRegionKHR,
+                    >()
+                ]);
             }
         }
 

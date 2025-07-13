@@ -907,9 +907,9 @@ impl Image {
         self.image
     }
 
-    pub(crate) fn ash_format(&self) -> ash::vk::Format {
-        self.descriptor.ash_format()
-    }
+    //pub(crate) fn ash_format(&self) -> ash::vk::Format {
+    //    self.descriptor.ash_format()
+    //}
 
     pub(crate) fn descriptor(&self) -> &ConcreteImageDescriptor {
         &self.descriptor

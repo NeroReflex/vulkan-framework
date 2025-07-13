@@ -25,7 +25,7 @@ struct InstanceExtensions {
 
 pub struct Instance {
     //alloc_callbacks: Option<ash::vk::AllocationCallbacks>,
-    entry: ash::Entry,
+    _entry: ash::Entry,
     instance: ash::Instance,
     extensions: InstanceExtensions,
 }
@@ -199,7 +199,7 @@ impl Instance {
                 return Ok(Arc::new(Self {
                     //data: data,
                     //alloc_callbacks,
-                    entry,
+                    _entry: entry,
                     instance,
                     extensions: InstanceExtensions {
                         surface_khr_ext: surface_ext,
