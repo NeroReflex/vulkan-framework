@@ -372,11 +372,7 @@ fn main() {
     )
     .unwrap();
 
-    let image = AllocatedImage::new(
-        stack_allocator,
-        image_handle
-    )
-    .unwrap();
+    let image = AllocatedImage::new(stack_allocator, image_handle).unwrap();
 
     let image_view = match ImageView::new(
         image.clone(),

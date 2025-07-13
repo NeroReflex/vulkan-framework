@@ -20,6 +20,7 @@ pub enum FrameworkError {
     DescriptorSetBindingDuplicated,
     IncompatibleInstanceVersion(InstanceAPIVersion, InstanceAPIVersion),
     MalformedRenderpassDefinition,
+    MemoryHeapAndResourceNotFromTheSameDevice,
     Unknown(Option<String>),
 }
 
@@ -60,6 +61,10 @@ impl Display for FrameworkError {
             FrameworkError::DescriptorSetBindingDuplicated => write!(
                 f,
                 "descriptor set binding is being used twice in the same write"
+            ),
+            FrameworkError::MemoryHeapAndResourceNotFromTheSameDevice => write!(
+                f,
+                "memory heap and resource to be allocated are not from the same device"
             ),
         }
     }

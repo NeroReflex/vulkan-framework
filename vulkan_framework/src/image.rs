@@ -1055,7 +1055,11 @@ impl AllocatedImage {
     pub fn new(memory_pool: Arc<MemoryPool>, image: Image) -> VulkanResult<Arc<Self>> {
         let device = memory_pool.get_parent_memory_heap().get_parent_device();
 
-        //assert_eq!(image.get_parent_device().ash_handle(), memory_pool.get_parent_memory_heap().get_parent_device().ash_handle());
+        if image.get_parent_device() != memory_pool.get_parent_memory_heap().get_parent_device() {
+            return Err(VulkanError::Framework(
+                FrameworkError::MemoryHeapAndResourceNotFromTheSameDevice,
+            ));
+        }
 
         let requirements = if device.get_parent_instance().instance_vulkan_version()
             == InstanceAPIVersion::Version1_0
