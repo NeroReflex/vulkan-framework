@@ -97,9 +97,9 @@ impl<'a> DescriptorSetWriter<'a> {
             }
         }
 
-        Ok(self
-            .acceleration_structures
-            .push((first_layout_id, tlas_collection.iter().cloned().collect())))
+        self.acceleration_structures
+            .push((first_layout_id, tlas_collection.iter().cloned().collect()));
+        Ok(())
     }
 
     pub fn bind_combined_images_samplers(
@@ -127,9 +127,9 @@ impl<'a> DescriptorSetWriter<'a> {
             }
         }
 
-        Ok(self
-            .combined_image_sampler
-            .push((first_layout_id, images.iter().cloned().collect())))
+        self.combined_image_sampler
+            .push((first_layout_id, images.iter().cloned().collect()));
+        Ok(())
     }
 
     pub fn bind_sampled_images(
@@ -154,9 +154,9 @@ impl<'a> DescriptorSetWriter<'a> {
             }
         }
 
-        Ok(self
-            .sampled_images
-            .push((first_layout_id, images.iter().cloned().collect())))
+        self.sampled_images
+            .push((first_layout_id, images.iter().cloned().collect()));
+        Ok(())
     }
 
     pub fn bind_storage_images(
@@ -181,9 +181,9 @@ impl<'a> DescriptorSetWriter<'a> {
             }
         }
 
-        Ok(self
-            .storage_images
-            .push((first_layout_id, images.iter().cloned().collect())))
+        self.storage_images
+            .push((first_layout_id, images.iter().cloned().collect()));
+        Ok(())
     }
 
     pub fn bind_uniform_buffer(
@@ -208,7 +208,7 @@ impl<'a> DescriptorSetWriter<'a> {
             }
         }
 
-        Ok(self.uniform_buffers.push((
+        self.uniform_buffers.push((
             first_layout_id,
             buffers
                 .iter()
@@ -226,7 +226,8 @@ impl<'a> DescriptorSetWriter<'a> {
                     (buffer.to_owned(), offset, size)
                 })
                 .collect(),
-        )))
+        ));
+        Ok(())
     }
 
     pub fn bind_storage_buffers(
@@ -251,7 +252,7 @@ impl<'a> DescriptorSetWriter<'a> {
             }
         }
 
-        Ok(self.uniform_buffers.push((
+        self.uniform_buffers.push((
             first_layout_id,
             buffers
                 .iter()
@@ -269,7 +270,8 @@ impl<'a> DescriptorSetWriter<'a> {
                     (buffer.to_owned(), offset, size)
                 })
                 .collect(),
-        )))
+        ));
+        Ok(())
     }
 }
 

@@ -115,7 +115,7 @@ impl Window {
                 &mut ext_count as *mut c_uint,
                 std::ptr::null_mut(),
             );
-            assert_eq!(count_result == SDL_bool::SDL_TRUE, true);
+            assert!(count_result == SDL_bool::SDL_TRUE);
 
             // fill the space with lots of nullpointers
             let mut ext_names = Vec::<*const c_char>::new();
@@ -128,7 +128,7 @@ impl Window {
                 &mut ext_count as *mut c_uint,
                 ext_names.as_mut_ptr(),
             );
-            assert_eq!(names_result == SDL_bool::SDL_TRUE, true);
+            assert!(names_result == SDL_bool::SDL_TRUE);
 
             for ext_name in ext_names.iter() {
                 match CStr::from_ptr(*ext_name).to_str() {

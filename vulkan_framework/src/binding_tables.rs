@@ -43,7 +43,7 @@ impl RaytracingBindingTables {
             .size(self.handle_size_aligned as u64)
             .device_address(match &self.callable {
                 Some(cb) => cb.callable_buffer_addr,
-                None => 0
+                None => 0,
             });
 
         if self.callable.is_none() {
