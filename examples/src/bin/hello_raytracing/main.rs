@@ -626,14 +626,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 result
                     .bind_resources(|binder| {
-                        binder.bind_combined_images_samplers(
-                            0,
-                            &[(
-                                renderquad_image_input_format,
-                                rt_image_views[idx as usize].clone(),
-                                renderquad_sampler.clone(),
-                            )],
-                        )
+                        binder
+                            .bind_combined_images_samplers(
+                                0,
+                                &[(
+                                    renderquad_image_input_format,
+                                    rt_image_views[idx as usize].clone(),
+                                    renderquad_sampler.clone(),
+                                )],
+                            )
+                            .unwrap()
                     })
                     .unwrap();
 
@@ -977,12 +979,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 result
                     .bind_resources(|binder| {
-                        binder.bind_storage_images(
-                            0,
-                            &[(rt_writer_img_layout, rt_image_views[idx as usize].clone())],
-                        );
+                        binder
+                            .bind_storage_images(
+                                0,
+                                &[(rt_writer_img_layout, rt_image_views[idx as usize].clone())],
+                            )
+                            .unwrap();
 
-                        binder.bind_tlas(1, &[tlas.clone()]);
+                        binder.bind_tlas(1, &[tlas.clone()]).unwrap();
                     })
                     .unwrap();
 

@@ -339,10 +339,12 @@ fn main() {
                                     };
 
                                     if let Err(_error) = descriptor_set.bind_resources(|binder| {
-                                        binder.bind_storage_images(
-                                            0,
-                                            &[(ImageLayout::General, image_view.clone())],
-                                        )
+                                        binder
+                                            .bind_storage_images(
+                                                0,
+                                                &[(ImageLayout::General, image_view.clone())],
+                                            )
+                                            .unwrap()
                                     }) {
                                         panic!("error in binding resources");
                                     }

@@ -27,29 +27,29 @@ pub struct DescriptorSetWriter<'a> {
         [(
             u32,
             smallvec::SmallVec<[Arc<TopLevelAccelerationStructure>; 4]>,
-        ); 32],
+        ); 8],
     >,
     pub(crate) combined_image_sampler: smallvec::SmallVec<
         [(
             u32,
             smallvec::SmallVec<[(ImageLayout, Arc<ImageView>, Arc<Sampler>); 4]>,
-        ); 32],
+        ); 8],
     >,
     pub(crate) sampled_images:
-        smallvec::SmallVec<[(u32, smallvec::SmallVec<[(ImageLayout, Arc<ImageView>); 4]>); 32]>,
+        smallvec::SmallVec<[(u32, smallvec::SmallVec<[(ImageLayout, Arc<ImageView>); 4]>); 8]>,
     pub(crate) storage_images:
-        smallvec::SmallVec<[(u32, smallvec::SmallVec<[(ImageLayout, Arc<ImageView>); 4]>); 32]>,
+        smallvec::SmallVec<[(u32, smallvec::SmallVec<[(ImageLayout, Arc<ImageView>); 4]>); 8]>,
     pub(crate) uniform_buffers: smallvec::SmallVec<
         [(
             u32,
             smallvec::SmallVec<[(Arc<dyn BufferTrait>, u64, u64); 4]>,
-        ); 32],
+        ); 8],
     >,
     pub(crate) storage_buffers: smallvec::SmallVec<
         [(
             u32,
             smallvec::SmallVec<[(Arc<dyn BufferTrait>, u64, u64); 4]>,
-        ); 32],
+        ); 8],
     >,
 
     used_resources: smallvec::SmallVec<[DescriptorSetBoundResource; 32]>,
@@ -79,44 +79,78 @@ impl<'a> DescriptorSetWriter<'a> {
         &mut self,
         first_layout_id: u32,
         tlas_collection: &[Arc<TopLevelAccelerationStructure>],
-    ) {
-        self.acceleration_structures
-            .push((first_layout_id, tlas_collection.iter().cloned().collect()));
+    ) -> VulkanResult<()> {
+        if first_layout_id as usize + tlas_collection.len() > self.used_resources.len() {
+            return Err(VulkanError::Framework(
+                FrameworkError::DescriptorSetBindingOutOfRange,
+            ));
+        }
+
+        Ok(self
+            .acceleration_structures
+            .push((first_layout_id, tlas_collection.iter().cloned().collect())))
     }
 
     pub fn bind_combined_images_samplers(
         &mut self,
         first_layout_id: u32,
         images: &[(ImageLayout, Arc<ImageView>, Arc<Sampler>)],
-    ) {
-        self.combined_image_sampler
-            .push((first_layout_id, images.iter().cloned().collect()))
+    ) -> VulkanResult<()> {
+        if first_layout_id as usize + images.len() > self.used_resources.len() {
+            return Err(VulkanError::Framework(
+                FrameworkError::DescriptorSetBindingOutOfRange,
+            ));
+        }
+
+        Ok(self
+            .combined_image_sampler
+            .push((first_layout_id, images.iter().cloned().collect())))
     }
 
     pub fn bind_sampled_images(
         &mut self,
         first_layout_id: u32,
         images: &[(ImageLayout, Arc<ImageView>)],
-    ) {
-        self.sampled_images
-            .push((first_layout_id, images.iter().cloned().collect()))
+    ) -> VulkanResult<()> {
+        if first_layout_id as usize + images.len() > self.used_resources.len() {
+            return Err(VulkanError::Framework(
+                FrameworkError::DescriptorSetBindingOutOfRange,
+            ));
+        }
+
+        Ok(self
+            .sampled_images
+            .push((first_layout_id, images.iter().cloned().collect())))
     }
 
     pub fn bind_storage_images(
         &mut self,
         first_layout_id: u32,
         images: &[(ImageLayout, Arc<ImageView>)],
-    ) {
-        self.storage_images
-            .push((first_layout_id, images.iter().cloned().collect()))
+    ) -> VulkanResult<()> {
+        if first_layout_id as usize + images.len() > self.used_resources.len() {
+            return Err(VulkanError::Framework(
+                FrameworkError::DescriptorSetBindingOutOfRange,
+            ));
+        }
+
+        Ok(self
+            .storage_images
+            .push((first_layout_id, images.iter().cloned().collect())))
     }
 
     pub fn bind_uniform_buffer(
         &mut self,
         first_layout_id: u32,
         buffers: &[(Arc<dyn BufferTrait>, Option<u64>, Option<u64>)],
-    ) {
-        self.uniform_buffers.push((
+    ) -> VulkanResult<()> {
+        if first_layout_id as usize + buffers.len() > self.used_resources.len() {
+            return Err(VulkanError::Framework(
+                FrameworkError::DescriptorSetBindingOutOfRange,
+            ));
+        }
+
+        Ok(self.uniform_buffers.push((
             first_layout_id,
             buffers
                 .iter()
@@ -134,15 +168,21 @@ impl<'a> DescriptorSetWriter<'a> {
                     (buffer.to_owned(), offset, size)
                 })
                 .collect(),
-        ))
+        )))
     }
 
     pub fn bind_storage_buffers(
         &mut self,
         first_layout_id: u32,
         buffers: &[(Arc<dyn BufferTrait>, Option<u64>, Option<u64>)],
-    ) {
-        self.uniform_buffers.push((
+    ) -> VulkanResult<()> {
+        if first_layout_id as usize + buffers.len() > self.used_resources.len() {
+            return Err(VulkanError::Framework(
+                FrameworkError::DescriptorSetBindingOutOfRange,
+            ));
+        }
+
+        Ok(self.uniform_buffers.push((
             first_layout_id,
             buffers
                 .iter()
@@ -160,7 +200,7 @@ impl<'a> DescriptorSetWriter<'a> {
                     (buffer.to_owned(), offset, size)
                 })
                 .collect(),
-        ))
+        )))
     }
 }
 
@@ -213,6 +253,8 @@ impl DescriptorSet {
     }
 
     pub fn perform_binding(&self, writer: &mut DescriptorSetWriter) -> VulkanResult<()> {
+        assert_eq!(self as *const _, writer.descriptor_set as *const _);
+
         let acceleration_structures: smallvec::SmallVec<
             [(
                 u32,

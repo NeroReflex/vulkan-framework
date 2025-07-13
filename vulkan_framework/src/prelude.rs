@@ -16,6 +16,7 @@ pub enum FrameworkError {
     CannotLoadVulkan,
     CannotCreateVulkanInstance,
     MapMemoryError,
+    DescriptorSetBindingOutOfRange,
     IncompatibleInstanceVersion(InstanceAPIVersion, InstanceAPIVersion),
     MalformedRenderpassDefinition,
     Unknown(Option<String>),
@@ -59,6 +60,9 @@ impl Display for VulkanError {
                 FrameworkError::Unknown(_details) => write!(f, "Framework error: Unknown"),
                 FrameworkError::MalformedRenderpassDefinition => {
                     write!(f, "Framework error: Malformed renderpass definition")
+                }
+                FrameworkError::DescriptorSetBindingOutOfRange => {
+                    write!(f, "Framework error: descriptor set binding is out of range")
                 }
             },
             VulkanError::Vulkan(code, maybe_str) => match maybe_str {

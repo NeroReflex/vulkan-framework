@@ -459,14 +459,16 @@ fn main() {
 
     renderquad_descriptor_set
         .bind_resources(|binder| {
-            binder.bind_combined_images_samplers(
-                0,
-                &[(
-                    ImageLayout::General,
-                    image_view.clone(),
-                    renderquad_sampler.clone(),
-                )],
-            )
+            binder
+                .bind_combined_images_samplers(
+                    0,
+                    &[(
+                        ImageLayout::General,
+                        image_view.clone(),
+                        renderquad_sampler.clone(),
+                    )],
+                )
+                .unwrap()
         })
         .unwrap();
 
@@ -586,7 +588,9 @@ fn main() {
 
     descriptor_set
         .bind_resources(|binder| {
-            binder.bind_storage_images(0, &[(ImageLayout::General, image_view.clone())])
+            binder
+                .bind_storage_images(0, &[(ImageLayout::General, image_view.clone())])
+                .unwrap()
         })
         .unwrap();
 
@@ -779,14 +783,16 @@ fn main() {
 
     renderquad_descriptor_set
         .bind_resources(|renderquad_binder| {
-            renderquad_binder.bind_combined_images_samplers(
-                0,
-                &[(
-                    renderquad_image_imput_format,
-                    image_view.clone(),
-                    renderquad_sampler.clone(),
-                )],
-            );
+            renderquad_binder
+                .bind_combined_images_samplers(
+                    0,
+                    &[(
+                        renderquad_image_imput_format,
+                        image_view.clone(),
+                        renderquad_sampler.clone(),
+                    )],
+                )
+                .unwrap()
         })
         .unwrap();
 
