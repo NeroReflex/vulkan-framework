@@ -160,8 +160,9 @@ impl MemoryHeap {
                         continue 'suitable_heap_search;
                     }
 
-                    match host_visibility {
-                        Some(visibility_model) => match visibility_model {
+                    // TODO: what about ash::vk::MemoryPropertyFlags::PROTECTED ?
+                    if let Some(visibility_model) = host_visibility {
+                        match visibility_model {
                             MemoryHostVisibility::MemoryHostVisibile { cached } => {
                                 if !heap_descriptor
                                     .property_flags
@@ -197,19 +198,6 @@ impl MemoryHeap {
                                     continue 'suitable_heap_search;
                                 }
                             }
-                        },
-                        None => {
-                            // a visibility model is NOT specified: whatever will do
-
-                            //// Only avaialble on Vulkan 1.1
-                            //if (instance.instance_vulkan_version()
-                            //    != InstanceAPIVersion::Version1_0)
-                            //    && (!heap_descriptor.property_flags.contains(
-                            //        ash::vk::MemoryPropertyFlags::PROTECTED,
-                            //    ))
-                            //{
-                            //    continue 'suitable_heap_search;
-                            //}
                         }
                     }
                 }
