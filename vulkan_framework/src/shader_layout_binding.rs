@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::shader_stage_access::ShaderStagesAccess;
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum NativeBindingType {
     Sampler,
     SampledImage,
@@ -34,7 +34,7 @@ impl NativeBindingType {
 /**
  * Provided by VK_KHR_acceleration_structure
  */
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum AccelerationStructureBindingType {
     AccelerationStructure,
 }
@@ -47,7 +47,7 @@ impl AccelerationStructureBindingType {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum BindingType {
     Native(NativeBindingType),
     AccelerationStructure(AccelerationStructureBindingType),

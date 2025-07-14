@@ -4,16 +4,17 @@ use crate::{
     memory_allocator::AllocationResult,
     memory_heap::MemoryHeapOwned,
     memory_pool::{MemoryPool, MemoryPoolBacked},
+    memory_requiring::{MemoryRequirements, MemoryRequiring},
     prelude::{FrameworkError, VulkanError, VulkanResult},
     queue_family::QueueFamily,
 };
 
-use std::sync::Arc;
+use std::{fmt::Debug, sync::Arc};
 
 /**
  * Provided by VK_KHR_acceleration_structure
  */
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum BufferUsageFlagAccelerationStructureKHR {
     AccelerationStructureStorage,
     AccelerationStructureBuildInputReadOnly,
@@ -22,7 +23,7 @@ pub enum BufferUsageFlagAccelerationStructureKHR {
 /**
  * Provided by VK_KHR_acceleration_structure
  */
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct BufferUsageFlagsAccelerationStructureKHR {
     acceleration_structure_storage: bool,
     acceleration_structure_build_input_read_only: bool,
@@ -60,7 +61,7 @@ impl BufferUsageFlagsAccelerationStructureKHR {
 /*
  * Provided by VK_KHR_ray_tracing_pipeline
  */
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum BufferUsageFlagRayTracingPipelineKHR {
     ShaderBindingTable,
 }
@@ -68,7 +69,7 @@ pub enum BufferUsageFlagRayTracingPipelineKHR {
 /*
  * Provided by VK_KHR_ray_tracing_pipeline
  */
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct BufferUsageFlagsRayTracingPipelineKHR {
     shader_binding_table: bool,
 }
@@ -95,7 +96,7 @@ impl BufferUsageFlagsRayTracingPipelineKHR {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum BufferUsageFlag {
     TransferSrc,
     TransferDst,
@@ -108,7 +109,7 @@ pub enum BufferUsageFlag {
     IndirectBuffer,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct BufferUsageFlagsSpecifier {
     transfer_src: bool,
     transfer_dst: bool,
@@ -231,7 +232,7 @@ impl BufferUsageFlagsSpecifier {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum BufferUsage {
     Managed(BufferUsageFlagsSpecifier),
     Unmanaged(u32),
@@ -258,7 +259,7 @@ impl BufferUsage {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ConcreteBufferDescriptor {
     usage: BufferUsage,
     size: ash::vk::DeviceSize,
@@ -399,6 +400,27 @@ impl Buffer {
     }
 }
 
+impl MemoryRequiring for Buffer {
+    fn memory_requirements(&self) -> MemoryRequirements {
+        let requirements_info =
+            ash::vk::BufferMemoryRequirementsInfo2::default().buffer(self.ash_handle());
+
+        let mut requirements = ash::vk::MemoryRequirements2::default();
+
+        unsafe {
+            self.get_parent_device()
+                .ash_handle()
+                .get_buffer_memory_requirements2(&requirements_info, &mut requirements);
+        };
+
+        MemoryRequirements::new(
+            requirements.memory_requirements.memory_type_bits,
+            requirements.memory_requirements.size,
+            requirements.memory_requirements.alignment,
+        )
+    }
+}
+
 pub struct AllocatedBuffer {
     memory_pool: Arc<MemoryPool>,
     reserved_memory_from_pool: AllocationResult,
@@ -419,22 +441,11 @@ impl AllocatedBuffer {
             ));
         }
 
-        let requirements_info =
-            ash::vk::BufferMemoryRequirementsInfo2::default().buffer(buffer.ash_handle());
-
-        let mut requirements = ash::vk::MemoryRequirements2::default();
-
-        unsafe {
-            device
-                .ash_handle()
-                .get_buffer_memory_requirements2(&requirements_info, &mut requirements);
-        }
+        let requirements = buffer.memory_requirements();
 
         if !memory_pool
             .get_parent_memory_heap()
-            .check_memory_requirements_are_satified(
-                requirements.memory_requirements.memory_type_bits,
-            )
+            .check_memory_type_bits_are_satified(requirements.memory_type_bits())
         {
             return Err(VulkanError::Framework(
                 FrameworkError::IncompatibleMemoryHeapType,
@@ -443,10 +454,7 @@ impl AllocatedBuffer {
 
         let reserved_memory_from_pool = memory_pool
             .get_memory_allocator()
-            .alloc(
-                requirements.memory_requirements.size,
-                requirements.memory_requirements.alignment,
-            )
+            .alloc(requirements.size(), requirements.alignment())
             .ok_or(VulkanError::Framework(FrameworkError::MallocFail))?;
 
         unsafe {

@@ -6,6 +6,7 @@ use crate::{
     memory_allocator::AllocationResult,
     memory_heap::MemoryHeapOwned,
     memory_pool::{MemoryPool, MemoryPoolBacked},
+    memory_requiring::{MemoryRequirements, MemoryRequiring},
     prelude::{FrameworkError, VulkanError, VulkanResult},
     queue_family::QueueFamily,
 };
@@ -13,7 +14,7 @@ use crate::{
 use std::sync::Arc;
 
 #[repr(u32)]
-#[derive(PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum ImageAspect {
     Color = 0x00000001u32,
     Depth = 0x00000002u32,
@@ -21,7 +22,7 @@ pub enum ImageAspect {
     Metadata = 0x00000008u32,
 }
 
-#[derive(PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub struct ImageAspects {
     color: bool,
     depth: bool,
@@ -85,7 +86,7 @@ impl ImageAspects {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ImageSubresourceLayers {
     image_aspect: ImageAspects,
     mip_level: u32,
@@ -117,7 +118,7 @@ impl ImageSubresourceLayers {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ImageSubresourceRange {
     image_aspect: ImageAspects,
     base_mip_level: u32,
@@ -190,7 +191,7 @@ impl ImageSubresourceRange {
 }
 
 #[repr(u32)]
-#[derive(PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum ImageLayoutSwapchainKHR {
     PresentSrc = 1000001002u32,
 }
@@ -204,7 +205,7 @@ impl ImageLayoutSwapchainKHR {
 }
 
 #[repr(u32)]
-#[derive(PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum ImageLayout {
     Undefined = 0,
     General = 1,
@@ -241,7 +242,7 @@ pub trait Image3DTrait: Image2DTrait {
     fn depth(&self) -> u32;
 }
 
-#[derive(PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub struct Image1DDimensions {
     width: u32,
 }
@@ -258,7 +259,7 @@ impl Image1DTrait for Image1DDimensions {
     }
 }
 
-#[derive(PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub struct Image2DDimensions {
     width: u32,
     height: u32,
@@ -300,7 +301,7 @@ impl Image2DTrait for Image2DDimensions {
     }
 }
 
-#[derive(PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub struct Image3DDimensions {
     width: u32,
     height: u32,
@@ -345,7 +346,7 @@ impl Image3DTrait for Image3DDimensions {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ImageDimensions {
     Image1D { extent: Image1DDimensions },
     Image2D { extent: Image2DDimensions },
@@ -374,7 +375,7 @@ impl ImageDimensions {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ImageMultisampling {
     SamplesPerPixel1,
     SamplesPerPixel2,
@@ -402,7 +403,7 @@ impl ImageMultisampling {
 /**
  *
  */
-#[derive(PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub struct ImageUsageSpecifier {
     transfer_src: bool,
     transfer_dst: bool,
@@ -470,7 +471,7 @@ impl ImageUsageSpecifier {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ImageUsage {
     Managed(ImageUsageSpecifier),
     Unmanaged(u32),
@@ -532,7 +533,7 @@ impl ImageUsage {
  * but it is always possible to specify Other(VkFormat).
  */
 #[allow(non_camel_case_types)]
-#[derive(PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 #[repr(i32)]
 pub enum ImageFormat {
     undefined = 0,
@@ -732,7 +733,7 @@ impl ImageFormat {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ImageFlagsCollection {
     mutable_format: bool,
     cube_compatible: bool,
@@ -757,7 +758,7 @@ impl ImageFlagsCollection {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ImageFlags {
     Managed(ImageFlagsCollection),
     Unmanaged(u32),
@@ -785,7 +786,7 @@ impl ImageFlags {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ImageTiling {
     Optimal,
     Linear,
@@ -802,7 +803,7 @@ impl ImageTiling {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ConcreteImageDescriptor {
     img_dimensions: ImageDimensions,
     img_usage: ImageUsage,
@@ -1017,6 +1018,27 @@ impl Image {
     }
 }
 
+impl MemoryRequiring for Image {
+    fn memory_requirements(&self) -> MemoryRequirements {
+        let requirements_info =
+            ash::vk::ImageMemoryRequirementsInfo2::default().image(self.ash_native());
+
+        let mut requirements = ash::vk::MemoryRequirements2::default();
+
+        unsafe {
+            self.get_parent_device()
+                .ash_handle()
+                .get_image_memory_requirements2(&requirements_info, &mut requirements);
+        };
+
+        MemoryRequirements::new(
+            requirements.memory_requirements.memory_type_bits,
+            requirements.memory_requirements.size,
+            requirements.memory_requirements.alignment,
+        )
+    }
+}
+
 impl Drop for Image {
     fn drop(&mut self) {
         let device = self.get_parent_device();
@@ -1061,22 +1083,11 @@ impl AllocatedImage {
             ));
         }
 
-        let requirements_info =
-            ash::vk::ImageMemoryRequirementsInfo2::default().image(image.ash_native());
-
-        let mut requirements = ash::vk::MemoryRequirements2::default();
-
-        unsafe {
-            device
-                .ash_handle()
-                .get_image_memory_requirements2(&requirements_info, &mut requirements);
-        }
+        let requirments = image.memory_requirements();
 
         if !memory_pool
             .get_parent_memory_heap()
-            .check_memory_requirements_are_satified(
-                requirements.memory_requirements.memory_type_bits,
-            )
+            .check_memory_type_bits_are_satified(requirments.memory_type_bits())
         {
             return Err(VulkanError::Framework(
                 FrameworkError::IncompatibleMemoryHeapType,
@@ -1085,10 +1096,7 @@ impl AllocatedImage {
 
         let reserved_memory_from_pool = memory_pool
             .get_memory_allocator()
-            .alloc(
-                requirements.memory_requirements.size,
-                requirements.memory_requirements.alignment,
-            )
+            .alloc(requirments.size(), requirments.alignment())
             .ok_or(VulkanError::Framework(FrameworkError::MallocFail))?;
 
         unsafe {

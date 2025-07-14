@@ -9,7 +9,7 @@ use crate::{
 
 const MAX_NUMBER_OF_SUBPASSES_NOT_REQUIRING_HEAP_ALLOC: usize = 8;
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum AttachmentLoadOp {
     Load,
     Clear,
@@ -26,7 +26,7 @@ impl AttachmentLoadOp {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum AttachmentStoreOp {
     Store,
     DontCare,
@@ -41,7 +41,7 @@ impl AttachmentStoreOp {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct AttachmentDescription {
     format: ImageFormat,
     samples: ImageMultisampling,
@@ -89,7 +89,7 @@ impl AttachmentDescription {
     }
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenderSubPassDescription {
     pub input_color_attachment_indeces: smallvec::SmallVec<[u32; 8]>,
     pub output_color_attachment_indeces: smallvec::SmallVec<[u32; 24]>,

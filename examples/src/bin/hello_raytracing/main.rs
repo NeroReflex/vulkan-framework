@@ -317,6 +317,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 MemoryType::DeviceLocal(None),
                 1024 * 1024 * 128, // 128MiB of memory!
             ),
+            &[],
         )
         .unwrap();
         println!("Memory heap created! <3");
@@ -331,6 +332,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let raytracing_memory_heap = MemoryHeap::new(
             dev.clone(),
             ConcreteMemoryHeapDescriptor::new(required_memory_type(), 1024 * 1024 * 128),
+            &[],
         )
         .unwrap();
         println!("Memory heap created! <3");

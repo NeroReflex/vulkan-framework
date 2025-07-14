@@ -6,7 +6,7 @@ use crate::{
     prelude::{VulkanError, VulkanResult},
 };
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct DescriptorPoolSizesAcceletarionStructureKHR {
     acceleration_structure: u32,
 }
@@ -37,7 +37,7 @@ impl DescriptorPoolSizesAcceletarionStructureKHR {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct DescriptorPoolSizesConcreteDescriptor {
     sampler: u32,
     combined_image_sampler: u32,
@@ -198,7 +198,7 @@ impl DescriptorPoolSizesConcreteDescriptor {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct DescriptorPoolConcreteDescriptor {
     pool_sizes: DescriptorPoolSizesConcreteDescriptor,
     max_sets: u32,

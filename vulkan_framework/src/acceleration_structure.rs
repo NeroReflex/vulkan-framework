@@ -16,7 +16,7 @@ use crate::{
     prelude::{FrameworkError, VulkanError, VulkanResult},
 };
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum AllowedBuildingDevice {
     HostOnly,
     DeviceOnly,
@@ -149,7 +149,7 @@ impl HostScratchBuffer {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum VertexIndexing {
     None,
     UInt16,
@@ -166,7 +166,7 @@ impl VertexIndexing {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct BottomLevelTrianglesGroupDecl {
     vertex_indexing: VertexIndexing,
     max_triangles: u32,
@@ -468,7 +468,7 @@ impl BottomLevelAccelerationStructure {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct TopLevelBLASGroupDecl {
     array_of_pointers: bool,
 }

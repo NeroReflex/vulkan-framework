@@ -12,7 +12,7 @@ use crate::pipeline_layout::{PipelineLayout, PipelineLayoutDependant};
 use crate::prelude::{VulkanError, VulkanResult};
 use crate::shader_trait::PrivateShaderTrait;
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum AttributeType {
     Float,
     Vec1,
@@ -57,7 +57,7 @@ impl AttributeType {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct VertexInputAttribute {
     location: u32,
     offset: u32,
@@ -96,7 +96,7 @@ impl VertexInputAttribute {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum VertexInputRate {
     PerInstance,
     PerVertex,
@@ -143,7 +143,7 @@ impl VertexInputBinding {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum CullMode {
     None,
     Front,
@@ -162,7 +162,7 @@ impl CullMode {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum FrontFace {
     Clockwise,
     CounterClockwise,
@@ -177,7 +177,7 @@ impl FrontFace {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum PolygonMode {
     Fill,
 }
@@ -190,7 +190,7 @@ impl PolygonMode {
     }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Rasterizer {
     cull_mode: CullMode,
     polygon_mode: PolygonMode,
@@ -233,7 +233,7 @@ impl Rasterizer {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum DepthCompareOp {
     Never,
     Less,
@@ -260,7 +260,7 @@ impl DepthCompareOp {
     }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct DepthConfiguration {
     write_enable: bool,
     depth_compare: DepthCompareOp,
@@ -293,7 +293,7 @@ impl DepthConfiguration {
     }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Scissor {
     offset_x: i32,
     offset_y: i32,
@@ -325,7 +325,7 @@ impl Scissor {
     }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Viewport {
     top_left_x: f32,
     top_left_y: f32,

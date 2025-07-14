@@ -1,6 +1,6 @@
 use crate::device::DeviceOwned;
 
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum ShaderTypeRayTracingKHR {
     RayGen,
     Miss,

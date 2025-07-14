@@ -6,7 +6,7 @@ use crate::{
     prelude::{VulkanError, VulkanResult},
 };
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Filtering {
     Nearest,
     Linear,
@@ -23,7 +23,7 @@ impl Filtering {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum MipmapMode {
     ModeNearest,
     ModeLinear,

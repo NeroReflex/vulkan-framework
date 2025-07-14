@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 pub type VulkanResult<T> = Result<T, VulkanError>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum FrameworkError {
     MallocFail,
     IncompatibleMemoryHeapType,
@@ -64,7 +64,7 @@ impl Display for FrameworkError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum VulkanError {
     Framework(FrameworkError),
     Vulkan(i32, Option<String>),

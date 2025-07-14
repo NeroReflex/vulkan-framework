@@ -1,6 +1,6 @@
 use crate::shader_trait::{ShaderType, ShaderTypeRayTracingKHR};
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ShaderStagesAccessRayTracingKHR {
     rgen: bool,
     miss: bool,
@@ -19,7 +19,7 @@ impl ShaderStagesAccessRayTracingKHR {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ShaderStage {
     Compute,
     Vertex,
@@ -27,7 +27,7 @@ pub enum ShaderStage {
     Fragment,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ShaderStageRayTracingKHR {
     RayGen,
     Callable,

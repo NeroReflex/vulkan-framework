@@ -2,60 +2,38 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use inline_spirv::*;
-use vulkan_framework::command_buffer::AccessFlag;
-use vulkan_framework::command_buffer::AccessFlags;
-use vulkan_framework::command_buffer::AccessFlagsSpecifier;
-use vulkan_framework::command_buffer::ClearValues;
-use vulkan_framework::command_buffer::ColorClearValues;
-use vulkan_framework::command_buffer::CommandBufferRecorder;
-use vulkan_framework::command_buffer::ImageMemoryBarrier;
-use vulkan_framework::command_buffer::PrimaryCommandBuffer;
+use vulkan_framework::command_buffer::{
+    AccessFlag, AccessFlags, AccessFlagsSpecifier, ClearValues, ColorClearValues,
+    CommandBufferRecorder, ImageMemoryBarrier, PrimaryCommandBuffer,
+};
 use vulkan_framework::command_pool::CommandPool;
 use vulkan_framework::compute_pipeline::ComputePipeline;
-use vulkan_framework::descriptor_pool::DescriptorPool;
-use vulkan_framework::descriptor_pool::DescriptorPoolConcreteDescriptor;
-use vulkan_framework::descriptor_pool::DescriptorPoolSizesConcreteDescriptor;
+use vulkan_framework::descriptor_pool::{
+    DescriptorPool, DescriptorPoolConcreteDescriptor, DescriptorPoolSizesConcreteDescriptor,
+};
 use vulkan_framework::descriptor_set::DescriptorSet;
 use vulkan_framework::descriptor_set_layout::DescriptorSetLayout;
 use vulkan_framework::device::*;
 use vulkan_framework::fence::Fence;
 use vulkan_framework::fence::FenceWaitFor;
 use vulkan_framework::framebuffer::Framebuffer;
-use vulkan_framework::graphics_pipeline::CullMode;
-use vulkan_framework::graphics_pipeline::DepthCompareOp;
-use vulkan_framework::graphics_pipeline::DepthConfiguration;
-use vulkan_framework::graphics_pipeline::FrontFace;
-use vulkan_framework::graphics_pipeline::GraphicsPipeline;
-use vulkan_framework::graphics_pipeline::PolygonMode;
-use vulkan_framework::graphics_pipeline::Rasterizer;
-use vulkan_framework::graphics_pipeline::Scissor;
-use vulkan_framework::graphics_pipeline::Viewport;
-use vulkan_framework::image::AllocatedImage;
-use vulkan_framework::image::ConcreteImageDescriptor;
-use vulkan_framework::image::Image;
-use vulkan_framework::image::Image2DDimensions;
-use vulkan_framework::image::ImageDimensions;
-use vulkan_framework::image::ImageFlags;
-use vulkan_framework::image::ImageFormat;
-use vulkan_framework::image::ImageLayout;
-use vulkan_framework::image::ImageLayoutSwapchainKHR;
-use vulkan_framework::image::ImageMultisampling;
-use vulkan_framework::image::ImageTiling;
-use vulkan_framework::image::ImageUsage;
-use vulkan_framework::image::ImageUsageSpecifier;
-use vulkan_framework::image_view::ImageView;
-use vulkan_framework::image_view::ImageViewType;
+use vulkan_framework::graphics_pipeline::{
+    CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline, PolygonMode,
+    Rasterizer, Scissor, Viewport,
+};
+use vulkan_framework::image::{
+    AllocatedImage, ConcreteImageDescriptor, Image, Image2DDimensions, ImageDimensions, ImageFlags,
+    ImageFormat, ImageLayout, ImageLayoutSwapchainKHR, ImageMultisampling, ImageTiling, ImageUsage,
+    ImageUsageSpecifier,
+};
+use vulkan_framework::image_view::{ImageView, ImageViewType};
 use vulkan_framework::instance::*;
 use vulkan_framework::memory_allocator::StackAllocator;
 use vulkan_framework::memory_heap::ConcreteMemoryHeapDescriptor;
-use vulkan_framework::memory_heap::MemoryHeap;
-use vulkan_framework::memory_heap::MemoryHostVisibility;
-use vulkan_framework::memory_heap::MemoryType;
-use vulkan_framework::memory_pool::MemoryPool;
-use vulkan_framework::memory_pool::MemoryPoolFeatures;
+use vulkan_framework::memory_heap::{MemoryHeap, MemoryType};
+use vulkan_framework::memory_pool::{MemoryPool, MemoryPoolFeatures};
 use vulkan_framework::pipeline_layout::PipelineLayout;
-use vulkan_framework::pipeline_stage::PipelineStage;
-use vulkan_framework::pipeline_stage::PipelineStages;
+use vulkan_framework::pipeline_stage::{PipelineStage, PipelineStages};
 use vulkan_framework::push_constant_range::PushConstanRange;
 use vulkan_framework::queue::Queue;
 use vulkan_framework::queue_family::*;
@@ -262,19 +240,6 @@ fn main() {
         Err(err) => panic!("Error opening a queue from the given QueueFamily: {err}"),
     };
 
-    let memory_heap = match MemoryHeap::new(
-        device.clone(),
-        ConcreteMemoryHeapDescriptor::new(
-            MemoryType::DeviceLocal(Some(MemoryHostVisibility::new(false))),
-            1024 * 1024 * 512,
-        ),
-    ) {
-        Ok(memory_heap) => memory_heap,
-        Err(err) => {
-            panic!("Error creating the memory heap: {err}");
-        }
-    };
-
     let descriptor_pool = DescriptorPool::new(
         device.clone(),
         DescriptorPoolConcreteDescriptor::new(
@@ -286,22 +251,6 @@ fn main() {
     .unwrap();
 
     println!("Memory heap created! <3");
-    let memory_heap_size = memory_heap.total_size();
-
-    let stack_allocator = match MemoryPool::new(
-        memory_heap,
-        Arc::new(StackAllocator::new(memory_heap_size)),
-        MemoryPoolFeatures::from(&[]),
-    ) {
-        Ok(mem_pool) => {
-            println!("Stack allocator created");
-            mem_pool
-        }
-        Err(err) => {
-            println!("Error creating the memory pool: {err}");
-            return;
-        }
-    };
 
     let swapchain_extent = Image2DDimensions::new(WIDTH, HEIGHT);
 
@@ -349,7 +298,7 @@ fn main() {
     .unwrap();
     println!("Swapchain created!");
 
-    let image_handle = Image::new(
+    let image = Image::new(
         device.clone(),
         ConcreteImageDescriptor::new(
             ImageDimensions::Image2D {
@@ -370,7 +319,32 @@ fn main() {
     )
     .unwrap();
 
-    let image = AllocatedImage::new(stack_allocator, image_handle).unwrap();
+    let memory_heap = match MemoryHeap::new(
+        device.clone(),
+        ConcreteMemoryHeapDescriptor::new(MemoryType::DeviceLocal(None), 1024 * 1024 * 512),
+        &[&image],
+    ) {
+        Ok(memory_heap) => memory_heap,
+        Err(err) => {
+            panic!("Error creating the memory heap: {err}");
+        }
+    };
+
+    let stack_allocator = match MemoryPool::new(
+        memory_heap.clone(),
+        Arc::new(StackAllocator::new(memory_heap.total_size())),
+        MemoryPoolFeatures::from(&[]),
+    ) {
+        Ok(mem_pool) => {
+            println!("Stack allocator created");
+            mem_pool
+        }
+        Err(err) => {
+            panic!("Error creating the memory pool: {err}");
+        }
+    };
+
+    let image = AllocatedImage::new(stack_allocator, image).unwrap();
 
     let image_view = match ImageView::new(
         image.clone(),
@@ -385,9 +359,8 @@ fn main() {
         Some("ImageView"),
     ) {
         Ok(image_view) => image_view,
-        Err(_err) => {
-            println!("Error creating image view...");
-            return;
+        Err(err) => {
+            panic!("Error creating image view: {err}");
         }
     };
 

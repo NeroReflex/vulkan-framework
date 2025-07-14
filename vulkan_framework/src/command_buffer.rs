@@ -101,14 +101,14 @@ impl Hash for CommandBufferReferencedResource {
 /*
  * Provided by VK_KHR_acceleration_structure
  */
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u32)]
 pub enum AccessFlagAccelerationStructureKHR {
     AccelerationStructureRead = 0x00200000u32,
     AccelerationStructureWrite = 0x00400000u32,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum AccessFlag {
     IndirectCommandRead,
     IndexRead,
@@ -132,7 +132,7 @@ pub enum AccessFlag {
 /*
  * Provided by VK_KHR_acceleration_structure
  */
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct AccessFlagsAccelerationStructureKHR {
     acceleration_structure_read: bool,
     acceleration_structure_write: bool,
@@ -173,7 +173,7 @@ impl AccessFlagsAccelerationStructureKHR {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct AccessFlagsSpecifier {
     indirect_command_read: bool,
     index_read: bool,
@@ -341,7 +341,7 @@ impl AccessFlagsSpecifier {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum AccessFlags {
     Managed(AccessFlagsSpecifier),
     Unmanaged(u32),
@@ -490,14 +490,14 @@ impl ImageMemoryBarrier {
     }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum ColorClearValues {
     Vec4(f32, f32, f32, f32),
     IVec4(i32, i32, i32, i32),
     UVec4(u32, u32, u32, u32),
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct ClearValues {
     color: Option<ColorClearValues>,
 }

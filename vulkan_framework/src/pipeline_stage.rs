@@ -1,5 +1,5 @@
 #[repr(u32)]
-#[derive(PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum PipelineStageAccelerationStructureKHR {
     AccelerationStructureBuild = 0x02000000u32,
 }
@@ -37,7 +37,7 @@ impl PipelineStagesAccelerationStructureKHR {
 }
 
 #[repr(u32)]
-#[derive(PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum PipelineStageRayTracingPipelineKHR {
     RayTracingShader = 0x00200000u32,
 }
@@ -73,7 +73,7 @@ impl PipelineStagesRayTracingPipelineKHR {
 }
 
 #[repr(u32)]
-#[derive(PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum PipelineStageSynchronization2KHR {
     None = 0x00000000u32,
 }
@@ -108,7 +108,7 @@ impl PipelineStagesSynchronization2KHR {
 }
 
 #[repr(u32)]
-#[derive(PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum PipelineStage {
     TopOfPipe = 0x00000001u32,
     DrawIndirect = 0x00000002u32,

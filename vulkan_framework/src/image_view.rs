@@ -8,7 +8,7 @@ use crate::{
 
 use std::sync::Arc;
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub enum ImageViewType {
     Image1D,
     Image2D,
@@ -34,7 +34,7 @@ impl ImageViewType {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub enum ImageViewColorMapping {
     rgba_rgba,
     bgra_rgba,
@@ -51,7 +51,7 @@ pub struct ImageView {
     subrange_layer_count: u32,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct RecognisedImageAspect {
     color: bool,
     depth: bool,
@@ -99,7 +99,7 @@ impl RecognisedImageAspect {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub enum ImageViewAspect {
     Recognised(RecognisedImageAspect),
     Other(u32),

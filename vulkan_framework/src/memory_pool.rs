@@ -10,12 +10,12 @@ use crate::{
 
 use std::{mem::size_of, sync::Arc};
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum MemoryPoolFeature {
     DeviceAddressable,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct MemoryPoolFeatures {
     device_addressable: bool,
 }

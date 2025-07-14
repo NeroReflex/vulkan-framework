@@ -18,9 +18,6 @@ use vulkan_framework::{
     },
     image_view::{ImageView, ImageViewType},
     instance::*,
-    memory_allocator::*,
-    memory_heap::*,
-    memory_pool::{MemoryPool, MemoryPoolFeatures},
     pipeline_layout::PipelineLayout,
     pipeline_stage::{PipelineStage, PipelineStages},
     queue::*,
@@ -162,24 +159,6 @@ fn main() {
         let queue = Queue::new(queue_family.clone(), Some("best queua evah")).unwrap();
         println!("Queue created successfully");
 
-        let memory_heap = MemoryHeap::new(
-            dev.clone(),
-            ConcreteMemoryHeapDescriptor::new(
-                MemoryType::DeviceLocal(None),
-                1024 * 1024 * 128, // 128MiB of memory!
-            ),
-        )
-        .unwrap();
-        println!("Memory heap created! <3");
-        let memory_heap_size = memory_heap.total_size();
-
-        let _default_allocator = MemoryPool::new(
-            memory_heap,
-            Arc::new(StackAllocator::new(memory_heap_size)),
-            MemoryPoolFeatures::from(&[]),
-        )
-        .unwrap();
-
         let device_swapchain_info = DeviceSurfaceInfo::new(dev.clone(), sfc).unwrap();
 
         if !device_swapchain_info.present_mode_supported(&PresentModeSwapchainKHR::FIFO) {
@@ -251,9 +230,6 @@ fn main() {
             .collect::<Vec<Arc<Fence>>>();
 
         let command_pool = CommandPool::new(queue_family, Some("My command pool")).unwrap();
-
-        let _command_buffer =
-            PrimaryCommandBuffer::new(command_pool.clone(), Some("my command buffer <3")).unwrap();
 
         let present_command_buffers = (0..swapchain_images_count)
             .map(|idx| {

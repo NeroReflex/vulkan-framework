@@ -28,7 +28,7 @@ use crate::{
  * FIFO = VK_PRESENT_MODE_FIFO_KHR this cannot generate tearing and is always supported
  * FIFORelaxed = VK_PRESENT_MODE_FIFO_RELAXED_KHR
  */
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum PresentModeSwapchainKHR {
     Immediate,
     Mailbox,
@@ -61,7 +61,7 @@ impl SurfaceColorspaceSwapchainKHR {
 }
 
 #[repr(u32)]
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum CompositeAlphaSwapchainKHR {
     Opaque = 0x00000001u32,
     PreMultiplied = 0x00000002u32,
@@ -81,7 +81,7 @@ impl CompositeAlphaSwapchainKHR {
 }
 
 #[repr(u32)]
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum SurfaceTransformSwapchainKHR {
     Identity = 0x00000001u32,
     Rotate90 = 0x00000002u32,

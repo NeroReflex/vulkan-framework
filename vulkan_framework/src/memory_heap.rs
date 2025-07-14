@@ -1,27 +1,29 @@
 use crate::{
     device::{Device, DeviceOwned},
     instance::InstanceOwned,
+    memory_requiring::MemoryRequiring,
     prelude::{FrameworkError, VulkanError, VulkanResult},
 };
 
-use std::sync::Arc;
+use std::{sync::Arc, u32};
 
-#[derive(PartialEq, Eq, Copy, Clone)]
-pub struct MemoryHostVisibility {
-    cached: bool,
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+pub enum MemoryHostVisibility {
+    MemoryHostVisibile { cached: bool },
+    MemoryHostHidden,
 }
 
 impl MemoryHostVisibility {
-    pub fn cached(&self) -> bool {
-        self.cached
+    pub fn visible(cached: bool) -> Self {
+        Self::MemoryHostVisibile { cached }
     }
 
-    pub fn new(cached: bool) -> Self {
-        Self { cached }
+    pub fn hidden() -> Self {
+        Self::MemoryHostHidden
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum MemoryHostCoherence {
     // host coherence is implemented via memory being uncached, as stated by vulkan specification:
     // "uncached memory is always host coherent"
@@ -37,14 +39,13 @@ pub enum MemoryHostCoherence {
  * is selected, if HostLocal(None) is selected a heap that is NOT host-coherent will be selected,
  * otherwise if Some(Uncached) is selected than a memory heap with VK_MEMORY_PROPERTY_HOST_CACHED_BIT unset.
  */
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum MemoryType {
-    //HostVisible({}),
     DeviceLocal(Option<MemoryHostVisibility>),
     HostLocal(Option<MemoryHostCoherence>),
 }
 
-#[derive(Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ConcreteMemoryHeapDescriptor {
     memory_type: MemoryType,
     memory_minimum_size: u64,
@@ -113,58 +114,39 @@ impl MemoryHeap {
         self.heap_type_index
     }
 
-    pub fn check_memory_requirements_are_satified(&self, memory_type_bits: u32) -> bool {
-        // TODO: check if this heap satisfy memory requirements...
+    pub fn check_memory_type_bits_are_satified(&self, memory_type_bits_requirement: u32) -> bool {
+        // Check if this heap satisfy memory requirements...
         // memoryTypeBits is a bitmask and contains one bit set for every supported memory type for the resource.
         // Bit i is set if and only if the memory type i in the VkPhysicalDeviceMemoryProperties structure
         // for the physical device is supported for the resource.
-
-        // WARNING: this is not correct.
-        //(self.heap_index() & memory_type_bits) != 0
-
-        true
+        Self::check_for_memory_type_bits(self.heap_type_index, memory_type_bits_requirement)
     }
 
-    /// Copied from the official vulkan specification (findProperties method):
-    /// https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#memory-device
-    fn find_properties(
-        device_memory_properties: &ash::vk::PhysicalDeviceMemoryProperties,
+    pub fn check_for_memory_type_bits(
+        memory_index: u32,
         memory_type_bits_requirement: u32,
-        required_properties: ash::vk::MemoryPropertyFlags,
-    ) -> Option<u32> {
-        for memory_index in 0..device_memory_properties.memory_type_count {
-            let memory_type_bits = 1u32 << memory_index;
-
-            let is_required_memory_type = (memory_type_bits_requirement & memory_type_bits) != 0u32;
-
-            let properties =
-                device_memory_properties.memory_types[memory_index as usize].property_flags;
-
-            let required_properties_raw = required_properties.as_raw();
-            let has_required_properties =
-                (properties.as_raw() & required_properties_raw) == required_properties_raw;
-
-            if is_required_memory_type && has_required_properties {
-                return Some(memory_index);
-            }
-        }
-
-        None
+    ) -> bool {
+        let memory_type_bits = 1u32 << memory_index;
+        let memory_type_bits_satisfied = memory_type_bits_requirement & memory_type_bits;
+        memory_type_bits_satisfied != 0u32
     }
 
+    /// Derived from the official vulkan specification (findProperties method):
+    /// https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#memory-device
     pub(crate) fn search_adequate_heap(
-        current_requested_memory_heap_descriptor: &ConcreteMemoryHeapDescriptor,
         device_memory_properties: &ash::vk::PhysicalDeviceMemoryProperties,
+        current_requested_memory_heap_descriptor: &ConcreteMemoryHeapDescriptor,
+        memory_type_bits_requirement: u32,
     ) -> Option<(u32, u32, u32)> {
         let requested_size = current_requested_memory_heap_descriptor.memory_minimum_size();
 
-        'suitable_heap_search: for (memory_type_index, heap_descriptor) in
-            device_memory_properties.memory_types.iter().enumerate()
-        {
+        'suitable_heap_search: for memory_index in 0..device_memory_properties.memory_type_count {
+            let heap_descriptor = &device_memory_properties.memory_types[memory_index as usize];
+
             // discard heaps that are too small
-            let available_size =
-                device_memory_properties.memory_heaps[heap_descriptor.heap_index as usize].size;
-            if requested_size > available_size {
+            if device_memory_properties.memory_heaps[heap_descriptor.heap_index as usize].size
+                < requested_size
+            {
                 continue 'suitable_heap_search;
             }
 
@@ -179,54 +161,55 @@ impl MemoryHeap {
                     }
 
                     match host_visibility {
-                        Some(visibility_model) => {
-                            // a visibility model is specified, exclude heaps that are not suitable as not memory-mappable
-                            if !heap_descriptor
-                                .property_flags
-                                .contains(ash::vk::MemoryPropertyFlags::HOST_VISIBLE)
-                            {
-                                continue 'suitable_heap_search;
-                            }
+                        Some(visibility_model) => match visibility_model {
+                            MemoryHostVisibility::MemoryHostVisibile { cached } => {
+                                if !heap_descriptor
+                                    .property_flags
+                                    .contains(ash::vk::MemoryPropertyFlags::HOST_VISIBLE)
+                                {
+                                    continue 'suitable_heap_search;
+                                }
 
-                            match visibility_model.cached() {
-                                true => {
-                                    if !heap_descriptor
-                                        .property_flags
-                                        .contains(ash::vk::MemoryPropertyFlags::HOST_CACHED)
-                                    {
-                                        continue 'suitable_heap_search;
+                                match cached {
+                                    true => {
+                                        if !heap_descriptor
+                                            .property_flags
+                                            .contains(ash::vk::MemoryPropertyFlags::HOST_CACHED)
+                                        {
+                                            continue 'suitable_heap_search;
+                                        }
                                     }
-                                }
-                                false => {
-                                    if heap_descriptor
-                                        .property_flags
-                                        .contains(ash::vk::MemoryPropertyFlags::HOST_CACHED)
-                                    {
-                                        continue 'suitable_heap_search;
+                                    false => {
+                                        if heap_descriptor
+                                            .property_flags
+                                            .contains(ash::vk::MemoryPropertyFlags::HOST_CACHED)
+                                        {
+                                            continue 'suitable_heap_search;
+                                        }
                                     }
                                 }
                             }
-                        }
+                            MemoryHostVisibility::MemoryHostHidden => {
+                                if heap_descriptor
+                                    .property_flags
+                                    .contains(ash::vk::MemoryPropertyFlags::HOST_VISIBLE)
+                                {
+                                    continue 'suitable_heap_search;
+                                }
+                            }
+                        },
                         None => {
-                            // a visibility model is NOT specified, the user wants memory that is not memory-mappable
-                            if heap_descriptor
-                                .property_flags
-                                .contains(ash::vk::MemoryPropertyFlags::HOST_VISIBLE)
-                            {
-                                continue 'suitable_heap_search;
-                            }
+                            // a visibility model is NOT specified: whatever will do
 
-                            // Only avaialble on Vulkan 1.1
-                            /*
-                            if (instance.instance_vulkan_version()
-                                != InstanceAPIVersion::Version1_0)
-                                && (!heap_descriptor.property_flags.contains(
-                                    ash::vk::MemoryPropertyFlags::PROTECTED,
-                                ))
-                            {
-                                continue 'suitable_heap_search;
-                            }
-                            */
+                            //// Only avaialble on Vulkan 1.1
+                            //if (instance.instance_vulkan_version()
+                            //    != InstanceAPIVersion::Version1_0)
+                            //    && (!heap_descriptor.property_flags.contains(
+                            //        ash::vk::MemoryPropertyFlags::PROTECTED,
+                            //    ))
+                            //{
+                            //    continue 'suitable_heap_search;
+                            //}
                         }
                     }
                 }
@@ -242,11 +225,13 @@ impl MemoryHeap {
             }
 
             // If I'm here the previous search has find that the current heap is suitable...
-            return Some((
-                heap_descriptor.heap_index,
-                memory_type_index as u32,
-                heap_descriptor.property_flags.as_raw(),
-            ));
+            if Self::check_for_memory_type_bits(memory_index, memory_type_bits_requirement) {
+                return Some((
+                    heap_descriptor.heap_index,
+                    memory_index,
+                    heap_descriptor.property_flags.as_raw(),
+                ));
+            }
         }
         None
     }
@@ -254,6 +239,7 @@ impl MemoryHeap {
     pub fn new(
         device: Arc<Device>,
         descriptor: ConcreteMemoryHeapDescriptor,
+        hints: &[&dyn MemoryRequiring],
     ) -> VulkanResult<Arc<Self>> {
         let device_memory_properties = unsafe {
             device
@@ -262,10 +248,25 @@ impl MemoryHeap {
                 .get_physical_device_memory_properties(device.physical_device.to_owned())
         };
 
-        let (heap_index, heap_type_index, heap_property_flags) =
-            Self::search_adequate_heap(&descriptor, &device_memory_properties).ok_or(
-                VulkanError::Framework(FrameworkError::NoSuitableMemoryHeapFound),
-            )?;
+        let mut memory_type_bits_requirement: u32 = u32::MAX;
+        for requirement in hints.iter() {
+            memory_type_bits_requirement &= requirement.memory_requirements().memory_type_bits();
+        }
+
+        let adequate_heap = Self::search_adequate_heap(
+            &device_memory_properties,
+            &descriptor,
+            memory_type_bits_requirement,
+        );
+
+        let (heap_index, heap_type_index, heap_property_flags) = match adequate_heap {
+            Some(h) => h,
+            None => {
+                return Err(VulkanError::Framework(
+                    FrameworkError::NoSuitableMemoryHeapFound,
+                ))
+            }
+        };
 
         Ok(Arc::new(Self {
             device,
