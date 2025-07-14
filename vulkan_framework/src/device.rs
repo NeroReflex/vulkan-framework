@@ -569,11 +569,6 @@ impl Device {
                         ));
                     };
 
-                    let layers_ptr = selected_device
-                        .enabled_layers
-                        .iter()
-                        .map(|str| str.as_ptr())
-                        .collect::<Vec<*const c_char>>();
                     let extensions_ptr = selected_device
                         .enabled_extensions
                         .iter()
@@ -582,7 +577,6 @@ impl Device {
 
                     let mut device_create_info_builder = ash::vk::DeviceCreateInfo::default()
                         .queue_create_infos(selected_device.selected_queues.as_slice())
-                        .enabled_layer_names(layers_ptr.as_slice())
                         .enabled_extension_names(extensions_ptr.as_slice());
 
                     let acceleration_structure_enabled = device_extensions.iter().any(|ext| {
