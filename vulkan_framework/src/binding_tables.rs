@@ -32,7 +32,6 @@ pub struct RaytracingBindingTables {
 }
 
 pub fn required_memory_type() -> MemoryType {
-    // TODO: check memory_pool is VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     MemoryType::DeviceLocal(Some(MemoryHostVisibility::visible(false)))
 }
 

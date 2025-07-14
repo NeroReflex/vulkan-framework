@@ -7,55 +7,27 @@ use vulkan_framework::{
         AllowedBuildingDevice, BottomLevelAccelerationStructure, BottomLevelTrianglesGroupData,
         BottomLevelTrianglesGroupDecl, DeviceScratchBuffer, TopLevelAccelerationStructure,
         TopLevelBLASGroupData, TopLevelBLASGroupDecl, VertexIndexing,
-    },
-    binding_tables::{required_memory_type, RaytracingBindingTables},
-    buffer::{AllocatedBuffer, Buffer, BufferUsage, ConcreteBufferDescriptor},
-    command_buffer::{
+    }, binding_tables::{required_memory_type, RaytracingBindingTables}, buffer::{AllocatedBuffer, Buffer, BufferUsage, ConcreteBufferDescriptor}, command_buffer::{
         AccessFlag, AccessFlags, AccessFlagsSpecifier, ClearValues, ColorClearValues,
         CommandBufferRecorder, ImageMemoryBarrier, PrimaryCommandBuffer,
-    },
-    command_pool::CommandPool,
-    descriptor_pool::DescriptorPoolSizesAcceletarionStructureKHR,
-    descriptor_set_layout::DescriptorSetLayout,
-    device::*,
-    fence::{Fence, FenceWaitFor},
-    framebuffer::Framebuffer,
-    graphics_pipeline::{
+    }, command_pool::CommandPool, descriptor_pool::DescriptorPoolSizesAcceletarionStructureKHR, descriptor_set_layout::DescriptorSetLayout, device::*, fence::{Fence, FenceWaitFor}, framebuffer::Framebuffer, graphics_pipeline::{
         AttributeType, CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline,
         PolygonMode, Rasterizer, Scissor, Viewport,
-    },
-    image::{
+    }, image::{
         ConcreteImageDescriptor, Image2DDimensions, Image3DDimensions, ImageDimensions, ImageFlags,
         ImageFormat, ImageLayout, ImageLayoutSwapchainKHR, ImageMultisampling, ImageTiling,
         ImageUsage, ImageUsageSpecifier,
-    },
-    image_view::{ImageView, ImageViewType},
-    instance::*,
-    memory_allocator::*,
-    memory_heap::*,
-    memory_pool::{MemoryPool, MemoryPoolBacked, MemoryPoolFeature, MemoryPoolFeatures},
-    pipeline_layout::PipelineLayout,
-    pipeline_stage::{PipelineStage, PipelineStageRayTracingPipelineKHR, PipelineStages},
-    queue::*,
-    queue_family::*,
-    raytracing_pipeline::RaytracingPipeline,
-    renderpass::{
+    }, image_view::{ImageView, ImageViewType}, instance::*, memory_allocator::*, memory_heap::*, memory_pool::{MemoryPool, MemoryPoolBacked, MemoryPoolFeature, MemoryPoolFeatures}, memory_requiring::MemoryRequiring, pipeline_layout::PipelineLayout, pipeline_stage::{PipelineStage, PipelineStageRayTracingPipelineKHR, PipelineStages}, queue::*, queue_family::*, raytracing_pipeline::RaytracingPipeline, renderpass::{
         AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp, RenderSubPassDescription,
-    },
-    semaphore::Semaphore,
-    shader_layout_binding::{
+    }, semaphore::Semaphore, shader_layout_binding::{
         AccelerationStructureBindingType, BindingDescriptor, BindingType, NativeBindingType,
-    },
-    shader_stage_access::{ShaderStageRayTracingKHR, ShaderStagesAccess},
-    shaders::{
+    }, shader_stage_access::{ShaderStageRayTracingKHR, ShaderStagesAccess}, shaders::{
         closest_hit_shader::ClosestHitShader, fragment_shader::FragmentShader,
         miss_shader::MissShader, raygen_shader::RaygenShader, vertex_shader::VertexShader,
-    },
-    swapchain::{
+    }, swapchain::{
         CompositeAlphaSwapchainKHR, DeviceSurfaceInfo, PresentModeSwapchainKHR,
         SurfaceColorspaceSwapchainKHR, SurfaceTransformSwapchainKHR, SwapchainKHR,
-    },
-    swapchain_image::ImageSwapchainKHR,
+    }, swapchain_image::ImageSwapchainKHR
 };
 
 use vulkan_framework::descriptor_pool::DescriptorPool;
@@ -311,39 +283,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let queue = Queue::new(queue_family.clone(), Some("best queua evah")).unwrap();
         println!("Queue created successfully");
 
-        let device_local_memory_heap = MemoryHeap::new(
-            dev.clone(),
-            ConcreteMemoryHeapDescriptor::new(
-                MemoryType::DeviceLocal(None),
-                1024 * 1024 * 128, // 128MiB of memory!
-            ),
-            &[],
-        )
-        .unwrap();
-        println!("Memory heap created! <3");
-
-        let device_local_default_allocator = MemoryPool::new(
-            device_local_memory_heap,
-            Arc::new(DefaultAllocator::new(1024 * 1024 * 128)),
-            MemoryPoolFeatures::from(&[]),
-        )
-        .unwrap();
-
-        let raytracing_memory_heap = MemoryHeap::new(
-            dev.clone(),
-            ConcreteMemoryHeapDescriptor::new(required_memory_type(), 1024 * 1024 * 128),
-            &[],
-        )
-        .unwrap();
-        println!("Memory heap created! <3");
-
-        let raytracing_allocator = MemoryPool::new(
-            raytracing_memory_heap,
-            Arc::new(DefaultAllocator::new(1024 * 1024 * 128)),
-            MemoryPoolFeatures::from(&[MemoryPoolFeature::DeviceAddressable]),
-        )
-        .unwrap();
-
         let device_swapchain_info = DeviceSurfaceInfo::new(dev.clone(), sfc).unwrap();
 
         if !device_swapchain_info.present_mode_supported(&PresentModeSwapchainKHR::FIFO) {
@@ -364,6 +303,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         let swapchain_extent = Image2DDimensions::new(WIDTH, HEIGHT);
+        let swapchain = SwapchainKHR::new(
+            &device_swapchain_info,
+            &[queue_family.clone()],
+            None,
+            PresentModeSwapchainKHR::FIFO,
+            color_space,
+            CompositeAlphaSwapchainKHR::Opaque,
+            SurfaceTransformSwapchainKHR::Identity,
+            true,
+            final_format,
+            ImageUsage::Managed(ImageUsageSpecifier::new(
+                false, true, false, false, true, false, false, false,
+            )),
+            swapchain_extent,
+            swapchain_images_count,
+            1,
+        )
+        .unwrap();
+        println!("Swapchain created!");
 
         let rt_image_handles = (0..swapchain_images_count)
             .map(|_idx| {
@@ -390,25 +348,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             })
             .collect::<Vec<_>>();
 
-        let swapchain = SwapchainKHR::new(
-            &device_swapchain_info,
-            &[queue_family.clone()],
-            None,
-            PresentModeSwapchainKHR::FIFO,
-            color_space,
-            CompositeAlphaSwapchainKHR::Opaque,
-            SurfaceTransformSwapchainKHR::Identity,
-            true,
-            final_format,
-            ImageUsage::Managed(ImageUsageSpecifier::new(
-                false, true, false, false, true, false, false, false,
-            )),
-            swapchain_extent,
-            swapchain_images_count,
-            1,
+        let device_local_memory_heap = MemoryHeap::new(
+            dev.clone(),
+            ConcreteMemoryHeapDescriptor::new(
+                MemoryType::DeviceLocal(None),
+                1024 * 1024 * 128, // 128MiB of memory!
+            ),
+            rt_image_handles.iter().map(|h| h as &dyn MemoryRequiring).collect::<Vec<_>>().as_slice(),
         )
         .unwrap();
-        println!("Swapchain created!");
+        println!("Memory heap created! <3");
+
+        let device_local_default_allocator = MemoryPool::new(
+            device_local_memory_heap,
+            Arc::new(DefaultAllocator::new(1024 * 1024 * 128)),
+            MemoryPoolFeatures::from(&[]),
+        )
+        .unwrap();
+
+        let raytracing_memory_heap = MemoryHeap::new(
+            dev.clone(),
+            ConcreteMemoryHeapDescriptor::new(required_memory_type(), 1024 * 1024 * 128),
+            &[]
+        )
+        .unwrap();
+        println!("Memory heap created! <3");
+
+        let raytracing_allocator = MemoryPool::new(
+            raytracing_memory_heap,
+            Arc::new(DefaultAllocator::new(1024 * 1024 * 128)),
+            MemoryPoolFeatures::from(&[MemoryPoolFeature::DeviceAddressable]),
+        )
+        .unwrap();
 
         let rt_images = rt_image_handles
             .into_iter()

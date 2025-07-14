@@ -18,6 +18,7 @@ pub enum FrameworkError {
     DescriptorSetBindingDuplicated,
     MalformedRenderpassDefinition,
     MemoryHeapAndResourceNotFromTheSameDevice,
+    IncompatibleResources,
     Unknown(Option<String>),
 }
 
@@ -59,6 +60,10 @@ impl Display for FrameworkError {
             FrameworkError::MemoryHeapAndResourceNotFromTheSameDevice => write!(
                 f,
                 "memory heap and resource to be allocated are not from the same device"
+            ),
+            FrameworkError::IncompatibleResources => write!(
+                f,
+                "resources have no memory type requirements in common and are therefore incompatible"
             ),
         }
     }
