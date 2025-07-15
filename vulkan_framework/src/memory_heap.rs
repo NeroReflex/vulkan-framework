@@ -242,7 +242,9 @@ impl MemoryHeap {
         }
 
         if memory_type_bits_requirement == 0u32 {
-            return Err(VulkanError::Framework(FrameworkError::IncompatibleResources))
+            return Err(VulkanError::Framework(
+                FrameworkError::IncompatibleResources,
+            ));
         }
 
         let adequate_heap = Self::search_adequate_heap(
