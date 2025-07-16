@@ -4,11 +4,7 @@ use inline_spirv::*;
 
 use vulkan_framework::{
     acceleration_structure::{
-        bottom_level::{
-            BottomLevelAccelerationStructure,
-            BottomLevelTrianglesGroupDecl,
-        },
-        scratch_buffer::DeviceScratchBuffer,
+        bottom_level::{BottomLevelAccelerationStructure, BottomLevelTrianglesGroupDecl},
         top_level::{TopLevelAccelerationStructure, TopLevelBLASGroupData, TopLevelBLASGroupDecl},
         AllowedBuildingDevice, VertexIndexing,
     },
@@ -758,8 +754,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             })
             .collect::<Vec<_>>();
 
-        let blas_decl = TopLevelBLASGroupDecl::new();
-
         let blas = BottomLevelAccelerationStructure::new(
             raytracing_allocator.clone(),
             BottomLevelTrianglesGroupDecl::new(
@@ -781,21 +775,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .unwrap();
         raytracing_allocator
             .write_raw_data(
-                blas.vertex_buffer().allocation_offset(),
+                blas.vertex_buffer().buffer().allocation_offset(),
                 VERTEX_DATA.as_slice(),
             )
             .unwrap();
 
-        let tlas_estimated_sizes = TopLevelAccelerationStructure::query_minimum_sizes(
-            dev.clone(),
-            AllowedBuildingDevice::DeviceOnly,
-            &[blas_decl],
-        )
-        .unwrap();
+        let blas_decl = TopLevelBLASGroupDecl::new();
 
         let tlas = TopLevelAccelerationStructure::new(
             raytracing_allocator.clone(),
-            tlas_estimated_sizes.0,
+            AllowedBuildingDevice::DeviceOnly,
+            blas_decl,
+            Some("tlas"),
         )
         .unwrap();
 
@@ -900,15 +891,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
             .unwrap();
 
-        let tlas_scratch_buffer =
-            DeviceScratchBuffer::new(raytracing_allocator.clone(), tlas_estimated_sizes.1).unwrap();
-
         let tlas_building = PrimaryCommandBuffer::new(command_pool, Some("TLAS_Builder")).unwrap();
         tlas_building
             .record_commands(|cmd| {
                 cmd.build_tlas(
                     tlas.clone(),
-                    tlas_scratch_buffer.clone(),
                     &[TopLevelBLASGroupData::new(
                         blas_decl,
                         blas_instances_buffer.clone(),

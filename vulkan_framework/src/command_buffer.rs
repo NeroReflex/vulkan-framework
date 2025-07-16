@@ -542,7 +542,6 @@ impl<'a> CommandBufferRecorder<'a> {
     pub fn build_tlas(
         &mut self,
         tlas: Arc<TopLevelAccelerationStructure>,
-        scratch_buffer: Arc<DeviceScratchBuffer>,
         geometry_data: &[TopLevelBLASGroupData],
     ) {
         // TODO: this should be an Error UserInput
@@ -602,7 +601,7 @@ impl<'a> CommandBufferRecorder<'a> {
             .mode(ash::vk::BuildAccelerationStructureModeKHR::BUILD)
             .src_acceleration_structure(ash::vk::AccelerationStructureKHR::null())
             .dst_acceleration_structure(tlas.ash_handle())
-            .scratch_data(scratch_buffer.addr());
+            .scratch_data(tlas.device_build_scratch_buffer().addr());
 
         let ranges_collection: Vec<&[ash::vk::AccelerationStructureBuildRangeInfoKHR]> =
             range_infos.iter().map(|r| r.as_slice()).collect();
@@ -634,7 +633,7 @@ impl<'a> CommandBufferRecorder<'a> {
         // TODO: this should be an Error UserInput
 
         assert!(blas.allowed_building_devices() != AllowedBuildingDevice::HostOnly);
-        assert!(blas.triangles_decl().max_triangles() < primitive_count);
+        assert!(blas.triangles_decl().max_triangles() >= primitive_count);
 
         let decl = blas.triangles_decl();
 
@@ -646,8 +645,8 @@ impl<'a> CommandBufferRecorder<'a> {
 
         // TODO: assert from same device
 
-        let vertex_info =
-            ash::vk::BufferDeviceAddressInfo::default().buffer(blas.vertex_buffer().ash_handle());
+        let vertex_info = ash::vk::BufferDeviceAddressInfo::default()
+            .buffer(blas.vertex_buffer().buffer().ash_handle());
         let vertex_buffer_device_addr = unsafe {
             self.device
                 .ash_handle()
@@ -689,7 +688,7 @@ impl<'a> CommandBufferRecorder<'a> {
                         .transform_data(ash::vk::DeviceOrHostAddressConstKHR {
                             device_address: transform_buffer_device_addr,
                         })
-                        // [u32]
+                        // [u32] or [u16] or nithign at all
                         .index_data(ash::vk::DeviceOrHostAddressConstKHR {
                             device_address: index_buffer_device_addr,
                         }),
