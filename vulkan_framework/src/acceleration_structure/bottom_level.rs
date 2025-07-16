@@ -85,12 +85,15 @@ impl BottomLevelTrianglesGroupDecl {
 
     pub(crate) fn ash_geometry(&self) -> ash::vk::AccelerationStructureGeometryKHR {
         ash::vk::AccelerationStructureGeometryKHR::default()
-            // TODO: .flags()
+            // TODO: .flags(ash::vk::GeometryFlagsKHR::NO_DUPLICATE_ANY_HIT_INVOCATION | ash::vk::GeometryFlagsKHR::OPAQUE)
             .geometry_type(ash::vk::GeometryTypeKHR::TRIANGLES)
             .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
                 triangles: ash::vk::AccelerationStructureGeometryTrianglesDataKHR::default()
                     .index_type(self.vertex_indexing().ash_index_type())
-                    .max_vertex(self.max_vertices())
+                    // this is very incredibly stupid: the vulkan specification states:
+                    // maxVertex is the number of vertices in vertexData minus one
+                    // See https://registry.khronos.org/vulkan/specs/latest/man/html/VkAccelerationStructureGeometryTrianglesDataKHR.html
+                    .max_vertex(self.max_vertices() - 1)
                     .vertex_format(self.vertex_format.ash_format())
                     .vertex_stride(self.vertex_stride()),
             })
@@ -201,68 +204,6 @@ impl BottomLevelAccelerationStructureVertexBuffer {
     pub fn buffer_device_addr(&self) -> u64 {
         self.buffer_device_addr.to_owned()
     }
-
-    /*
-     * This function allows the user to estimate a minimum size for provided geometry info.
-     *
-     * If the operation is successful the tuple returned will be the BLAS build (minimum) scratch buffer size
-     */
-    pub fn query_minimum_build_scratch_buffer_size(
-        &self,
-        allowed_building_devices: AllowedBuildingDevice,
-        geometries_decl: &[&BottomLevelTrianglesGroupDecl],
-    ) -> VulkanResult<u64> {
-        let device = self.buffer().get_parent_device();
-
-        let Some(as_ext) = device.ash_ext_acceleration_structure_khr() else {
-            return Err(VulkanError::MissingExtension(String::from(
-                "VK_KHR_acceleration_structure",
-            )));
-        };
-
-        let geometries = geometries_decl
-            .iter()
-            .map(|g| {
-                let mut data = g.ash_geometry();
-
-                data.geometry.triangles.vertex_data = DeviceOrHostAddressConstKHR {
-                    device_address: self.buffer_device_addr(),
-                };
-
-                data
-            })
-            .collect::<smallvec::SmallVec<[ash::vk::AccelerationStructureGeometryKHR; 4]>>();
-        let max_primitives_count = geometries_decl
-            .iter()
-            .map(|g| g.max_triangles())
-            .collect::<smallvec::SmallVec<[u32; 4]>>();
-
-        // See https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
-        let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::default()
-            .geometries(geometries.as_slice())
-            .flags(ash::vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
-            .ty(ash::vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL)
-            .mode(BuildAccelerationStructureModeKHR::BUILD);
-
-        let mut blas_size_info = ash::vk::AccelerationStructureBuildSizesInfoKHR::default();
-
-        unsafe {
-            as_ext.get_acceleration_structure_build_sizes(
-                allowed_building_devices.ash_flags(),
-                &geometry_info,
-                max_primitives_count.as_slice(),
-                &mut blas_size_info,
-            )
-        };
-
-        match device.ray_tracing_info() {
-            Some(rt_info) => Ok((blas_size_info.build_scratch_size
-                + ((rt_info.min_acceleration_structure_scratch_offset_alignment() as u64) - 1u64))
-                & !((rt_info.min_acceleration_structure_scratch_offset_alignment() as u64) - 1u64)),
-            None => Ok(blas_size_info.build_scratch_size),
-        }
-        //let aligned_size = (blas_size_info.build_scratch_size + (integral(a) - 1)) & ~integral(a - 1));
-    }
 }
 
 pub struct BottomLevelAccelerationStructure {
@@ -353,6 +294,74 @@ impl BottomLevelAccelerationStructure {
         };
 
         Ok(build_sizes.acceleration_structure_size)
+    }
+
+    /*
+     * This function allows the user to estimate a minimum size for provided geometry info.
+     *
+     * If the operation is successful the tuple returned will be the BLAS build (minimum) scratch buffer size
+     */
+    pub fn query_minimum_build_scratch_buffer_size(
+        vertex_buffer: Arc<BottomLevelAccelerationStructureVertexBuffer>,
+        index_buffer: Option<Arc<BottomLevelAccelerationStructureIndexBuffer>>,
+        allowed_building_devices: AllowedBuildingDevice,
+        geometries_decl: &[&BottomLevelTrianglesGroupDecl],
+    ) -> VulkanResult<u64> {
+        let device = vertex_buffer.buffer().get_parent_device();
+
+        let Some(as_ext) = device.ash_ext_acceleration_structure_khr() else {
+            return Err(VulkanError::MissingExtension(String::from(
+                "VK_KHR_acceleration_structure",
+            )));
+        };
+
+        let geometries = geometries_decl
+            .iter()
+            .map(|g| {
+                let mut data = g.ash_geometry();
+
+                data.geometry.triangles.vertex_data = DeviceOrHostAddressConstKHR {
+                    device_address: vertex_buffer.buffer_device_addr(),
+                };
+
+                if let Some(index_buffer) = &index_buffer {
+                    data.geometry.triangles.index_data = DeviceOrHostAddressConstKHR {
+                        device_address: index_buffer.buffer_device_addr(),
+                    };
+                }
+
+                data
+            })
+            .collect::<smallvec::SmallVec<[ash::vk::AccelerationStructureGeometryKHR; 4]>>();
+        let max_primitives_count = geometries_decl
+            .iter()
+            .map(|g| g.max_triangles())
+            .collect::<smallvec::SmallVec<[u32; 4]>>();
+
+        // See https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
+        let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::default()
+            .geometries(geometries.as_slice())
+            .flags(ash::vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
+            .ty(ash::vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL)
+            .mode(BuildAccelerationStructureModeKHR::BUILD);
+
+        let mut blas_size_info = ash::vk::AccelerationStructureBuildSizesInfoKHR::default();
+
+        unsafe {
+            as_ext.get_acceleration_structure_build_sizes(
+                allowed_building_devices.ash_flags(),
+                &geometry_info,
+                max_primitives_count.as_slice(),
+                &mut blas_size_info,
+            )
+        };
+
+        match device.ray_tracing_info() {
+            Some(rt_info) => Ok((blas_size_info.build_scratch_size
+                + ((rt_info.min_acceleration_structure_scratch_offset_alignment() as u64) - 1u64))
+                & !((rt_info.min_acceleration_structure_scratch_offset_alignment() as u64) - 1u64)),
+            None => Ok(blas_size_info.build_scratch_size),
+        }
     }
 
     pub(crate) fn ash_handle(&self) -> ash::vk::AccelerationStructureKHR {
@@ -471,8 +480,12 @@ impl BottomLevelAccelerationStructure {
         let (blas_buffer, blas_buffer_device_addr) =
             Self::create_blas_buffer(memory_pool.clone(), blas_buffer_size, &debug_name)?;
 
-        let build_scratch_buffer_size = vertex_buffer
-            .query_minimum_build_scratch_buffer_size(allowed_building_devices, &geometries_decl)?;
+        let build_scratch_buffer_size = Self::query_minimum_build_scratch_buffer_size(
+            vertex_buffer.clone(),
+            index_buffer.clone(),
+            allowed_building_devices,
+            &geometries_decl,
+        )?;
         let device_build_scratch_buffer =
             DeviceScratchBuffer::new(memory_pool.clone(), build_scratch_buffer_size)?;
 
