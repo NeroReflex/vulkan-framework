@@ -770,10 +770,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .unwrap();
 
+        let blas = BottomLevelAccelerationStructure::new(
+            raytracing_allocator.clone(),
+            blas_estimated_sizes.0,
+        )
+        .unwrap();
+
+        let blas_scratch_buffer = DeviceScratchBuffer::new(
+            raytracing_allocator.clone(),
+            blas_estimated_sizes.1,
+        )
+        .unwrap();
+
         let tlas_estimated_sizes = TopLevelAccelerationStructure::query_minimum_sizes(
             dev.clone(),
             AllowedBuildingDevice::DeviceOnly,
             &[blas_decl],
+        )
+        .unwrap();
+
+        let tlas = TopLevelAccelerationStructure::new(
+            raytracing_allocator.clone(),
+            tlas_estimated_sizes.0,
         )
         .unwrap();
 
@@ -834,12 +852,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let transform_buffer =
             AllocatedBuffer::new(raytracing_allocator.clone(), transform_buffer).unwrap();
 
-        let blas = BottomLevelAccelerationStructure::new(
-            raytracing_allocator.clone(),
-            blas_estimated_sizes.0,
-        )
-        .unwrap();
-
         raytracing_allocator
             .write_raw_data(index_buffer.allocation_offset(), VERTEX_INDEX.as_slice())
             .unwrap();
@@ -852,18 +864,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 INSTANCE_DATA.as_slice(),
             )
             .unwrap();
-
-        let tlas = TopLevelAccelerationStructure::new(
-            raytracing_allocator.clone(),
-            tlas_estimated_sizes.0,
-        )
-        .unwrap();
-
-        let blas_scratch_buffer = DeviceScratchBuffer::new(
-            raytracing_allocator.clone(),
-            u64::max(blas_estimated_sizes.1, tlas_estimated_sizes.1),
-        )
-        .unwrap();
 
         // PUNTO DI INTERESE
         let blas_building =
