@@ -859,7 +859,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .unwrap();
 
-        let scratch_buffer = DeviceScratchBuffer::new(
+        let blas_scratch_buffer = DeviceScratchBuffer::new(
             raytracing_allocator.clone(),
             u64::max(blas_estimated_sizes.1, tlas_estimated_sizes.1),
         )
@@ -872,7 +872,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .record_commands(|cmd| {
                 cmd.build_blas(
                     blas.clone(),
-                    scratch_buffer.clone(),
+                    blas_scratch_buffer.clone(),
                     &[BottomLevelTrianglesGroupData::new(
                         triangle_decl,
                         Some(index_buffer.clone()),
@@ -953,12 +953,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
             .unwrap();
 
+        let tlas_scratch_buffer = DeviceScratchBuffer::new(
+            raytracing_allocator.clone(),
+            tlas_estimated_sizes.1,
+        )
+        .unwrap();
+
         let tlas_building = PrimaryCommandBuffer::new(command_pool, Some("TLAS_Builder")).unwrap();
         tlas_building
             .record_commands(|cmd| {
                 cmd.build_tlas(
                     tlas.clone(),
-                    scratch_buffer.clone(),
+                    tlas_scratch_buffer.clone(),
                     &[TopLevelBLASGroupData::new(
                         blas_decl,
                         blas_instances_buffer.clone(),
