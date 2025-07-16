@@ -9,7 +9,7 @@ use vulkan_framework::{
         AllowedBuildingDevice, VertexIndexing,
     },
     binding_tables::{required_memory_type, RaytracingBindingTables},
-    buffer::{AllocatedBuffer, Buffer, BufferUsage, ConcreteBufferDescriptor},
+    buffer::BufferUsage,
     command_buffer::{
         AccessFlag, AccessFlags, AccessFlagsSpecifier, ClearValues, ColorClearValues,
         CommandBufferRecorder, ImageMemoryBarrier, PrimaryCommandBuffer,
