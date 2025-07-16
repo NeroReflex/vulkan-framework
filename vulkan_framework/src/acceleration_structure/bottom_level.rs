@@ -244,18 +244,24 @@ impl BottomLevelAccelerationStructureVertexBuffer {
             .ty(ash::vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL)
             .mode(BuildAccelerationStructureModeKHR::BUILD);
 
-        let mut build_sizes = ash::vk::AccelerationStructureBuildSizesInfoKHR::default();
+        let mut blas_size_info = ash::vk::AccelerationStructureBuildSizesInfoKHR::default();
 
         unsafe {
             as_ext.get_acceleration_structure_build_sizes(
                 allowed_building_devices.ash_flags(),
                 &geometry_info,
                 max_primitives_count.as_slice(),
-                &mut build_sizes,
+                &mut blas_size_info,
             )
         };
 
-        Ok(build_sizes.build_scratch_size)
+        match device.ray_tracing_info() {
+            Some(rt_info) => Ok((blas_size_info.build_scratch_size
+                + ((rt_info.min_acceleration_structure_scratch_offset_alignment() as u64) - 1u64))
+                & !((rt_info.min_acceleration_structure_scratch_offset_alignment() as u64) - 1u64)),
+            None => Ok(blas_size_info.build_scratch_size),
+        }
+        //let aligned_size = (blas_size_info.build_scratch_size + (integral(a) - 1)) & ~integral(a - 1));
     }
 }
 

@@ -38,6 +38,7 @@ struct DeviceData<'a> {
 }
 
 pub struct RaytracingInfo {
+    min_acceleration_structure_scratch_offset_alignment: u32,
     shader_group_handle_size: u32,
     max_ray_dispatch_invocation_count: u32,
     max_ray_hit_attribute_size: u32,
@@ -48,6 +49,67 @@ pub struct RaytracingInfo {
 }
 
 impl RaytracingInfo {
+    pub fn print_info(&self) {
+        println!(
+            "    AccelerationStructure min_acceleration_structure_scratch_offset_alignment: {}",
+            self.min_acceleration_structure_scratch_offset_alignment
+        );
+        println!(
+            "    RayTracing shader_group_handle_size: {}",
+            self.shader_group_handle_size
+        );
+        println!(
+            "    RayTracing max_ray_dispatch_invocation_count: {}",
+            self.max_ray_dispatch_invocation_count
+        );
+        println!(
+            "    RayTracing max_ray_hit_attribute_size: {}",
+            self.max_ray_hit_attribute_size
+        );
+        println!(
+            "    RayTracing max_ray_recursion_depth: {}",
+            self.max_ray_recursion_depth
+        );
+        println!(
+            "    RayTracing max_shader_group_stride: {}",
+            self.max_shader_group_stride
+        );
+        println!(
+            "    RayTracing shader_group_base_alignment: {}",
+            self.shader_group_base_alignment
+        );
+        println!(
+            "    RayTracing shader_group_handle_alignment: {}",
+            self.shader_group_handle_alignment
+        );
+    }
+
+    pub(crate) fn from<'a, 'b>(
+        accel_structure_properties: &ash::vk::PhysicalDeviceAccelerationStructurePropertiesKHR<'a>,
+        ray_tracing_pipeline_properties: &ash::vk::PhysicalDeviceRayTracingPipelinePropertiesKHR<
+            'b,
+        >,
+    ) -> Self {
+        Self {
+            min_acceleration_structure_scratch_offset_alignment: accel_structure_properties
+                .min_acceleration_structure_scratch_offset_alignment,
+            shader_group_handle_size: ray_tracing_pipeline_properties.shader_group_handle_size,
+            max_ray_dispatch_invocation_count: ray_tracing_pipeline_properties
+                .max_ray_dispatch_invocation_count,
+            max_ray_hit_attribute_size: ray_tracing_pipeline_properties.max_ray_hit_attribute_size,
+            max_ray_recursion_depth: ray_tracing_pipeline_properties.max_ray_recursion_depth,
+            max_shader_group_stride: ray_tracing_pipeline_properties.max_shader_group_stride,
+            shader_group_base_alignment: ray_tracing_pipeline_properties
+                .shader_group_base_alignment,
+            shader_group_handle_alignment: ray_tracing_pipeline_properties
+                .shader_group_handle_alignment,
+        }
+    }
+
+    pub fn min_acceleration_structure_scratch_offset_alignment(&self) -> u32 {
+        self.min_acceleration_structure_scratch_offset_alignment
+    }
+
     pub fn shader_group_handle_size(&self) -> u32 {
         self.shader_group_handle_size
     }
@@ -71,6 +133,7 @@ impl RaytracingInfo {
     pub fn shader_group_base_alignment(&self) -> u32 {
         self.shader_group_base_alignment
     }
+
     pub fn shader_group_handle_alignment(&self) -> u32 {
         self.shader_group_handle_alignment
     }
@@ -601,8 +664,13 @@ impl Device {
                         ash::vk::PhysicalDeviceImagelessFramebufferFeatures::default();
 
                     let mut properties2 = ash::vk::PhysicalDeviceProperties2::default();
+                    let mut accel_structure_properties =
+                        ash::vk::PhysicalDeviceAccelerationStructurePropertiesKHR::default();
                     let mut ray_tracing_pipeline_properties =
                         ash::vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
+                    ray_tracing_pipeline_properties.p_next = &mut accel_structure_properties
+                        as *mut ash::vk::PhysicalDeviceAccelerationStructurePropertiesKHR
+                        as *mut std::ffi::c_void;
 
                     // Enable raytracing if required extensions have been requested
                     if acceleration_structure_enabled {
@@ -677,54 +745,10 @@ impl Device {
                     let raytracing_pipeline_ext: Option<ash::khr::ray_tracing_pipeline::Device> =
                         match ray_tracing_enabled {
                             true => {
-                                //ray_tracing_pipeline_properties.
-                                println!(
-                                    "    RayTracing shader_group_handle_size: {}",
-                                    ray_tracing_pipeline_properties.shader_group_handle_size
-                                );
-                                println!(
-                                    "    RayTracing max_ray_dispatch_invocation_count: {}",
-                                    ray_tracing_pipeline_properties
-                                        .max_ray_dispatch_invocation_count
-                                );
-                                println!(
-                                    "    RayTracing max_ray_hit_attribute_size: {}",
-                                    ray_tracing_pipeline_properties.max_ray_hit_attribute_size
-                                );
-                                println!(
-                                    "    RayTracing max_ray_recursion_depth: {}",
-                                    ray_tracing_pipeline_properties.max_ray_recursion_depth
-                                );
-                                println!(
-                                    "    RayTracing max_shader_group_stride: {}",
-                                    ray_tracing_pipeline_properties.max_shader_group_stride
-                                );
-                                println!(
-                                    "    RayTracing shader_group_base_alignment: {}",
-                                    ray_tracing_pipeline_properties.shader_group_base_alignment
-                                );
-                                println!(
-                                    "    RayTracing shader_group_handle_alignment: {}",
-                                    ray_tracing_pipeline_properties.shader_group_handle_alignment
-                                );
-
-                                raytracing_info = Some(RaytracingInfo {
-                                    shader_group_handle_size: ray_tracing_pipeline_properties
-                                        .shader_group_handle_size,
-                                    max_ray_dispatch_invocation_count:
-                                        ray_tracing_pipeline_properties
-                                            .max_ray_dispatch_invocation_count,
-                                    max_ray_hit_attribute_size: ray_tracing_pipeline_properties
-                                        .max_ray_hit_attribute_size,
-                                    max_ray_recursion_depth: ray_tracing_pipeline_properties
-                                        .max_ray_recursion_depth,
-                                    max_shader_group_stride: ray_tracing_pipeline_properties
-                                        .max_shader_group_stride,
-                                    shader_group_base_alignment: ray_tracing_pipeline_properties
-                                        .shader_group_base_alignment,
-                                    shader_group_handle_alignment: ray_tracing_pipeline_properties
-                                        .shader_group_handle_alignment,
-                                });
+                                raytracing_info = Some(RaytracingInfo::from(
+                                    &accel_structure_properties,
+                                    &ray_tracing_pipeline_properties,
+                                ));
 
                                 Option::Some(ash::khr::ray_tracing_pipeline::Device::new(
                                     instance.ash_handle(),
