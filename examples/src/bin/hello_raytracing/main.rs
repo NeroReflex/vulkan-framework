@@ -5,7 +5,7 @@ use inline_spirv::*;
 use vulkan_framework::{
     acceleration_structure::{
         bottom_level::{
-            BottomLevelAccelerationStructure, BottomLevelTrianglesGroupData,
+            BottomLevelAccelerationStructure,
             BottomLevelTrianglesGroupDecl,
         },
         scratch_buffer::DeviceScratchBuffer,
@@ -758,13 +758,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             })
             .collect::<Vec<_>>();
 
-        let triangle_decl = BottomLevelTrianglesGroupDecl::new(
-            VertexIndexing::UInt32,
-            1,
-            (std::mem::size_of::<f32>() as u64) * 3u64,
-            AttributeType::Vec3,
-        );
-
         let blas_decl = TopLevelBLASGroupDecl::new();
 
         let blas = BottomLevelAccelerationStructure::new(
@@ -772,8 +765,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             BottomLevelTrianglesGroupDecl::new(
                 VertexIndexing::UInt32,
                 1,
-                (std::mem::size_of::<f32>() as u64) * 3u64,
                 AttributeType::Vec3,
+                0u64,
             ),
             AllowedBuildingDevice::DeviceOnly,
             Some("my_blas"),
@@ -782,7 +775,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         raytracing_allocator
             .write_raw_data(
-                blas.index_buffer().unwrap().allocation_offset(),
+                blas.index_buffer().unwrap().buffer().allocation_offset(),
                 VERTEX_INDEX.as_slice(),
             )
             .unwrap();
@@ -837,20 +830,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             PrimaryCommandBuffer::new(command_pool.clone(), Some("BLAS_Builder")).unwrap();
         blas_building
             .record_commands(|cmd| {
-                cmd.build_blas(
-                    blas.clone(),
-                    &[BottomLevelTrianglesGroupData::new(
-                        triangle_decl,
-                        blas.index_buffer(),
-                        blas.vertex_buffer().clone(),
-                        transform_buffer.clone(),
-                        0,
-                        1,
-                        0,
-                        0,
-                    )
-                    .unwrap()],
-                );
+                cmd.build_blas(blas.clone(), transform_buffer.clone(), 0, 1, 0, 0);
             })
             .unwrap();
         let blas_building_fence =

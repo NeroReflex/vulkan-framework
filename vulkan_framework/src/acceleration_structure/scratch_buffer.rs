@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use ash::vk::BuildAccelerationStructureModeKHR;
 #[cfg(feature = "better_mutex")]
 use parking_lot::{const_mutex, Mutex};
 

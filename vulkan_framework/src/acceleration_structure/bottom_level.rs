@@ -1,11 +1,6 @@
 use std::sync::Arc;
 
 use ash::vk::BuildAccelerationStructureModeKHR;
-#[cfg(feature = "better_mutex")]
-use parking_lot::{const_mutex, Mutex};
-
-#[cfg(not(feature = "better_mutex"))]
-use std::sync::Mutex;
 
 use crate::{
     acceleration_structure::{
@@ -24,21 +19,29 @@ use crate::{
 pub struct BottomLevelTrianglesGroupDecl {
     vertex_indexing: VertexIndexing,
     max_triangles: u32,
-    vertex_stride: u64,
+    per_vertex_user_stride: u64,
     vertex_format: AttributeType,
 }
 
 impl BottomLevelTrianglesGroupDecl {
+    /**
+     * Define how geometry is stored in memory
+     *
+     * @param vertex_indexing the vertex indexing buffer format: None means no indexing
+     * @param max_triangles the maximum number of triangles
+     * @param vertex_format the in-memory format of the vertex position
+     * @param per_vertex_user_stride the [unused] space (in bytes) that follows each vertex definition
+     */
     pub fn new(
         vertex_indexing: VertexIndexing,
         max_triangles: u32,
-        vertex_stride: u64,
         vertex_format: AttributeType,
+        per_vertex_user_stride: u64,
     ) -> Self {
         Self {
             vertex_indexing,
             max_triangles,
-            vertex_stride,
+            per_vertex_user_stride,
             vertex_format,
         }
     }
@@ -56,7 +59,24 @@ impl BottomLevelTrianglesGroupDecl {
     }
 
     pub fn vertex_stride(&self) -> u64 {
-        self.vertex_stride
+        self.per_vertex_user_stride
+            + match self.vertex_format {
+                AttributeType::Float => 4u64 * 1,
+                AttributeType::Vec1 => 4u64 * 1,
+                AttributeType::Vec2 => 4u64 * 2,
+                AttributeType::Vec3 => 4u64 * 3,
+                AttributeType::Vec4 => 4u64 * 4,
+                AttributeType::Uint => todo!(),
+                AttributeType::Uvec1 => todo!(),
+                AttributeType::Uvec2 => todo!(),
+                AttributeType::Uvec3 => todo!(),
+                AttributeType::Uvec4 => todo!(),
+                AttributeType::Sint => todo!(),
+                AttributeType::Ivec1 => todo!(),
+                AttributeType::Ivec2 => todo!(),
+                AttributeType::Ivec3 => todo!(),
+                AttributeType::Ivec4 => todo!(),
+            }
     }
 
     pub fn vertex_format(&self) -> AttributeType {
@@ -72,87 +92,24 @@ impl BottomLevelTrianglesGroupDecl {
                     .index_type(self.vertex_indexing().ash_index_type())
                     .max_vertex(self.max_vertices())
                     .vertex_format(self.vertex_format.ash_format())
-                    .vertex_stride(self.vertex_stride),
+                    .vertex_stride(self.vertex_stride()),
             })
     }
 }
 
-pub struct BottomLevelTrianglesGroupData {
-    decl: BottomLevelTrianglesGroupDecl,
-
-    index_buffer: Option<Arc<AllocatedBuffer>>,
-    vertex_buffer: Arc<AllocatedBuffer>,
-    transform_buffer: Arc<AllocatedBuffer>,
-
-    primitive_offset: u32,
-    primitive_count: u32,
-    first_vertex: u32,
-    transform_offset: u32,
-}
-
-impl BottomLevelTrianglesGroupData {
-    pub fn new(
-        decl: BottomLevelTrianglesGroupDecl,
-        index_buffer: Option<Arc<AllocatedBuffer>>,
-        vertex_buffer: Arc<AllocatedBuffer>,
-        transform_buffer: Arc<AllocatedBuffer>,
-        primitive_offset: u32,
-        primitive_count: u32,
-        first_vertex: u32,
-        transform_offset: u32,
-    ) -> VulkanResult<Self> {
-        if decl.max_triangles() < primitive_count {
-            return Err(VulkanError::Framework(FrameworkError::UserInput(Some(String::from("The specified number of triangles is higher than the maximum number of primitives the geometry goruop can handle")))));
-        }
-
-        Ok(Self {
-            decl,
-            index_buffer,
-            vertex_buffer,
-            transform_buffer,
-            primitive_offset,
-            primitive_count,
-            first_vertex,
-            transform_offset,
-        })
-    }
-
-    pub fn decl(&self) -> BottomLevelTrianglesGroupDecl {
-        self.decl
-    }
-
-    pub fn index_buffer(&self) -> Option<Arc<AllocatedBuffer>> {
-        self.index_buffer.clone()
-    }
-
-    pub fn vertex_buffer(&self) -> Arc<AllocatedBuffer> {
-        self.vertex_buffer.clone()
-    }
-
-    pub fn transform_buffer(&self) -> Arc<AllocatedBuffer> {
-        self.transform_buffer.clone()
-    }
-
-    pub fn primitive_offset(&self) -> u32 {
-        self.primitive_offset
-    }
-
-    pub fn primitive_count(&self) -> u32 {
-        self.primitive_count
-    }
-
-    pub fn first_vertex(&self) -> u32 {
-        self.first_vertex
-    }
-
-    pub fn transform_offset(&self) -> u32 {
-        self.transform_offset
-    }
-}
-
-struct BottomLevelAccelerationStructureIndexBuffer {
+pub struct BottomLevelAccelerationStructureIndexBuffer {
     buffer: Arc<AllocatedBuffer>,
     buffer_device_addr: u64,
+}
+
+impl BottomLevelAccelerationStructureIndexBuffer {
+    pub fn buffer(&self) -> Arc<AllocatedBuffer> {
+        self.buffer.clone()
+    }
+
+    pub fn buffer_device_addr(&self) -> u64 {
+        self.buffer_device_addr.to_owned()
+    }
 }
 
 pub struct BottomLevelAccelerationStructure {
@@ -167,7 +124,7 @@ pub struct BottomLevelAccelerationStructure {
     vertex_buffer: Arc<AllocatedBuffer>,
     vertex_buffer_device_addr: u64,
 
-    index_buffer: Option<BottomLevelAccelerationStructureIndexBuffer>,
+    index_buffer: Option<Arc<BottomLevelAccelerationStructureIndexBuffer>>,
 
     allowed_building_devices: AllowedBuildingDevice,
 
@@ -313,14 +270,16 @@ impl BottomLevelAccelerationStructure {
         self.vertex_buffer.clone()
     }
 
-    pub fn index_buffer(&self) -> Option<Arc<AllocatedBuffer>> {
-        self.index_buffer
-            .as_ref()
-            .map(|buffer| buffer.buffer.clone())
+    pub fn index_buffer(&self) -> Option<Arc<BottomLevelAccelerationStructureIndexBuffer>> {
+        self.index_buffer.clone()
     }
 
     pub fn buffer_size(&self) -> u64 {
         self.blas_buffer.size()
+    }
+
+    pub fn allowed_building_devices(&self) -> AllowedBuildingDevice {
+        self.allowed_building_devices.to_owned()
     }
 
     pub(crate) fn device_build_scratch_buffer(&self) -> Arc<DeviceScratchBuffer> {
@@ -454,9 +413,11 @@ impl BottomLevelAccelerationStructure {
 
         // TODO: review sharing mode for buffers
 
+        // WARNING: this sets the maximum number of vertices equals to the maximum number of vertices,
+        // effectively negating the benefit of having an index buffer.
         let (vertex_buffer, vertex_buffer_device_addr) = Self::create_vertex_buffer(
             memory_pool.clone(),
-            (core::mem::size_of::<[f32; 3]>() as u64) * 3u64,
+            triangles_decl.vertex_stride() * 3u64 * (triangles_decl.max_vertices() as u64),
             &debug_name,
         )?;
 
@@ -465,14 +426,14 @@ impl BottomLevelAccelerationStructure {
             index_type => {
                 let (buffer, buffer_device_addr) = Self::create_index_buffer(
                     memory_pool.clone(),
-                    index_type.size() * (triangles_decl.max_triangles() as u64) * 3u64,
+                    index_type.size() * (triangles_decl.max_vertices() as u64),
                     &debug_name,
                 )?;
 
-                Some(BottomLevelAccelerationStructureIndexBuffer {
+                Some(Arc::new(BottomLevelAccelerationStructureIndexBuffer {
                     buffer,
                     buffer_device_addr,
-                })
+                }))
             }
         };
 
