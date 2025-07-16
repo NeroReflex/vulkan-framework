@@ -156,7 +156,7 @@ impl Instance {
             let app_info = ash::vk::ApplicationInfo::default()
                 .engine_version(0)
                 .application_version(0)
-                .api_version(ash::vk::make_api_version(0, 1, 3, 0))
+                .api_version(ash::vk::make_api_version(0, 1, 4, 0))
                 .application_name(CStr::from_ptr(data.as_ref().application_name.as_ptr()))
                 .engine_name(CStr::from_ptr(data.as_ref().engine_name.as_ptr()));
 
