@@ -175,6 +175,10 @@ impl TopLevelAccelerationStructure {
         &self.blas_decl
     }
 
+    pub fn allowed_building_devices(&self) -> AllowedBuildingDevice {
+        self.allowed_building_devices
+    }
+
     pub fn buffer_device_addr(&self) -> u64 {
         self.buffer_device_addr
     }

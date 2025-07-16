@@ -24,7 +24,6 @@ impl AllowedBuildingDevice {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum VertexIndexing {
-    None,
     UInt16,
     UInt32,
 }
@@ -32,7 +31,6 @@ pub enum VertexIndexing {
 impl VertexIndexing {
     pub fn size(&self) -> u64 {
         match self {
-            VertexIndexing::None => 0u64,
             VertexIndexing::UInt16 => 2u64,
             VertexIndexing::UInt32 => 4u64,
         }
@@ -40,7 +38,6 @@ impl VertexIndexing {
 
     pub(crate) fn ash_index_type(&self) -> ash::vk::IndexType {
         match self {
-            VertexIndexing::None => ash::vk::IndexType::NONE_KHR,
             VertexIndexing::UInt16 => ash::vk::IndexType::UINT16,
             VertexIndexing::UInt32 => ash::vk::IndexType::UINT32,
         }

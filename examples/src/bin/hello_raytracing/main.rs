@@ -762,14 +762,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 AttributeType::Vec3,
                 0u64,
             ),
+            1,
             AllowedBuildingDevice::DeviceOnly,
+            None,
             Some("my_blas"),
         )
         .unwrap();
 
         raytracing_allocator
             .write_raw_data(
-                blas.index_buffer().unwrap().buffer().allocation_offset(),
+                blas.index_buffer().buffer().allocation_offset(),
                 VERTEX_INDEX.as_slice(),
             )
             .unwrap();
@@ -788,28 +790,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .unwrap();
 
-        let transform_buffer = Buffer::new(
-            dev.clone(),
-            ConcreteBufferDescriptor::new(
-                BufferUsage::Unmanaged(
-                    (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
-                        | ash::vk::BufferUsageFlags::INDEX_BUFFER
-                        | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
-                        .as_raw(),
-                ),
-                core::mem::size_of::<[f32; 12]>() as u64,
-            ),
-            None,
-            None,
-        )
-        .unwrap();
-
-        let transform_buffer =
-            AllocatedBuffer::new(raytracing_allocator.clone(), transform_buffer).unwrap();
-
         raytracing_allocator
             .write_raw_data(
-                transform_buffer.allocation_offset(),
+                blas.instance_buffer().buffer().allocation_offset(),
                 INSTANCE_DATA.as_slice(),
             )
             .unwrap();
@@ -819,7 +802,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             PrimaryCommandBuffer::new(command_pool.clone(), Some("BLAS_Builder")).unwrap();
         blas_building
             .record_commands(|cmd| {
-                cmd.build_blas(blas.clone(), transform_buffer.clone(), 0, 1, 0, 0);
+                cmd.build_blas(blas.clone(), 0, 1, 0, 0);
             })
             .unwrap();
         let blas_building_fence =
@@ -850,25 +833,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        let blas_instances_buffer = Buffer::new(
-            dev.clone(),
-            ConcreteBufferDescriptor::new(
-                BufferUsage::Unmanaged(
-                    (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
-                        | ash::vk::BufferUsageFlags::INDEX_BUFFER
-                        | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
-                        .as_raw(),
-                ),
-                core::mem::size_of::<ash::vk::AccelerationStructureInstanceKHR>() as u64,
-            ),
-            None,
-            None,
-        )
-        .unwrap();
-
-        let blas_instances_buffer =
-            AllocatedBuffer::new(raytracing_allocator.clone(), blas_instances_buffer).unwrap();
-
         let accel_structure_instance = ash::vk::AccelerationStructureInstanceKHR {
             transform: ash::vk::TransformMatrixKHR {
                 matrix: [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
@@ -884,7 +848,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         raytracing_allocator
             .write_raw_data(
-                blas_instances_buffer.allocation_offset(),
+                blas.instance_buffer().buffer().allocation_offset(),
                 &[accel_structure_instance],
             )
             .unwrap();
@@ -892,7 +856,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let tlas_building = PrimaryCommandBuffer::new(command_pool, Some("TLAS_Builder")).unwrap();
         tlas_building
             .record_commands(|cmd| {
-                cmd.build_tlas(tlas.clone(), blas_instances_buffer.clone(), 0, 1, 0, 0)
+                cmd.build_tlas(tlas.clone(), blas.clone(), 0, 1, 0, 0)
             })
             .unwrap();
         let tlas_building_fence =

@@ -541,32 +541,26 @@ impl<'a> CommandBufferRecorder<'a> {
         &mut self,
         tlas: Arc<TopLevelAccelerationStructure>,
 
-        instances_buffer: Arc<AllocatedBuffer>,
+        blas: Arc<BottomLevelAccelerationStructure>,
 
         primitive_offset: u32,
         primitive_count: u32,
         first_vertex: u32,
         transform_offset: u32,
     ) {
-        // TODO: this should be an Error UserInput
-        //assert!(blas.builder().allowed_building_devices() != AllowedBuildingDevice::HostOnly);
+        assert!(tlas.allowed_building_devices() != AllowedBuildingDevice::HostOnly);
 
-        let mut geometries: Vec<ash::vk::AccelerationStructureGeometryKHR> = vec![];
-        let mut max_primitives_count: Vec<u32> = vec![];
+        let mut geometries: smallvec::SmallVec<[ash::vk::AccelerationStructureGeometryKHR; 16]> = smallvec::smallvec![];
         let mut range_infos: Vec<Vec<ash::vk::AccelerationStructureBuildRangeInfoKHR>> = vec![];
 
         // TODO: assert from same device
 
         let instances_info =
-            ash::vk::BufferDeviceAddressInfo::default().buffer(instances_buffer.ash_handle());
+            ash::vk::BufferDeviceAddressInfo::default().buffer(blas.instance_buffer().buffer().ash_handle());
         let instances_buffer_device_addr = unsafe {
             self.device
                 .ash_handle()
                 .get_buffer_device_address(&instances_info)
-        };
-
-        let data_addr = ash::vk::DeviceOrHostAddressConstKHR {
-            device_address: instances_buffer_device_addr,
         };
 
         geometries.push(
@@ -576,7 +570,9 @@ impl<'a> CommandBufferRecorder<'a> {
                 .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
                     instances: ash::vk::AccelerationStructureGeometryInstancesDataKHR::default()
                         .array_of_pointers(tlas.blas_decl().array_of_pointers())
-                        .data(data_addr),
+                        .data(ash::vk::DeviceOrHostAddressConstKHR {
+                            device_address: instances_buffer_device_addr,
+                        }),
                 }),
         );
 
@@ -587,8 +583,6 @@ impl<'a> CommandBufferRecorder<'a> {
                 .first_vertex(first_vertex)
                 .transform_offset(transform_offset),
         ]);
-
-        max_primitives_count.push(1);
 
         // From vulkan specs: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
         // The srcAccelerationStructure, dstAccelerationStructure, and mode members of pBuildInfo are ignored.
@@ -625,7 +619,6 @@ impl<'a> CommandBufferRecorder<'a> {
     pub fn build_blas(
         &mut self,
         blas: Arc<BottomLevelAccelerationStructure>,
-        transform_buffer: Arc<AllocatedBuffer>,
         primitive_offset: u32,
         primitive_count: u32,
         first_vertex: u32,
@@ -634,77 +627,23 @@ impl<'a> CommandBufferRecorder<'a> {
         // TODO: this should be an Error UserInput
 
         assert!(blas.allowed_building_devices() != AllowedBuildingDevice::HostOnly);
-        assert!(blas.triangles_decl().max_triangles() >= primitive_count);
-
-        let decl = blas.triangles_decl();
 
         let scratch_buffer = blas.device_build_scratch_buffer();
 
-        let mut geometries: Vec<ash::vk::AccelerationStructureGeometryKHR> = vec![];
-        let mut max_primitives_count: Vec<u32> = vec![];
-        let mut range_infos: Vec<Vec<ash::vk::AccelerationStructureBuildRangeInfoKHR>> = vec![];
-
         // TODO: assert from same device
 
-        let vertex_info = ash::vk::BufferDeviceAddressInfo::default()
-            .buffer(blas.vertex_buffer().buffer().ash_handle());
-        let vertex_buffer_device_addr = unsafe {
-            self.device
-                .ash_handle()
-                .get_buffer_device_address(&vertex_info)
-        };
+        type BuildInfoRanges =
+            smallvec::SmallVec<[ash::vk::AccelerationStructureBuildRangeInfoKHR; 1]>;
 
-        let index_buffer_device_addr = blas.index_buffer().map_or(0, |index_buffer| {
-            let index_info = ash::vk::BufferDeviceAddressInfo::default()
-                .buffer(index_buffer.buffer().ash_handle());
-            unsafe {
-                self.device
-                    .ash_handle()
-                    .get_buffer_device_address(&index_info)
-            }
-        });
+        let geometries = blas.ash_geometry();
 
-        let transform_info =
-            ash::vk::BufferDeviceAddressInfo::default().buffer(transform_buffer.ash_handle());
-        let transform_buffer_device_addr = unsafe {
-            self.device
-                .ash_handle()
-                .get_buffer_device_address(&transform_info)
-        };
-
-        geometries.push(
-            ash::vk::AccelerationStructureGeometryKHR::default()
-                .flags(GeometryFlagsKHR::OPAQUE)
-                .geometry_type(ash::vk::GeometryTypeKHR::TRIANGLES)
-                .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
-                    triangles: ash::vk::AccelerationStructureGeometryTrianglesDataKHR::default()
-                        .index_type(decl.vertex_indexing().ash_index_type())
-                        .max_vertex(decl.max_vertices())
-                        .vertex_format(decl.vertex_format().ash_format())
-                        .vertex_stride(decl.vertex_stride())
-                        .vertex_data(ash::vk::DeviceOrHostAddressConstKHR {
-                            device_address: vertex_buffer_device_addr,
-                        })
-                        // mat4
-                        .transform_data(ash::vk::DeviceOrHostAddressConstKHR {
-                            device_address: transform_buffer_device_addr,
-                        })
-                        // [u32] or [u16] or nithign at all
-                        .index_data(ash::vk::DeviceOrHostAddressConstKHR {
-                            device_address: index_buffer_device_addr,
-                        }),
-                }),
-        );
-
-        range_infos.push(vec![
-            ash::vk::AccelerationStructureBuildRangeInfoKHR::default()
+        let range_infos: smallvec::SmallVec<[BuildInfoRanges; 1]> = smallvec::smallvec![
+            smallvec::smallvec![ash::vk::AccelerationStructureBuildRangeInfoKHR::default()
                 .primitive_offset(primitive_offset)
                 .primitive_count(primitive_count)
                 .first_vertex(first_vertex)
-                .transform_offset(transform_offset),
-        ]);
-
-        max_primitives_count.push(decl.max_triangles());
+                .transform_offset(transform_offset),]
+        ];
 
         // From vulkan specs: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
         // The srcAccelerationStructure, dstAccelerationStructure, and mode members of pBuildInfo are ignored.
