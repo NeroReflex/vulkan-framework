@@ -5,7 +5,7 @@ use inline_spirv::*;
 use vulkan_framework::{
     acceleration_structure::{
         bottom_level::{BottomLevelAccelerationStructure, BottomLevelTrianglesGroupDecl},
-        top_level::{TopLevelAccelerationStructure, TopLevelBLASGroupData, TopLevelBLASGroupDecl},
+        top_level::{TopLevelAccelerationStructure, TopLevelBLASGroupDecl},
         AllowedBuildingDevice, VertexIndexing,
     },
     binding_tables::{required_memory_type, RaytracingBindingTables},
@@ -780,12 +780,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
             .unwrap();
 
-        let blas_decl = TopLevelBLASGroupDecl::new();
-
         let tlas = TopLevelAccelerationStructure::new(
             raytracing_allocator.clone(),
             AllowedBuildingDevice::DeviceOnly,
-            blas_decl,
+            TopLevelBLASGroupDecl::new(),
             Some("tlas"),
         )
         .unwrap();
@@ -896,14 +894,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .record_commands(|cmd| {
                 cmd.build_tlas(
                     tlas.clone(),
-                    &[TopLevelBLASGroupData::new(
-                        blas_decl,
-                        blas_instances_buffer.clone(),
-                        0,
-                        1,
-                        0,
-                        0,
-                    )],
+                    blas_instances_buffer.clone(),
+                    0,
+                    1,
+                    0,
+                    0,
                 )
             })
             .unwrap();

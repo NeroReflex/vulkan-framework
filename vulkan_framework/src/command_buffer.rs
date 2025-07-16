@@ -10,9 +10,7 @@ use ash::vk::{GeometryFlagsKHR, Handle, Offset2D};
 
 use crate::{
     acceleration_structure::{
-        bottom_level::BottomLevelAccelerationStructure,
-        scratch_buffer::DeviceScratchBuffer,
-        top_level::{TopLevelAccelerationStructure, TopLevelBLASGroupData},
+        bottom_level::BottomLevelAccelerationStructure, top_level::TopLevelAccelerationStructure,
         AllowedBuildingDevice,
     },
     binding_tables::RaytracingBindingTables,
@@ -46,7 +44,7 @@ enum CommandBufferReferencedResource {
     PipelineLayout(Arc<PipelineLayout>),
     Framebuffer(Arc<dyn FramebufferTrait>),
     Image(Arc<dyn ImageTrait>),
-    ImageView(Arc<ImageView>),
+    //ImageView(Arc<ImageView>),
 }
 
 impl Eq for CommandBufferReferencedResource {}
@@ -62,7 +60,7 @@ impl CommandBufferReferencedResource {
             Self::Framebuffer(l0) => (0b0100u128 << 124u128) | (l0.native_handle() as u128),
             Self::GraphicsPipeline(l0) => (0b0101u128 << 124u128) | (l0.native_handle() as u128),
             Self::RaytracingPipeline(l0) => (0b0110u128 << 124u128) | (l0.native_handle() as u128),
-            Self::ImageView(l0) => (0b0111u128 << 124u128) | (l0.native_handle() as u128),
+            //Self::ImageView(l0) => (0b0111u128 << 124u128) | (l0.native_handle() as u128),
         }
     }
 }
@@ -89,7 +87,7 @@ impl PartialEq for CommandBufferReferencedResource {
                 l0.native_handle() == r0.native_handle()
             }
             (Self::Image(l0), Self::Image(r0)) => l0.native_handle() == r0.native_handle(),
-            (Self::ImageView(l0), Self::Image(r0)) => l0.native_handle() == r0.native_handle(),
+            //(Self::ImageView(l0), Self::Image(r0)) => l0.native_handle() == r0.native_handle(),
             _ => false,
         }
     }
@@ -542,7 +540,13 @@ impl<'a> CommandBufferRecorder<'a> {
     pub fn build_tlas(
         &mut self,
         tlas: Arc<TopLevelAccelerationStructure>,
-        geometry_data: &[TopLevelBLASGroupData],
+
+        instances_buffer: Arc<AllocatedBuffer>,
+
+        primitive_offset: u32,
+        primitive_count: u32,
+        first_vertex: u32,
+        transform_offset: u32,
     ) {
         // TODO: this should be an Error UserInput
         //assert!(blas.builder().allowed_building_devices() != AllowedBuildingDevice::HostOnly);
@@ -551,43 +555,40 @@ impl<'a> CommandBufferRecorder<'a> {
         let mut max_primitives_count: Vec<u32> = vec![];
         let mut range_infos: Vec<Vec<ash::vk::AccelerationStructureBuildRangeInfoKHR>> = vec![];
 
-        for g in geometry_data.iter() {
-            // TODO: assert from same device
+        // TODO: assert from same device
 
-            let instances_info = ash::vk::BufferDeviceAddressInfo::default()
-                .buffer(g.instances_buffer().ash_handle());
-            let instances_buffer_device_addr = unsafe {
-                self.device
-                    .ash_handle()
-                    .get_buffer_device_address(&instances_info)
-            };
+        let instances_info =
+            ash::vk::BufferDeviceAddressInfo::default().buffer(instances_buffer.ash_handle());
+        let instances_buffer_device_addr = unsafe {
+            self.device
+                .ash_handle()
+                .get_buffer_device_address(&instances_info)
+        };
 
-            let data_addr = ash::vk::DeviceOrHostAddressConstKHR {
-                device_address: instances_buffer_device_addr,
-            };
+        let data_addr = ash::vk::DeviceOrHostAddressConstKHR {
+            device_address: instances_buffer_device_addr,
+        };
 
-            geometries.push(
-                ash::vk::AccelerationStructureGeometryKHR::default()
-                    // TODO: .flags()
-                    .geometry_type(ash::vk::GeometryTypeKHR::INSTANCES)
-                    .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
-                        instances: ash::vk::AccelerationStructureGeometryInstancesDataKHR::default(
-                        )
-                        .array_of_pointers(g.decl().array_of_pointers())
+        geometries.push(
+            ash::vk::AccelerationStructureGeometryKHR::default()
+                // TODO: .flags()
+                .geometry_type(ash::vk::GeometryTypeKHR::INSTANCES)
+                .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
+                    instances: ash::vk::AccelerationStructureGeometryInstancesDataKHR::default()
+                        .array_of_pointers(tlas.blas_decl().array_of_pointers())
                         .data(data_addr),
-                    }),
-            );
+                }),
+        );
 
-            range_infos.push(vec![
-                ash::vk::AccelerationStructureBuildRangeInfoKHR::default()
-                    .primitive_offset(g.primitive_offset())
-                    .primitive_count(g.primitive_count())
-                    .first_vertex(g.first_vertex())
-                    .transform_offset(g.transform_offset()),
-            ]);
+        range_infos.push(vec![
+            ash::vk::AccelerationStructureBuildRangeInfoKHR::default()
+                .primitive_offset(primitive_offset)
+                .primitive_count(primitive_count)
+                .first_vertex(first_vertex)
+                .transform_offset(transform_offset),
+        ]);
 
-            max_primitives_count.push(1);
-        }
+        max_primitives_count.push(1);
 
         // From vulkan specs: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
         // The srcAccelerationStructure, dstAccelerationStructure, and mode members of pBuildInfo are ignored.

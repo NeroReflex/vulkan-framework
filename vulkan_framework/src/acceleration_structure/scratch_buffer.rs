@@ -9,11 +9,9 @@ use std::sync::Mutex;
 use crate::{
     buffer::{AllocatedBuffer, Buffer, BufferTrait, BufferUsage, ConcreteBufferDescriptor},
     device::{Device, DeviceOwned},
-    graphics_pipeline::AttributeType,
-    instance::InstanceOwned,
     memory_heap::MemoryHeapOwned,
     memory_pool::MemoryPool,
-    prelude::{FrameworkError, VulkanError, VulkanResult},
+    prelude::VulkanResult,
 };
 
 pub struct DeviceScratchBuffer {

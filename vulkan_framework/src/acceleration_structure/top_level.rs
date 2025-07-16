@@ -43,61 +43,6 @@ impl TopLevelBLASGroupDecl {
     }
 }
 
-pub struct TopLevelBLASGroupData {
-    decl: TopLevelBLASGroupDecl,
-
-    instances_buffer: Arc<AllocatedBuffer>,
-
-    primitive_offset: u32,
-    primitive_count: u32,
-    first_vertex: u32,
-    transform_offset: u32,
-}
-
-impl TopLevelBLASGroupData {
-    pub fn new(
-        decl: TopLevelBLASGroupDecl,
-        instances_buffer: Arc<AllocatedBuffer>,
-        primitive_offset: u32,
-        primitive_count: u32,
-        first_vertex: u32,
-        transform_offset: u32,
-    ) -> Self {
-        Self {
-            decl,
-            instances_buffer,
-            primitive_offset,
-            primitive_count,
-            first_vertex,
-            transform_offset,
-        }
-    }
-
-    pub fn decl(&self) -> TopLevelBLASGroupDecl {
-        self.decl
-    }
-
-    pub fn primitive_offset(&self) -> u32 {
-        self.primitive_offset
-    }
-
-    pub fn primitive_count(&self) -> u32 {
-        self.primitive_count
-    }
-
-    pub fn first_vertex(&self) -> u32 {
-        self.first_vertex
-    }
-
-    pub fn transform_offset(&self) -> u32 {
-        self.transform_offset
-    }
-
-    pub fn instances_buffer(&self) -> Arc<AllocatedBuffer> {
-        self.instances_buffer.clone()
-    }
-}
-
 pub struct TopLevelAccelerationStructure {
     blas_decl: TopLevelBLASGroupDecl,
 
@@ -226,7 +171,7 @@ impl TopLevelAccelerationStructure {
         self.device_build_scratch_buffer.clone()
     }
 
-    pub fn triangles_decl(&self) -> &TopLevelBLASGroupDecl {
+    pub fn blas_decl(&self) -> &TopLevelBLASGroupDecl {
         &self.blas_decl
     }
 

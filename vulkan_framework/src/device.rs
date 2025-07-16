@@ -183,7 +183,7 @@ impl Device {
         surface_extension: Option<&ash::khr::surface::Instance>,
         queue_family: &ash::vk::QueueFamilyProperties,
         family_index: u32,
-        max_queues: u32,
+        _max_queues: u32,
     ) -> Option<u16>
     where
         I: Iterator<Item = &'a QueueFamilySupportedOperationType>,
