@@ -764,6 +764,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ),
             1,
             AllowedBuildingDevice::DeviceOnly,
+            BufferUsage::empty(),
+            BufferUsage::empty(),
+            BufferUsage::empty(),
             None,
             Some("my_blas"),
         )

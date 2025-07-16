@@ -101,14 +101,15 @@ impl BottomLevelTrianglesGroupDecl {
     }
 }
 
-pub struct BottomLevelAccelerationStructureInstanceBuffer {
+pub struct BottomLevelAccelerationStructureTransformBuffer {
     buffer: Arc<AllocatedBuffer>,
     buffer_device_addr: u64,
 }
 
-impl BottomLevelAccelerationStructureInstanceBuffer {
+impl BottomLevelAccelerationStructureTransformBuffer {
     pub fn new(
         memory_pool: Arc<MemoryPool>,
+        usage: BufferUsage,
         max_instances: u64,
         sharing: Option<&[std::sync::Weak<QueueFamily>]>,
         debug_name: &Option<&str>,
@@ -121,6 +122,7 @@ impl BottomLevelAccelerationStructureInstanceBuffer {
             device.clone(),
             ConcreteBufferDescriptor::new(
                 BufferUsage::Unmanaged(
+                    usage.ash_usage().as_raw() |
                     (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                         | ash::vk::BufferUsageFlags::INDEX_BUFFER
                         | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
@@ -164,6 +166,7 @@ pub struct BottomLevelAccelerationStructureIndexBuffer {
 impl BottomLevelAccelerationStructureIndexBuffer {
     pub fn new(
         memory_pool: Arc<MemoryPool>,
+        usage: BufferUsage,
         buffer_size: u64,
         sharing: Option<&[std::sync::Weak<QueueFamily>]>,
         debug_name: &Option<&str>,
@@ -176,6 +179,7 @@ impl BottomLevelAccelerationStructureIndexBuffer {
             device.clone(),
             ConcreteBufferDescriptor::new(
                 BufferUsage::Unmanaged(
+                    usage.ash_usage().as_raw() |
                     (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                         | ash::vk::BufferUsageFlags::INDEX_BUFFER
                         | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
@@ -219,6 +223,7 @@ impl BottomLevelAccelerationStructureVertexBuffer {
     pub fn new(
         memory_pool: Arc<MemoryPool>,
         buffer_size: u64,
+        usage: BufferUsage,
         sharing: Option<&[std::sync::Weak<QueueFamily>]>,
         debug_name: &Option<&str>,
     ) -> VulkanResult<Arc<Self>> {
@@ -230,6 +235,7 @@ impl BottomLevelAccelerationStructureVertexBuffer {
             device.clone(),
             ConcreteBufferDescriptor::new(
                 BufferUsage::Unmanaged(
+                    usage.ash_usage().as_raw() | 
                     (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                         | ash::vk::BufferUsageFlags::VERTEX_BUFFER
                         | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
@@ -276,7 +282,7 @@ pub struct BottomLevelAccelerationStructure {
 
     vertex_buffer: Arc<BottomLevelAccelerationStructureVertexBuffer>,
     index_buffer: Arc<BottomLevelAccelerationStructureIndexBuffer>,
-    instance_buffer: Arc<BottomLevelAccelerationStructureInstanceBuffer>,
+    transform_buffer: Arc<BottomLevelAccelerationStructureTransformBuffer>,
 
     allowed_building_devices: AllowedBuildingDevice,
 
@@ -359,7 +365,7 @@ impl BottomLevelAccelerationStructure {
         geometries_decl: &[&'a BottomLevelTrianglesGroupDecl],
         vertex_buffer: Arc<BottomLevelAccelerationStructureVertexBuffer>,
         index_buffer: Arc<BottomLevelAccelerationStructureIndexBuffer>,
-        instance_buffer: Arc<BottomLevelAccelerationStructureInstanceBuffer>,
+        instance_buffer: Arc<BottomLevelAccelerationStructureTransformBuffer>,
     ) -> smallvec::SmallVec<[ash::vk::AccelerationStructureGeometryKHR<'a>; 1]> {
         geometries_decl
             .iter()
@@ -418,7 +424,7 @@ impl BottomLevelAccelerationStructure {
         allowed_building_devices: AllowedBuildingDevice,
         vertex_buffer: Arc<BottomLevelAccelerationStructureVertexBuffer>,
         index_buffer: Arc<BottomLevelAccelerationStructureIndexBuffer>,
-        instance_buffer: Arc<BottomLevelAccelerationStructureInstanceBuffer>,
+        instance_buffer: Arc<BottomLevelAccelerationStructureTransformBuffer>,
     ) -> VulkanResult<u64> {
         let device = vertex_buffer.buffer().get_parent_device();
 
@@ -490,8 +496,8 @@ impl BottomLevelAccelerationStructure {
         self.index_buffer.clone()
     }
 
-    pub fn instance_buffer(&self) -> Arc<BottomLevelAccelerationStructureInstanceBuffer> {
-        self.instance_buffer.clone()
+    pub fn instance_buffer(&self) -> Arc<BottomLevelAccelerationStructureTransformBuffer> {
+        self.transform_buffer.clone()
     }
 
     pub fn buffer_size(&self) -> u64 {
@@ -543,10 +549,12 @@ impl BottomLevelAccelerationStructure {
 
     pub fn new(
         memory_pool: Arc<MemoryPool>,
-        //builder: Arc<BottomLevelAccelerationStructureBuilder>,
         triangles_decl: BottomLevelTrianglesGroupDecl,
         max_instances: u64,
         allowed_building_devices: AllowedBuildingDevice,
+        vertex_buffer_usage: BufferUsage,
+        index_buffer_usage: BufferUsage,
+        transform_buffer_usage: BufferUsage,
         sharing: Option<&[std::sync::Weak<QueueFamily>]>,
         debug_name: Option<&str>,
     ) -> VulkanResult<Arc<Self>> {
@@ -571,19 +579,22 @@ impl BottomLevelAccelerationStructure {
         let vertex_buffer = BottomLevelAccelerationStructureVertexBuffer::new(
             memory_pool.clone(),
             triangles_decl.vertex_stride() * 3u64 * (triangles_decl.max_vertices() as u64),
+            vertex_buffer_usage,
             sharing.clone(),
             &debug_name,
         )?;
 
         let index_buffer = BottomLevelAccelerationStructureIndexBuffer::new(
             memory_pool.clone(),
+            index_buffer_usage,
             triangles_decl.vertex_indexing().size() * (triangles_decl.max_vertices() as u64),
             sharing.clone(),
             &debug_name,
         )?;
 
-        let instance_buffer = BottomLevelAccelerationStructureInstanceBuffer::new(
+        let transform_buffer = BottomLevelAccelerationStructureTransformBuffer::new(
             memory_pool.clone(),
+            transform_buffer_usage,
             max_instances,
             sharing.clone(),
             &debug_name,
@@ -608,7 +619,7 @@ impl BottomLevelAccelerationStructure {
             allowed_building_devices,
             vertex_buffer.clone(),
             index_buffer.clone(),
-            instance_buffer.clone(),
+            transform_buffer.clone(),
         )?;
 
         let device_build_scratch_buffer =
@@ -645,7 +656,7 @@ impl BottomLevelAccelerationStructure {
                     blas_buffer_device_addr,
                     vertex_buffer,
                     index_buffer,
-                    instance_buffer,
+                    transform_buffer,
                     allowed_building_devices,
                     device_build_scratch_buffer,
                 }))
