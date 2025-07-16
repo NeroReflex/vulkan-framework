@@ -6,7 +6,7 @@ use parking_lot::{const_mutex, Mutex};
 #[cfg(not(feature = "better_mutex"))]
 use std::sync::Mutex;
 
-use ash::vk::{Handle, Offset2D};
+use ash::vk::{GeometryFlagsKHR, Handle, Offset2D};
 
 use crate::{
     acceleration_structure::{
@@ -622,11 +622,12 @@ impl<'a> CommandBufferRecorder<'a> {
     pub fn build_blas(
         &mut self,
         blas: Arc<BottomLevelAccelerationStructure>,
-        scratch_buffer: Arc<DeviceScratchBuffer>,
         geometry_data: &[BottomLevelTrianglesGroupData],
     ) {
         // TODO: this should be an Error UserInput
         //assert!(blas.builder().allowed_building_devices() != AllowedBuildingDevice::HostOnly);
+
+        let scratch_buffer = blas.device_build_scratch_buffer();
 
         let mut geometries: Vec<ash::vk::AccelerationStructureGeometryKHR> = vec![];
         let mut max_primitives_count: Vec<u32> = vec![];
@@ -669,7 +670,7 @@ impl<'a> CommandBufferRecorder<'a> {
 
             geometries.push(
                 ash::vk::AccelerationStructureGeometryKHR::default()
-                    // TODO: .flags()
+                    .flags(GeometryFlagsKHR::OPAQUE)
                     .geometry_type(ash::vk::GeometryTypeKHR::TRIANGLES)
                     .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
                         triangles: ash::vk::AccelerationStructureGeometryTrianglesDataKHR::default(

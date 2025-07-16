@@ -763,22 +763,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let blas_decl = TopLevelBLASGroupDecl::new();
 
-        let blas_estimated_sizes = BottomLevelAccelerationStructure::query_minimum_sizes(
-            dev.clone(),
-            AllowedBuildingDevice::DeviceOnly,
-            &[triangle_decl],
-        )
-        .unwrap();
-
         let blas = BottomLevelAccelerationStructure::new(
             raytracing_allocator.clone(),
-            blas_estimated_sizes.0,
-        )
-        .unwrap();
-
-        let blas_scratch_buffer = DeviceScratchBuffer::new(
-            raytracing_allocator.clone(),
-            blas_estimated_sizes.1,
+            BottomLevelTrianglesGroupDecl::new(
+                VertexIndexing::UInt32,
+                1,
+                (std::mem::size_of::<f32>() as u64) * 3u64,
+                AttributeType::Vec3,
+            ),
+            AllowedBuildingDevice::DeviceOnly,
+            Some("my_blas"),
         )
         .unwrap();
 
@@ -872,7 +866,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .record_commands(|cmd| {
                 cmd.build_blas(
                     blas.clone(),
-                    blas_scratch_buffer.clone(),
                     &[BottomLevelTrianglesGroupData::new(
                         triangle_decl,
                         Some(index_buffer.clone()),
@@ -882,7 +875,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         1,
                         0,
                         0,
-                    )],
+                    )
+                    .unwrap()],
                 );
             })
             .unwrap();
@@ -953,11 +947,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
             .unwrap();
 
-        let tlas_scratch_buffer = DeviceScratchBuffer::new(
-            raytracing_allocator.clone(),
-            tlas_estimated_sizes.1,
-        )
-        .unwrap();
+        let tlas_scratch_buffer =
+            DeviceScratchBuffer::new(raytracing_allocator.clone(), tlas_estimated_sizes.1).unwrap();
 
         let tlas_building = PrimaryCommandBuffer::new(command_pool, Some("TLAS_Builder")).unwrap();
         tlas_building
