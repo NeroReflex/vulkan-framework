@@ -9,7 +9,7 @@ use parking_lot::{const_mutex, Mutex};
 use std::sync::Mutex;
 
 use crate::{
-    acceleration_structure::TopLevelAccelerationStructure,
+    acceleration_structure::top_level::TopLevelAccelerationStructure,
     buffer::BufferTrait,
     descriptor_pool::{DescriptorPool, DescriptorPoolOwned},
     descriptor_set_layout::{DescriptorSetLayout, DescriptorSetLayoutDependant},

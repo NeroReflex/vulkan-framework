@@ -4,9 +4,13 @@ use inline_spirv::*;
 
 use vulkan_framework::{
     acceleration_structure::{
-        AllowedBuildingDevice, BottomLevelAccelerationStructure, BottomLevelTrianglesGroupData,
-        BottomLevelTrianglesGroupDecl, DeviceScratchBuffer, TopLevelAccelerationStructure,
-        TopLevelBLASGroupData, TopLevelBLASGroupDecl, VertexIndexing,
+        bottom_level::{
+            BottomLevelAccelerationStructure, BottomLevelTrianglesGroupData,
+            BottomLevelTrianglesGroupDecl,
+        },
+        scratch_buffer::DeviceScratchBuffer,
+        top_level::{TopLevelAccelerationStructure, TopLevelBLASGroupData, TopLevelBLASGroupDecl},
+        AllowedBuildingDevice, VertexIndexing,
     },
     binding_tables::{required_memory_type, RaytracingBindingTables},
     buffer::{AllocatedBuffer, Buffer, BufferUsage, ConcreteBufferDescriptor},
@@ -776,6 +780,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .unwrap();
 
+        raytracing_allocator
+            .write_raw_data(
+                blas.index_buffer().unwrap().allocation_offset(),
+                VERTEX_INDEX.as_slice(),
+            )
+            .unwrap();
+        raytracing_allocator
+            .write_raw_data(
+                blas.vertex_buffer().allocation_offset(),
+                VERTEX_DATA.as_slice(),
+            )
+            .unwrap();
+
         let tlas_estimated_sizes = TopLevelAccelerationStructure::query_minimum_sizes(
             dev.clone(),
             AllowedBuildingDevice::DeviceOnly,
@@ -788,44 +805,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             tlas_estimated_sizes.0,
         )
         .unwrap();
-
-        let vertex_buffer = Buffer::new(
-            dev.clone(),
-            ConcreteBufferDescriptor::new(
-                BufferUsage::Unmanaged(
-                    (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
-                        | ash::vk::BufferUsageFlags::VERTEX_BUFFER
-                        | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
-                        .as_raw(),
-                ),
-                (core::mem::size_of::<[f32; 3]>() as u64) * 3u64,
-            ),
-            None,
-            None,
-        )
-        .unwrap();
-
-        let vertex_buffer =
-            AllocatedBuffer::new(raytracing_allocator.clone(), vertex_buffer).unwrap();
-
-        let index_buffer = Buffer::new(
-            dev.clone(),
-            ConcreteBufferDescriptor::new(
-                BufferUsage::Unmanaged(
-                    (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
-                        | ash::vk::BufferUsageFlags::INDEX_BUFFER
-                        | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
-                        .as_raw(),
-                ),
-                (core::mem::size_of::<u32>() as u64) * 3u64,
-            ),
-            None,
-            None,
-        )
-        .unwrap();
-
-        let index_buffer =
-            AllocatedBuffer::new(raytracing_allocator.clone(), index_buffer).unwrap();
 
         let transform_buffer = Buffer::new(
             dev.clone(),
@@ -847,12 +826,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             AllocatedBuffer::new(raytracing_allocator.clone(), transform_buffer).unwrap();
 
         raytracing_allocator
-            .write_raw_data(index_buffer.allocation_offset(), VERTEX_INDEX.as_slice())
-            .unwrap();
-        raytracing_allocator
-            .write_raw_data(vertex_buffer.allocation_offset(), VERTEX_DATA.as_slice())
-            .unwrap();
-        raytracing_allocator
             .write_raw_data(
                 transform_buffer.allocation_offset(),
                 INSTANCE_DATA.as_slice(),
@@ -868,8 +841,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     blas.clone(),
                     &[BottomLevelTrianglesGroupData::new(
                         triangle_decl,
-                        Some(index_buffer.clone()),
-                        vertex_buffer.clone(),
+                        blas.index_buffer(),
+                        blas.vertex_buffer().clone(),
                         transform_buffer.clone(),
                         0,
                         1,

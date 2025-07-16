@@ -10,8 +10,10 @@ use ash::vk::{GeometryFlagsKHR, Handle, Offset2D};
 
 use crate::{
     acceleration_structure::{
-        BottomLevelAccelerationStructure, BottomLevelTrianglesGroupData, DeviceScratchBuffer,
-        TopLevelAccelerationStructure, TopLevelBLASGroupData, VertexIndexing,
+        bottom_level::{BottomLevelAccelerationStructure, BottomLevelTrianglesGroupData},
+        scratch_buffer::DeviceScratchBuffer,
+        top_level::{TopLevelAccelerationStructure, TopLevelBLASGroupData},
+        VertexIndexing,
     },
     binding_tables::RaytracingBindingTables,
     command_pool::{CommandPool, CommandPoolOwned},
