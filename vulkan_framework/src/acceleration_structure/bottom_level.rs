@@ -61,8 +61,8 @@ impl BottomLevelTrianglesGroupDecl {
     pub fn vertex_stride(&self) -> u64 {
         self.per_vertex_user_stride
             + match self.vertex_format {
-                AttributeType::Float => 4u64 * 1,
-                AttributeType::Vec1 => 4u64 * 1,
+                AttributeType::Float => 4u64,
+                AttributeType::Vec1 => 4u64,
                 AttributeType::Vec2 => 4u64 * 2,
                 AttributeType::Vec3 => 4u64 * 3,
                 AttributeType::Vec4 => 4u64 * 4,

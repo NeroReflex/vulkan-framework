@@ -892,14 +892,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let tlas_building = PrimaryCommandBuffer::new(command_pool, Some("TLAS_Builder")).unwrap();
         tlas_building
             .record_commands(|cmd| {
-                cmd.build_tlas(
-                    tlas.clone(),
-                    blas_instances_buffer.clone(),
-                    0,
-                    1,
-                    0,
-                    0,
-                )
+                cmd.build_tlas(tlas.clone(), blas_instances_buffer.clone(), 0, 1, 0, 0)
             })
             .unwrap();
         let tlas_building_fence =

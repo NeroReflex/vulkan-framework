@@ -49,7 +49,7 @@ impl PrivateShaderTrait for ClosestHitShader {
 }
 
 impl ClosestHitShader {
-    pub fn new<'a>(device: Arc<Device>, code: &[u32]) -> VulkanResult<Arc<Self>> {
+    pub fn new(device: Arc<Device>, code: &[u32]) -> VulkanResult<Arc<Self>> {
         let create_info = ash::vk::ShaderModuleCreateInfo::default().code(code);
 
         let module = unsafe {
