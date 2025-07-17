@@ -417,7 +417,7 @@ impl BottomLevelAccelerationStructure {
                 };
 
                 data.geometry.triangles.transform_data = DeviceOrHostAddressConstKHR {
-                    device_address: self.instance_buffer().buffer_device_addr(),
+                    device_address: self.transform_buffer().buffer_device_addr(),
                 };
 
                 data
@@ -514,7 +514,7 @@ impl BottomLevelAccelerationStructure {
     }
 
     #[inline]
-    pub fn instance_buffer(&self) -> Arc<BottomLevelAccelerationStructureTransformBuffer> {
+    pub fn transform_buffer(&self) -> Arc<BottomLevelAccelerationStructureTransformBuffer> {
         self.transform_buffer.clone()
     }
 

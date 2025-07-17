@@ -772,6 +772,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .unwrap();
 
+        let accel_structure_instance = ash::vk::AccelerationStructureInstanceKHR {
+            transform: ash::vk::TransformMatrixKHR {
+                matrix: INSTANCE_DATA,
+            },
+            instance_shader_binding_table_record_offset_and_flags: ash::vk::Packed24_8::new(
+                0, 0x01,
+            ), // VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
+            instance_custom_index_and_mask: ash::vk::Packed24_8::new(0x00, 0xFF),
+            acceleration_structure_reference: ash::vk::AccelerationStructureReferenceKHR {
+                device_handle: blas.device_addr(),
+            },
+        };
         raytracing_allocator
             .write_raw_data(
                 blas.index_buffer().buffer().allocation_offset(),
@@ -782,6 +794,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .write_raw_data(
                 blas.vertex_buffer().buffer().allocation_offset(),
                 VERTEX_DATA.as_slice(),
+            )
+            .unwrap();
+        raytracing_allocator
+            .write_raw_data(
+                blas.transform_buffer().buffer().allocation_offset(),
+                &[accel_structure_instance],
             )
             .unwrap();
 
@@ -795,8 +813,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         raytracing_allocator
             .write_raw_data(
-                blas.instance_buffer().buffer().allocation_offset(),
-                INSTANCE_DATA.as_slice(),
+                blas.transform_buffer().buffer().allocation_offset(),
+                &[accel_structure_instance],
             )
             .unwrap();
 
@@ -835,26 +853,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-
-        let accel_structure_instance = ash::vk::AccelerationStructureInstanceKHR {
-            transform: ash::vk::TransformMatrixKHR {
-                matrix: [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
-            },
-            instance_shader_binding_table_record_offset_and_flags: ash::vk::Packed24_8::new(
-                0, 0x01,
-            ), // VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
-            instance_custom_index_and_mask: ash::vk::Packed24_8::new(0x00, 0xFF),
-            acceleration_structure_reference: ash::vk::AccelerationStructureReferenceKHR {
-                device_handle: blas.device_addr(),
-            },
-        };
-
-        raytracing_allocator
-            .write_raw_data(
-                blas.instance_buffer().buffer().allocation_offset(),
-                &[accel_structure_instance],
-            )
-            .unwrap();
 
         let tlas_building = PrimaryCommandBuffer::new(command_pool, Some("TLAS_Builder")).unwrap();
         tlas_building

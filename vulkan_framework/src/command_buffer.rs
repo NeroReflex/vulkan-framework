@@ -557,7 +557,7 @@ impl<'a> CommandBufferRecorder<'a> {
                                 ash::vk::AccelerationStructureGeometryInstancesDataKHR::default()
                                     .array_of_pointers(tlas.blas_decl().array_of_pointers())
                                     .data(ash::vk::DeviceOrHostAddressConstKHR {
-                                        device_address: blas.instance_buffer().buffer_device_addr(),
+                                        device_address: blas.transform_buffer().buffer_device_addr(),
                                     }),
                         })
                 })
