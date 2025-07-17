@@ -60,6 +60,7 @@ dependencies = [
  "ash",
  "inline-spirv",
  "sdl2",
+ "smallvec",
  "vulkan_framework",
  "vulkan_framework_glfw_glue",
  "vulkan_framework_sdl2_glue",

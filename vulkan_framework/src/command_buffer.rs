@@ -558,7 +558,7 @@ impl<'a> CommandBufferRecorder<'a> {
         let tlas_max_instances = tlas.max_instances() as u64;
         let selected_instances_max_index =
             (primitive_offset.to_owned() as u64) + (primitive_count.to_owned() as u64);
-        assert!(tlas_max_instances > selected_instances_max_index);
+        assert!(tlas_max_instances >= selected_instances_max_index);
 
         // TODO: assert from same device
 
