@@ -7,7 +7,7 @@ use crate::{
         scratch_buffer::DeviceScratchBuffer, AllowedBuildingDevice, VertexIndexing,
     },
     buffer::{AllocatedBuffer, Buffer, BufferTrait, BufferUsage, ConcreteBufferDescriptor},
-    device::{Device, DeviceOwned},
+    device::DeviceOwned,
     graphics_pipeline::AttributeType,
     instance::InstanceOwned,
     memory_heap::MemoryHeapOwned,
@@ -122,8 +122,8 @@ impl BottomLevelAccelerationStructureTransformBuffer {
         let device = memory_pool.get_parent_memory_heap().get_parent_device();
 
         // TODO: change index buffer sizes
-        let instance_buffer_debug_name = debug_name.map(|name| format!("{name}_instance_buffer"));
-        let instance_buffer = Buffer::new(
+        let transform_buffer_debug_name = debug_name.map(|name| format!("{name}_transform_buffer"));
+        let transform_buffer = Buffer::new(
             device.clone(),
             ConcreteBufferDescriptor::new(
                 BufferUsage::Unmanaged(
@@ -136,13 +136,13 @@ impl BottomLevelAccelerationStructureTransformBuffer {
                     * max_instances,
             ),
             sharing,
-            match &instance_buffer_debug_name {
+            match &transform_buffer_debug_name {
                 Some(name) => Some(name.as_str()),
                 None => None,
             },
         )?;
 
-        let buffer = AllocatedBuffer::new(memory_pool.clone(), instance_buffer)?;
+        let buffer = AllocatedBuffer::new(memory_pool.clone(), transform_buffer)?;
 
         let info = ash::vk::BufferDeviceAddressInfo::default().buffer(buffer.ash_handle());
         let buffer_device_addr = unsafe { device.ash_handle().get_buffer_device_address(&info) };
@@ -328,34 +328,38 @@ impl BottomLevelAccelerationStructure {
      * If the operation is successful the tuple returned will be the BLAS (minimum) size.
      */
     pub fn query_minimum_buffer_size(
-        device: Arc<Device>,
-        allowed_building_devices: AllowedBuildingDevice,
         geometries_decl: &[&BottomLevelTrianglesGroupDecl],
+        allowed_building_devices: AllowedBuildingDevice,
+        vertex_buffer: Arc<BottomLevelAccelerationStructureVertexBuffer>,
+        index_buffer: Arc<BottomLevelAccelerationStructureIndexBuffer>,
+        transform_buffer: Arc<BottomLevelAccelerationStructureTransformBuffer>,
     ) -> VulkanResult<u64> {
+        let device = vertex_buffer.buffer().get_parent_device();
+
         let Some(as_ext) = device.ash_ext_acceleration_structure_khr() else {
             return Err(VulkanError::MissingExtension(String::from(
                 "VK_KHR_acceleration_structure",
             )));
         };
 
-        let geometries = geometries_decl
-            .iter()
-            .map(|g| g.ash_geometry())
-            .collect::<smallvec::SmallVec<[ash::vk::AccelerationStructureGeometryKHR; 4]>>();
+        let geometries = Self::static_ash_geometry(
+            geometries_decl,
+            vertex_buffer,
+            index_buffer,
+            transform_buffer,
+        );
+
         let max_primitives_count = geometries_decl
             .iter()
             .map(|g| g.max_triangles())
             .collect::<smallvec::SmallVec<[u32; 4]>>();
 
-        // From vulkan specs: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
-        // The srcAccelerationStructure, dstAccelerationStructure, and mode members of pBuildInfo are ignored.
-        // Any VkDeviceOrHostAddressKHR members of pBuildInfo are ignored by this command,
-        // except that the hostAddress member of VkAccelerationStructureGeometryTrianglesDataKHR::transformData
-        // will be examined to check if it is NULL.
+        // See https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
         let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::default()
             .geometries(geometries.as_slice())
             .flags(ash::vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
-            .ty(ash::vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL);
+            .ty(ash::vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL)
+            .mode(BuildAccelerationStructureModeKHR::BUILD);
 
         let mut build_sizes = ash::vk::AccelerationStructureBuildSizesInfoKHR::default();
 
@@ -375,7 +379,7 @@ impl BottomLevelAccelerationStructure {
         geometries_decl: &[&'a BottomLevelTrianglesGroupDecl],
         vertex_buffer: Arc<BottomLevelAccelerationStructureVertexBuffer>,
         index_buffer: Arc<BottomLevelAccelerationStructureIndexBuffer>,
-        instance_buffer: Arc<BottomLevelAccelerationStructureTransformBuffer>,
+        transform_buffer: Arc<BottomLevelAccelerationStructureTransformBuffer>,
     ) -> smallvec::SmallVec<[ash::vk::AccelerationStructureGeometryKHR<'a>; 1]> {
         geometries_decl
             .iter()
@@ -391,7 +395,7 @@ impl BottomLevelAccelerationStructure {
                 };
 
                 data.geometry.triangles.transform_data = DeviceOrHostAddressConstKHR {
-                    device_address: instance_buffer.buffer_device_addr(),
+                    device_address: transform_buffer.buffer_device_addr(),
                 };
 
                 data
@@ -434,7 +438,7 @@ impl BottomLevelAccelerationStructure {
         allowed_building_devices: AllowedBuildingDevice,
         vertex_buffer: Arc<BottomLevelAccelerationStructureVertexBuffer>,
         index_buffer: Arc<BottomLevelAccelerationStructureIndexBuffer>,
-        instance_buffer: Arc<BottomLevelAccelerationStructureTransformBuffer>,
+        transform_buffer: Arc<BottomLevelAccelerationStructureTransformBuffer>,
     ) -> VulkanResult<u64> {
         let device = vertex_buffer.buffer().get_parent_device();
 
@@ -448,7 +452,7 @@ impl BottomLevelAccelerationStructure {
             geometries_decl,
             vertex_buffer,
             index_buffer,
-            instance_buffer,
+            transform_buffer,
         );
 
         let max_primitives_count = geometries_decl
@@ -592,8 +596,6 @@ impl BottomLevelAccelerationStructure {
             ))));
         }
 
-        // TODO: review sharing mode for buffers
-
         // WARNING: this sets the maximum number of vertices equals to the maximum number of vertices,
         // effectively negating the benefit of having an index buffer.
         let vertex_buffer = BottomLevelAccelerationStructureVertexBuffer::new(
@@ -620,11 +622,20 @@ impl BottomLevelAccelerationStructure {
             &debug_name,
         )?;
 
-        let geometries_decl = [&triangles_decl];
         let blas_buffer_size = Self::query_minimum_buffer_size(
-            device.clone(),
+            &[&triangles_decl],
             allowed_building_devices,
-            &geometries_decl,
+            vertex_buffer.clone(),
+            index_buffer.clone(),
+            transform_buffer.clone()
+        )?;
+
+        let build_scratch_buffer_size = Self::query_minimum_build_scratch_buffer_size(
+            &[&triangles_decl],
+            allowed_building_devices,
+            vertex_buffer.clone(),
+            index_buffer.clone(),
+            transform_buffer.clone(),
         )?;
 
         let (blas_buffer, blas_buffer_device_addr) = Self::create_blas_buffer(
@@ -632,14 +643,6 @@ impl BottomLevelAccelerationStructure {
             blas_buffer_size,
             sharing.clone(),
             &debug_name,
-        )?;
-
-        let build_scratch_buffer_size = Self::query_minimum_build_scratch_buffer_size(
-            &geometries_decl,
-            allowed_building_devices,
-            vertex_buffer.clone(),
-            index_buffer.clone(),
-            transform_buffer.clone(),
         )?;
 
         let device_build_scratch_buffer =

@@ -555,7 +555,7 @@ impl<'a> CommandBufferRecorder<'a> {
     ) {
         assert!(tlas.allowed_building_devices() != AllowedBuildingDevice::HostOnly);
 
-        let tlas_max_instances = tlas.max_instances();
+        let tlas_max_instances = tlas.max_instances() as u64;
         let selected_instances_max_index =
             (primitive_offset.to_owned() as u64) + (primitive_count.to_owned() as u64);
         assert!(tlas_max_instances > selected_instances_max_index);
@@ -601,6 +601,18 @@ impl<'a> CommandBufferRecorder<'a> {
         }
     }
 
+    /*
+     * This function instructs the GPU to build the Bottom Level Acceleration Structure.
+     * 
+     * Before calling this function BLAS buffer(s) MUST be filled, this includes:
+     *   - transform buffer: TODO
+     *   - index_buffer: the list of index to vertices stored in the vertex_buffer
+     *   - vertex_buffer: the list of vertices that are referenced from the index_buffer
+     * 
+     * @param blas Bottom Level Acceleration Structure to build
+     * @param primitive_offset the number of consecutives BLAS instances to skip (on the instance buffer)
+     * @param primitive_count the number of BLAS instances to include on the TLAS
+     */
     pub fn build_blas(
         &mut self,
         blas: Arc<BottomLevelAccelerationStructure>,
@@ -610,8 +622,6 @@ impl<'a> CommandBufferRecorder<'a> {
         transform_offset: u32,
     ) {
         assert!(blas.allowed_building_devices() != AllowedBuildingDevice::HostOnly);
-
-        let scratch_buffer = blas.device_build_scratch_buffer();
 
         // TODO: assert from same device
 
@@ -640,7 +650,7 @@ impl<'a> CommandBufferRecorder<'a> {
             .mode(ash::vk::BuildAccelerationStructureModeKHR::BUILD)
             .src_acceleration_structure(ash::vk::AccelerationStructureKHR::null())
             .dst_acceleration_structure(blas.ash_handle())
-            .scratch_data(scratch_buffer.addr());
+            .scratch_data(blas.device_build_scratch_buffer().addr());
 
         let ranges_collection: Vec<&[ash::vk::AccelerationStructureBuildRangeInfoKHR]> =
             range_infos.iter().map(|r| r.as_slice()).collect();

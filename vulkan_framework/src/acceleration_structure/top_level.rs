@@ -5,7 +5,7 @@ use ash::vk::DeviceOrHostAddressConstKHR;
 use crate::{
     acceleration_structure::{scratch_buffer::DeviceScratchBuffer, AllowedBuildingDevice},
     buffer::{AllocatedBuffer, Buffer, BufferTrait, BufferUsage, ConcreteBufferDescriptor},
-    device::{Device, DeviceOwned},
+    device::DeviceOwned,
     instance::InstanceOwned,
     memory_heap::MemoryHeapOwned,
     memory_pool::MemoryPool,
@@ -55,7 +55,7 @@ impl TopLevelAccelerationStructureInstanceBuffer {
     pub fn new(
         memory_pool: Arc<MemoryPool>,
         usage: BufferUsage,
-        max_instances: u64,
+        max_instances: u32,
         sharing: Option<&[std::sync::Weak<QueueFamily>]>,
         debug_name: &Option<&str>,
     ) -> VulkanResult<Arc<Self>> {
@@ -74,7 +74,7 @@ impl TopLevelAccelerationStructureInstanceBuffer {
                         .as_raw(),
                 ),
                 (core::mem::size_of::<ash::vk::AccelerationStructureInstanceKHR>() as u64)
-                    * max_instances,
+                    * (max_instances as u64),
             ),
             sharing,
             match &instance_buffer_debug_name {
@@ -108,7 +108,7 @@ impl TopLevelAccelerationStructureInstanceBuffer {
 pub struct TopLevelAccelerationStructure {
     blas_decl: smallvec::SmallVec<[TopLevelBLASGroupDecl; 1]>,
 
-    max_instances: u64,
+    max_instances: u32,
 
     handle: ash::vk::AccelerationStructureKHR,
     acceleration_structure_device_addr: u64,
@@ -143,49 +143,22 @@ impl Drop for TopLevelAccelerationStructure {
 }
 
 impl TopLevelAccelerationStructure {
-    /*
-     * This function allows the user to estimate a minimum size for provided geometry info.
-     *
-     * If the operation is successful the tuple returned will be the TLAS (minimum) size
-     */
-    pub fn query_minimum_sizes(
-        device: Arc<Device>,
-        allowed_building_devices: AllowedBuildingDevice,
-        geometries_decl: &[TopLevelBLASGroupDecl],
-    ) -> VulkanResult<u64> {
-        let Some(as_ext) = device.ash_ext_acceleration_structure_khr() else {
-            return Err(VulkanError::MissingExtension(String::from(
-                "VK_KHR_acceleration_structure",
-            )));
-        };
-
-        let geometries = geometries_decl
+    pub(crate) fn static_ash_geometry<'a>(
+        blas_decl: &[&'a TopLevelBLASGroupDecl],
+        instance_buffer: Arc<TopLevelAccelerationStructureInstanceBuffer>,
+    ) -> smallvec::SmallVec<[ash::vk::AccelerationStructureGeometryKHR<'a>; 1]> {
+        blas_decl
             .iter()
-            .map(|g| g.ash_geometry())
-            .collect::<Vec<ash::vk::AccelerationStructureGeometryKHR>>();
-        let max_primitives_count = geometries_decl.iter().map(|_| 1u32).collect::<Vec<u32>>();
+            .map(|g| {
+                let mut data = g.ash_geometry();
 
-        // From vulkan specs: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
-        // The srcAccelerationStructure, dstAccelerationStructure, and mode members of pBuildInfo are ignored.
-        // Any VkDeviceOrHostAddressKHR members of pBuildInfo are ignored by this command,
-        // except that the hostAddress member of VkAccelerationStructureGeometryTrianglesDataKHR::transformData
-        // will be examined to check if it is NULL.
-        let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::default()
-            .geometries(geometries.as_slice())
-            .flags(ash::vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
-            .ty(ash::vk::AccelerationStructureTypeKHR::TOP_LEVEL);
+                data.geometry.triangles.transform_data = DeviceOrHostAddressConstKHR {
+                    device_address: instance_buffer.buffer_device_addr(),
+                };
 
-        let mut build_sizes = ash::vk::AccelerationStructureBuildSizesInfoKHR::default();
-        unsafe {
-            as_ext.get_acceleration_structure_build_sizes(
-                allowed_building_devices.ash_flags(),
-                &geometry_info,
-                max_primitives_count.as_slice(),
-                &mut build_sizes,
-            )
-        };
-
-        Ok(build_sizes.acceleration_structure_size)
+                data
+            })
+            .collect::<smallvec::SmallVec<_>>()
     }
 
     pub(crate) fn ash_geometry<'a>(
@@ -210,22 +183,67 @@ impl TopLevelAccelerationStructure {
      *
      * If the operation is successful the tuple returned will be the TLAS (minimum) size
      */
-    pub fn query_minimum_build_scratch_buffer_size(
-        device: Arc<Device>,
+    pub fn query_minimum_buffer_size(
         allowed_building_devices: AllowedBuildingDevice,
-        geometries_decl: &[TopLevelBLASGroupDecl],
+        blas_decl: &[&TopLevelBLASGroupDecl],
+        max_primitives: u32,
+        instance_buffer: Arc<TopLevelAccelerationStructureInstanceBuffer>
     ) -> VulkanResult<u64> {
+        let device = instance_buffer.buffer().get_parent_device();
+
         let Some(as_ext) = device.ash_ext_acceleration_structure_khr() else {
             return Err(VulkanError::MissingExtension(String::from(
                 "VK_KHR_acceleration_structure",
             )));
         };
 
-        let geometries = geometries_decl
-            .iter()
-            .map(|g| g.ash_geometry())
-            .collect::<Vec<ash::vk::AccelerationStructureGeometryKHR>>();
-        let max_primitives_count = geometries_decl.iter().map(|_| 1u32).collect::<Vec<u32>>();
+        let geometries = Self::static_ash_geometry(blas_decl, instance_buffer);
+        let max_primitives_count: smallvec::SmallVec<[u32; 1]> = smallvec::smallvec![max_primitives];
+
+        // From vulkan specs: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
+        // The srcAccelerationStructure, dstAccelerationStructure, and mode members of pBuildInfo are ignored.
+        // Any VkDeviceOrHostAddressKHR members of pBuildInfo are ignored by this command,
+        // except that the hostAddress member of VkAccelerationStructureGeometryTrianglesDataKHR::transformData
+        // will be examined to check if it is NULL.
+        let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::default()
+            .geometries(geometries.as_slice())
+            .flags(ash::vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
+            .ty(ash::vk::AccelerationStructureTypeKHR::TOP_LEVEL);
+
+        let mut build_sizes = ash::vk::AccelerationStructureBuildSizesInfoKHR::default();
+        unsafe {
+            as_ext.get_acceleration_structure_build_sizes(
+                allowed_building_devices.ash_flags(),
+                &geometry_info,
+                max_primitives_count.as_slice(),
+                &mut build_sizes,
+            )
+        };
+
+        Ok(build_sizes.acceleration_structure_size)
+    }
+
+    /*
+     * This function allows the user to estimate a minimum size for provided geometry info.
+     *
+     * If the operation is successful the tuple returned will be the TLAS (minimum) size
+     */
+    pub fn query_minimum_build_scratch_buffer_size(
+        allowed_building_devices: AllowedBuildingDevice,
+        blas_decl: &[&TopLevelBLASGroupDecl],
+        max_primitives: u32,
+        instance_buffer: Arc<TopLevelAccelerationStructureInstanceBuffer>
+    ) -> VulkanResult<u64> {
+        let device = instance_buffer.buffer().get_parent_device();
+
+        let Some(as_ext) = device.ash_ext_acceleration_structure_khr() else {
+            return Err(VulkanError::MissingExtension(String::from(
+                "VK_KHR_acceleration_structure",
+            )));
+        };
+
+        let geometries = Self::static_ash_geometry(blas_decl, instance_buffer);
+        let max_primitives_count: smallvec::SmallVec<[u32; 1]> = smallvec::smallvec![max_primitives];
 
         // See https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
         let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::default()
@@ -257,7 +275,7 @@ impl TopLevelAccelerationStructure {
     }
 
     #[inline]
-    pub fn max_instances(&self) -> u64 {
+    pub fn max_instances(&self) -> u32 {
         self.max_instances.to_owned()
     }
 
@@ -290,7 +308,7 @@ impl TopLevelAccelerationStructure {
         memory_pool: Arc<MemoryPool>,
         allowed_building_devices: AllowedBuildingDevice,
         blas_decl: TopLevelBLASGroupDecl,
-        max_instances: u64,
+        max_instances: u32,
         instance_buffer_usage: BufferUsage,
         sharing: Option<&[std::sync::Weak<QueueFamily>]>,
         debug_name: Option<&str>,
@@ -317,13 +335,20 @@ impl TopLevelAccelerationStructure {
             &debug_name,
         )?;
 
-        let tlas_mix_buffer_size = TopLevelAccelerationStructure::query_minimum_sizes(
-            device.clone(),
+        let tlas_mix_buffer_size = TopLevelAccelerationStructure::query_minimum_buffer_size(
             allowed_building_devices,
-            &[blas_decl],
+            &[&blas_decl],
+            max_instances,
+            instance_buffer.clone()
         )?;
 
-        // TODO: review sharing mode and debug name
+        let build_scratch_buffer_size = Self::query_minimum_build_scratch_buffer_size(
+            allowed_building_devices,
+            &[&blas_decl],
+            max_instances,
+            instance_buffer.clone()
+        )?;
+
         let tlas_buffer_debug_name = debug_name.map(|name| format!("{name}_tlas_buffer"));
         let buffer = AllocatedBuffer::new(
             memory_pool.clone(),
@@ -378,11 +403,6 @@ impl TopLevelAccelerationStructure {
 
         let blas_decl = smallvec::smallvec![blas_decl];
 
-        let build_scratch_buffer_size = Self::query_minimum_build_scratch_buffer_size(
-            device,
-            allowed_building_devices,
-            blas_decl.as_slice(),
-        )?;
         let device_build_scratch_buffer =
             DeviceScratchBuffer::new(memory_pool, build_scratch_buffer_size)?;
 
