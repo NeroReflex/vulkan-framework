@@ -562,16 +562,9 @@ impl<'a> CommandBufferRecorder<'a> {
 
         // TODO: assert from same device
 
-        let geometries: smallvec::SmallVec<[ash::vk::AccelerationStructureGeometryKHR; 1]> =
-            tlas.ash_geometry();
-
-        let range_infos: smallvec::SmallVec<
-            [smallvec::SmallVec<[ash::vk::AccelerationStructureBuildRangeInfoKHR; 1]>; 1],
-        > = smallvec::smallvec![smallvec::smallvec![
-            ash::vk::AccelerationStructureBuildRangeInfoKHR::default()
-                .primitive_offset(primitive_offset.to_owned())
-                .primitive_count(primitive_count.to_owned())
-        ]];
+        let (geometries, range_infos) = tlas
+            .ash_build_info(primitive_offset, primitive_count)
+            .unwrap();
 
         let ranges_collection: smallvec::SmallVec<
             [&[ash::vk::AccelerationStructureBuildRangeInfoKHR]; 1],
@@ -625,18 +618,14 @@ impl<'a> CommandBufferRecorder<'a> {
 
         // TODO: assert from same device
 
-        type BuildInfoRanges =
-            smallvec::SmallVec<[ash::vk::AccelerationStructureBuildRangeInfoKHR; 1]>;
-
-        let geometries = blas.ash_geometry();
-
-        let range_infos: smallvec::SmallVec<[BuildInfoRanges; 1]> = smallvec::smallvec![
-            smallvec::smallvec![ash::vk::AccelerationStructureBuildRangeInfoKHR::default()
-                .primitive_offset(primitive_offset)
-                .primitive_count(primitive_count)
-                .first_vertex(first_vertex)
-                .transform_offset(transform_offset),]
-        ];
+        let (geometries, range_infos) = blas
+            .ash_build_info(
+                primitive_offset,
+                primitive_count,
+                first_vertex,
+                transform_offset,
+            )
+            .unwrap();
 
         let ranges_collection: Vec<&[ash::vk::AccelerationStructureBuildRangeInfoKHR]> =
             range_infos.iter().map(|r| r.as_slice()).collect();

@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use ash::vk::{BuildAccelerationStructureModeKHR, DeviceOrHostAddressConstKHR};
+use ash::vk::{
+    AccelerationStructureGeometryKHR, BuildAccelerationStructureModeKHR,
+    DeviceOrHostAddressConstKHR,
+};
 
 use crate::{
     acceleration_structure::{
@@ -636,7 +639,7 @@ impl BottomLevelAccelerationStructure {
             transform_buffer.clone(),
         )?;
 
-        let (blas_buffer, blas_buffer_device_addr) =
+        let (blas_buffer, _blas_buffer_device_addr) =
             Self::create_blas_buffer(memory_pool.clone(), blas_buffer_size, sharing, &debug_name)?;
 
         let device_build_scratch_buffer =
@@ -682,5 +685,32 @@ impl BottomLevelAccelerationStructure {
                 Some(format!("Error creating acceleration structure: {}", err)),
             )),
         }
+    }
+
+    pub(crate) fn ash_build_info(
+        &self,
+        primitive_offset: u32,
+        primitive_count: u32,
+        first_vertex: u32,
+        transform_offset: u32,
+    ) -> VulkanResult<(
+        smallvec::SmallVec<[AccelerationStructureGeometryKHR<'_>; 1]>,
+        smallvec::SmallVec<
+            [smallvec::SmallVec<[ash::vk::AccelerationStructureBuildRangeInfoKHR; 1]>; 1],
+        >,
+    )> {
+        let geometries = self.ash_geometry();
+
+        let range_infos = smallvec::smallvec![smallvec::smallvec![
+            ash::vk::AccelerationStructureBuildRangeInfoKHR::default()
+                .primitive_offset(primitive_offset)
+                .primitive_count(primitive_count)
+                .first_vertex(first_vertex)
+                .transform_offset(transform_offset),
+        ]];
+
+        // TODO: ash::vk::AccelerationStructureBuildGeometryInfoKHR
+
+        Ok((geometries, range_infos))
     }
 }

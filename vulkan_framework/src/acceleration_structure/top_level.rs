@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use ash::vk::DeviceOrHostAddressConstKHR;
+use ash::vk::{AccelerationStructureGeometryKHR, DeviceOrHostAddressConstKHR};
 
 use crate::{
     acceleration_structure::{scratch_buffer::DeviceScratchBuffer, AllowedBuildingDevice},
@@ -111,7 +111,6 @@ pub struct TopLevelAccelerationStructure {
     max_instances: u32,
 
     handle: ash::vk::AccelerationStructureKHR,
-    acceleration_structure_device_addr: u64,
 
     buffer: Arc<dyn BufferTrait>,
     buffer_device_addr: u64,
@@ -398,11 +397,6 @@ impl TopLevelAccelerationStructure {
             )
         })?;
 
-        let info = ash::vk::AccelerationStructureDeviceAddressInfoKHR::default()
-            .acceleration_structure(handle);
-        let acceleration_structure_device_addr =
-            unsafe { as_ext.get_acceleration_structure_device_address(&info) };
-
         let blas_decl = smallvec::smallvec![blas_decl];
 
         let device_build_scratch_buffer =
@@ -412,12 +406,41 @@ impl TopLevelAccelerationStructure {
             blas_decl,
             max_instances,
             handle,
-            acceleration_structure_device_addr,
             buffer,
             buffer_device_addr,
             instance_buffer,
             allowed_building_devices,
             device_build_scratch_buffer,
         }))
+    }
+
+    pub(crate) fn ash_build_info(
+        &self,
+        primitive_offset: u32,
+        primitive_count: u32,
+    ) -> VulkanResult<(
+        smallvec::SmallVec<[AccelerationStructureGeometryKHR<'_>; 1]>,
+        smallvec::SmallVec<
+            [smallvec::SmallVec<[ash::vk::AccelerationStructureBuildRangeInfoKHR; 1]>; 1],
+        >,
+    )> {
+        let tlas_max_instances = self.max_instances() as u64;
+        let selected_instances_max_index =
+            (primitive_offset.to_owned() as u64) + (primitive_count.to_owned() as u64);
+        assert!(tlas_max_instances >= selected_instances_max_index);
+
+        let geometries = self.ash_geometry();
+
+        let range_infos: smallvec::SmallVec<
+            [smallvec::SmallVec<[ash::vk::AccelerationStructureBuildRangeInfoKHR; 1]>; 1],
+        > = smallvec::smallvec![smallvec::smallvec![
+            ash::vk::AccelerationStructureBuildRangeInfoKHR::default()
+                .primitive_offset(primitive_offset.to_owned())
+                .primitive_count(primitive_count.to_owned())
+        ]];
+
+        // TODO: ash::vk::AccelerationStructureBuildGeometryInfoKHR
+
+        Ok((geometries, range_infos))
     }
 }
