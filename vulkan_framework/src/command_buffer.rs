@@ -573,6 +573,10 @@ impl<'a> CommandBufferRecorder<'a> {
                 .primitive_count(primitive_count.to_owned())
         ]];
 
+        let ranges_collection: smallvec::SmallVec<
+            [&[ash::vk::AccelerationStructureBuildRangeInfoKHR]; 1],
+        > = range_infos.iter().map(|r| r.as_slice()).collect();
+
         // See https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
         let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::default()
             .geometries(geometries.as_slice())
@@ -582,10 +586,6 @@ impl<'a> CommandBufferRecorder<'a> {
             .src_acceleration_structure(ash::vk::AccelerationStructureKHR::null())
             .dst_acceleration_structure(tlas.ash_handle())
             .scratch_data(tlas.device_build_scratch_buffer().addr());
-
-        let ranges_collection: smallvec::SmallVec<
-            [&[ash::vk::AccelerationStructureBuildRangeInfoKHR]; 1],
-        > = range_infos.iter().map(|r| r.as_slice()).collect();
 
         // check if ray_tracing extension is enabled
         let Some(rt_ext) = self.device.ash_ext_acceleration_structure_khr() else {
@@ -638,6 +638,9 @@ impl<'a> CommandBufferRecorder<'a> {
                 .transform_offset(transform_offset),]
         ];
 
+        let ranges_collection: Vec<&[ash::vk::AccelerationStructureBuildRangeInfoKHR]> =
+            range_infos.iter().map(|r| r.as_slice()).collect();
+
         // From vulkan specs: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
         // The srcAccelerationStructure, dstAccelerationStructure, and mode members of pBuildInfo are ignored.
         // Any VkDeviceOrHostAddressKHR members of pBuildInfo are ignored by this command,
@@ -651,9 +654,6 @@ impl<'a> CommandBufferRecorder<'a> {
             .src_acceleration_structure(ash::vk::AccelerationStructureKHR::null())
             .dst_acceleration_structure(blas.ash_handle())
             .scratch_data(blas.device_build_scratch_buffer().addr());
-
-        let ranges_collection: Vec<&[ash::vk::AccelerationStructureBuildRangeInfoKHR]> =
-            range_infos.iter().map(|r| r.as_slice()).collect();
 
         // check if ray_tracing extension is enabled
         let Some(rt_ext) = self.device.ash_ext_acceleration_structure_khr() else {
