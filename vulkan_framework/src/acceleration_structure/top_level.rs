@@ -187,7 +187,7 @@ impl TopLevelAccelerationStructure {
         allowed_building_devices: AllowedBuildingDevice,
         blas_decl: &[&TopLevelBLASGroupDecl],
         max_primitives: u32,
-        instance_buffer: Arc<TopLevelAccelerationStructureInstanceBuffer>
+        instance_buffer: Arc<TopLevelAccelerationStructureInstanceBuffer>,
     ) -> VulkanResult<u64> {
         let device = instance_buffer.buffer().get_parent_device();
 
@@ -198,7 +198,8 @@ impl TopLevelAccelerationStructure {
         };
 
         let geometries = Self::static_ash_geometry(blas_decl, instance_buffer);
-        let max_primitives_count: smallvec::SmallVec<[u32; 1]> = smallvec::smallvec![max_primitives];
+        let max_primitives_count: smallvec::SmallVec<[u32; 1]> =
+            smallvec::smallvec![max_primitives];
 
         // From vulkan specs: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
         // The srcAccelerationStructure, dstAccelerationStructure, and mode members of pBuildInfo are ignored.
@@ -232,7 +233,7 @@ impl TopLevelAccelerationStructure {
         allowed_building_devices: AllowedBuildingDevice,
         blas_decl: &[&TopLevelBLASGroupDecl],
         max_primitives: u32,
-        instance_buffer: Arc<TopLevelAccelerationStructureInstanceBuffer>
+        instance_buffer: Arc<TopLevelAccelerationStructureInstanceBuffer>,
     ) -> VulkanResult<u64> {
         let device = instance_buffer.buffer().get_parent_device();
 
@@ -243,7 +244,8 @@ impl TopLevelAccelerationStructure {
         };
 
         let geometries = Self::static_ash_geometry(blas_decl, instance_buffer);
-        let max_primitives_count: smallvec::SmallVec<[u32; 1]> = smallvec::smallvec![max_primitives];
+        let max_primitives_count: smallvec::SmallVec<[u32; 1]> =
+            smallvec::smallvec![max_primitives];
 
         // See https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
         let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::default()
@@ -339,14 +341,14 @@ impl TopLevelAccelerationStructure {
             allowed_building_devices,
             &[&blas_decl],
             max_instances,
-            instance_buffer.clone()
+            instance_buffer.clone(),
         )?;
 
         let build_scratch_buffer_size = Self::query_minimum_build_scratch_buffer_size(
             allowed_building_devices,
             &[&blas_decl],
             max_instances,
-            instance_buffer.clone()
+            instance_buffer.clone(),
         )?;
 
         let tlas_buffer_debug_name = debug_name.map(|name| format!("{name}_tlas_buffer"));

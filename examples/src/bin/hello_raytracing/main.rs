@@ -783,11 +783,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap();
 
         {
-            let transform_data = [
-                ash::vk::TransformMatrixKHR {
-                    matrix: TRANSFORM_DATA[0],
-                }
-            ];
+            let transform_data = [ash::vk::TransformMatrixKHR {
+                matrix: TRANSFORM_DATA[0],
+            }];
             raytracing_allocator
                 .write_raw_data(
                     blas.index_buffer().buffer().allocation_offset(),

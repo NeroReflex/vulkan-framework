@@ -538,11 +538,11 @@ pub struct CommandBufferRecorder<'a> {
 impl<'a> CommandBufferRecorder<'a> {
     /*
      * This function instructs the GPU to build the Top Level Acceleration Structure.
-     * 
+     *
      * Before calling this function the TLAS instance buffer MUST be filled with references
      * to instances of Bottom Level Acceleration Structure(s) that the user wants to include in the
      * acceleration structure to be built.
-     * 
+     *
      * @param tlas Top Level Acceleration Structure to build
      * @param primitive_offset the number of consecutives BLAS instances to skip (on the instance buffer)
      * @param primitive_count the number of BLAS instances to include on the TLAS
@@ -603,12 +603,12 @@ impl<'a> CommandBufferRecorder<'a> {
 
     /*
      * This function instructs the GPU to build the Bottom Level Acceleration Structure.
-     * 
+     *
      * Before calling this function BLAS buffer(s) MUST be filled, this includes:
      *   - transform buffer: TODO
      *   - index_buffer: the list of index to vertices stored in the vertex_buffer
      *   - vertex_buffer: the list of vertices that are referenced from the index_buffer
-     * 
+     *
      * @param blas Bottom Level Acceleration Structure to build
      * @param primitive_offset the number of consecutives BLAS instances to skip (on the instance buffer)
      * @param primitive_count the number of BLAS instances to include on the TLAS

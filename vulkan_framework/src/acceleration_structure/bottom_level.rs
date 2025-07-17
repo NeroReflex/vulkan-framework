@@ -112,7 +112,7 @@ pub struct BottomLevelAccelerationStructureTransformBuffer {
 }
 
 const IDENTITY_MATRIX: ash::vk::TransformMatrixKHR = ash::vk::TransformMatrixKHR {
-    matrix: [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+    matrix: [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
 };
 
 impl BottomLevelAccelerationStructureTransformBuffer {
@@ -148,10 +148,7 @@ impl BottomLevelAccelerationStructureTransformBuffer {
 
         // preload the identity matrix for convenience
         memory_pool
-            .write_raw_data(
-                buffer.allocation_offset(),
-                &[IDENTITY_MATRIX],
-            )
+            .write_raw_data(buffer.allocation_offset(), &[IDENTITY_MATRIX])
             .unwrap();
 
         let info = ash::vk::BufferDeviceAddressInfo::default().buffer(buffer.ash_handle());
@@ -298,7 +295,6 @@ pub struct BottomLevelAccelerationStructure {
 
     blas_buffer: Arc<AllocatedBuffer>,
     //blas_buffer_device_addr: u64,
-
     vertex_buffer: Arc<BottomLevelAccelerationStructureVertexBuffer>,
     index_buffer: Arc<BottomLevelAccelerationStructureIndexBuffer>,
     transform_buffer: Arc<BottomLevelAccelerationStructureTransformBuffer>,
@@ -605,7 +601,7 @@ impl BottomLevelAccelerationStructure {
             memory_pool.clone(),
             triangles_decl.vertex_stride() * 3u64 * (triangles_decl.max_vertices() as u64),
             vertex_buffer_usage,
-            sharing.clone(),
+            sharing,
             &debug_name,
         )?;
 
@@ -613,14 +609,14 @@ impl BottomLevelAccelerationStructure {
             memory_pool.clone(),
             index_buffer_usage,
             triangles_decl.vertex_indexing().size() * (triangles_decl.max_vertices() as u64),
-            sharing.clone(),
+            sharing,
             &debug_name,
         )?;
 
         let transform_buffer = BottomLevelAccelerationStructureTransformBuffer::new(
             memory_pool.clone(),
             transform_buffer_usage,
-            sharing.clone(),
+            sharing,
             &debug_name,
         )?;
 
@@ -629,7 +625,7 @@ impl BottomLevelAccelerationStructure {
             allowed_building_devices,
             vertex_buffer.clone(),
             index_buffer.clone(),
-            transform_buffer.clone()
+            transform_buffer.clone(),
         )?;
 
         let build_scratch_buffer_size = Self::query_minimum_build_scratch_buffer_size(
@@ -640,12 +636,8 @@ impl BottomLevelAccelerationStructure {
             transform_buffer.clone(),
         )?;
 
-        let (blas_buffer, blas_buffer_device_addr) = Self::create_blas_buffer(
-            memory_pool.clone(),
-            blas_buffer_size,
-            sharing.clone(),
-            &debug_name,
-        )?;
+        let (blas_buffer, blas_buffer_device_addr) =
+            Self::create_blas_buffer(memory_pool.clone(), blas_buffer_size, sharing, &debug_name)?;
 
         let device_build_scratch_buffer =
             DeviceScratchBuffer::new(memory_pool.clone(), build_scratch_buffer_size)?;
