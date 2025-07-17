@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use ash::vk::DeviceOrHostAddressConstKHR;
+
 use crate::{
     acceleration_structure::{scratch_buffer::DeviceScratchBuffer, AllowedBuildingDevice},
     buffer::{AllocatedBuffer, Buffer, BufferTrait, BufferUsage, ConcreteBufferDescriptor},
@@ -8,6 +10,7 @@ use crate::{
     memory_heap::MemoryHeapOwned,
     memory_pool::MemoryPool,
     prelude::{FrameworkError, VulkanError, VulkanResult},
+    queue_family::QueueFamily,
 };
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -43,14 +46,77 @@ impl TopLevelBLASGroupDecl {
     }
 }
 
+pub struct TopLevelAccelerationStructureInstanceBuffer {
+    buffer: Arc<AllocatedBuffer>,
+    buffer_device_addr: u64,
+}
+
+impl TopLevelAccelerationStructureInstanceBuffer {
+    pub fn new(
+        memory_pool: Arc<MemoryPool>,
+        usage: BufferUsage,
+        max_instances: u64,
+        sharing: Option<&[std::sync::Weak<QueueFamily>]>,
+        debug_name: &Option<&str>,
+    ) -> VulkanResult<Arc<Self>> {
+        let device = memory_pool.get_parent_memory_heap().get_parent_device();
+
+        // TODO: change index buffer sizes
+        let instance_buffer_debug_name = debug_name.map(|name| format!("{name}_instance_buffer"));
+        let instance_buffer = Buffer::new(
+            device.clone(),
+            ConcreteBufferDescriptor::new(
+                BufferUsage::Unmanaged(
+                    usage.ash_usage().as_raw() |
+                    (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
+                        //| ash::vk::BufferUsageFlags::STORAGE_BUFFER
+                        | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
+                        .as_raw(),
+                ),
+                (core::mem::size_of::<ash::vk::AccelerationStructureInstanceKHR>() as u64)
+                    * max_instances,
+            ),
+            sharing,
+            match &instance_buffer_debug_name {
+                Some(name) => Some(name.as_str()),
+                None => None,
+            },
+        )?;
+
+        let buffer = AllocatedBuffer::new(memory_pool.clone(), instance_buffer)?;
+
+        let info = ash::vk::BufferDeviceAddressInfo::default().buffer(buffer.ash_handle());
+        let buffer_device_addr = unsafe { device.ash_handle().get_buffer_device_address(&info) };
+
+        Ok(Arc::new(Self {
+            buffer,
+            buffer_device_addr,
+        }))
+    }
+
+    #[inline]
+    pub fn buffer(&self) -> Arc<AllocatedBuffer> {
+        self.buffer.clone()
+    }
+
+    #[inline]
+    pub fn buffer_device_addr(&self) -> u64 {
+        self.buffer_device_addr.to_owned()
+    }
+}
+
 pub struct TopLevelAccelerationStructure {
-    blas_decl: TopLevelBLASGroupDecl,
+    blas_decl: smallvec::SmallVec<[TopLevelBLASGroupDecl; 1]>,
+
+    max_instances: u64,
 
     handle: ash::vk::AccelerationStructureKHR,
     acceleration_structure_device_addr: u64,
 
     buffer: Arc<dyn BufferTrait>,
     buffer_device_addr: u64,
+
+    instance_buffer: Arc<TopLevelAccelerationStructureInstanceBuffer>,
 
     allowed_building_devices: AllowedBuildingDevice,
 
@@ -122,6 +188,23 @@ impl TopLevelAccelerationStructure {
         Ok(build_sizes.acceleration_structure_size)
     }
 
+    pub(crate) fn ash_geometry<'a>(
+        &'a self,
+    ) -> smallvec::SmallVec<[ash::vk::AccelerationStructureGeometryKHR<'a>; 1]> {
+        self.blas_decl
+            .iter()
+            .map(|g| {
+                let mut data = g.ash_geometry();
+
+                data.geometry.instances.data = DeviceOrHostAddressConstKHR {
+                    device_address: self.instance_buffer().buffer_device_addr(),
+                };
+
+                data
+            })
+            .collect::<smallvec::SmallVec<_>>()
+    }
+
     /*
      * This function allows the user to estimate a minimum size for provided geometry info.
      *
@@ -174,8 +257,13 @@ impl TopLevelAccelerationStructure {
     }
 
     #[inline]
-    pub fn blas_decl(&self) -> &TopLevelBLASGroupDecl {
-        &self.blas_decl
+    pub fn max_instances(&self) -> u64 {
+        self.max_instances.to_owned()
+    }
+
+    #[inline]
+    pub fn blas_decl(&self) -> &[TopLevelBLASGroupDecl] {
+        self.blas_decl.as_slice()
     }
 
     #[inline]
@@ -193,10 +281,18 @@ impl TopLevelAccelerationStructure {
         self.buffer.size()
     }
 
+    #[inline]
+    pub fn instance_buffer(&self) -> Arc<TopLevelAccelerationStructureInstanceBuffer> {
+        self.instance_buffer.clone()
+    }
+
     pub fn new(
         memory_pool: Arc<MemoryPool>,
         allowed_building_devices: AllowedBuildingDevice,
         blas_decl: TopLevelBLASGroupDecl,
+        max_instances: u64,
+        instance_buffer_usage: BufferUsage,
+        sharing: Option<&[std::sync::Weak<QueueFamily>]>,
         debug_name: Option<&str>,
     ) -> VulkanResult<Arc<Self>> {
         let device = memory_pool.get_parent_memory_heap().get_parent_device();
@@ -213,12 +309,19 @@ impl TopLevelAccelerationStructure {
             ))));
         }
 
+        let instance_buffer = TopLevelAccelerationStructureInstanceBuffer::new(
+            memory_pool.clone(),
+            instance_buffer_usage,
+            max_instances,
+            sharing,
+            &debug_name,
+        )?;
+
         let tlas_mix_buffer_size = TopLevelAccelerationStructure::query_minimum_sizes(
             device.clone(),
             allowed_building_devices,
             &[blas_decl],
-        )
-        .unwrap();
+        )?;
 
         // TODO: review sharing mode and debug name
         let tlas_buffer_debug_name = debug_name.map(|name| format!("{name}_tlas_buffer"));
@@ -273,20 +376,24 @@ impl TopLevelAccelerationStructure {
         let acceleration_structure_device_addr =
             unsafe { as_ext.get_acceleration_structure_device_address(&info) };
 
+        let blas_decl = smallvec::smallvec![blas_decl];
+
         let build_scratch_buffer_size = Self::query_minimum_build_scratch_buffer_size(
             device,
             allowed_building_devices,
-            &[blas_decl],
+            blas_decl.as_slice(),
         )?;
         let device_build_scratch_buffer =
             DeviceScratchBuffer::new(memory_pool, build_scratch_buffer_size)?;
 
         Ok(Arc::new(Self {
             blas_decl,
+            max_instances,
             handle,
             acceleration_structure_device_addr,
             buffer,
             buffer_device_addr,
+            instance_buffer,
             allowed_building_devices,
             device_build_scratch_buffer,
         }))

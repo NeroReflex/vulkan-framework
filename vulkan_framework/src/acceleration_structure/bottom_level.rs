@@ -129,7 +129,6 @@ impl BottomLevelAccelerationStructureTransformBuffer {
                 BufferUsage::Unmanaged(
                     usage.ash_usage().as_raw() |
                     (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
-                        | ash::vk::BufferUsageFlags::INDEX_BUFFER
                         | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
                         .as_raw(),
                 ),
@@ -415,11 +414,11 @@ impl BottomLevelAccelerationStructure {
                 data.geometry.triangles.index_data = DeviceOrHostAddressConstKHR {
                     device_address: self.index_buffer().buffer_device_addr(),
                 };
-
-                data.geometry.triangles.transform_data = DeviceOrHostAddressConstKHR {
-                    device_address: self.transform_buffer().buffer_device_addr(),
-                };
-
+                /*
+                                data.geometry.triangles.transform_data = DeviceOrHostAddressConstKHR {
+                                    device_address: self.transform_buffer().buffer_device_addr(),
+                                };
+                */
                 data
             })
             .collect::<smallvec::SmallVec<_>>()

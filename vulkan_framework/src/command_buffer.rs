@@ -536,55 +536,44 @@ pub struct CommandBufferRecorder<'a> {
 }
 
 impl<'a> CommandBufferRecorder<'a> {
+    /*
+     * This function instructs the GPU to build the Top Level Acceleration Structure.
+     * 
+     * Before calling this function the TLAS instance buffer MUST be filled with references
+     * to instances of Bottom Level Acceleration Structure(s) that the user wants to include in the
+     * acceleration structure to be built.
+     * 
+     * @param tlas Top Level Acceleration Structure to build
+     * @param primitive_offset the number of consecutives BLAS instances to skip (on the instance buffer)
+     * @param primitive_count the number of BLAS instances to include on the TLAS
+     */
     pub fn build_tlas(
         &mut self,
         tlas: Arc<TopLevelAccelerationStructure>,
-        blas_collection: &[(Arc<BottomLevelAccelerationStructure>, u32, u32)],
+        primitive_offset: u32,
+        primitive_count: u32,
     ) {
         assert!(tlas.allowed_building_devices() != AllowedBuildingDevice::HostOnly);
 
+        let tlas_max_instances = tlas.max_instances();
+        let selected_instances_max_index =
+            (primitive_offset.to_owned() as u64) + (primitive_count.to_owned() as u64);
+        assert!(tlas_max_instances > selected_instances_max_index);
+
         // TODO: assert from same device
 
-        let geometries: smallvec::SmallVec<[ash::vk::AccelerationStructureGeometryKHR; 16]> =
-            blas_collection
-                .iter()
-                .map(|(blas, _, _)| {
-                    ash::vk::AccelerationStructureGeometryKHR::default()
-                        // TODO: .flags()
-                        .geometry_type(ash::vk::GeometryTypeKHR::INSTANCES)
-                        .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
-                            instances:
-                                ash::vk::AccelerationStructureGeometryInstancesDataKHR::default()
-                                    .array_of_pointers(tlas.blas_decl().array_of_pointers())
-                                    .data(ash::vk::DeviceOrHostAddressConstKHR {
-                                        device_address: blas.transform_buffer().buffer_device_addr(),
-                                    }),
-                        })
-                })
-                .collect();
+        let geometries: smallvec::SmallVec<[ash::vk::AccelerationStructureGeometryKHR; 1]> =
+            tlas.ash_geometry();
 
         let range_infos: smallvec::SmallVec<
-            [smallvec::SmallVec<[ash::vk::AccelerationStructureBuildRangeInfoKHR; 1]>; 16],
-        > = blas_collection
-            .iter()
-            .map(|(blas, primitive_offset, primitive_count)| {
-                assert!(
-                    blas.max_instances()
-                        <= ((primitive_offset.to_owned() as u64)
-                            + (primitive_count.to_owned() as u64))
-                );
+            [smallvec::SmallVec<[ash::vk::AccelerationStructureBuildRangeInfoKHR; 1]>; 1],
+        > = smallvec::smallvec![smallvec::smallvec![
+            ash::vk::AccelerationStructureBuildRangeInfoKHR::default()
+                .primitive_offset(primitive_offset.to_owned())
+                .primitive_count(primitive_count.to_owned())
+        ]];
 
-                smallvec::smallvec![ash::vk::AccelerationStructureBuildRangeInfoKHR::default()
-                    .primitive_offset(primitive_offset.to_owned())
-                    .primitive_count(primitive_count.to_owned())]
-            })
-            .collect();
-
-        // From vulkan specs: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
-        // The srcAccelerationStructure, dstAccelerationStructure, and mode members of pBuildInfo are ignored.
-        // Any VkDeviceOrHostAddressKHR members of pBuildInfo are ignored by this command,
-        // except that the hostAddress member of VkAccelerationStructureGeometryTrianglesDataKHR::transformData
-        // will be examined to check if it is NULL.
+        // See https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
         let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::default()
             .geometries(geometries.as_slice())
             .flags(ash::vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
@@ -594,8 +583,9 @@ impl<'a> CommandBufferRecorder<'a> {
             .dst_acceleration_structure(tlas.ash_handle())
             .scratch_data(tlas.device_build_scratch_buffer().addr());
 
-        let ranges_collection: Vec<&[ash::vk::AccelerationStructureBuildRangeInfoKHR]> =
-            range_infos.iter().map(|r| r.as_slice()).collect();
+        let ranges_collection: smallvec::SmallVec<
+            [&[ash::vk::AccelerationStructureBuildRangeInfoKHR]; 1],
+        > = range_infos.iter().map(|r| r.as_slice()).collect();
 
         // check if ray_tracing extension is enabled
         let Some(rt_ext) = self.device.ash_ext_acceleration_structure_khr() else {
@@ -619,8 +609,6 @@ impl<'a> CommandBufferRecorder<'a> {
         first_vertex: u32,
         transform_offset: u32,
     ) {
-        // TODO: this should be an Error UserInput
-
         assert!(blas.allowed_building_devices() != AllowedBuildingDevice::HostOnly);
 
         let scratch_buffer = blas.device_build_scratch_buffer();
