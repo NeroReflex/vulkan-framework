@@ -3,6 +3,8 @@ pub mod window;
 
 use sdl2_sys::*;
 
+pub use sdl2_sys;
+
 pub fn init() {
     unsafe {
         SDL_Init(SDL_INIT_VIDEO);
