@@ -47,18 +47,22 @@ impl BottomLevelTrianglesGroupDecl {
         }
     }
 
+    #[inline]
     pub fn vertex_indexing(&self) -> VertexIndexing {
         self.vertex_indexing
     }
 
+    #[inline]
     pub fn max_triangles(&self) -> u32 {
         self.max_triangles
     }
 
+    #[inline]
     pub fn max_vertices(&self) -> u32 {
         self.max_triangles() * 3u32
     }
 
+    #[inline]
     pub fn vertex_stride(&self) -> u64 {
         self.per_vertex_user_stride
             + match self.vertex_format {
@@ -80,6 +84,7 @@ impl BottomLevelTrianglesGroupDecl {
             }
     }
 
+    #[inline]
     pub fn vertex_format(&self) -> AttributeType {
         self.vertex_format
     }
@@ -149,10 +154,12 @@ impl BottomLevelAccelerationStructureTransformBuffer {
         }))
     }
 
+    #[inline]
     pub fn buffer(&self) -> Arc<AllocatedBuffer> {
         self.buffer.clone()
     }
 
+    #[inline]
     pub fn buffer_device_addr(&self) -> u64 {
         self.buffer_device_addr.to_owned()
     }
@@ -205,10 +212,12 @@ impl BottomLevelAccelerationStructureIndexBuffer {
         }))
     }
 
+    #[inline]
     pub fn buffer(&self) -> Arc<AllocatedBuffer> {
         self.buffer.clone()
     }
 
+    #[inline]
     pub fn buffer_device_addr(&self) -> u64 {
         self.buffer_device_addr.to_owned()
     }
@@ -261,10 +270,12 @@ impl BottomLevelAccelerationStructureVertexBuffer {
         }))
     }
 
+    #[inline]
     pub fn buffer(&self) -> Arc<AllocatedBuffer> {
         self.buffer.clone()
     }
 
+    #[inline]
     pub fn buffer_device_addr(&self) -> u64 {
         self.buffer_device_addr.to_owned()
     }
@@ -472,42 +483,52 @@ impl BottomLevelAccelerationStructure {
         }
     }
 
+    #[inline]
     pub(crate) fn ash_handle(&self) -> ash::vk::AccelerationStructureKHR {
         self.handle
     }
 
+    #[inline]
     pub fn triangles_decl(&self) -> &[BottomLevelTrianglesGroupDecl] {
         self.triangles_decl.as_slice()
     }
 
+    #[inline]
     pub fn max_instances(&self) -> u64 {
         self.max_instances
     }
 
+    #[inline]
     pub fn device_addr(&self) -> u64 {
         self.acceleration_structure_device_addr.to_owned()
     }
 
+    #[inline]
     pub fn vertex_buffer(&self) -> Arc<BottomLevelAccelerationStructureVertexBuffer> {
         self.vertex_buffer.clone()
     }
 
+    #[inline]
     pub fn index_buffer(&self) -> Arc<BottomLevelAccelerationStructureIndexBuffer> {
         self.index_buffer.clone()
     }
 
+    #[inline]
     pub fn instance_buffer(&self) -> Arc<BottomLevelAccelerationStructureTransformBuffer> {
         self.transform_buffer.clone()
     }
 
+    #[inline]
     pub fn buffer_size(&self) -> u64 {
         self.blas_buffer.size()
     }
 
+    #[inline]
     pub fn allowed_building_devices(&self) -> AllowedBuildingDevice {
         self.allowed_building_devices.to_owned()
     }
 
+    #[inline]
     pub(crate) fn device_build_scratch_buffer(&self) -> Arc<DeviceScratchBuffer> {
         self.device_build_scratch_buffer.clone()
     }

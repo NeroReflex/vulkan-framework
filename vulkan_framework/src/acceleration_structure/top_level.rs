@@ -163,26 +163,32 @@ impl TopLevelAccelerationStructure {
         Ok(build_sizes.build_scratch_size)
     }
 
+    #[inline]
     pub(crate) fn ash_handle(&self) -> ash::vk::AccelerationStructureKHR {
         self.handle
     }
 
+    #[inline]
     pub(crate) fn device_build_scratch_buffer(&self) -> Arc<DeviceScratchBuffer> {
         self.device_build_scratch_buffer.clone()
     }
 
+    #[inline]
     pub fn blas_decl(&self) -> &TopLevelBLASGroupDecl {
         &self.blas_decl
     }
 
+    #[inline]
     pub fn allowed_building_devices(&self) -> AllowedBuildingDevice {
         self.allowed_building_devices
     }
 
+    #[inline]
     pub fn buffer_device_addr(&self) -> u64 {
         self.buffer_device_addr
     }
 
+    #[inline]
     pub fn buffer_size(&self) -> u64 {
         self.buffer.size()
     }

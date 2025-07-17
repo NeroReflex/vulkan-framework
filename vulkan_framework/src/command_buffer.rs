@@ -567,7 +567,13 @@ impl<'a> CommandBufferRecorder<'a> {
             [smallvec::SmallVec<[ash::vk::AccelerationStructureBuildRangeInfoKHR; 1]>; 16],
         > = blas_collection
             .iter()
-            .map(|(_blas, primitive_offset, primitive_count)| {
+            .map(|(blas, primitive_offset, primitive_count)| {
+                assert!(
+                    blas.max_instances()
+                        <= ((primitive_offset.to_owned() as u64)
+                            + (primitive_count.to_owned() as u64))
+                );
+
                 smallvec::smallvec![ash::vk::AccelerationStructureBuildRangeInfoKHR::default()
                     .primitive_offset(primitive_offset.to_owned())
                     .primitive_count(primitive_count.to_owned())]
@@ -592,17 +598,16 @@ impl<'a> CommandBufferRecorder<'a> {
             range_infos.iter().map(|r| r.as_slice()).collect();
 
         // check if ray_tracing extension is enabled
-        match self.device.ash_ext_acceleration_structure_khr() {
-            Some(rt_ext) => unsafe {
-                rt_ext.cmd_build_acceleration_structures(
-                    self.command_buffer.ash_handle(),
-                    &[geometry_info],
-                    ranges_collection.as_slice(),
-                )
-            },
-            None => {
-                println!("Ray tracing pipeline is not enabled, nothing will happend.");
-            }
+        let Some(rt_ext) = self.device.ash_ext_acceleration_structure_khr() else {
+            panic!("Ray tracing pipeline is not enabled!");
+        };
+
+        unsafe {
+            rt_ext.cmd_build_acceleration_structures(
+                self.command_buffer.ash_handle(),
+                &[geometry_info],
+                ranges_collection.as_slice(),
+            )
         }
     }
 
@@ -654,7 +659,7 @@ impl<'a> CommandBufferRecorder<'a> {
 
         // check if ray_tracing extension is enabled
         let Some(rt_ext) = self.device.ash_ext_acceleration_structure_khr() else {
-            panic!("Ray tracing pipeline is not enabled, nothing will happend.");
+            panic!("Ray tracing pipeline is not enabled!");
         };
 
         unsafe {
