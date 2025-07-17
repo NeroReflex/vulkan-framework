@@ -85,12 +85,13 @@ impl RaytracingPipeline {
         let main_name =
             unsafe { CStr::from_bytes_with_nul_unchecked(&[109u8, 97u8, 105u8, 110u8, 0u8]) };
 
-        match device.ray_tracing_info() {
-            Some(info) => {
-                assert!(max_pipeline_ray_recursion_depth <= info.max_ray_recursion_depth())
-            }
-            None => return Err(VulkanError::Framework(crate::prelude::FrameworkError::Unknown(Some("Raytracing supported features are not available, probably due to a framework bug".to_string())))),
-        }
+        let Some(info) = device.ray_tracing_info() else {
+            panic!(
+                "Raytracing supported features are not available, probably due to a framework bug"
+            )
+        };
+
+        assert!(max_pipeline_ray_recursion_depth <= info.max_ray_recursion_depth());
 
         match device.ash_ext_raytracing_pipeline_khr() {
             Some(raytracing_ext) => {

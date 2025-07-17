@@ -169,7 +169,12 @@ impl MemoryPool {
             .memory_type_index(memory_heap.type_index());
 
         if allocator.total_size() > memory_heap.total_size() {
-            return Err(VulkanError::Framework(crate::prelude::FrameworkError::UserInput(Some(format!("Unsuitable memory heap: the given allocator will manage {} bytes, but the selected memory heap only has {} bytes available", allocator.total_size(), memory_heap.total_size())))));
+            return Err(VulkanError::Framework(
+                crate::prelude::FrameworkError::UnsuitableMemoryHeapForAllocator(
+                    allocator.total_size(),
+                    memory_heap.total_size(),
+                ),
+            ));
         }
 
         let device = memory_heap.get_parent_device();

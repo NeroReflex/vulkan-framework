@@ -548,8 +548,8 @@ impl DescriptorSet {
         let mut lck = match self.bound_resources.lock() {
             Ok(lock) => lock,
             Err(err) => {
-                return Err(VulkanError::Framework(FrameworkError::Unknown(Some(
-                    format!("Error acquiring the descriptor set mutex: {}", err),
+                return Err(VulkanError::Framework(FrameworkError::MutexError(format!(
+                    "{err}"
                 ))))
             }
         };
@@ -587,10 +587,9 @@ impl DescriptorSet {
         let (min_idx, max_idx) = layout.binding_range();
 
         if min_idx != 0 {
-            return Err(VulkanError::Framework(FrameworkError::UserInput(Some(
-                "Error creating the descriptor set: bindings are not starting from zero"
-                    .to_string(),
-            ))));
+            return Err(VulkanError::Framework(
+                FrameworkError::InvalidBindingsNotStartingFromZero,
+            ));
         }
 
         let layouts = [layout.ash_handle()];

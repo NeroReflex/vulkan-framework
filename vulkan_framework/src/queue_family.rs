@@ -106,8 +106,8 @@ impl QueueFamily {
         let created_queues = match self.created_queues.lock() {
             Ok(lock) => lock,
             Err(err) => {
-                return Err(VulkanError::Framework(FrameworkError::Unknown(Some(
-                    format!("Error acquiring internal mutex: {}", err),
+                return Err(VulkanError::Framework(FrameworkError::MutexError(format!(
+                    "{err}"
                 ))))
             }
         };
@@ -115,9 +115,14 @@ impl QueueFamily {
         let created_queues_num = *(created_queues.deref());
         let total_number_of_queues = self.descriptor.queue_priorities.len();
         match created_queues_num < total_number_of_queues as u64 {
-            true => Ok((created_queues_num as u32, self.descriptor.queue_priorities[created_queues_num as usize])),
-            false =>
-                Err(VulkanError::Framework(FrameworkError::UserInput(Some(format!("From this QueueFamily the number of created Queue(s) is {} out of a maximum supported number of {} has already been created.", created_queues_num, total_number_of_queues)))))
+            true => Ok((
+                created_queues_num as u32,
+                self.descriptor.queue_priorities[created_queues_num as usize],
+            )),
+            false => Err(VulkanError::Framework(FrameworkError::TooManyQueues(
+                created_queues_num as usize,
+                total_number_of_queues,
+            ))),
         }
     }
 }

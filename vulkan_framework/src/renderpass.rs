@@ -220,9 +220,12 @@ impl RenderPass {
             > = smallvec::smallvec![];
             for color_attachment in subpass.output_color_attachment_indeces() {
                 if (*color_attachment as usize) >= attachment_descriptors.len() {
-                    return Err(VulkanError::Framework(FrameworkError::UserInput(Some(format!("Error creating the renderpass: in a subpass one color attachment is specified to be {}, but only {} attachments have beed defined",
-                    (*color_attachment as usize), attachment_descriptors.len()
-                )))));
+                    return Err(VulkanError::Framework(
+                        FrameworkError::InvalidColorAttachment(
+                            color_attachment.to_owned() as usize,
+                            attachment_descriptors.len(),
+                        ),
+                    ));
                 }
 
                 color_attachment_of_subpass.push(
@@ -238,9 +241,12 @@ impl RenderPass {
             > = smallvec::smallvec![];
             for input_attachment in subpass.input_color_attachment_indeces() {
                 if (*input_attachment as usize) >= attachment_descriptors.len() {
-                    return Err(VulkanError::Framework(FrameworkError::UserInput(Some(format!("Error creating the renderpass: in a subpass one input attachment is specified to be {}, but only {} attachments have beed defined",
-                    (*input_attachment as usize), attachment_descriptors.len()
-                )))));
+                    return Err(VulkanError::Framework(
+                        FrameworkError::InvalidInputAttachment(
+                            input_attachment.to_owned() as usize,
+                            attachment_descriptors.len(),
+                        ),
+                    ));
                 }
 
                 input_attachment_of_subpass.push(

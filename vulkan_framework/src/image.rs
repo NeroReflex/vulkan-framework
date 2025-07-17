@@ -277,13 +277,13 @@ impl TryFrom<ImageDimensions> for Image2DDimensions {
     fn try_from(value: ImageDimensions) -> Result<Self, Self::Error> {
         match &value {
             ImageDimensions::Image1D { extent: _ } => Err(VulkanError::Framework(
-                FrameworkError::UserInput(Some(String::new())),
+                FrameworkError::UnsuitableImageDimensions,
             )),
             ImageDimensions::Image2D { extent } => {
                 Ok(Image2DDimensions::new(extent.width(), extent.height()))
             }
             ImageDimensions::Image3D { extent: _ } => Err(VulkanError::Framework(
-                FrameworkError::UserInput(Some(String::new())),
+                FrameworkError::UnsuitableImageDimensions,
             )),
         }
     }
@@ -928,16 +928,15 @@ impl Image {
         debug_name: Option<&str>,
     ) -> VulkanResult<Self> {
         if descriptor.img_layers == 0 {
-            return Err(VulkanError::Framework(FrameworkError::UserInput(Some(
-                "Error creating image: number of layers must be at least 1".to_string(),
-            ))));
+            return Err(VulkanError::Framework(
+                FrameworkError::NoImageLayersSpecified,
+            ));
         }
 
         if descriptor.img_mip_levels == 0 {
-            return Err(VulkanError::Framework(FrameworkError::UserInput(Some(
-                "Error creating image: number of mipmap levels must be at least 1 (the base one)"
-                    .to_string(),
-            ))));
+            return Err(VulkanError::Framework(
+                FrameworkError::NoMipMapLevelsSpecified,
+            ));
         }
 
         let mut queue_family_indices = Vec::<u32>::new();

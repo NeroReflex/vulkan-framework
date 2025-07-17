@@ -1166,11 +1166,8 @@ impl PrimaryCommandBuffer {
         let mut resources_lck = match self.resources_in_use.lock() {
             Ok(lock) => lock,
             Err(err) => {
-                return Err(VulkanError::Framework(FrameworkError::Unknown(Some(
-                    format!(
-                        "Error opening the command buffer for writing: Error acquiring mutex: {}",
-                        err
-                    ),
+                return Err(VulkanError::Framework(FrameworkError::MutexError(format!(
+                    "{err}"
                 ))))
             }
         };

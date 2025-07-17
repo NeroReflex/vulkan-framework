@@ -93,9 +93,9 @@ impl RaytracingBindingTables {
 
         // this feature is required for raytracing to work at all
         if !memory_pool.features().device_addressable() {
-            return Err(VulkanError::Framework(FrameworkError::Unknown(Some(
-                "Missing feature on MemoryPool: device_addressable need to be set".to_string(),
-            ))));
+            return Err(VulkanError::Framework(
+                FrameworkError::MemoryPoolNotAddressable,
+            ));
         }
 
         let device = raytracing_pipeline.get_parent_device();

@@ -384,9 +384,9 @@ impl Device {
     ) -> VulkanResult<Arc<Self>> {
         // queue cannot be capable of nothing...
         if queue_descriptors.is_empty() {
-            return Err(VulkanError::Framework(FrameworkError::UserInput(Some(
-                "Error in queue search: no queue descriptor(s) have been specified".to_string(),
-            ))));
+            return Err(VulkanError::Framework(
+                FrameworkError::MissingQueueDescriptor,
+            ));
         }
 
         unsafe {
@@ -849,26 +849,26 @@ impl Device {
         let mut collection = match self.required_family_collection.lock() {
             Ok(lock) => lock,
             Err(err) => {
-                return Err(VulkanError::Framework(FrameworkError::Unknown(Some(
-                    format!("Error acquiring internal mutex: {}", err),
+                return Err(VulkanError::Framework(FrameworkError::MutexError(format!(
+                    "{err}"
                 ))))
             }
         };
 
-        match collection.len() > index {
-            true => match collection[index].to_owned() {
-                Some(cose) => {
-                    collection[index] = None;
-                    Ok(cose)
-                }
-                None => Err(VulkanError::Framework(
-                        FrameworkError::UserInput(Some(format!("The queue family with index {} has already been created once and there can only be one QueueFamily for requested queue capabilies.", index))),
-                    ))
-            },
-            false =>
-                Err(VulkanError::Framework(
-                    FrameworkError::UserInput(Some(format!("A queue family with index {} does not exists, at device creation time only {} queue families were requested.", index, collection.len()))),
-                ))
+        if collection.len() <= index {
+            return Err(VulkanError::Framework(
+                FrameworkError::TooManyQueueFamilies(index, collection.len()),
+            ));
         }
+
+        collection[index]
+            .to_owned()
+            .map(|cose| {
+                collection[index] = None;
+                Ok(cose)
+            })
+            .ok_or(VulkanError::Framework(
+                FrameworkError::QueueFamilyAlreadyCreated(index),
+            ))?
     }
 }
