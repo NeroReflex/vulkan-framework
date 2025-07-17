@@ -11,7 +11,7 @@ use crate::{
     graphics_pipeline::AttributeType,
     instance::InstanceOwned,
     memory_heap::MemoryHeapOwned,
-    memory_pool::MemoryPool,
+    memory_pool::{MemoryPool, MemoryPoolBacked},
     prelude::{FrameworkError, VulkanError, VulkanResult},
     queue_family::QueueFamily,
 };
@@ -111,11 +111,14 @@ pub struct BottomLevelAccelerationStructureTransformBuffer {
     buffer_device_addr: u64,
 }
 
+const IDENTITY_MATRIX: ash::vk::TransformMatrixKHR = ash::vk::TransformMatrixKHR {
+    matrix: [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+};
+
 impl BottomLevelAccelerationStructureTransformBuffer {
     pub fn new(
         memory_pool: Arc<MemoryPool>,
         usage: BufferUsage,
-        max_instances: u64,
         sharing: Option<&[std::sync::Weak<QueueFamily>]>,
         debug_name: &Option<&str>,
     ) -> VulkanResult<Arc<Self>> {
@@ -132,8 +135,7 @@ impl BottomLevelAccelerationStructureTransformBuffer {
                         | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
                         .as_raw(),
                 ),
-                (core::mem::size_of::<ash::vk::AccelerationStructureInstanceKHR>() as u64)
-                    * max_instances,
+                core::mem::size_of::<ash::vk::TransformMatrixKHR>() as u64,
             ),
             sharing,
             match &transform_buffer_debug_name {
@@ -143,6 +145,14 @@ impl BottomLevelAccelerationStructureTransformBuffer {
         )?;
 
         let buffer = AllocatedBuffer::new(memory_pool.clone(), transform_buffer)?;
+
+        // preload the identity matrix for convenience
+        memory_pool
+            .write_raw_data(
+                buffer.allocation_offset(),
+                &[IDENTITY_MATRIX],
+            )
+            .unwrap();
 
         let info = ash::vk::BufferDeviceAddressInfo::default().buffer(buffer.ash_handle());
         let buffer_device_addr = unsafe { device.ash_handle().get_buffer_device_address(&info) };
@@ -281,14 +291,13 @@ impl BottomLevelAccelerationStructureVertexBuffer {
 }
 
 pub struct BottomLevelAccelerationStructure {
-    max_instances: u64,
     triangles_decl: smallvec::SmallVec<[BottomLevelTrianglesGroupDecl; 1]>,
 
     handle: ash::vk::AccelerationStructureKHR,
     acceleration_structure_device_addr: u64,
 
     blas_buffer: Arc<AllocatedBuffer>,
-    blas_buffer_device_addr: u64,
+    //blas_buffer_device_addr: u64,
 
     vertex_buffer: Arc<BottomLevelAccelerationStructureVertexBuffer>,
     index_buffer: Arc<BottomLevelAccelerationStructureIndexBuffer>,
@@ -497,11 +506,6 @@ impl BottomLevelAccelerationStructure {
     }
 
     #[inline]
-    pub fn max_instances(&self) -> u64 {
-        self.max_instances
-    }
-
-    #[inline]
     pub fn device_addr(&self) -> u64 {
         self.acceleration_structure_device_addr.to_owned()
     }
@@ -574,7 +578,6 @@ impl BottomLevelAccelerationStructure {
     pub fn new(
         memory_pool: Arc<MemoryPool>,
         triangles_decl: BottomLevelTrianglesGroupDecl,
-        max_instances: u64,
         allowed_building_devices: AllowedBuildingDevice,
         vertex_buffer_usage: BufferUsage,
         index_buffer_usage: BufferUsage,
@@ -617,7 +620,6 @@ impl BottomLevelAccelerationStructure {
         let transform_buffer = BottomLevelAccelerationStructureTransformBuffer::new(
             memory_pool.clone(),
             transform_buffer_usage,
-            max_instances,
             sharing.clone(),
             &debug_name,
         )?;
@@ -671,12 +673,11 @@ impl BottomLevelAccelerationStructure {
 
                 let triangles_decl = smallvec::smallvec![triangles_decl];
                 Ok(Arc::new(Self {
-                    max_instances,
                     triangles_decl,
                     handle,
                     acceleration_structure_device_addr,
                     blas_buffer,
-                    blas_buffer_device_addr,
+                    //blas_buffer_device_addr,
                     vertex_buffer,
                     index_buffer,
                     transform_buffer,

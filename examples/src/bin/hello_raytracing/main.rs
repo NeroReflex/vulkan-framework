@@ -200,14 +200,19 @@ void main() {
     entry = "main"
 );
 
-const INSTANCE_DATA: [[f32; 12]; 2] = [
-    [1.0, -2.0, 0.0, 0.4, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+const TRANSFORM_DATA: [[f32; 12]; 2] = [
+    [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
     [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
 ];
 const VERTEX_INDEX: [[u32; 3]; 2] = [[0, 1, 2], [0, 1, 2]];
 const VERTEX_DATA: [[f32; 9]; 2] = [
     [0.0, 0.0, 0.0, 0.8, 0.0, 0.0, 0.0, 0.8, 0.0],
     [0.0, 0.0, 0.0, 0.8, 0.0, 0.0, 0.0, 0.8, 0.0],
+];
+
+const INSTANCES_DATA: [[f32; 12]; 2] = [
+    [1.0, -2.0, 0.0, 0.4, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+    [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
 ];
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -768,7 +773,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 AttributeType::Vec3,
                 0u64,
             ),
-            1,
             AllowedBuildingDevice::DeviceOnly,
             BufferUsage::empty(),
             BufferUsage::empty(),
@@ -779,18 +783,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap();
 
         {
-            let accel_structure_instance = ash::vk::AccelerationStructureInstanceKHR {
-                transform: ash::vk::TransformMatrixKHR {
-                    matrix: INSTANCE_DATA[0],
-                },
-                instance_shader_binding_table_record_offset_and_flags: ash::vk::Packed24_8::new(
-                    0, 0x01,
-                ), // VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
-                instance_custom_index_and_mask: ash::vk::Packed24_8::new(0x00, 0xFF),
-                acceleration_structure_reference: ash::vk::AccelerationStructureReferenceKHR {
-                    device_handle: blas.device_addr(),
-                },
-            };
+            let transform_data = [
+                ash::vk::TransformMatrixKHR {
+                    matrix: TRANSFORM_DATA[0],
+                }
+            ];
             raytracing_allocator
                 .write_raw_data(
                     blas.index_buffer().buffer().allocation_offset(),
@@ -806,7 +803,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             raytracing_allocator
                 .write_raw_data(
                     blas.transform_buffer().buffer().allocation_offset(),
-                    &[accel_structure_instance],
+                    &[transform_data],
                 )
                 .unwrap();
         }
@@ -828,7 +825,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             > = smallvec::smallvec![
                 ash::vk::AccelerationStructureInstanceKHR {
                     transform: ash::vk::TransformMatrixKHR {
-                        matrix: INSTANCE_DATA[0],
+                        matrix: INSTANCES_DATA[0],
                     },
                     instance_shader_binding_table_record_offset_and_flags: ash::vk::Packed24_8::new(
                         0, 0x01,
@@ -840,7 +837,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 },
                 ash::vk::AccelerationStructureInstanceKHR {
                     transform: ash::vk::TransformMatrixKHR {
-                        matrix: INSTANCE_DATA[1],
+                        matrix: INSTANCES_DATA[1],
                     },
                     instance_shader_binding_table_record_offset_and_flags: ash::vk::Packed24_8::new(
                         0, 0x01,
