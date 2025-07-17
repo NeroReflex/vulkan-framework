@@ -235,7 +235,7 @@ impl BottomLevelAccelerationStructureVertexBuffer {
             device.clone(),
             ConcreteBufferDescriptor::new(
                 BufferUsage::Unmanaged(
-                    usage.ash_usage().as_raw() | 
+                    usage.ash_usage().as_raw() |
                     (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                         | ash::vk::BufferUsageFlags::VERTEX_BUFFER
                         | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)

@@ -858,9 +858,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let tlas_building = PrimaryCommandBuffer::new(command_pool, Some("TLAS_Builder")).unwrap();
         tlas_building
-            .record_commands(|cmd| {
-                cmd.build_tlas(tlas.clone(), blas.clone(), 0, 1, 0, 0)
-            })
+            .record_commands(|cmd| cmd.build_tlas(tlas.clone(), &[(blas.clone(), 0, 1)]))
             .unwrap();
         let tlas_building_fence =
             Fence::new(dev.clone(), false, Some("tlas_building_fence")).unwrap();

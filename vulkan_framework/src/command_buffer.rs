@@ -6,7 +6,7 @@ use parking_lot::{const_mutex, Mutex};
 #[cfg(not(feature = "better_mutex"))]
 use std::sync::Mutex;
 
-use ash::vk::{GeometryFlagsKHR, Handle, Offset2D};
+use ash::vk::{Handle, Offset2D};
 
 use crate::{
     acceleration_structure::{
@@ -14,7 +14,6 @@ use crate::{
         AllowedBuildingDevice,
     },
     binding_tables::RaytracingBindingTables,
-    buffer::AllocatedBuffer,
     command_pool::{CommandPool, CommandPoolOwned},
     device::DeviceOwned,
     framebuffer::{Framebuffer, FramebufferTrait, ImagelessFramebuffer},
@@ -540,49 +539,40 @@ impl<'a> CommandBufferRecorder<'a> {
     pub fn build_tlas(
         &mut self,
         tlas: Arc<TopLevelAccelerationStructure>,
-
-        blas: Arc<BottomLevelAccelerationStructure>,
-
-        primitive_offset: u32,
-        primitive_count: u32,
-        first_vertex: u32,
-        transform_offset: u32,
+        blas_collection: &[(Arc<BottomLevelAccelerationStructure>, u32, u32)],
     ) {
         assert!(tlas.allowed_building_devices() != AllowedBuildingDevice::HostOnly);
 
-        let mut geometries: smallvec::SmallVec<[ash::vk::AccelerationStructureGeometryKHR; 16]> = smallvec::smallvec![];
-        let mut range_infos: Vec<Vec<ash::vk::AccelerationStructureBuildRangeInfoKHR>> = vec![];
-
         // TODO: assert from same device
 
-        let instances_info =
-            ash::vk::BufferDeviceAddressInfo::default().buffer(blas.instance_buffer().buffer().ash_handle());
-        let instances_buffer_device_addr = unsafe {
-            self.device
-                .ash_handle()
-                .get_buffer_device_address(&instances_info)
-        };
+        let geometries: smallvec::SmallVec<[ash::vk::AccelerationStructureGeometryKHR; 16]> =
+            blas_collection
+                .iter()
+                .map(|(blas, _, _)| {
+                    ash::vk::AccelerationStructureGeometryKHR::default()
+                        // TODO: .flags()
+                        .geometry_type(ash::vk::GeometryTypeKHR::INSTANCES)
+                        .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
+                            instances:
+                                ash::vk::AccelerationStructureGeometryInstancesDataKHR::default()
+                                    .array_of_pointers(tlas.blas_decl().array_of_pointers())
+                                    .data(ash::vk::DeviceOrHostAddressConstKHR {
+                                        device_address: blas.instance_buffer().buffer_device_addr(),
+                                    }),
+                        })
+                })
+                .collect();
 
-        geometries.push(
-            ash::vk::AccelerationStructureGeometryKHR::default()
-                // TODO: .flags()
-                .geometry_type(ash::vk::GeometryTypeKHR::INSTANCES)
-                .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
-                    instances: ash::vk::AccelerationStructureGeometryInstancesDataKHR::default()
-                        .array_of_pointers(tlas.blas_decl().array_of_pointers())
-                        .data(ash::vk::DeviceOrHostAddressConstKHR {
-                            device_address: instances_buffer_device_addr,
-                        }),
-                }),
-        );
-
-        range_infos.push(vec![
-            ash::vk::AccelerationStructureBuildRangeInfoKHR::default()
-                .primitive_offset(primitive_offset)
-                .primitive_count(primitive_count)
-                .first_vertex(first_vertex)
-                .transform_offset(transform_offset),
-        ]);
+        let range_infos: smallvec::SmallVec<
+            [smallvec::SmallVec<[ash::vk::AccelerationStructureBuildRangeInfoKHR; 1]>; 16],
+        > = blas_collection
+            .iter()
+            .map(|(_blas, primitive_offset, primitive_count)| {
+                smallvec::smallvec![ash::vk::AccelerationStructureBuildRangeInfoKHR::default()
+                    .primitive_offset(primitive_offset.to_owned())
+                    .primitive_count(primitive_count.to_owned())]
+            })
+            .collect();
 
         // From vulkan specs: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
         // The srcAccelerationStructure, dstAccelerationStructure, and mode members of pBuildInfo are ignored.
