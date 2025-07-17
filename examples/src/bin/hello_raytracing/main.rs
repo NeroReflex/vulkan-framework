@@ -200,9 +200,18 @@ void main() {
     entry = "main"
 );
 
-const INSTANCE_DATA: [f32; 12] = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0];
-const VERTEX_INDEX: [u32; 3] = [0, 1, 2];
-const VERTEX_DATA: [f32; 9] = [0.0, 0.0, 0.0, 0.8, 0.0, 0.0, 0.0, 0.8, 0.0];
+const INSTANCE_DATA: [[f32; 12]; 2] = [
+    [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+    [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+];
+const VERTEX_INDEX: [[u32; 3]; 2] = [
+    [0, 1, 2],
+    [0, 1, 2]
+];
+const VERTEX_DATA: [[f32; 9]; 2] = [
+    [0.0, 0.0, 0.0, 0.8, 0.0, 0.0, 0.0, 0.8, 0.0],
+    [0.0, 0.0, 0.0, 0.8, 0.0, 0.0, 0.0, 0.8, 0.0]
+];
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut instance_extensions = vec![String::from("VK_EXT_debug_utils")];
@@ -772,36 +781,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .unwrap();
 
-        let accel_structure_instance = ash::vk::AccelerationStructureInstanceKHR {
-            transform: ash::vk::TransformMatrixKHR {
-                matrix: INSTANCE_DATA,
-            },
-            instance_shader_binding_table_record_offset_and_flags: ash::vk::Packed24_8::new(
-                0, 0x01,
-            ), // VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
-            instance_custom_index_and_mask: ash::vk::Packed24_8::new(0x00, 0xFF),
-            acceleration_structure_reference: ash::vk::AccelerationStructureReferenceKHR {
-                device_handle: blas.device_addr(),
-            },
-        };
-        raytracing_allocator
-            .write_raw_data(
-                blas.index_buffer().buffer().allocation_offset(),
-                VERTEX_INDEX.as_slice(),
-            )
-            .unwrap();
-        raytracing_allocator
-            .write_raw_data(
-                blas.vertex_buffer().buffer().allocation_offset(),
-                VERTEX_DATA.as_slice(),
-            )
-            .unwrap();
-        raytracing_allocator
-            .write_raw_data(
-                blas.transform_buffer().buffer().allocation_offset(),
-                &[accel_structure_instance],
-            )
-            .unwrap();
+        {
+            let accel_structure_instance = ash::vk::AccelerationStructureInstanceKHR {
+                transform: ash::vk::TransformMatrixKHR {
+                    matrix: INSTANCE_DATA[0],
+                },
+                instance_shader_binding_table_record_offset_and_flags: ash::vk::Packed24_8::new(
+                    0, 0x01,
+                ), // VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
+                instance_custom_index_and_mask: ash::vk::Packed24_8::new(0x00, 0xFF),
+                acceleration_structure_reference: ash::vk::AccelerationStructureReferenceKHR {
+                    device_handle: blas.device_addr(),
+                },
+            };
+            raytracing_allocator
+                .write_raw_data(
+                    blas.index_buffer().buffer().allocation_offset(),
+                    VERTEX_INDEX[0].as_slice(),
+                )
+                .unwrap();
+            raytracing_allocator
+                .write_raw_data(
+                    blas.vertex_buffer().buffer().allocation_offset(),
+                    VERTEX_DATA[0].as_slice(),
+                )
+                .unwrap();
+            raytracing_allocator
+                .write_raw_data(
+                    blas.transform_buffer().buffer().allocation_offset(),
+                    &[accel_structure_instance],
+                )
+                .unwrap();
+        }
 
         let tlas = TopLevelAccelerationStructure::new(
             raytracing_allocator.clone(),
@@ -811,14 +822,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .unwrap();
 
-        raytracing_allocator
-            .write_raw_data(
-                blas.transform_buffer().buffer().allocation_offset(),
-                &[accel_structure_instance],
-            )
-            .unwrap();
-
-        // PUNTO DI INTERESE
         let blas_building =
             PrimaryCommandBuffer::new(command_pool.clone(), Some("BLAS_Builder")).unwrap();
         blas_building
