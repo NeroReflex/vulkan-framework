@@ -47,6 +47,7 @@ impl PresentModeSwapchainKHR {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum SurfaceColorspaceSwapchainKHR {
     SRGBNonlinear,
     // TODO: VK_AMD_display_native_hdr for freesync
