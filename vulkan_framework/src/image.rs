@@ -887,10 +887,6 @@ pub trait ImageTrait: Send + Sync + DeviceOwned {
     fn mip_levels_count(&self) -> u32;
 }
 
-pub trait ImageOwned {
-    fn get_parent_image(&self) -> Arc<dyn ImageTrait>;
-}
-
 pub struct Image {
     device: Arc<Device>,
     image: ash::vk::Image,

@@ -4,9 +4,14 @@ use crate::{
     image::*,
     instance::InstanceOwned,
     prelude::{VulkanError, VulkanResult},
+    swapchain_image::ImageSwapchainKHR,
 };
 
-use std::sync::Arc;
+use std::{
+    borrow::Borrow,
+    cell::RefCell,
+    sync::{Arc, Mutex},
+};
 
 #[derive(Debug, Copy, Clone)]
 pub enum ImageViewType {
@@ -38,17 +43,6 @@ impl ImageViewType {
 pub enum ImageViewColorMapping {
     rgba_rgba,
     bgra_rgba,
-}
-
-pub struct ImageView {
-    image: Arc<dyn ImageTrait>,
-    image_view: ash::vk::ImageView,
-    view_type: ImageViewType,
-    color_mapping: ImageViewColorMapping,
-    subrange_base_mip_level: u32,
-    subrange_level_count: u32,
-    subrange_base_array_layer: u32,
-    subrange_layer_count: u32,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -139,15 +133,20 @@ impl ImageViewAspect {
     }
 }
 
-impl ImageOwned for ImageView {
-    fn get_parent_image(&self) -> Arc<dyn ImageTrait> {
-        self.image.clone()
-    }
+pub struct ImageView {
+    image: Box<dyn Borrow<dyn ImageTrait>>,
+    image_view: ash::vk::ImageView,
+    view_type: ImageViewType,
+    color_mapping: ImageViewColorMapping,
+    subrange_base_mip_level: u32,
+    subrange_level_count: u32,
+    subrange_base_array_layer: u32,
+    subrange_layer_count: u32,
 }
 
 impl Drop for ImageView {
     fn drop(&mut self) {
-        let device = self.get_parent_image().get_parent_device();
+        let device = self.image.as_ref().borrow().get_parent_device();
 
         unsafe {
             device.ash_handle().destroy_image_view(
@@ -208,7 +207,7 @@ impl ImageView {
      * this is to allow to create an image view with a format different from the image's own format.
      */
     pub fn new(
-        image: Arc<dyn ImageTrait>,
+        image: impl Borrow<dyn ImageTrait> + 'static,
         view_type: ImageViewType,
         maybe_format: Option<ImageFormat>,
         maybe_aspect: Option<ImageViewAspect>,
@@ -224,13 +223,13 @@ impl ImageView {
             maybe_specified_color_mapping.unwrap_or(ImageViewColorMapping::rgba_rgba);
         let subrange_base_mip_level = maybe_specified_subrange_base_mip_level.unwrap_or(0);
         let subrange_level_count =
-            maybe_specified_subrange_level_count.unwrap_or(image.mip_levels_count());
+            maybe_specified_subrange_level_count.unwrap_or(image.borrow().mip_levels_count());
         let subrange_base_array_layer = maybe_specified_subrange_base_array_layer.unwrap_or(0);
         let subrange_layer_count = maybe_specified_subrange_layer_count.unwrap_or(1);
 
-        let format = maybe_format.unwrap_or(image.format());
+        let format = maybe_format.unwrap_or(image.borrow().format());
 
-        let device = image.get_parent_device();
+        let device = image.borrow().get_parent_device();
 
         let srr = ash::vk::ImageSubresourceRange {
             aspect_mask: match maybe_aspect {
@@ -244,60 +243,86 @@ impl ImageView {
         };
 
         let create_info = ash::vk::ImageViewCreateInfo::default()
-            .image(ash::vk::Image::from_raw(image.native_handle()))
-            .format(image.format().ash_format())
+            .image(ash::vk::Image::from_raw(image.borrow().native_handle()))
+            .format(image.borrow().format().ash_format())
             .subresource_range(srr)
             .view_type(view_type.ash_viewtype());
 
-        match unsafe {
+        let image_view = unsafe {
             device.ash_handle().create_image_view(
                 &create_info,
                 device.get_parent_instance().get_alloc_callbacks(),
             )
-        } {
-            Ok(image_view) => {
-                let mut obj_name_bytes = vec![];
-                if let Some(ext) = device.ash_ext_debug_utils_ext() {
-                    if let Some(name) = debug_name {
-                        for name_ch in name.as_bytes().iter() {
-                            obj_name_bytes.push(*name_ch);
-                        }
-                        obj_name_bytes.push(0x00);
+        }
+        .map_err(|err| {
+            VulkanError::Vulkan(
+                err.as_raw(),
+                Some(format!("Error creating the image view: {}", err)),
+            )
+        })?;
 
-                        unsafe {
-                            let object_name = std::ffi::CStr::from_bytes_with_nul_unchecked(
-                                obj_name_bytes.as_slice(),
-                            );
-                            // set device name for debugging
-                            let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::default()
-                                .object_handle(image_view)
-                                .object_name(object_name);
+        let mut obj_name_bytes = vec![];
+        if let Some(ext) = device.ash_ext_debug_utils_ext() {
+            if let Some(name) = debug_name {
+                for name_ch in name.as_bytes().iter() {
+                    obj_name_bytes.push(*name_ch);
+                }
+                obj_name_bytes.push(0x00);
 
-                            if let Err(err) = ext.set_debug_utils_object_name(&dbg_info) {
-                                #[cfg(debug_assertions)]
-                                {
-                                    println!("Error setting the Debug name for the newly created Queue, will use handle. Error: {}", err)
-                                }
-                            }
+                unsafe {
+                    let object_name =
+                        std::ffi::CStr::from_bytes_with_nul_unchecked(obj_name_bytes.as_slice());
+                    // set device name for debugging
+                    let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::default()
+                        .object_handle(image_view)
+                        .object_name(object_name);
+
+                    if let Err(err) = ext.set_debug_utils_object_name(&dbg_info) {
+                        #[cfg(debug_assertions)]
+                        {
+                            println!("Error setting the Debug name for the newly created Queue, will use handle. Error: {}", err)
                         }
                     }
                 }
-
-                Ok(Arc::new(Self {
-                    image,
-                    image_view,
-                    view_type,
-                    color_mapping,
-                    subrange_base_mip_level,
-                    subrange_level_count,
-                    subrange_base_array_layer,
-                    subrange_layer_count,
-                }))
             }
-            Err(err) => Err(VulkanError::Vulkan(
-                err.as_raw(),
-                Some(format!("Error creating the image view: {}", err)),
-            )),
         }
+
+        let image = Box::new(image);
+        Ok(Arc::new(Self {
+            image,
+            image_view,
+            view_type,
+            color_mapping,
+            subrange_base_mip_level,
+            subrange_level_count,
+            subrange_base_array_layer,
+            subrange_layer_count,
+        }))
+    }
+
+    pub fn from_arc(
+        image: Arc<dyn ImageTrait>,
+        view_type: ImageViewType,
+        maybe_format: Option<ImageFormat>,
+        maybe_aspect: Option<ImageViewAspect>,
+        maybe_specified_color_mapping: Option<ImageViewColorMapping>,
+        maybe_specified_subrange_base_mip_level: Option<u32>,
+        maybe_specified_subrange_level_count: Option<u32>,
+        maybe_specified_subrange_base_array_layer: Option<u32>,
+        maybe_specified_subrange_layer_count: Option<u32>,
+        debug_name: Option<&str>,
+    ) -> VulkanResult<Arc<Self>> {
+        Self::new(
+            image,
+            view_type,
+            maybe_format,
+            maybe_aspect,
+            maybe_specified_color_mapping,
+            maybe_specified_subrange_base_mip_level,
+            maybe_specified_subrange_level_count,
+            maybe_specified_subrange_base_array_layer,
+            maybe_specified_subrange_layer_count,
+            debug_name,
+        )
     }
 }

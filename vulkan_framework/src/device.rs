@@ -165,6 +165,7 @@ impl InstanceOwned for Device {
 
 impl Drop for Device {
     fn drop(&mut self) {
+        self.wait_idle().unwrap();
         let alloc_callbacks = self.instance.get_alloc_callbacks();
         unsafe { self.device.destroy_device(alloc_callbacks) }
     }

@@ -1,6 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use crate::{
+    command_buffer::{CommandBufferCrateTrait, CommandBufferTrait},
     device::{Device, DeviceOwned},
     instance::InstanceOwned,
     prelude::{FrameworkError, VulkanError, VulkanResult},
@@ -210,6 +211,42 @@ impl Fence {
                 err.as_raw(),
                 Some(format!("Error creating the fence: {}", err)),
             )),
+        }
+    }
+}
+
+type FenceWaiterCommandBufferType = smallvec::SmallVec<[Arc<dyn CommandBufferTrait>; 8]>;
+
+pub struct FenceWaiter {
+    fence: Arc<Fence>,
+    _command_buffers: FenceWaiterCommandBufferType,
+}
+
+impl Drop for FenceWaiter {
+    fn drop(&mut self) {
+        loop {
+            match Fence::wait_for_fences(
+                &[self.fence.clone()],
+                FenceWaitFor::All,
+                Duration::from_millis(u64::MAX),
+            ) {
+                Ok(_) => return self.fence.reset().unwrap(),
+                Err(err) => match err.is_timeout() {
+                    true => continue,
+                    false => panic!("Error while waiting for fence"),
+                },
+            }
+        }
+    }
+}
+
+impl FenceWaiter {
+    pub(crate) fn new(fence: Arc<Fence>, command_buffers: &[Arc<dyn CommandBufferTrait>]) -> Self {
+        let command_buffers = command_buffers.iter().cloned().collect();
+
+        Self {
+            fence,
+            _command_buffers: command_buffers,
         }
     }
 }

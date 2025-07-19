@@ -1,26 +1,28 @@
-use std::sync::Arc;
+use std::{
+    borrow::Borrow,
+    ops::Deref,
+    sync::{Arc, Mutex},
+};
 
 use crate::{
-    device::DeviceOwned,
-    image::{ImageFlags, ImageTrait, ImageUsage},
-    prelude::{VulkanError, VulkanResult},
-    swapchain::{SwapchainKHR, SwapchainKHROwned},
+    device::{Device, DeviceOwned},
+    image::{Image2DDimensions, ImageDimensions, ImageFlags, ImageFormat, ImageTrait, ImageUsage},
 };
 
 pub struct ImageSwapchainKHR {
-    swapchain: Arc<SwapchainKHR>,
+    device: Arc<Device>,
+    flags: ImageFlags,
+    usage: ImageUsage,
+    format: ImageFormat,
+    dimensions: ImageDimensions,
+    layers_count: u32,
+    mip_levels_count: u32,
     image: ash::vk::Image,
 }
 
 impl DeviceOwned for ImageSwapchainKHR {
-    fn get_parent_device(&self) -> std::sync::Arc<crate::device::Device> {
-        self.swapchain.get_parent_device()
-    }
-}
-
-impl SwapchainKHROwned for ImageSwapchainKHR {
-    fn get_parent_swapchain(&self) -> std::sync::Arc<crate::swapchain::SwapchainKHR> {
-        self.swapchain.clone()
+    fn get_parent_device(&self) -> std::sync::Arc<Device> {
+        self.device.clone()
     }
 }
 
@@ -30,63 +32,57 @@ impl ImageTrait for ImageSwapchainKHR {
         ash::vk::Handle::as_raw(self.image)
     }
 
+    #[inline]
     fn flags(&self) -> ImageFlags {
-        self.get_parent_swapchain().images_flags()
+        self.flags.to_owned()
     }
 
     #[inline]
     fn usage(&self) -> ImageUsage {
-        self.get_parent_swapchain().images_usage()
+        self.usage.to_owned()
     }
 
     #[inline]
-    fn format(&self) -> crate::image::ImageFormat {
-        self.swapchain.images_format()
+    fn format(&self) -> ImageFormat {
+        self.format.to_owned()
     }
 
     #[inline]
-    fn dimensions(&self) -> crate::image::ImageDimensions {
-        crate::image::ImageDimensions::Image2D {
-            extent: self.swapchain.images_extent(),
-        }
+    fn dimensions(&self) -> ImageDimensions {
+        self.dimensions.to_owned()
     }
 
     #[inline]
     fn layers_count(&self) -> u32 {
-        self.swapchain.images_layers_count()
+        self.layers_count.to_owned()
     }
 
     #[inline]
     fn mip_levels_count(&self) -> u32 {
-        self.swapchain.images_layers_count()
+        self.mip_levels_count.to_owned()
     }
 }
 
 impl ImageSwapchainKHR {
-    pub fn extract(
-        swapchain: Arc<SwapchainKHR>,
-    ) -> VulkanResult<smallvec::SmallVec<[Arc<Self>; 8]>> {
-        match swapchain.get_parent_device().ash_ext_swapchain_khr() {
-            Option::Some(ext) => {
-                match unsafe { ext.get_swapchain_images(swapchain.ash_handle()) } {
-                    Ok(images) => Ok(images
-                        .into_iter()
-                        .map(|swapchain_image| {
-                            Arc::new(Self {
-                                swapchain: swapchain.clone(),
-                                image: swapchain_image,
-                            })
-                        })
-                        .collect::<smallvec::SmallVec<[Arc<Self>; 8]>>()),
-                    Err(err) => Err(VulkanError::Vulkan(
-                        err.as_raw(),
-                        Some(format!("Error fetching images from the swapchain: {}", err)),
-                    )),
-                }
-            }
-            Option::None => Err(VulkanError::MissingExtension(String::from(
-                "VK_KHR_swapchain",
-            ))),
+    pub(crate) fn new(
+        device: Arc<Device>,
+        flags: ImageFlags,
+        usage: ImageUsage,
+        format: ImageFormat,
+        extent: Image2DDimensions,
+        layers_count: u32,
+        mip_levels_count: u32,
+        image: ash::vk::Image,
+    ) -> Self {
+        Self {
+            device,
+            image,
+            flags,
+            usage,
+            format,
+            dimensions: ImageDimensions::Image2D { extent },
+            layers_count: layers_count,
+            mip_levels_count,
         }
     }
 }

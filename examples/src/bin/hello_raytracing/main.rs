@@ -56,7 +56,6 @@ use vulkan_framework::{
         CompositeAlphaSwapchainKHR, DeviceSurfaceInfo, PresentModeSwapchainKHR,
         SurfaceColorspaceSwapchainKHR, SurfaceTransformSwapchainKHR, SwapchainKHR,
     },
-    swapchain_image::ImageSwapchainKHR,
 };
 
 use vulkan_framework::descriptor_pool::DescriptorPool;
@@ -439,7 +438,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let rt_image_views = rt_images
             .iter()
             .map(|rt_img| {
-                ImageView::new(
+                ImageView::from_arc(
                     rt_img.clone(),
                     ImageViewType::Image2D,
                     None,
@@ -454,9 +453,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .unwrap()
             })
             .collect::<Vec<_>>();
-
-        let swapchain_images = ImageSwapchainKHR::extract(swapchain.clone()).unwrap();
-        println!("Swapchain images extracted!");
 
         let descriptor_pool = DescriptorPool::new(
             dev.clone(),
@@ -502,7 +498,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|idx| {
                 Fence::new(
                     dev.clone(),
-                    true,
+                    false,
                     Some(format!("swapchain_fences[{idx}]").as_str()),
                 )
                 .unwrap()
@@ -557,26 +553,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap();
         println!("Pipeline layout created!");
 
-        let swapchain_image_views = swapchain_images
-            .clone()
-            .into_iter()
-            .enumerate()
-            .map(|(idx, image_swapchain)| {
-                ImageView::new(
-                    image_swapchain,
-                    ImageViewType::Image2D,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    Some(format!("swapchain_image_views[{idx}]").as_str()),
-                )
-                .unwrap()
-            })
-            .collect::<Vec<_>>();
+        let mut swapchain_image_views = vec![];
+        for idx in 0..swapchain_images_count {
+            swapchain_image_views.push(swapchain.image_view(idx as usize).unwrap());
+        }
 
         let renderquad_sampler = vulkan_framework::sampler::Sampler::new(
             dev.clone(),
@@ -757,9 +737,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .unwrap();
 
-        let shader_binding_tables = swapchain_images
+        let shader_binding_tables = (0..swapchain_images_count)
             .into_iter()
-            .map(|_image_swapchain| {
+            .map(|_| {
                 RaytracingBindingTables::new(pipeline.clone(), raytracing_allocator.clone())
                     .unwrap()
             })
@@ -864,30 +844,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let blas_building_fence =
             Fence::new(dev.clone(), false, Some("blas_building_fence")).unwrap();
 
-        queue
-            .submit(&[blas_building], &[], &[], blas_building_fence.clone())
-            .unwrap();
-
-        loop {
-            match Fence::wait_for_fences(
-                &[blas_building_fence.clone()],
-                FenceWaitFor::All,
-                Duration::from_nanos(100),
-            ) {
-                Ok(_) => {
-                    blas_building_fence.reset().unwrap();
-                    break;
-                }
-                Err(err) => {
-                    if err.is_timeout() {
-                        //println!("TIMEOUT");
-                        continue;
-                    }
-
-                    panic!("Error in waiting for fence: {err}")
-                }
-            }
-        }
+        // dropping the fence waiter makes the fence being waited for
+        drop(
+            queue
+                .submit(&[blas_building], &[], &[], blas_building_fence.clone())
+                .unwrap(),
+        );
 
         let tlas_building = PrimaryCommandBuffer::new(command_pool, Some("TLAS_Builder")).unwrap();
         tlas_building
@@ -896,30 +858,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let tlas_building_fence =
             Fence::new(dev.clone(), false, Some("tlas_building_fence")).unwrap();
 
-        queue
-            .submit(&[tlas_building], &[], &[], tlas_building_fence.clone())
-            .unwrap();
-
-        loop {
-            match Fence::wait_for_fences(
-                &[tlas_building_fence.clone()],
-                FenceWaitFor::All,
-                Duration::from_nanos(100),
-            ) {
-                Ok(_) => {
-                    tlas_building_fence.reset().unwrap();
-                    break;
-                }
-                Err(err) => {
-                    if err.is_timeout() {
-                        //println!("TIMEOUT");
-                        continue;
-                    }
-
-                    panic!("error in waiting for fence: {err}")
-                }
-            }
-        }
+        // dropping the fence waiter makes the fence being waited for
+        drop(
+            queue
+                .submit(&[tlas_building], &[], &[], tlas_building_fence.clone())
+                .unwrap(),
+        );
 
         let rt_descriptor_sets = (0..swapchain_images_count)
             .map(|idx| {
@@ -946,159 +890,162 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let mut current_frame: usize = 0;
 
-        let mut event_pump = sdl_context.event_pump().unwrap();
-        'running: loop {
-            for event in event_pump.poll_iter() {
-                match event {
-                    sdl2::event::Event::Quit { .. }
-                    | sdl2::event::Event::KeyDown {
-                        keycode: Some(sdl2::keyboard::Keycode::Escape),
-                        ..
-                    } => {
-                        for fence in swapchain_fences.iter() {
-                            Fence::wait_for_fences(
-                                &[fence.clone()],
-                                FenceWaitFor::All,
-                                Duration::from_nanos(u64::MAX),
-                            )
-                            .unwrap();
-                            fence.reset().unwrap();
+        {
+            let mut fence_waiters: smallvec::SmallVec<[_; 4]> = (0..(frames_in_flight as usize))
+                .into_iter()
+                .map(|_| Option::None)
+                .collect();
+
+            let mut event_pump = sdl_context.event_pump().unwrap();
+            'running: loop {
+                for event in event_pump.poll_iter() {
+                    match event {
+                        sdl2::event::Event::Quit { .. }
+                        | sdl2::event::Event::KeyDown {
+                            keycode: Some(sdl2::keyboard::Keycode::Escape),
+                            ..
+                        } => {
+                            dev.clone().wait_idle().unwrap();
+                            break 'running;
                         }
-                        dev.clone().wait_idle().unwrap();
-                        break 'running;
+                        _ => {}
                     }
-                    _ => {}
                 }
+
+                drop(fence_waiters[current_frame].take());
+
+                let (swapchain_index, _swapchain_optimal) = swapchain
+                    .acquire_next_image_index(
+                        Duration::from_nanos(u64::MAX),
+                        Some(image_available_semaphores[current_frame].clone()),
+                        None,
+                    )
+                    .unwrap();
+
+                present_command_buffers[swapchain_index as usize]
+                    .record_commands(|recorder: &mut CommandBufferRecorder| {
+                        // TODO: HERE transition the image layout from UNDEFINED to GENERAL so that ray tracing pipeline can write to it
+                        recorder.image_barrier(ImageMemoryBarrier::new(
+                            PipelineStages::from(&[PipelineStage::TopOfPipe], None, None, None),
+                            AccessFlags::Unmanaged(0),
+                            PipelineStages::from(
+                                &[],
+                                None,
+                                None,
+                                Some(&[PipelineStageRayTracingPipelineKHR::RayTracingShader]),
+                            ),
+                            AccessFlags::Managed(AccessFlagsSpecifier::from(
+                                &[AccessFlag::ShaderWrite],
+                                None,
+                            )),
+                            rt_images[swapchain_index as usize].clone(),
+                            None,
+                            None,
+                            None,
+                            None,
+                            None,
+                            ImageLayout::Undefined,
+                            rt_writer_img_layout,
+                            queue_family.clone(),
+                            queue_family.clone(),
+                        ));
+
+                        recorder.bind_ray_tracing_pipeline(pipeline.clone());
+                        recorder.bind_descriptor_sets_for_ray_tracing_pipeline(
+                            pipeline_layout.clone(),
+                            0,
+                            &[rt_descriptor_sets[swapchain_index as usize].clone()],
+                        );
+                        recorder.trace_rays(
+                            shader_binding_tables[swapchain_index as usize].clone(),
+                            Image3DDimensions::from(swapchain_extent),
+                        );
+
+                        // HERE wait for the ray tracing pipeline to transition image layout from GENERAL to renderquad_texture_layout
+                        recorder.image_barrier(ImageMemoryBarrier::new(
+                            PipelineStages::from(
+                                &[],
+                                None,
+                                None,
+                                Some(&[PipelineStageRayTracingPipelineKHR::RayTracingShader]),
+                            ),
+                            AccessFlags::Managed(AccessFlagsSpecifier::from(
+                                &[AccessFlag::ShaderWrite],
+                                None,
+                            )),
+                            PipelineStages::from(
+                                &[PipelineStage::FragmentShader],
+                                None,
+                                None,
+                                None,
+                            ),
+                            AccessFlags::Managed(AccessFlagsSpecifier::from(
+                                &[AccessFlag::ShaderRead],
+                                None,
+                            )),
+                            rt_images[swapchain_index as usize].clone(),
+                            None,
+                            None,
+                            None,
+                            None,
+                            None,
+                            rt_writer_img_layout,
+                            renderquad_image_input_format,
+                            queue_family.clone(),
+                            queue_family.clone(),
+                        ));
+
+                        recorder.begin_renderpass(
+                            rendequad_framebuffers[swapchain_index as usize].clone(),
+                            &[ClearValues::new(Some(ColorClearValues::Vec4(
+                                1.0, 1.0, 1.0, 1.0,
+                            )))],
+                        );
+                        recorder.bind_graphics_pipeline(
+                            renderquad_graphics_pipeline.clone(),
+                            None,
+                            None,
+                        );
+                        recorder.bind_descriptor_sets_for_graphics_pipeline(
+                            renderquad_pipeline_layout.clone(),
+                            0,
+                            &[renderquad_descriptor_sets[swapchain_index as usize].clone()],
+                        );
+                        recorder.draw(0, 6, 0, 1);
+
+                        recorder.end_renderpass();
+                    })
+                    .unwrap();
+
+                fence_waiters[current_frame] = Some(
+                    queue
+                        .submit(
+                            &[present_command_buffers[swapchain_index as usize].clone()],
+                            &[(
+                                PipelineStages::from(
+                                    &[PipelineStage::FragmentShader],
+                                    None,
+                                    None,
+                                    None,
+                                ),
+                                image_available_semaphores[current_frame].clone(),
+                            )],
+                            &[present_ready[swapchain_index as usize].clone()],
+                            swapchain_fences[current_frame].clone(),
+                        )
+                        .unwrap(),
+                );
+
+                swapchain
+                    .queue_present(
+                        queue.clone(),
+                        swapchain_index,
+                        &[present_ready[swapchain_index as usize].clone()],
+                    )
+                    .unwrap();
+
+                current_frame = (current_frame + 1) % frames_in_flight;
             }
-
-            Fence::wait_for_fences(
-                &[swapchain_fences[current_frame].clone()],
-                FenceWaitFor::All,
-                Duration::from_nanos(u64::MAX),
-            )
-            .unwrap();
-
-            let (swapchain_index, _swapchain_optimal) = swapchain
-                .acquire_next_image_index(
-                    Duration::from_nanos(u64::MAX),
-                    Some(image_available_semaphores[current_frame].clone()),
-                    None,
-                )
-                .unwrap();
-
-            swapchain_fences[current_frame].reset().unwrap();
-
-            present_command_buffers[swapchain_index as usize]
-                .record_commands(|recorder: &mut CommandBufferRecorder| {
-                    // TODO: HERE transition the image layout from UNDEFINED to GENERAL so that ray tracing pipeline can write to it
-                    recorder.image_barrier(ImageMemoryBarrier::new(
-                        PipelineStages::from(&[PipelineStage::TopOfPipe], None, None, None),
-                        AccessFlags::Unmanaged(0),
-                        PipelineStages::from(
-                            &[],
-                            None,
-                            None,
-                            Some(&[PipelineStageRayTracingPipelineKHR::RayTracingShader]),
-                        ),
-                        AccessFlags::Managed(AccessFlagsSpecifier::from(
-                            &[AccessFlag::ShaderWrite],
-                            None,
-                        )),
-                        rt_images[swapchain_index as usize].clone(),
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        ImageLayout::Undefined,
-                        rt_writer_img_layout,
-                        queue_family.clone(),
-                        queue_family.clone(),
-                    ));
-
-                    recorder.bind_ray_tracing_pipeline(pipeline.clone());
-                    recorder.bind_descriptor_sets_for_ray_tracing_pipeline(
-                        pipeline_layout.clone(),
-                        0,
-                        &[rt_descriptor_sets[swapchain_index as usize].clone()],
-                    );
-                    recorder.trace_rays(
-                        shader_binding_tables[swapchain_index as usize].clone(),
-                        Image3DDimensions::from(swapchain_extent),
-                    );
-
-                    // HERE wait for the ray tracing pipeline to transition image layout from GENERAL to renderquad_texture_layout
-                    recorder.image_barrier(ImageMemoryBarrier::new(
-                        PipelineStages::from(
-                            &[],
-                            None,
-                            None,
-                            Some(&[PipelineStageRayTracingPipelineKHR::RayTracingShader]),
-                        ),
-                        AccessFlags::Managed(AccessFlagsSpecifier::from(
-                            &[AccessFlag::ShaderWrite],
-                            None,
-                        )),
-                        PipelineStages::from(&[PipelineStage::FragmentShader], None, None, None),
-                        AccessFlags::Managed(AccessFlagsSpecifier::from(
-                            &[AccessFlag::ShaderRead],
-                            None,
-                        )),
-                        rt_images[swapchain_index as usize].clone(),
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        rt_writer_img_layout,
-                        renderquad_image_input_format,
-                        queue_family.clone(),
-                        queue_family.clone(),
-                    ));
-
-                    recorder.begin_renderpass(
-                        rendequad_framebuffers[swapchain_index as usize].clone(),
-                        &[ClearValues::new(Some(ColorClearValues::Vec4(
-                            1.0, 1.0, 1.0, 1.0,
-                        )))],
-                    );
-                    recorder.bind_graphics_pipeline(
-                        renderquad_graphics_pipeline.clone(),
-                        None,
-                        None,
-                    );
-                    recorder.bind_descriptor_sets_for_graphics_pipeline(
-                        renderquad_pipeline_layout.clone(),
-                        0,
-                        &[renderquad_descriptor_sets[swapchain_index as usize].clone()],
-                    );
-                    recorder.draw(0, 6, 0, 1);
-
-                    recorder.end_renderpass();
-                })
-                .unwrap();
-
-            queue
-                .submit(
-                    &[present_command_buffers[swapchain_index as usize].clone()],
-                    &[(
-                        PipelineStages::from(&[PipelineStage::FragmentShader], None, None, None),
-                        image_available_semaphores[current_frame].clone(),
-                    )],
-                    &[present_ready[swapchain_index as usize].clone()],
-                    swapchain_fences[current_frame].clone(),
-                )
-                .unwrap();
-
-            swapchain
-                .queue_present(
-                    queue.clone(),
-                    swapchain_index,
-                    &[present_ready[swapchain_index as usize].clone()],
-                )
-                .unwrap();
-
-            current_frame = (current_frame + 1) % frames_in_flight;
         }
     }
 

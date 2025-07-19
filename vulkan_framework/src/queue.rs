@@ -4,7 +4,7 @@ use smallvec::{smallvec, SmallVec};
 use crate::{
     command_buffer::CommandBufferTrait,
     device::DeviceOwned,
-    fence::Fence,
+    fence::{Fence, FenceWaiter},
     pipeline_stage::PipelineStages,
     prelude::{VulkanError, VulkanResult},
     queue_family::*,
@@ -47,7 +47,7 @@ impl Queue {
         wait_semaphores: &[(PipelineStages, Arc<Semaphore>)],
         signal_semaphores: &[Arc<Semaphore>],
         fence: Arc<Fence>,
-    ) -> VulkanResult<()> {
+    ) -> VulkanResult<FenceWaiter> {
         if self.get_parent_queue_family().get_parent_device() != fence.get_parent_device() {
             return Err(VulkanError::Framework(
                 crate::prelude::FrameworkError::ResourceFromIncompatibleDevice,
@@ -100,7 +100,7 @@ impl Queue {
                 .ash_handle()
                 .queue_submit(self.ash_handle(), submits.as_slice(), fence.ash_handle())
         } {
-            Ok(_) => Ok(()),
+            Ok(_) => Ok(FenceWaiter::new(fence, command_buffers)),
             Err(err) => Err(VulkanError::Vulkan(
                 err.as_raw(),
                 Some(format!(

@@ -56,6 +56,8 @@ pub enum FrameworkError {
     NoBindingDescriptorsSpecified,
     #[error("Mutex error: {0}")]
     MutexError(String),
+    #[error("Invalid descriptor set usage")]
+    InvalidDescriptorSetUsage,
 }
 
 #[derive(Debug, Error, Clone)]

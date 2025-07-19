@@ -52,8 +52,10 @@ pub struct DescriptorSetWriter<'a> {
         ); 8],
     >,
 
-    used_resources: smallvec::SmallVec<[Option<DescriptorSetBoundResource>; 32]>,
+    pub(crate) used_resources: Option<UsedResourcesType>,
 }
+
+type UsedResourcesType = smallvec::SmallVec<[Option<DescriptorSetBoundResource>; 32]>;
 
 impl<'a> DescriptorSetWriter<'a> {
     pub(crate) fn new(descriptor_set: &'a DescriptorSet, size: u32) -> Self {
@@ -65,14 +67,8 @@ impl<'a> DescriptorSetWriter<'a> {
             storage_images: smallvec::smallvec![],
             uniform_buffers: smallvec::smallvec![],
             storage_buffers: smallvec::smallvec![],
-            used_resources: (0..size).map(|_idx| Option::default()).collect(),
+            used_resources: Some((0..size).map(|_idx| Option::default()).collect()),
         }
-    }
-
-    pub(crate) fn used_resources(
-        &self,
-    ) -> &smallvec::SmallVec<[Option<DescriptorSetBoundResource>; 32]> {
-        &self.used_resources
     }
 
     pub fn bind_tlas(
@@ -80,14 +76,20 @@ impl<'a> DescriptorSetWriter<'a> {
         first_layout_id: u32,
         tlas_collection: &[Arc<TopLevelAccelerationStructure>],
     ) -> VulkanResult<()> {
-        if first_layout_id as usize + tlas_collection.len() > self.used_resources.len() {
+        let Some(used_res) = &mut self.used_resources else {
+            return Err(VulkanError::Framework(
+                FrameworkError::InvalidDescriptorSetUsage,
+            ));
+        };
+
+        if first_layout_id as usize + tlas_collection.len() > used_res.len() {
             return Err(VulkanError::Framework(
                 FrameworkError::DescriptorSetBindingOutOfRange,
             ));
         }
 
         for (idx, el) in tlas_collection.iter().enumerate() {
-            if self.used_resources[first_layout_id as usize + idx]
+            if used_res[first_layout_id as usize + idx]
                 .replace(DescriptorSetBoundResource::TLAS(el.clone()))
                 .is_some()
             {
@@ -107,14 +109,20 @@ impl<'a> DescriptorSetWriter<'a> {
         first_layout_id: u32,
         images: &[(ImageLayout, Arc<ImageView>, Arc<Sampler>)],
     ) -> VulkanResult<()> {
-        if first_layout_id as usize + images.len() > self.used_resources.len() {
+        let Some(used_res) = &mut self.used_resources else {
+            return Err(VulkanError::Framework(
+                FrameworkError::InvalidDescriptorSetUsage,
+            ));
+        };
+
+        if first_layout_id as usize + images.len() > used_res.len() {
             return Err(VulkanError::Framework(
                 FrameworkError::DescriptorSetBindingOutOfRange,
             ));
         }
 
         for (idx, (_, image_view, sampler)) in images.iter().enumerate() {
-            if self.used_resources[first_layout_id as usize + idx]
+            if used_res[first_layout_id as usize + idx]
                 .replace(DescriptorSetBoundResource::CombinedImageViewSampler((
                     image_view.clone(),
                     sampler.clone(),
@@ -137,14 +145,20 @@ impl<'a> DescriptorSetWriter<'a> {
         first_layout_id: u32,
         images: &[(ImageLayout, Arc<ImageView>)],
     ) -> VulkanResult<()> {
-        if first_layout_id as usize + images.len() > self.used_resources.len() {
+        let Some(used_res) = &mut self.used_resources else {
+            return Err(VulkanError::Framework(
+                FrameworkError::InvalidDescriptorSetUsage,
+            ));
+        };
+
+        if first_layout_id as usize + images.len() > used_res.len() {
             return Err(VulkanError::Framework(
                 FrameworkError::DescriptorSetBindingOutOfRange,
             ));
         }
 
         for (idx, (_, image_view)) in images.iter().enumerate() {
-            if self.used_resources[first_layout_id as usize + idx]
+            if used_res[first_layout_id as usize + idx]
                 .replace(DescriptorSetBoundResource::ImageView(image_view.clone()))
                 .is_some()
             {
@@ -164,14 +178,20 @@ impl<'a> DescriptorSetWriter<'a> {
         first_layout_id: u32,
         images: &[(ImageLayout, Arc<ImageView>)],
     ) -> VulkanResult<()> {
-        if first_layout_id as usize + images.len() > self.used_resources.len() {
+        let Some(used_res) = &mut self.used_resources else {
+            return Err(VulkanError::Framework(
+                FrameworkError::InvalidDescriptorSetUsage,
+            ));
+        };
+
+        if first_layout_id as usize + images.len() > used_res.len() {
             return Err(VulkanError::Framework(
                 FrameworkError::DescriptorSetBindingOutOfRange,
             ));
         }
 
         for (idx, (_, image_view)) in images.iter().enumerate() {
-            if self.used_resources[first_layout_id as usize + idx]
+            if used_res[first_layout_id as usize + idx]
                 .replace(DescriptorSetBoundResource::ImageView(image_view.clone()))
                 .is_some()
             {
@@ -191,14 +211,20 @@ impl<'a> DescriptorSetWriter<'a> {
         first_layout_id: u32,
         buffers: &[(Arc<dyn BufferTrait>, Option<u64>, Option<u64>)],
     ) -> VulkanResult<()> {
-        if first_layout_id as usize + buffers.len() > self.used_resources.len() {
+        let Some(used_res) = &mut self.used_resources else {
+            return Err(VulkanError::Framework(
+                FrameworkError::InvalidDescriptorSetUsage,
+            ));
+        };
+
+        if first_layout_id as usize + buffers.len() > used_res.len() {
             return Err(VulkanError::Framework(
                 FrameworkError::DescriptorSetBindingOutOfRange,
             ));
         }
 
         for (idx, (buffer, _, _)) in buffers.iter().enumerate() {
-            if self.used_resources[first_layout_id as usize + idx]
+            if used_res[first_layout_id as usize + idx]
                 .replace(DescriptorSetBoundResource::Buffer(buffer.clone()))
                 .is_some()
             {
@@ -235,14 +261,20 @@ impl<'a> DescriptorSetWriter<'a> {
         first_layout_id: u32,
         buffers: &[(Arc<dyn BufferTrait>, Option<u64>, Option<u64>)],
     ) -> VulkanResult<()> {
-        if first_layout_id as usize + buffers.len() > self.used_resources.len() {
+        let Some(used_res) = &mut self.used_resources else {
+            return Err(VulkanError::Framework(
+                FrameworkError::InvalidDescriptorSetUsage,
+            ));
+        };
+
+        if first_layout_id as usize + buffers.len() > used_res.len() {
             return Err(VulkanError::Framework(
                 FrameworkError::DescriptorSetBindingOutOfRange,
             ));
         }
 
         for (idx, (buffer, _, _)) in buffers.iter().enumerate() {
-            if self.used_resources[first_layout_id as usize + idx]
+            if used_res[first_layout_id as usize + idx]
                 .replace(DescriptorSetBoundResource::Buffer(buffer.clone()))
                 .is_some()
             {
@@ -275,7 +307,6 @@ impl<'a> DescriptorSetWriter<'a> {
     }
 }
 
-#[derive(Clone)]
 pub enum DescriptorSetBoundResource {
     TLAS(Arc<TopLevelAccelerationStructure>),
     Buffer(Arc<dyn BufferTrait>),
@@ -560,11 +591,12 @@ impl DescriptorSet {
 
         self.perform_binding(&mut writer)?;
 
-        for (idx, res) in writer.used_resources().iter().enumerate() {
-            match res {
+        let mut used_res = writer.used_resources.take().unwrap();
+        for idx in 0..used_res.len() {
+            match used_res[idx].take() {
                 None => {}
                 Some(updated_resource) => {
-                    (*lck)[idx] = Some(updated_resource.clone());
+                    (*lck)[idx] = Some(updated_resource);
                 }
             }
         }

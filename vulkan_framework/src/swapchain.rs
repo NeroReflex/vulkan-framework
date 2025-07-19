@@ -1,4 +1,8 @@
-use std::{sync::Arc, time::Duration};
+use std::{
+    cell::RefCell,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use ash::vk::Handle;
 
@@ -11,13 +15,18 @@ use crate::synchronization::{
 use crate::{
     device::{Device, DeviceOwned},
     fence::Fence,
-    image::{Image1DTrait, Image2DDimensions, Image2DTrait, ImageFlags, ImageFormat, ImageUsage},
+    image::{
+        Image1DTrait, Image2DDimensions, Image2DTrait, ImageFlags, ImageFormat, ImageTrait,
+        ImageUsage,
+    },
+    image_view::{ImageView, ImageViewType},
     instance::InstanceOwned,
     prelude::{VulkanError, VulkanResult},
     queue::Queue,
     queue_family::{QueueFamily, QueueFamilyOwned},
     semaphore::Semaphore,
     surface::Surface,
+    swapchain_image::ImageSwapchainKHR,
 };
 
 /**
@@ -247,6 +256,9 @@ impl DeviceSurfaceInfo {
     }
 }
 
+type ImagesCollectionType = smallvec::SmallVec<[Arc<ImageSwapchainKHR>; 8]>;
+type ImageViewsCollectionType = smallvec::SmallVec<[Arc<ImageView>; 8]>;
+
 pub struct SwapchainKHR {
     device: Arc<Device>,
     surface: Arc<Surface>,
@@ -258,10 +270,8 @@ pub struct SwapchainKHR {
     composite_alpha: CompositeAlphaSwapchainKHR,
     min_image_count: u32,
     image_layers: u32,
-}
-
-pub trait SwapchainKHROwned {
-    fn get_parent_swapchain(&self) -> Arc<SwapchainKHR>;
+    images: ImagesCollectionType,
+    image_views: ImageViewsCollectionType,
 }
 
 impl DeviceOwned for SwapchainKHR {
@@ -294,26 +304,36 @@ impl SwapchainKHR {
         self.swapchain
     }
 
+    pub fn image_view(&self, index: usize) -> VulkanResult<Arc<ImageView>> {
+        Ok(self.image_views[index].clone())
+    }
+
+    #[inline]
     pub fn surface(&self) -> Arc<Surface> {
         self.surface.clone()
     }
 
+    #[inline]
     pub fn transform(&self) -> SurfaceTransformSwapchainKHR {
         self.transform
     }
 
+    #[inline]
     pub fn composite_alpha(&self) -> CompositeAlphaSwapchainKHR {
         self.composite_alpha
     }
 
+    #[inline]
     pub fn min_image_count(&self) -> u32 {
         self.min_image_count
     }
 
+    #[inline]
     pub fn images_flags(&self) -> ImageFlags {
         ImageFlags::Unmanaged(0)
     }
 
+    #[inline]
     pub fn images_usage(&self) -> ImageUsage {
         self.image_usage
     }
@@ -573,34 +593,86 @@ impl SwapchainKHR {
 
                 //let surface_capabilities =
 
-                match unsafe {
+                let swapchain = unsafe {
                     ext.create_swapchain(
                         &create_info,
                         device.get_parent_instance().get_alloc_callbacks(),
                     )
-                } {
-                    Ok(swapchain) => {
-                        // the old swapchain (or at least my handle of it) must be removed AFTER the creation of the new one, not BEFORE!
-                        std::mem::drop(old_swapchain);
-
-                        Ok(Arc::new(Self {
-                            device,
-                            surface,
-                            swapchain,
-                            min_image_count,
-                            transform,
-                            composite_alpha,
-                            image_format,
-                            image_usage,
-                            extent,
-                            image_layers,
-                        }))
-                    }
-                    Err(err) => Err(VulkanError::Vulkan(
+                }
+                .map_err(|err| {
+                    VulkanError::Vulkan(
                         err.as_raw(),
                         Some(format!("Error creating the swapchain: {}", err)),
-                    )),
+                    )
+                })?;
+
+                // the old swapchain (or at least my handle of it) must be removed AFTER the creation of the new one, not BEFORE!
+                std::mem::drop(old_swapchain);
+
+                let image_handles =
+                    unsafe { ext.get_swapchain_images(swapchain) }.map_err(|err| {
+                        // avoid leaking the swapchain
+                        unsafe {
+                            ext.destroy_swapchain(
+                                swapchain,
+                                device.get_parent_instance().get_alloc_callbacks(),
+                            )
+                        }
+
+                        VulkanError::Vulkan(
+                            err.as_raw(),
+                            Some(format!("Error fetching images from the swapchain: {}", err)),
+                        )
+                    })?;
+
+                let images: ImagesCollectionType = image_handles
+                    .into_iter()
+                    .map(|swapchain_image| {
+                        Arc::new(ImageSwapchainKHR::new(
+                            device.clone(),
+                            ImageFlags::Unmanaged(0),
+                            image_usage,
+                            image_format,
+                            extent,
+                            image_layers,
+                            image_layers,
+                            swapchain_image,
+                        ))
+                    })
+                    .collect();
+
+                let mut image_views: ImageViewsCollectionType = Default::default();
+                for img in images.iter() {
+                    let image_view = ImageView::from_arc(
+                        img.clone(),
+                        ImageViewType::Image2D,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                    )?;
+
+                    image_views.push(image_view);
                 }
+
+                Ok(Arc::new(Self {
+                    device,
+                    surface,
+                    swapchain,
+                    min_image_count,
+                    transform,
+                    composite_alpha,
+                    image_format,
+                    image_usage,
+                    extent,
+                    image_layers,
+                    images,
+                    image_views,
+                }))
             }
             None => Err(VulkanError::MissingExtension(String::from(
                 "VK_KHR_swapchain",
