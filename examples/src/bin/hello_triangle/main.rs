@@ -6,7 +6,7 @@ use vulkan_framework::{
     command_buffer::{ClearValues, ColorClearValues, CommandBufferRecorder, PrimaryCommandBuffer},
     command_pool::CommandPool,
     device::*,
-    fence::{Fence, FenceWaitFor},
+    fence::Fence,
     framebuffer::Framebuffer,
     graphics_pipeline::{
         CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline, PolygonMode,
@@ -16,7 +16,6 @@ use vulkan_framework::{
         Image2DDimensions, ImageFormat, ImageLayout, ImageLayoutSwapchainKHR, ImageMultisampling,
         ImageUsage, ImageUsageSpecifier,
     },
-    image_view::{ImageView, ImageViewType},
     instance::*,
     pipeline_layout::PipelineLayout,
     pipeline_stage::{PipelineStage, PipelineStages},
@@ -32,7 +31,6 @@ use vulkan_framework::{
         CompositeAlphaSwapchainKHR, DeviceSurfaceInfo, PresentModeSwapchainKHR,
         SurfaceColorspaceSwapchainKHR, SurfaceTransformSwapchainKHR, SwapchainKHR,
     },
-    swapchain_image::ImageSwapchainKHR,
 };
 
 const VERTEX_SPV: &[u32] = inline_spirv!(
@@ -344,7 +342,6 @@ fn main() {
 
         {
             let mut fence_waiters: smallvec::SmallVec<[_; 4]> = (0..(frames_in_flight as usize))
-                .into_iter()
                 .map(|_| Option::None)
                 .collect();
 

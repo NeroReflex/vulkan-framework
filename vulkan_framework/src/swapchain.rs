@@ -1,8 +1,4 @@
-use std::{
-    cell::RefCell,
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
 use ash::vk::Handle;
 

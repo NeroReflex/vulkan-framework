@@ -1,8 +1,4 @@
-use std::{
-    borrow::Borrow,
-    ops::Deref,
-    sync::{Arc, Mutex},
-};
+use std::sync::Arc;
 
 use crate::{
     device::{Device, DeviceOwned},
@@ -81,7 +77,7 @@ impl ImageSwapchainKHR {
             usage,
             format,
             dimensions: ImageDimensions::Image2D { extent },
-            layers_count: layers_count,
+            layers_count,
             mip_levels_count,
         }
     }

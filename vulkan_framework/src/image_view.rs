@@ -4,14 +4,9 @@ use crate::{
     image::*,
     instance::InstanceOwned,
     prelude::{VulkanError, VulkanResult},
-    swapchain_image::ImageSwapchainKHR,
 };
 
-use std::{
-    borrow::Borrow,
-    cell::RefCell,
-    sync::{Arc, Mutex},
-};
+use std::{borrow::Borrow, sync::Arc};
 
 #[derive(Debug, Copy, Clone)]
 pub enum ImageViewType {

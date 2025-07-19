@@ -18,7 +18,7 @@ use vulkan_framework::{
     descriptor_pool::DescriptorPoolSizesAcceletarionStructureKHR,
     descriptor_set_layout::DescriptorSetLayout,
     device::*,
-    fence::{Fence, FenceWaitFor},
+    fence::Fence,
     framebuffer::Framebuffer,
     graphics_pipeline::{
         AttributeType, CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline,
@@ -738,7 +738,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap();
 
         let shader_binding_tables = (0..swapchain_images_count)
-            .into_iter()
             .map(|_| {
                 RaytracingBindingTables::new(pipeline.clone(), raytracing_allocator.clone())
                     .unwrap()
@@ -892,7 +891,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         {
             let mut fence_waiters: smallvec::SmallVec<[_; 4]> = (0..(frames_in_flight as usize))
-                .into_iter()
                 .map(|_| Option::None)
                 .collect();
 

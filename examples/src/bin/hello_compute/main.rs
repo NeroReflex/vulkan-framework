@@ -1,6 +1,5 @@
 use std::io::Write;
 use std::sync::Arc;
-use std::time::Duration;
 
 use inline_spirv::*;
 use vulkan_framework::command_buffer::AccessFlag;
@@ -17,7 +16,6 @@ use vulkan_framework::descriptor_set::DescriptorSet;
 use vulkan_framework::descriptor_set_layout::DescriptorSetLayout;
 use vulkan_framework::device::*;
 use vulkan_framework::fence::Fence;
-use vulkan_framework::fence::FenceWaitFor;
 use vulkan_framework::image::AllocatedImage;
 use vulkan_framework::image::ConcreteImageDescriptor;
 use vulkan_framework::image::Image;
