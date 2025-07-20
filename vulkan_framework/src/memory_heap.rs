@@ -237,7 +237,7 @@ impl MemoryHeap {
         };
 
         let mut memory_type_bits_requirement: u32 = u32::MAX;
-        for requirement in hints.iter() {
+        for requirement in hints.as_ref().iter() {
             memory_type_bits_requirement &= requirement.memory_requirements().memory_type_bits();
         }
 
