@@ -24,7 +24,9 @@ use vulkan_framework::image::ImageDimensions;
 use vulkan_framework::image::ImageFlags;
 use vulkan_framework::image::ImageLayout;
 use vulkan_framework::image::ImageMultisampling;
+use vulkan_framework::image::ImageSubresourceRange;
 use vulkan_framework::image::ImageTiling;
+use vulkan_framework::image::ImageTrait;
 use vulkan_framework::image::ImageUsage;
 use vulkan_framework::image::ImageUsageSpecifier;
 use vulkan_framework::image_view::ImageView;
@@ -340,12 +342,7 @@ fn main() {
             AccessFlags::from(AccessFlagsSpecifier::from(&[AccessFlag::MemoryRead], None)),
             PipelineStages::from(&[PipelineStage::ComputeShader], None, None, None),
             AccessFlags::from(AccessFlagsSpecifier::from(&[AccessFlag::ShaderWrite], None)),
-            image.clone(),
-            None,
-            None,
-            None,
-            None,
-            None,
+            ImageSubresourceRange::from(image.clone() as Arc<dyn ImageTrait>),
             ImageLayout::Undefined,
             ImageLayout::General,
             queue_family.clone(),

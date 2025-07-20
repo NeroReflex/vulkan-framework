@@ -373,8 +373,7 @@ pub struct ImageMemoryBarrier {
     src_access: AccessFlags,
     dst_stages: PipelineStages,
     dst_access: AccessFlags,
-    image: Arc<dyn ImageTrait>,
-    srr: ImageSubresourceRange,
+    image_subresource_range: ImageSubresourceRange,
     old_layout: ImageLayout,
     new_layout: ImageLayout,
     src_queue_family: Arc<QueueFamily>,
@@ -404,7 +403,7 @@ impl ImageMemoryBarrier {
 
     #[inline]
     pub(crate) fn ash_image_handle(&self) -> ash::vk::Image {
-        ash::vk::Image::from_raw(self.image.native_handle())
+        ash::vk::Image::from_raw(self.image_subresource_range.image().native_handle())
     }
 
     #[inline]
@@ -419,34 +418,12 @@ impl ImageMemoryBarrier {
 
     #[inline]
     pub(crate) fn ash_subresource_range(&self) -> ash::vk::ImageSubresourceRange {
-        self.srr.ash_subresource_range()
+        self.image_subresource_range.ash_subresource_range()
     }
 
     #[inline]
-    pub fn from_subnresource_range(
-        src_stages: PipelineStages,
-        src_access: AccessFlags,
-        dst_stages: PipelineStages,
-        dst_access: AccessFlags,
-        image: Arc<dyn ImageTrait>,
-        srr: ImageSubresourceRange,
-        old_layout: ImageLayout,
-        new_layout: ImageLayout,
-        src_queue_family: Arc<QueueFamily>,
-        dst_queue_family: Arc<QueueFamily>,
-    ) -> Self {
-        Self {
-            src_stages,
-            src_access,
-            dst_stages,
-            dst_access,
-            image,
-            srr,
-            old_layout,
-            new_layout,
-            src_queue_family,
-            dst_queue_family,
-        }
+    pub fn image(&self) -> Arc<dyn ImageTrait> {
+        self.image_subresource_range.image()
     }
 
     #[inline]
@@ -455,33 +432,18 @@ impl ImageMemoryBarrier {
         src_access: AccessFlags,
         dst_stages: PipelineStages,
         dst_access: AccessFlags,
-        image: Arc<dyn ImageTrait>,
-        maybe_image_aspect: Option<ImageAspects>,
-        maybe_base_mip_level: Option<u32>,
-        maybe_mip_levels_count: Option<u32>,
-        maybe_base_array_layer: Option<u32>,
-        maybe_array_layers_count: Option<u32>,
+        image_subresource_range: ImageSubresourceRange,
         old_layout: ImageLayout,
         new_layout: ImageLayout,
         src_queue_family: Arc<QueueFamily>,
         dst_queue_family: Arc<QueueFamily>,
     ) -> Self {
-        let srr = ImageSubresourceRange::from(
-            image.clone(),
-            maybe_image_aspect,
-            maybe_base_mip_level,
-            maybe_mip_levels_count,
-            maybe_base_array_layer,
-            maybe_array_layers_count,
-        );
-
         Self {
             src_stages,
             src_access,
             dst_stages,
             dst_access,
-            image,
-            srr,
+            image_subresource_range,
             old_layout,
             new_layout,
             src_queue_family,
@@ -1007,7 +969,7 @@ impl<'a> CommandBufferRecorder<'a> {
 
         self.used_resources
             .insert(CommandBufferReferencedResource::Image(
-                dependency_info.image.clone(),
+                dependency_info.image().clone(),
             ));
 
         unsafe {

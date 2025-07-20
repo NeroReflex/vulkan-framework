@@ -22,8 +22,8 @@ use vulkan_framework::graphics_pipeline::{
 };
 use vulkan_framework::image::{
     AllocatedImage, ConcreteImageDescriptor, Image, Image2DDimensions, ImageDimensions, ImageFlags,
-    ImageFormat, ImageLayout, ImageLayoutSwapchainKHR, ImageMultisampling, ImageTiling, ImageUsage,
-    ImageUsageSpecifier,
+    ImageFormat, ImageLayout, ImageLayoutSwapchainKHR, ImageMultisampling, ImageSubresourceRange,
+    ImageTiling, ImageTrait, ImageUsage, ImageUsageSpecifier,
 };
 use vulkan_framework::image_view::{ImageView, ImageViewType};
 use vulkan_framework::instance::*;
@@ -575,12 +575,7 @@ fn main() {
             AccessFlags::from(AccessFlagsSpecifier::from(&[], None)),
             PipelineStages::from(&[PipelineStage::ComputeShader], None, None, None),
             AccessFlags::from(AccessFlagsSpecifier::from(&[AccessFlag::ShaderWrite], None)),
-            image.clone(),
-            None,
-            None,
-            None,
-            None,
-            None,
+            ImageSubresourceRange::from(image.clone() as Arc<dyn ImageTrait>),
             ImageLayout::Undefined,
             ImageLayout::General,
             queue_family.clone(),
@@ -616,12 +611,7 @@ fn main() {
                 &[AccessFlag::TransferRead],
                 None,
             )),
-            image.clone(),
-            None,
-            None,
-            None,
-            None,
-            None,
+            ImageSubresourceRange::from(image.clone() as Arc<dyn ImageTrait>),
             ImageLayout::General,
             renderquad_image_imput_format,
             queue_family.clone(),

@@ -11,7 +11,7 @@ use crate::{
     queue_family::QueueFamily,
 };
 
-use std::sync::Arc;
+use std::{borrow::Borrow, sync::Arc};
 
 #[repr(u32)]
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
@@ -118,8 +118,9 @@ impl ImageSubresourceLayers {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+//#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ImageSubresourceRange {
+    image: Arc<dyn ImageTrait>,
     image_aspect: ImageAspects,
     base_mip_level: u32,
     mip_levels_count: u32,
@@ -127,8 +128,28 @@ pub struct ImageSubresourceRange {
     array_layers_count: u32,
 }
 
+impl From<Arc<dyn ImageTrait>> for ImageSubresourceRange {
+    fn from(image: Arc<dyn ImageTrait>) -> Self {
+        Self::new(
+            image.clone(),
+            ImageAspects::all_from_format(&(image.as_ref().format())),
+            0,
+            image.mip_levels_count(),
+            0,
+            image.layers_count(),
+        )
+    }
+}
+
 impl ImageSubresourceRange {
+    #[inline]
+    pub fn image(&self) -> Arc<dyn ImageTrait> {
+        self.image.clone()
+    }
+
+    #[inline]
     pub fn new(
+        image: Arc<dyn ImageTrait>,
         image_aspect: ImageAspects,
         base_mip_level: u32,
         mip_levels_count: u32,
@@ -136,42 +157,7 @@ impl ImageSubresourceRange {
         array_layers_count: u32,
     ) -> Self {
         Self {
-            image_aspect,
-            base_mip_level,
-            mip_levels_count,
-            base_array_layer,
-            array_layers_count,
-        }
-    }
-
-    pub fn from(
-        image: Arc<dyn ImageTrait>,
-        maybe_image_aspect: Option<ImageAspects>,
-        maybe_base_mip_level: Option<u32>,
-        maybe_mip_levels_count: Option<u32>,
-        maybe_base_array_layer: Option<u32>,
-        maybe_array_layers_count: Option<u32>,
-    ) -> Self {
-        let base_mip_level = maybe_base_mip_level.unwrap_or(0);
-
-        let mip_levels_count = match maybe_mip_levels_count {
-            Option::Some(custom) => custom,
-            Option::None => image.mip_levels_count(),
-        };
-
-        let base_array_layer = maybe_base_array_layer.unwrap_or(0);
-
-        let array_layers_count = match maybe_array_layers_count {
-            Option::Some(custom) => custom,
-            Option::None => image.layers_count(),
-        };
-
-        let image_aspect = match maybe_image_aspect {
-            Option::Some(aspect) => aspect,
-            Option::None => ImageAspects::all_from_format(&image.format()),
-        };
-
-        Self {
+            image,
             image_aspect,
             base_mip_level,
             mip_levels_count,

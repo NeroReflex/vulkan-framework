@@ -154,6 +154,11 @@ impl Drop for ImageView {
 
 impl ImageView {
     #[inline]
+    pub fn get_image(&self) -> &dyn ImageTrait {
+        self.image.as_ref().borrow()
+    }
+
+    #[inline]
     pub(crate) fn ash_handle(&self) -> ash::vk::ImageView {
         self.image_view
     }
