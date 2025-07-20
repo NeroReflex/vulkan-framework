@@ -68,7 +68,7 @@ impl Queue {
             wait_stages.push(wait_cond.ash_flags());
         }
 
-        let signal_semaphores = signal_semaphores
+        let native_signal_semaphores = signal_semaphores
             .iter()
             .map(|sem| {
                 // TODO: check self.device == sem.device
@@ -88,7 +88,7 @@ impl Queue {
 
         let submit_info = ash::vk::SubmitInfo::default()
             .command_buffers(cmd_buffers.as_slice())
-            .signal_semaphores(signal_semaphores.as_slice())
+            .signal_semaphores(native_signal_semaphores.as_slice())
             .wait_dst_stage_mask(wait_stages.as_slice())
             .wait_semaphores(wait_sems.as_slice());
 
@@ -100,7 +100,12 @@ impl Queue {
                 .ash_handle()
                 .queue_submit(self.ash_handle(), submits.as_slice(), fence.ash_handle())
         } {
-            Ok(_) => Ok(FenceWaiter::new(fence, command_buffers)),
+            Ok(_) => Ok(FenceWaiter::new(
+                fence,
+                command_buffers,
+                wait_semaphores,
+                signal_semaphores,
+            )),
             Err(err) => Err(VulkanError::Vulkan(
                 err.as_raw(),
                 Some(format!(

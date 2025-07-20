@@ -1,10 +1,12 @@
 use std::{sync::Arc, time::Duration};
 
 use crate::{
-    command_buffer::{CommandBufferCrateTrait, CommandBufferTrait},
+    command_buffer::CommandBufferTrait,
     device::{Device, DeviceOwned},
     instance::InstanceOwned,
+    pipeline_stage::PipelineStages,
     prelude::{FrameworkError, VulkanError, VulkanResult},
+    semaphore::Semaphore,
 };
 
 pub struct Fence {
@@ -215,11 +217,13 @@ impl Fence {
     }
 }
 
-type FenceWaiterCommandBufferType = smallvec::SmallVec<[Arc<dyn CommandBufferTrait>; 8]>;
+type FenceWaiterCommandBuffersType = smallvec::SmallVec<[Arc<dyn CommandBufferTrait>; 8]>;
+type FenceWaiterSemaphoresType = smallvec::SmallVec<[Arc<Semaphore>; 32]>;
 
 pub struct FenceWaiter {
     fence: Arc<Fence>,
-    _command_buffers: FenceWaiterCommandBufferType,
+    _command_buffers: FenceWaiterCommandBuffersType,
+    _semaphores: FenceWaiterSemaphoresType,
 }
 
 impl Drop for FenceWaiter {
@@ -241,12 +245,27 @@ impl Drop for FenceWaiter {
 }
 
 impl FenceWaiter {
-    pub(crate) fn new(fence: Arc<Fence>, command_buffers: &[Arc<dyn CommandBufferTrait>]) -> Self {
+    pub(crate) fn new(
+        fence: Arc<Fence>,
+        command_buffers: &[Arc<dyn CommandBufferTrait>],
+        wait_semaphores: &[(PipelineStages, Arc<Semaphore>)],
+        signal_semaphores: &[Arc<Semaphore>],
+    ) -> Self {
         let command_buffers = command_buffers.iter().cloned().collect();
+        let semaphores = signal_semaphores
+            .iter()
+            .cloned()
+            .chain(
+                wait_semaphores
+                    .iter()
+                    .map(|(_, semaphore)| semaphore.clone()),
+            )
+            .collect();
 
         Self {
             fence,
             _command_buffers: command_buffers,
+            _semaphores: semaphores,
         }
     }
 }
