@@ -387,24 +387,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             })
             .collect::<Vec<_>>();
 
+        let memory_required: u64 = rt_image_handles
+            .iter()
+            .map(|obj| obj.memory_requirements().size() + (2u64 * obj.memory_requirements().alignment()))
+            .sum();
+
+        let memory_required = (4096 * 1024) + memory_required;
+
+        let hints: smallvec::SmallVec<[&dyn MemoryRequiring; 8]> =
+            rt_image_handles
+                .iter()
+                .map(|a| a as &dyn MemoryRequiring)
+                .collect();
+
         let device_local_memory_heap = MemoryHeap::new(
             dev.clone(),
             ConcreteMemoryHeapDescriptor::new(
                 MemoryType::DeviceLocal(None),
-                1024 * 1024 * 128, // 128MiB of memory!
+                memory_required,
             ),
-            rt_image_handles
+            hints
                 .iter()
-                .map(|h| h as &dyn MemoryRequiring)
+                .map(|h| *h as &dyn MemoryRequiring)
                 .collect::<Vec<_>>()
                 .as_slice(),
         )
         .unwrap();
         println!("Memory heap created! <3");
 
+        drop(hints);
+
         let device_local_default_allocator = MemoryPool::new(
             device_local_memory_heap,
-            Arc::new(DefaultAllocator::new(1024 * 1024 * 128)),
+            Arc::new(DefaultAllocator::new(memory_required)),
             MemoryPoolFeatures::from(&[]),
         )
         .unwrap();

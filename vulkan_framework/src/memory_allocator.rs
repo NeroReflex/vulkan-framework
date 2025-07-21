@@ -136,25 +136,41 @@ impl MemoryAllocator for DefaultAllocator {
             }
         };
 
-        'find_first_block: for i in 0..last_useful_first_allocation_block {
-            let next_aligned_start_addr = (((i * self.block_size) / alignment)
-                + if ((i * self.block_size) % alignment) == 0 {
+        let mut i: u64 = 0;
+        'find_first_block: while i < last_useful_first_allocation_block {
+            // if the start of the block is aligned then this will be 0 as I don't have to
+            // waste the first block for aligning the rest, otherwise it will be 1
+            // (meaning the first block if used to align the data)
+            let block_offset_alignment = if ((i * self.block_size) % alignment) == 0 {
                     0
                 } else {
                     1
-                })
-                * alignment;
+                };
 
+            let next_aligned_start_addr = ((i * self.block_size) / alignment) * alignment;
+
+            // a boolean representing the fact that the current block contains a suitable start
             let contains_aligned_start = next_aligned_start_addr >= (i * self.block_size)
                 && (next_aligned_start_addr < ((i + 1u64) * self.block_size));
 
+            // if the address range represented by + and i+1 do not contains the aligned address
+            // this block is skipped
             if !contains_aligned_start {
+                i+= 1;
                 continue 'find_first_block;
+            }
+
+            let required_number_of_blocks = block_offset_alignment + 1u64 + (size / self.block_size);
+
+            // make sure there is enough room to allocate the memory
+            if (i + required_number_of_blocks) >= total_number_of_blocks {
+                return None
             }
 
             // make sure the requested memory is free
             for j in i..(i + required_number_of_blocks) {
-                if (*lck)[j as usize] != 0u8 {
+                while (*lck)[j as usize] != 0u8 {
+                    i += 1;
                     continue 'find_first_block;
                 }
             }
@@ -185,7 +201,7 @@ impl MemoryAllocator for DefaultAllocator {
 
     fn dealloc(&self, allocation: &mut AllocationResult) {
         let first_block = allocation.allocation_start / self.block_size;
-        let number_of_allocated_blocks = allocation.allocation_end / self.block_size;
+        let number_of_allocated_blocks = (allocation.allocation_end / self.block_size) - first_block;
 
         if (first_block + number_of_allocated_blocks) > (self.total_size / self.block_size) {
             panic!("Memory was not allocated from this pool! :O");
