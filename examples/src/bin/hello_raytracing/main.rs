@@ -392,7 +392,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|obj| obj.memory_requirements().size() + (2u64 * obj.memory_requirements().alignment()))
             .sum();
 
-        let memory_required = (4096 * 1024) + memory_required;
+        let memory_required = (4096 * 4) + memory_required;
 
         let hints: smallvec::SmallVec<[&dyn MemoryRequiring; 8]> =
             rt_image_handles
