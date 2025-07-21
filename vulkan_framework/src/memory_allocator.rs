@@ -82,17 +82,8 @@ pub struct DefaultAllocator {
 
 impl DefaultAllocator {
     pub fn new(total_size: u64) -> Self {
-        let mut block_size = 128u64;
-        let mut number_of_blocks = total_size / block_size;
-
-        loop {
-            if number_of_blocks < 4096 {
-                break;
-            }
-
-            block_size *= 2;
-            number_of_blocks = total_size / block_size;
-        }
+        let block_size = 4096u64;
+        let number_of_blocks = total_size / block_size;
 
         println!(
             "Managing {} blocks of {} bytes each",
@@ -160,15 +151,6 @@ impl MemoryAllocator for DefaultAllocator {
             if !contains_aligned_start {
                 continue 'find_first_block;
             }
-
-            /*
-            let aligned_starts_at_this_block = next_aligned_start_addr == (i * self.block_size);
-
-            let required_number_of_blocks = match aligned_starts_at_this_block {
-                true => required_number_of_blocks + 0,
-                false => required_number_of_blocks + 1,
-            };
-            */
 
             // make sure the requested memory is free
             for j in i..(i + required_number_of_blocks) {
