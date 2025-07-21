@@ -75,8 +75,8 @@ impl Fence {
         let mut native_fences = Vec::<ash::vk::Fence>::new();
         for fence in fences {
             match &device {
-                Some(old_device) => {
-                    if fence.native_handle() != old_device.native_handle() {
+                Some(dev) => {
+                    if fence.get_parent_device().native_handle() != dev.native_handle() {
                         return Err(VulkanError::Framework(
                             FrameworkError::ResourceFromIncompatibleDevice,
                         ));
@@ -88,10 +88,10 @@ impl Fence {
             native_fences.push(fence.fence)
         }
 
-        match device {
-            Some(device) => {
+        match &device {
+            Some(dev) => {
                 let reset_result =
-                    unsafe { device.ash_handle().reset_fences(native_fences.as_ref()) };
+                    unsafe { dev.ash_handle().reset_fences(native_fences.as_ref()) };
 
                 match reset_result {
                     Ok(_) => Ok(()),
@@ -120,14 +120,14 @@ impl Fence {
         let mut native_fences = smallvec::SmallVec::<[ash::vk::Fence; 4]>::new();
         for fence in fences {
             match &device {
-                Some(old_device) => {
-                    if fence.native_handle() != old_device.native_handle() {
+                Some(dev) => {
+                    if fence.get_parent_device().native_handle() != dev.native_handle() {
                         return Err(VulkanError::Framework(
                             FrameworkError::ResourceFromIncompatibleDevice,
                         ));
                     }
                 }
-                None => device = Some(fence.device.clone()),
+                None => device = Some(fence.get_parent_device()),
             }
 
             native_fences.push(fence.fence)
@@ -135,10 +135,10 @@ impl Fence {
 
         let timeout_ns = device_timeout.as_nanos();
 
-        match device {
-            Some(device) => {
+        match &device {
+            Some(dev) => {
                 let wait_result = unsafe {
-                    device.ash_handle().wait_for_fences(
+                    dev.ash_handle().wait_for_fences(
                         native_fences.as_ref(),
                         match wait_target {
                             FenceWaitFor::All => true,
