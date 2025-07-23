@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use vulkan_framework::{
+    buffer::BufferTrait,
     command_buffer::{self, PrimaryCommandBuffer},
     command_pool::CommandPool,
     descriptor_pool::{
@@ -11,8 +12,9 @@ use vulkan_framework::{
     device::{Device, DeviceOwned},
     fence::{Fence, FenceWaiter},
     image::{
-        AllocatedImage, ConcreteImageDescriptor, Image, Image2DDimensions, ImageDimensions,
-        ImageFlags, ImageFormat, ImageMultisampling, ImageTiling, ImageUsage, ImageUsageSpecifier,
+        AllocatedImage, ConcreteImageDescriptor, Image, Image2DDimensions, ImageAspects,
+        ImageDimensions, ImageFlags, ImageFormat, ImageLayout, ImageMultisampling,
+        ImageSubresourceLayers, ImageTiling, ImageTrait, ImageUsage, ImageUsageSpecifier,
     },
     image_view::ImageView,
     memory_allocator::DefaultAllocator,
@@ -61,6 +63,7 @@ impl TextureManager {
 
     pub fn new(
         queue_family: Arc<QueueFamily>,
+        stub_image_data: Arc<dyn BufferTrait>,
         max_textures: u32,
         frames_in_flight: u32,
     ) -> RenderingResult<Self> {
@@ -114,7 +117,7 @@ impl TextureManager {
             device.clone(),
             ConcreteImageDescriptor::new(
                 ImageDimensions::Image2D {
-                    extent: Image2DDimensions::new(32, 32),
+                    extent: Image2DDimensions::new(400, 400),
                 },
                 ImageUsage::Managed(ImageUsageSpecifier::new(
                     false, true, true, false, false, false, false, false,
@@ -162,6 +165,13 @@ impl TextureManager {
         let load_fence = Fence::new(device.clone(), false, Some("texture_manager.load_fence"))?;
 
         command_buffer.record_commands(|recorder| {
+            recorder.copy_buffer_to_image(
+                stub_image_data,
+                ImageLayout::TransferDstOptimal,
+                ImageSubresourceLayers::new(ImageAspects::new(true, true, false, false), 1, 0, 1),
+                stub_image.clone(),
+                stub_image.dimensions(),
+            );
             /*
             recorder.copy_image(
                 src_layout,
@@ -175,12 +185,8 @@ impl TextureManager {
             */
         })?;
 
-        let load_fence_waiter = queue.submit(
-            &[command_buffer.clone()],
-            &[],
-            &[],
-            load_fence.clone(),
-        );
+        let load_fence_waiter =
+            queue.submit(&[command_buffer.clone()], &[], &[], load_fence.clone());
 
         // this will wait for the GPU to finish the resource copy
         // and the fence will be resetted back in unsignaled state

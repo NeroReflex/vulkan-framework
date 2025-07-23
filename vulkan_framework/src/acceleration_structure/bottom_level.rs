@@ -132,7 +132,7 @@ impl BottomLevelAccelerationStructureTransformBuffer {
         let transform_buffer = Buffer::new(
             device.clone(),
             ConcreteBufferDescriptor::new(
-                BufferUsage::Unmanaged(
+                BufferUsage::from(
                     usage.ash_usage().as_raw() |
                     (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                         | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
@@ -194,7 +194,7 @@ impl BottomLevelAccelerationStructureIndexBuffer {
         let index_buffer = Buffer::new(
             device.clone(),
             ConcreteBufferDescriptor::new(
-                BufferUsage::Unmanaged(
+                BufferUsage::from(
                     usage.ash_usage().as_raw() |
                     (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                         | ash::vk::BufferUsageFlags::INDEX_BUFFER
@@ -252,7 +252,7 @@ impl BottomLevelAccelerationStructureVertexBuffer {
         let vertex_buffer = Buffer::new(
             device.clone(),
             ConcreteBufferDescriptor::new(
-                BufferUsage::Unmanaged(
+                BufferUsage::from(
                     usage.ash_usage().as_raw() |
                     (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                         | ash::vk::BufferUsageFlags::VERTEX_BUFFER
@@ -552,7 +552,7 @@ impl BottomLevelAccelerationStructure {
         let blas_buffer = Buffer::new(
             device.clone(),
             ConcreteBufferDescriptor::new(
-                BufferUsage::Unmanaged(
+                BufferUsage::from(
                     (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                         | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR)
                         .as_raw(),

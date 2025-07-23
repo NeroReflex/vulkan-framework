@@ -817,25 +817,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     transform: vulkan_framework::ash::vk::TransformMatrixKHR {
                         matrix: INSTANCES_DATA[0],
                     },
-                    instance_shader_binding_table_record_offset_and_flags: vulkan_framework::ash::vk::Packed24_8::new(
-                        0, 0x01,
-                    ), // VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
-                    instance_custom_index_and_mask: vulkan_framework::ash::vk::Packed24_8::new(0x00, 0xFF),
-                    acceleration_structure_reference: vulkan_framework::ash::vk::AccelerationStructureReferenceKHR {
-                        device_handle: blas.device_addr(),
-                    },
+                    instance_shader_binding_table_record_offset_and_flags:
+                        vulkan_framework::ash::vk::Packed24_8::new(0, 0x01,), // VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
+                    instance_custom_index_and_mask: vulkan_framework::ash::vk::Packed24_8::new(
+                        0x00, 0xFF
+                    ),
+                    acceleration_structure_reference:
+                        vulkan_framework::ash::vk::AccelerationStructureReferenceKHR {
+                            device_handle: blas.device_addr(),
+                        },
                 },
                 vulkan_framework::ash::vk::AccelerationStructureInstanceKHR {
                     transform: vulkan_framework::ash::vk::TransformMatrixKHR {
                         matrix: INSTANCES_DATA[1],
                     },
-                    instance_shader_binding_table_record_offset_and_flags: vulkan_framework::ash::vk::Packed24_8::new(
-                        0, 0x01,
-                    ), // VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
-                    instance_custom_index_and_mask: vulkan_framework::ash::vk::Packed24_8::new(0x00, 0xFF),
-                    acceleration_structure_reference: vulkan_framework::ash::vk::AccelerationStructureReferenceKHR {
-                        device_handle: blas.device_addr(),
-                    },
+                    instance_shader_binding_table_record_offset_and_flags:
+                        vulkan_framework::ash::vk::Packed24_8::new(0, 0x01,), // VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
+                    instance_custom_index_and_mask: vulkan_framework::ash::vk::Packed24_8::new(
+                        0x00, 0xFF
+                    ),
+                    acceleration_structure_reference:
+                        vulkan_framework::ash::vk::AccelerationStructureReferenceKHR {
+                            device_handle: blas.device_addr(),
+                        },
                 }
             ];
             raytracing_allocator

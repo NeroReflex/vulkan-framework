@@ -115,16 +115,20 @@ impl ImageViewAspect {
             Self::Other(raw) => ImageAspectFlags::from_raw(*raw),
         }
     }
+}
 
-    pub fn from_format(img_format: &ImageFormat) -> Self {
-        match RecognisedImageAspect::from_format(img_format) {
+impl From<u32> for ImageViewAspect {
+    fn from(value: u32) -> Self {
+        Self::Other(value)
+    }
+}
+
+impl From<ImageFormat> for ImageViewAspect {
+    fn from(value: ImageFormat) -> Self {
+        match RecognisedImageAspect::from_format(&value) {
             Some(fmt) => Self::Recognised(fmt),
             None => Self::Recognised(RecognisedImageAspect::new(true, false, false, false)),
         }
-    }
-
-    pub fn from_raw(raw: u32) -> Self {
-        Self::Other(raw)
     }
 }
 
@@ -234,7 +238,7 @@ impl ImageView {
         let srr = ash::vk::ImageSubresourceRange {
             aspect_mask: match maybe_aspect {
                 Some(user_given) => user_given.ash_aspect(),
-                None => ImageViewAspect::from_format(&format).ash_aspect(),
+                None => ImageViewAspect::from(format.clone()).ash_aspect(),
             },
             base_mip_level: subrange_base_mip_level,
             level_count: subrange_level_count,

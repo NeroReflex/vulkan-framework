@@ -54,7 +54,7 @@ impl DeviceScratchBuffer {
                     .get_parent_device()
                     .clone(),
                 ConcreteBufferDescriptor::new(
-                    BufferUsage::Unmanaged(
+                    BufferUsage::from(
                         (ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                             | ash::vk::BufferUsageFlags::STORAGE_BUFFER)
                             .as_raw(),

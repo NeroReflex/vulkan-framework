@@ -15,46 +15,46 @@ use std::{fmt::Debug, sync::Arc};
  * Provided by VK_KHR_acceleration_structure
  */
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum BufferUsageFlagAccelerationStructureKHR {
+pub enum BufferUseAsAccelerationStructureKHR {
     AccelerationStructureStorage,
     AccelerationStructureBuildInputReadOnly,
+}
+
+impl BufferUseAsAccelerationStructureKHR {
+    pub(crate) fn ash_usage(&self) -> ash::vk::BufferUsageFlags {
+        match self {
+            Self::AccelerationStructureStorage => {
+                ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
+            }
+            Self::AccelerationStructureBuildInputReadOnly => {
+                ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
+            }
+        }
+    }
 }
 
 /**
  * Provided by VK_KHR_acceleration_structure
  */
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct BufferUsageFlagsAccelerationStructureKHR {
-    acceleration_structure_storage: bool,
-    acceleration_structure_build_input_read_only: bool,
+pub struct BufferUsageAccelerationStructureKHR {
+    usage: ash::vk::BufferUsageFlags,
 }
 
-impl BufferUsageFlagsAccelerationStructureKHR {
-    pub fn from(flags: &[BufferUsageFlagAccelerationStructureKHR]) -> Self {
-        Self {
-            acceleration_structure_storage: flags
-                .contains(&BufferUsageFlagAccelerationStructureKHR::AccelerationStructureStorage),
-            acceleration_structure_build_input_read_only: flags.contains(
-                &BufferUsageFlagAccelerationStructureKHR::AccelerationStructureBuildInputReadOnly,
-            ),
+impl From<&[BufferUseAsAccelerationStructureKHR]> for BufferUsageAccelerationStructureKHR {
+    fn from(value: &[BufferUseAsAccelerationStructureKHR]) -> Self {
+        let mut usage = ash::vk::BufferUsageFlags::empty();
+        for flag in value.iter() {
+            usage |= flag.ash_usage()
         }
-    }
 
-    pub fn empty() -> Self {
-        Self {
-            acceleration_structure_storage: false,
-            acceleration_structure_build_input_read_only: false,
-        }
+        Self { usage }
     }
+}
 
+impl BufferUsageAccelerationStructureKHR {
     pub(crate) fn ash_usage(&self) -> ash::vk::BufferUsageFlags {
-        (match self.acceleration_structure_storage {
-            true => ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR,
-            false => ash::vk::BufferUsageFlags::from_raw(0),
-        }) | (match self.acceleration_structure_build_input_read_only {
-            true => ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR,
-            false => ash::vk::BufferUsageFlags::from_raw(0),
-        })
+        self.usage.to_owned()
     }
 }
 
@@ -62,42 +62,45 @@ impl BufferUsageFlagsAccelerationStructureKHR {
  * Provided by VK_KHR_ray_tracing_pipeline
  */
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum BufferUsageFlagRayTracingPipelineKHR {
+pub enum BufferUseAsRayTracingPipelineKHR {
     ShaderBindingTable,
 }
 
+impl BufferUseAsRayTracingPipelineKHR {
+    pub(crate) fn ash_usage(&self) -> ash::vk::BufferUsageFlags {
+        match self {
+            Self::ShaderBindingTable => ash::vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR,
+        }
+    }
+}
+
 /*
  * Provided by VK_KHR_ray_tracing_pipeline
  */
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct BufferUsageFlagsRayTracingPipelineKHR {
-    shader_binding_table: bool,
+pub struct BufferUsageRayTracingPipelineKHR {
+    usage: ash::vk::BufferUsageFlags,
 }
 
-impl BufferUsageFlagsRayTracingPipelineKHR {
-    pub fn from(flags: &[BufferUsageFlagRayTracingPipelineKHR]) -> Self {
-        Self {
-            shader_binding_table: flags
-                .contains(&BufferUsageFlagRayTracingPipelineKHR::ShaderBindingTable),
+impl From<&[BufferUseAsRayTracingPipelineKHR]> for BufferUsageRayTracingPipelineKHR {
+    fn from(value: &[BufferUseAsRayTracingPipelineKHR]) -> Self {
+        let mut usage = ash::vk::BufferUsageFlags::empty();
+        for flag in value.iter() {
+            usage |= flag.ash_usage()
         }
-    }
 
-    pub fn empty() -> Self {
-        Self {
-            shader_binding_table: false,
-        }
+        Self { usage }
     }
+}
 
+impl BufferUsageRayTracingPipelineKHR {
     pub(crate) fn ash_usage(&self) -> ash::vk::BufferUsageFlags {
-        match self.shader_binding_table {
-            true => ash::vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR,
-            false => ash::vk::BufferUsageFlags::from_raw(0),
-        }
+        self.usage.to_owned()
     }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum BufferUsageFlag {
+pub enum BufferUseAs {
     TransferSrc,
     TransferDst,
     UniformTexelBuffer,
@@ -107,161 +110,75 @@ pub enum BufferUsageFlag {
     IndexBuffer,
     VertexBuffer,
     IndirectBuffer,
+    AccelerationStructureKHR(BufferUsageAccelerationStructureKHR),
+    RayTracing(BufferUsageRayTracingPipelineKHR),
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct BufferUsageFlagsSpecifier {
-    transfer_src: bool,
-    transfer_dst: bool,
-    uniform_texel_buffer: bool,
-    storage_texel_buffer: bool,
-    uniform_buffer: bool,
-    storage_buffer: bool,
-    index_buffer: bool,
-    vertex_buffer: bool,
-    indirect_buffer: bool,
-    acceleration_structure: BufferUsageFlagsAccelerationStructureKHR,
-    ray_tracing: BufferUsageFlagsRayTracingPipelineKHR,
-}
-
-impl BufferUsageFlagsSpecifier {
-    pub fn empty() -> Self {
-        Self::from(&[], None, None)
-    }
-
-    pub fn from(
-        flags: &[BufferUsageFlag],
-        acceleration_structure_flags: Option<&[BufferUsageFlagAccelerationStructureKHR]>,
-        ray_tracing_flags: Option<&[BufferUsageFlagRayTracingPipelineKHR]>,
-    ) -> Self {
-        Self {
-            transfer_src: flags.contains(&BufferUsageFlag::TransferSrc),
-            transfer_dst: flags.contains(&BufferUsageFlag::TransferDst),
-            uniform_texel_buffer: flags.contains(&BufferUsageFlag::UniformTexelBuffer),
-            storage_texel_buffer: flags.contains(&BufferUsageFlag::StorageTexelBuffer),
-            uniform_buffer: flags.contains(&BufferUsageFlag::UniformBuffer),
-            storage_buffer: flags.contains(&BufferUsageFlag::StorageBuffer),
-            index_buffer: flags.contains(&BufferUsageFlag::IndexBuffer),
-            vertex_buffer: flags.contains(&BufferUsageFlag::VertexBuffer),
-            indirect_buffer: flags.contains(&BufferUsageFlag::IndirectBuffer),
-            acceleration_structure: match acceleration_structure_flags {
-                Some(flags) => BufferUsageFlagsAccelerationStructureKHR::from(flags),
-                None => BufferUsageFlagsAccelerationStructureKHR::empty(),
-            },
-            ray_tracing: match ray_tracing_flags {
-                Some(flags) => BufferUsageFlagsRayTracingPipelineKHR::from(flags),
-                None => BufferUsageFlagsRayTracingPipelineKHR::empty(),
-            },
-        }
-    }
-
+impl BufferUseAs {
     pub(crate) fn ash_usage(&self) -> ash::vk::BufferUsageFlags {
-        (ash::vk::BufferUsageFlags::empty())
-            | (match self.transfer_src {
-                true => ash::vk::BufferUsageFlags::TRANSFER_SRC,
-                false => ash::vk::BufferUsageFlags::from_raw(0),
-            })
-            | (match self.transfer_dst {
-                true => ash::vk::BufferUsageFlags::TRANSFER_DST,
-                false => ash::vk::BufferUsageFlags::from_raw(0),
-            })
-            | (match self.uniform_texel_buffer {
-                true => ash::vk::BufferUsageFlags::UNIFORM_TEXEL_BUFFER,
-                false => ash::vk::BufferUsageFlags::from_raw(0),
-            })
-            | (match self.storage_texel_buffer {
-                true => ash::vk::BufferUsageFlags::STORAGE_TEXEL_BUFFER,
-                false => ash::vk::BufferUsageFlags::from_raw(0),
-            })
-            | (match self.uniform_buffer {
-                true => ash::vk::BufferUsageFlags::UNIFORM_BUFFER,
-                false => ash::vk::BufferUsageFlags::from_raw(0),
-            })
-            | (match self.storage_buffer {
-                true => ash::vk::BufferUsageFlags::STORAGE_BUFFER,
-                false => ash::vk::BufferUsageFlags::from_raw(0),
-            })
-            | (match self.index_buffer {
-                true => ash::vk::BufferUsageFlags::INDEX_BUFFER,
-                false => ash::vk::BufferUsageFlags::from_raw(0),
-            })
-            | (match self.vertex_buffer {
-                true => ash::vk::BufferUsageFlags::VERTEX_BUFFER,
-                false => ash::vk::BufferUsageFlags::from_raw(0),
-            })
-            | (match self.indirect_buffer {
-                true => ash::vk::BufferUsageFlags::INDIRECT_BUFFER,
-                false => ash::vk::BufferUsageFlags::from_raw(0),
-            })
-            | self.acceleration_structure.ash_usage()
-            | self.ray_tracing.ash_usage()
-    }
-
-    pub fn new(
-        transfer_src: bool,
-        transfer_dst: bool,
-        uniform_texel_buffer: bool,
-        storage_texel_buffer: bool,
-        uniform_buffer: bool,
-        storage_buffer: bool,
-        index_buffer: bool,
-        vertex_buffer: bool,
-        indirect_buffer: bool,
-        maybe_acceleration_structure: Option<BufferUsageFlagsAccelerationStructureKHR>,
-        maybe_ray_tracing: Option<BufferUsageFlagsRayTracingPipelineKHR>,
-    ) -> Self {
-        Self {
-            transfer_src,
-            transfer_dst,
-            uniform_texel_buffer,
-            storage_texel_buffer,
-            uniform_buffer,
-            storage_buffer,
-            index_buffer,
-            vertex_buffer,
-            indirect_buffer,
-            acceleration_structure: match maybe_acceleration_structure {
-                Some(flags) => flags,
-                None => BufferUsageFlagsAccelerationStructureKHR::empty(),
-            },
-            ray_tracing: match maybe_ray_tracing {
-                Some(flags) => flags,
-                None => BufferUsageFlagsRayTracingPipelineKHR::empty(),
-            },
+        match self {
+            BufferUseAs::TransferSrc => ash::vk::BufferUsageFlags::TRANSFER_SRC,
+            BufferUseAs::TransferDst => ash::vk::BufferUsageFlags::TRANSFER_DST,
+            BufferUseAs::UniformTexelBuffer => ash::vk::BufferUsageFlags::UNIFORM_TEXEL_BUFFER,
+            BufferUseAs::StorageTexelBuffer => ash::vk::BufferUsageFlags::STORAGE_TEXEL_BUFFER,
+            BufferUseAs::UniformBuffer => ash::vk::BufferUsageFlags::UNIFORM_BUFFER,
+            BufferUseAs::StorageBuffer => ash::vk::BufferUsageFlags::STORAGE_BUFFER,
+            BufferUseAs::IndexBuffer => ash::vk::BufferUsageFlags::INDEX_BUFFER,
+            BufferUseAs::VertexBuffer => ash::vk::BufferUsageFlags::VERTEX_BUFFER,
+            BufferUseAs::IndirectBuffer => ash::vk::BufferUsageFlags::INDIRECT_BUFFER,
+            BufferUseAs::AccelerationStructureKHR(
+                buffer_usage_flags_acceleration_structure_khr,
+            ) => buffer_usage_flags_acceleration_structure_khr.ash_usage(),
+            BufferUseAs::RayTracing(buffer_usage_flags_ray_tracing_pipeline_khr) => {
+                buffer_usage_flags_ray_tracing_pipeline_khr.ash_usage()
+            }
         }
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum BufferUsage {
-    Managed(BufferUsageFlagsSpecifier),
-    Unmanaged(u32),
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+pub struct BufferUsage {
+    usage: ash::vk::BufferUsageFlags,
+}
+
+impl From<u32> for BufferUsage {
+    fn from(value: u32) -> Self {
+        Self {
+            usage: ash::vk::BufferUsageFlags::from_raw(value),
+        }
+    }
+}
+
+impl From<crate::ash::vk::BufferUsageFlags> for BufferUsage {
+    fn from(usage: crate::ash::vk::BufferUsageFlags) -> Self {
+        Self { usage }
+    }
+}
+
+impl From<&[BufferUseAs]> for BufferUsage {
+    fn from(value: &[BufferUseAs]) -> Self {
+        let mut usage = ash::vk::BufferUsageFlags::empty();
+        for flag in value.iter() {
+            usage |= flag.ash_usage()
+        }
+
+        Self { usage }
+    }
 }
 
 impl BufferUsage {
     pub fn empty() -> Self {
-        Self::Unmanaged(0)
-    }
-
-    pub fn from_raw(flags: u32) -> Self {
-        Self::Unmanaged(flags)
-    }
-
-    pub fn from(flags: BufferUsageFlagsSpecifier) -> Self {
-        Self::Managed(flags)
+        Self::default()
     }
 
     pub(crate) fn ash_usage(&self) -> ash::vk::BufferUsageFlags {
-        match self {
-            Self::Managed(spec) => spec.ash_usage(),
-            Self::Unmanaged(raw) => ash::vk::BufferUsageFlags::from_raw(*raw),
-        }
+        self.usage.to_owned()
     }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ConcreteBufferDescriptor {
-    usage: BufferUsage,
+    usage: ash::vk::BufferUsageFlags,
     size: ash::vk::DeviceSize,
 }
 
@@ -269,7 +186,7 @@ impl ConcreteBufferDescriptor {
     pub fn new(usage: BufferUsage, size: u64) -> Self {
         Self {
             size: size as ash::vk::DeviceSize,
-            usage,
+            usage: usage.ash_usage(),
         }
     }
 
@@ -278,7 +195,7 @@ impl ConcreteBufferDescriptor {
     }
 
     pub(crate) fn ash_usage(&self) -> ash::vk::BufferUsageFlags {
-        self.usage.ash_usage()
+        self.usage
     }
 }
 

@@ -120,7 +120,7 @@ impl RaytracingBindingTables {
         let sbt_size = group_count * handle_size_aligned;
 
         let buffer_descriptor = ConcreteBufferDescriptor::new(
-            BufferUsage::Unmanaged(
+            BufferUsage::from(
                 (ash::vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR
                     | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
                     .as_raw(),

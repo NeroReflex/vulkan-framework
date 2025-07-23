@@ -6,10 +6,7 @@ use crate::{
 };
 
 use vulkan_framework::{
-    buffer::{
-        AllocatedBuffer, Buffer, BufferUsage, BufferUsageFlag, BufferUsageFlagsSpecifier,
-        ConcreteBufferDescriptor,
-    },
+    buffer::{AllocatedBuffer, Buffer, BufferUsage, BufferUseAs, ConcreteBufferDescriptor},
     device::{Device, DeviceOwned},
     memory_allocator::DefaultAllocator,
     memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryHostVisibility, MemoryType},
@@ -37,20 +34,12 @@ impl ResourceManager {
     pub fn new(queue_family: Arc<QueueFamily>, frames_in_flight: u32) -> RenderingResult<Self> {
         let device = queue_family.get_parent_device();
 
-        let mesh_manager = MeshManager::new(device.clone(), frames_in_flight)?;
-        let texture_manager =
-            TextureManager::new(queue_family.clone(), MAX_TEXTURES, frames_in_flight)?;
-
         let total_size = Self::memory_pool_size(frames_in_flight);
 
         let buffer = Buffer::new(
             device.clone(),
             ConcreteBufferDescriptor::new(
-                BufferUsage::Managed(BufferUsageFlagsSpecifier::from(
-                    &[BufferUsageFlag::TransferSrc],
-                    None,
-                    None,
-                )),
+                BufferUsage::from([BufferUseAs::TransferSrc].as_slice()),
                 1024u64 * 1024u64 * 24u64, // 24MiB
             ),
             None,
@@ -79,6 +68,14 @@ impl ResourceManager {
         memory_pool.write_raw_data(
             buffer.allocation_offset(),
             EmbeddedAssets::get("stub.dds").unwrap().data.as_ref(),
+        )?;
+
+        let mesh_manager = MeshManager::new(device.clone(), frames_in_flight)?;
+        let texture_manager = TextureManager::new(
+            queue_family.clone(),
+            buffer.clone(),
+            MAX_TEXTURES,
+            frames_in_flight,
         )?;
 
         Ok(Self {
