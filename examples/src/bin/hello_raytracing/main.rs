@@ -418,7 +418,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let device_local_default_allocator = MemoryPool::new(
             device_local_memory_heap,
             Arc::new(DefaultAllocator::new(memory_required)),
-            MemoryPoolFeatures::from(&[]),
+            MemoryPoolFeatures::from([].as_slice()),
         )
         .unwrap();
 
@@ -433,7 +433,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let raytracing_allocator = MemoryPool::new(
             raytracing_memory_heap,
             Arc::new(DefaultAllocator::new(1024 * 1024 * 128)),
-            MemoryPoolFeatures::from(&[MemoryPoolFeature::DeviceAddressable]),
+            MemoryPoolFeatures::from([MemoryPoolFeature::DeviceAddressable].as_slice()),
         )
         .unwrap();
 

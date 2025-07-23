@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use inline_spirv::*;
 
-use crate::rendering::{MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingError, RenderingResult};
+use crate::rendering::{MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingResult};
 
 use vulkan_framework::{
     command_buffer::{ClearValues, ColorClearValues, CommandBufferRecorder},
@@ -141,7 +141,7 @@ impl FinalRendering {
         let memory_pool = MemoryPool::new(
             memory_heap,
             Arc::new(DefaultAllocator::new(minimum_memory)),
-            MemoryPoolFeatures::from(&[]),
+            MemoryPoolFeatures::from([].as_slice()),
         )?;
 
         let mut image_views: smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]> =

@@ -331,7 +331,7 @@ fn main() {
     let stack_allocator = match MemoryPool::new(
         memory_heap.clone(),
         Arc::new(StackAllocator::new(memory_heap.total_size())),
-        MemoryPoolFeatures::from(&[]),
+        MemoryPoolFeatures::from([].as_slice()),
     ) {
         Ok(mem_pool) => {
             println!("Stack allocator created");

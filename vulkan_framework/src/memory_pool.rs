@@ -25,12 +25,14 @@ impl MemoryPoolFeatures {
         self.device_addressable
     }
 
-    pub fn from(features: &[MemoryPoolFeature]) -> Self {
-        Self::new(features.contains(&MemoryPoolFeature::DeviceAddressable))
-    }
-
     pub fn new(device_addressable: bool) -> Self {
         Self { device_addressable }
+    }
+}
+
+impl From<&[MemoryPoolFeature]> for MemoryPoolFeatures {
+    fn from(features: &[MemoryPoolFeature]) -> Self {
+        Self::new(features.contains(&MemoryPoolFeature::DeviceAddressable))
     }
 }
 

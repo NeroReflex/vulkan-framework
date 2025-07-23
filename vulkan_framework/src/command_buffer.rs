@@ -526,8 +526,6 @@ impl<'a> CommandBufferRecorder<'a> {
             (primitive_offset.to_owned() as u64) + (primitive_count.to_owned() as u64);
         assert!(tlas_max_instances >= selected_instances_max_index);
 
-        // TODO: assert from same device
-
         let (geometries, range_infos) = tlas
             .ash_build_info(primitive_offset, primitive_count)
             .unwrap();

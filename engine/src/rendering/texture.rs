@@ -144,7 +144,7 @@ impl TextureManager {
         let memory_pool = MemoryPool::new(
             memory_heap,
             Arc::new(DefaultAllocator::new(total_size)),
-            MemoryPoolFeatures::from(&[MemoryPoolFeature::DeviceAddressable {}]),
+            MemoryPoolFeatures::from([MemoryPoolFeature::DeviceAddressable {}].as_slice()),
         )?;
 
         let stub_image = AllocatedImage::new(memory_pool.clone(), stub_image)?;

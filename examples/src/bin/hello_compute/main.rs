@@ -176,7 +176,7 @@ fn main() {
     let stack_allocator = match MemoryPool::new(
         memory_heap,
         Arc::new(StackAllocator::new(1024 * 1024 * 128)), // of the 512MiB of the heap this memory pool will manage 128MiB
-        MemoryPoolFeatures::from(&[]),
+        MemoryPoolFeatures::from([].as_slice()),
     ) {
         Ok(mem_pool) => {
             println!("Stack allocator created");
