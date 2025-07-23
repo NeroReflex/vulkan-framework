@@ -9,7 +9,8 @@ use std::{
 use sdl2::VideoSubsystem;
 use vulkan_framework::{
     command_buffer::{
-        AccessFlag, AccessFlags, AccessFlagsSpecifier, ImageMemoryBarrier, PrimaryCommandBuffer,
+        AccessFlag, AccessFlags, AccessFlagsSpecifier, ImageMemoryBarrier, MemoryAccess,
+        MemoryAccessAs, PrimaryCommandBuffer,
     },
     command_pool::CommandPool,
     device::{Device, DeviceOwned},
@@ -357,13 +358,11 @@ impl System {
             let renderquad_input_image_layout = RenderQuad::image_input_format();
 
             recorder.image_barrier(ImageMemoryBarrier::new(
-                PipelineStages::from(&[PipelineStage::ColorAttachmentOutput], None, None, None),
-                AccessFlags::Managed(AccessFlagsSpecifier::from(
-                    &[AccessFlag::ColorAttachmentWrite],
-                    None,
-                )),
-                PipelineStages::from(&[PipelineStage::FragmentShader], None, None, None),
-                AccessFlags::Managed(AccessFlagsSpecifier::from(&[AccessFlag::ShaderRead], None)),
+                todo!(),
+                PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
+                MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
+                PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
+                MemoryAccess::from([MemoryAccessAs::ShaderRead].as_slice()),
                 subresource_range,
                 final_rendering_output_image_layout,
                 renderquad_input_image_layout,
@@ -385,7 +384,7 @@ impl System {
         self.frames_in_flight[current_frame] = Some(self.queue().submit(
             &[self.present_command_buffers[current_frame].clone()],
             &[(
-                PipelineStages::from(&[PipelineStage::FragmentShader], None, None, None),
+                PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
                 self.image_available_semaphores[current_frame].clone(),
             )],
             signal_semaphores.as_slice(),

@@ -3,6 +3,7 @@ use crate::{instance::*, queue_family::*};
 
 use ash;
 
+use std::ffi::CString;
 use std::os::raw::c_char;
 
 #[cfg(feature = "better_mutex")]
@@ -33,8 +34,8 @@ struct DeviceData<'a> {
     selected_queues: Vec<ash::vk::DeviceQueueCreateInfo<'a>>,
     required_family_collection: Vec<Option<(u32, ConcreteQueueFamilyDescriptor)>>,
     supported_extension_names: Vec<String>,
-    enabled_extensions: Vec<Vec<c_char>>,
-    enabled_layers: Vec<Vec<c_char>>,
+    enabled_extensions: Vec<Arc<CString>>,
+    enabled_layers: Vec<Arc<CString>>,
 }
 
 pub struct RaytracingInfo {
@@ -356,6 +357,32 @@ impl Device {
         Some(score)
     }
 
+    fn ffi_strings(native_strings: &[String]) -> Vec<Arc<CString>> {
+        native_strings
+            .iter()
+            .map(|ext_name| Arc::new(CString::new(ext_name.as_str()).unwrap()))
+            .collect::<Vec<Arc<CString>>>()
+    }
+
+    fn strings_ffi(native_strings: Vec<Vec<std::ffi::c_char>>) -> Vec<String> {
+        native_strings
+            .iter()
+            .map(|ext| match ext.iter().position(|n| *n == 0) {
+                Some(ext_len) => String::from(unsafe {
+                    std::str::from_utf8_unchecked(
+                        std::ptr::slice_from_raw_parts(
+                            ext.as_ptr() as *const u8,
+                            ext_len.min(ext.len()),
+                        )
+                        .as_ref()
+                        .unwrap(),
+                    )
+                }),
+                None => panic!("Error in utf8"),
+            })
+            .collect()
+    }
+
     /**
      * Creates a new device from the given instance if a suitable one is found.
      *
@@ -406,33 +433,11 @@ impl Device {
                         ));
                     }
 
+                    let enabled_extensions = Self::ffi_strings(device_extensions);
+
+                    let enabled_layers = Self::ffi_strings(device_layers);
+
                     'suitable_device_search: for phy_device in physical_devices.iter() {
-                        let enabled_extensions = device_extensions
-                            .iter()
-                            .map(|ext_name| {
-                                let mut ext_bytes = ext_name.to_owned().into_bytes();
-                                ext_bytes.push(b"\0"[0]);
-
-                                ext_bytes
-                                    .iter()
-                                    .map(|b| *b as c_char)
-                                    .collect::<Vec<c_char>>()
-                            })
-                            .collect::<Vec<Vec<c_char>>>();
-
-                        let enabled_layers = device_layers
-                            .iter()
-                            .map(|ext_name| {
-                                let mut ext_bytes = ext_name.to_owned().into_bytes();
-                                ext_bytes.push(b"\0"[0]);
-
-                                ext_bytes
-                                    .iter()
-                                    .map(|b| *b as c_char)
-                                    .collect::<Vec<c_char>>()
-                            })
-                            .collect::<Vec<Vec<c_char>>>();
-
                         let phy_device_features = instance
                             .ash_handle()
                             .get_physical_device_features(phy_device.to_owned());
@@ -458,30 +463,8 @@ impl Device {
                                     .map(|f| f.extension_name.to_vec())
                                     .collect::<Vec<Vec<i8>>>();
 
-                                let supported_extensions_strings: Vec<&str> =
-                                    supproted_extensions_map
-                                        .iter()
-                                        .map(|ext| match ext.iter().position(|n| *n == 0) {
-                                            Some(ext_len) => std::str::from_utf8_unchecked(
-                                                std::ptr::slice_from_raw_parts(
-                                                    ext.as_ptr() as *const u8,
-                                                    ext_len.min(ext.len()),
-                                                )
-                                                .as_ref()
-                                                .unwrap(),
-                                            ),
-                                            None => todo!(),
-                                        })
-                                        .collect::<Vec<&str>>();
-                                /*
-                                println!(
-                                    "Device {} supports the following extensions: ",
-                                    phy_device_name
-                                );
-                                for ext_str in supported_extensions_strings.iter() {
-                                    println!("    {}", ext_str);
-                                }
-                                */
+                                let supported_extensions_strings =
+                                    Self::strings_ffi(supproted_extensions_map);
 
                                 for requested_extension in device_extensions.iter() {
                                     if !supported_extensions_strings
@@ -490,19 +473,13 @@ impl Device {
                                     {
                                         println!("Requested extension {requested_extension} is not supported by physical device {phy_device_name}. This device won't be selected.");
                                         continue 'suitable_device_search;
-                                    } else {
-                                        println!("Requested extension {requested_extension} is supported by physical device {phy_device_name}!");
                                     }
                                 }
 
                                 supported_extensions_strings
-                                    .iter()
-                                    .map(|ext_str| String::from(*ext_str))
-                                    .collect()
                             }
                             Err(err) => {
                                 println!("Error enumerating device extensions for device {phy_device_name}: {err}. Will skip this device.");
-
                                 continue 'suitable_device_search;
                             }
                         };
@@ -605,8 +582,8 @@ impl Device {
                             selected_queues,
                             required_family_collection,
                             supported_extension_names,
-                            enabled_extensions,
-                            enabled_layers,
+                            enabled_extensions: enabled_extensions.clone(),
+                            enabled_layers: enabled_layers.clone(),
                         };
 
                         println!("Found suitable device: {phy_device_name}");
@@ -655,6 +632,9 @@ impl Device {
                     });
 
                     let mut features2 = ash::vk::PhysicalDeviceFeatures2::default();
+                    let mut synchronization2_features =
+                        ash::vk::PhysicalDeviceSynchronization2Features::default()
+                            .synchronization2(true);
                     let mut accel_structure_features =
                         ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
                     let mut ray_tracing_pipeline_features =
@@ -691,9 +671,12 @@ impl Device {
                     }
 
                     get_imageless_framebuffer_features.p_next = features2.p_next;
-                    features2.p_next = &mut get_imageless_framebuffer_features
-                        as *mut ash::vk::PhysicalDeviceImagelessFramebufferFeatures
-                        as *mut std::ffi::c_void;
+                    features2.p_next =
+                        &mut get_imageless_framebuffer_features as *mut _ as *mut std::ffi::c_void;
+
+                    synchronization2_features.p_next = features2.p_next;
+                    features2.p_next =
+                        &mut synchronization2_features as *mut _ as *mut std::ffi::c_void;
 
                     instance.ash_handle().get_physical_device_features2(
                         selected_device.selected_physical_device,

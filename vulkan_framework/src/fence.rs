@@ -217,7 +217,7 @@ impl Fence {
 }
 
 type FenceWaiterCommandBuffersType = smallvec::SmallVec<[Arc<dyn CommandBufferTrait>; 8]>;
-type FenceWaiterSemaphoresType = smallvec::SmallVec<[Arc<Semaphore>; 32]>;
+pub(crate) type FenceWaiterSemaphoresType = smallvec::SmallVec<[Arc<Semaphore>; 32]>;
 
 pub struct FenceWaiter {
     fence: Arc<Fence>,
@@ -247,19 +247,10 @@ impl FenceWaiter {
     pub(crate) fn new(
         fence: Arc<Fence>,
         command_buffers: &[Arc<dyn CommandBufferTrait>],
-        wait_semaphores: &[(PipelineStages, Arc<Semaphore>)],
-        signal_semaphores: &[Arc<Semaphore>],
+        semaphores: FenceWaiterSemaphoresType,
     ) -> Self {
         let command_buffers = command_buffers.iter().cloned().collect();
-        let semaphores = signal_semaphores
-            .iter()
-            .cloned()
-            .chain(
-                wait_semaphores
-                    .iter()
-                    .map(|(_, semaphore)| semaphore.clone()),
-            )
-            .collect();
+        let semaphores = semaphores.iter().cloned().collect();
 
         Self {
             fence,

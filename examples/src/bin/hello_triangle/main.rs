@@ -404,12 +404,7 @@ fn main() {
                         .submit(
                             &[present_command_buffers[swapchain_index as usize].clone()],
                             &[(
-                                PipelineStages::from(
-                                    &[PipelineStage::FragmentShader],
-                                    None,
-                                    None,
-                                    None,
-                                ),
+                                PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
                                 image_available_semaphores[current_frame].clone(),
                             )],
                             &[present_ready[swapchain_index as usize].clone()],

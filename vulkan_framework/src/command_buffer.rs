@@ -372,12 +372,86 @@ impl AccessFlags {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum MemoryAccessAs {
+    IndirectCommandRead,
+    IndexRead,
+    VertexAttribureRead,
+    UniformRead,
+    InputAttachmentRead,
+    ShaderRead,
+    ShaderWrite,
+    ColorAttachmentRead,
+    ColorAttachmentWrite,
+    DepthStencilAttachmentRead,
+    DepthStencilAttachmentWrite,
+    TransferRead,
+    TransferWrite,
+    HostRead,
+    HostWrite,
+    MemoryRead,
+    MemoryWrite,
+}
+
+impl Into<ash::vk::AccessFlags2> for MemoryAccessAs {
+    fn into(self) -> ash::vk::AccessFlags2 {
+        type AshFlags = ash::vk::AccessFlags2;
+        match self {
+            Self::IndirectCommandRead => AshFlags::INDIRECT_COMMAND_READ,
+            Self::IndexRead => AshFlags::INDEX_READ,
+            Self::VertexAttribureRead => AshFlags::VERTEX_ATTRIBUTE_READ,
+            Self::UniformRead => AshFlags::UNIFORM_READ,
+            Self::InputAttachmentRead => AshFlags::INPUT_ATTACHMENT_READ,
+            Self::ShaderRead => AshFlags::SHADER_READ,
+            Self::ShaderWrite => AshFlags::SHADER_WRITE,
+            Self::ColorAttachmentRead => AshFlags::COLOR_ATTACHMENT_READ,
+            Self::ColorAttachmentWrite => AshFlags::COLOR_ATTACHMENT_WRITE,
+            Self::DepthStencilAttachmentRead => AshFlags::DEPTH_STENCIL_ATTACHMENT_READ,
+            Self::DepthStencilAttachmentWrite => AshFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
+            Self::TransferRead => AshFlags::TRANSFER_READ,
+            Self::TransferWrite => AshFlags::TRANSFER_WRITE,
+            Self::HostRead => AshFlags::HOST_READ,
+            Self::HostWrite => AshFlags::HOST_WRITE,
+            Self::MemoryRead => AshFlags::MEMORY_READ,
+            Self::MemoryWrite => AshFlags::MEMORY_WRITE,
+        }
+    }
+}
+
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct MemoryAccess(ash::vk::AccessFlags2);
+
+impl From<&[MemoryAccessAs]> for MemoryAccess {
+    fn from(value: &[MemoryAccessAs]) -> Self {
+        let mut flags = ash::vk::AccessFlags2::empty();
+        for v in value.into_iter() {
+            flags |= v.to_owned().into();
+        }
+
+        Self(flags)
+    }
+}
+
+impl From<ash::vk::AccessFlags2> for MemoryAccess {
+    fn from(value: ash::vk::AccessFlags2) -> Self {
+        Self(value)
+    }
+}
+
+impl Into<ash::vk::AccessFlags2> for MemoryAccess {
+    fn into(self) -> ash::vk::AccessFlags2 {
+        self.0
+    }
+}
+
 pub struct ImageMemoryBarrier {
+    image: Arc<dyn ImageTrait>,
     src_stages: PipelineStages,
-    src_access: AccessFlags,
+    src_access: MemoryAccess,
     dst_stages: PipelineStages,
-    dst_access: AccessFlags,
-    image_subresource_range: ImageSubresourceRange,
+    dst_access: MemoryAccess,
+    subresource_range: ImageSubresourceRange,
     old_layout: ImageLayout,
     new_layout: ImageLayout,
     src_queue_family: Arc<QueueFamily>,
@@ -386,73 +460,51 @@ pub struct ImageMemoryBarrier {
 
 impl ImageMemoryBarrier {
     #[inline]
-    pub(crate) fn ash_src_access_mask_flags(&self) -> ash::vk::AccessFlags {
-        self.src_access.ash_flags()
-    }
-
-    #[inline]
-    pub(crate) fn ash_dst_access_mask_flags(&self) -> ash::vk::AccessFlags {
-        self.dst_access.ash_flags()
-    }
-
-    #[inline]
-    pub(crate) fn ash_src_queue_family(&self) -> u32 {
-        self.src_queue_family.get_family_index()
-    }
-
-    #[inline]
-    pub(crate) fn ash_dst_queue_family(&self) -> u32 {
-        self.dst_queue_family.get_family_index()
-    }
-
-    #[inline]
-    pub(crate) fn ash_image_handle(&self) -> ash::vk::Image {
-        ash::vk::Image::from_raw(self.image_subresource_range.image().native_handle())
-    }
-
-    #[inline]
-    pub(crate) fn ash_src_flags(&self) -> ash::vk::PipelineStageFlags {
-        self.src_stages.ash_flags()
-    }
-
-    #[inline]
-    pub(crate) fn ash_dst_flags(&self) -> ash::vk::PipelineStageFlags {
-        self.dst_stages.ash_flags()
-    }
-
-    #[inline]
-    pub(crate) fn ash_subresource_range(&self) -> ash::vk::ImageSubresourceRange {
-        self.image_subresource_range.ash_subresource_range()
-    }
-
-    #[inline]
     pub fn image(&self) -> Arc<dyn ImageTrait> {
-        self.image_subresource_range.image()
+        self.image.clone()
     }
 
     #[inline]
     pub fn new(
+        image: Arc<dyn ImageTrait>,
         src_stages: PipelineStages,
-        src_access: AccessFlags,
+        src_access: MemoryAccess,
         dst_stages: PipelineStages,
-        dst_access: AccessFlags,
-        image_subresource_range: ImageSubresourceRange,
+        dst_access: MemoryAccess,
+        subresource_range: ImageSubresourceRange,
         old_layout: ImageLayout,
         new_layout: ImageLayout,
         src_queue_family: Arc<QueueFamily>,
         dst_queue_family: Arc<QueueFamily>,
     ) -> Self {
         Self {
+            image,
             src_stages,
             src_access,
             dst_stages,
             dst_access,
-            image_subresource_range,
+            subresource_range,
             old_layout,
             new_layout,
             src_queue_family,
             dst_queue_family,
         }
+    }
+}
+
+impl<'a> Into<ash::vk::ImageMemoryBarrier2<'a>> for ImageMemoryBarrier {
+    fn into(self) -> ash::vk::ImageMemoryBarrier2<'a> {
+        ash::vk::ImageMemoryBarrier2::default()
+            .image(ash::vk::Image::from_raw(self.image.native_handle()))
+            .src_access_mask(self.src_access.into())
+            .src_stage_mask(self.src_stages.into())
+            .dst_access_mask(self.dst_access.into())
+            .dst_stage_mask(self.dst_stages.into())
+            .old_layout(self.old_layout.ash_layout())
+            .new_layout(self.new_layout.ash_layout())
+            .src_queue_family_index(self.src_queue_family.get_family_index())
+            .dst_queue_family_index(self.dst_queue_family.get_family_index())
+            .subresource_range(self.subresource_range.ash_subresource_range())
     }
 }
 
@@ -990,34 +1042,23 @@ impl<'a> CommandBufferRecorder<'a> {
         }
     }
 
-    pub fn image_barrier(&mut self, dependency_info: ImageMemoryBarrier) {
+    pub fn image_barrier(&mut self, image_mem_barrier: ImageMemoryBarrier) {
         // TODO: check every resource is from the same device
-
-        let image_memory_barrier = ash::vk::ImageMemoryBarrier::default()
-            .image(dependency_info.ash_image_handle())
-            .old_layout(dependency_info.old_layout.ash_layout())
-            .new_layout(dependency_info.new_layout.ash_layout())
-            .src_queue_family_index(dependency_info.ash_src_queue_family())
-            .dst_queue_family_index(dependency_info.ash_dst_queue_family())
-            .src_access_mask(dependency_info.ash_src_access_mask_flags())
-            .dst_access_mask(dependency_info.ash_dst_access_mask_flags())
-            .subresource_range(dependency_info.ash_subresource_range());
 
         self.used_resources
             .insert(CommandBufferReferencedResource::Image(
-                dependency_info.image().clone(),
+                image_mem_barrier.image(),
             ));
 
+        let image_memory_barriers: [ash::vk::ImageMemoryBarrier2; 1] = [image_mem_barrier.into()];
+
+        let dependency_info = ash::vk::DependencyInfo::default()
+            .image_memory_barriers(image_memory_barriers.as_slice());
+
         unsafe {
-            self.device.ash_handle().cmd_pipeline_barrier(
-                self.command_buffer.ash_handle(),
-                dependency_info.ash_src_flags(),
-                dependency_info.ash_dst_flags(),
-                ash::vk::DependencyFlags::empty(),
-                &[],
-                &[],
-                &[image_memory_barrier],
-            );
+            self.device
+                .ash_handle()
+                .cmd_pipeline_barrier2(self.command_buffer.ash_handle(), &dependency_info);
         }
     }
 

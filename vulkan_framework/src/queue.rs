@@ -33,15 +33,8 @@ impl Drop for Queue {
 }
 
 impl Queue {
-    pub fn submit_unchecked(
-        &self,
-        _command_buffers: &[Arc<dyn CommandBufferTrait>],
-    ) -> VulkanResult<()> {
-        // TODO: assert queue.device == self.device
-        todo!()
-    }
-
-    pub fn submit(
+    #[deprecated]
+    pub fn submit_no_features2(
         &self,
         command_buffers: &[Arc<dyn CommandBufferTrait>],
         wait_semaphores: &[(PipelineStages, Arc<Semaphore>)],
@@ -65,7 +58,7 @@ impl Queue {
             let (wait_cond, wait_sem) = pipeline_bubble;
 
             wait_sems.push(wait_sem.ash_handle());
-            wait_stages.push(wait_cond.ash_flags());
+            wait_stages.push(wait_cond.to_owned().into());
         }
 
         let native_signal_semaphores = signal_semaphores
@@ -94,26 +87,105 @@ impl Queue {
 
         let submits = [submit_info];
 
-        match unsafe {
+        unsafe {
             self.get_parent_queue_family()
                 .get_parent_device()
                 .ash_handle()
                 .queue_submit(self.ash_handle(), submits.as_slice(), fence.ash_handle())
-        } {
-            Ok(_) => Ok(FenceWaiter::new(
-                fence,
-                command_buffers,
-                wait_semaphores,
-                signal_semaphores,
-            )),
-            Err(err) => Err(VulkanError::Vulkan(
+        }
+        .map_err(|err| {
+            VulkanError::Vulkan(
                 err.as_raw(),
                 Some(format!(
                     "Error submitting command buffers to the current queue: {}",
                     err
                 )),
-            )),
+            )
+        })?;
+
+        let used_semaphores: crate::fence::FenceWaiterSemaphoresType = wait_semaphores
+            .iter()
+            .map(|(_, sem)| sem.clone())
+            .chain(signal_semaphores.iter().cloned())
+            .collect();
+
+        Ok(FenceWaiter::new(fence, command_buffers, used_semaphores))
+    }
+
+    pub fn submit(
+        &self,
+        command_buffers: &[Arc<dyn CommandBufferTrait>],
+        wait_semaphores: &[(PipelineStages, Arc<Semaphore>)],
+        signal_semaphores: &[Arc<Semaphore>],
+        fence: Arc<Fence>,
+    ) -> VulkanResult<FenceWaiter> {
+        if self.get_parent_queue_family().get_parent_device() != fence.get_parent_device() {
+            return Err(VulkanError::Framework(
+                crate::prelude::FrameworkError::ResourceFromIncompatibleDevice,
+            ));
         }
+
+        // TODO: assert queue.device == command_buffers.device
+
+        let wait_semaphore_infos: SmallVec<[ash::vk::SemaphoreSubmitInfo; 8]> = wait_semaphores
+            .iter()
+            .map(|(wait_cond, wait_sem)| {
+                ash::vk::SemaphoreSubmitInfo::default()
+                    .semaphore(wait_sem.ash_handle())
+                    .stage_mask(wait_cond.to_owned().into())
+            })
+            .collect();
+
+        let signal_semaphore_infos = signal_semaphores
+            .iter()
+            .map(|sem| {
+                // TODO: check self.device == sem.device
+
+                ash::vk::SemaphoreSubmitInfo::default().semaphore(sem.ash_handle())
+                //.stage_mask(todo!())
+            })
+            .collect::<smallvec::SmallVec<[ash::vk::SemaphoreSubmitInfo; 8]>>();
+
+        let cmd_buffer_infos = command_buffers
+            .iter()
+            .map(|f| {
+                // TODO: assert f.device == self.device
+
+                ash::vk::CommandBufferSubmitInfo::default()
+                    .command_buffer(ash::vk::CommandBuffer::from_raw(f.native_handle()))
+            })
+            .collect::<smallvec::SmallVec<[ash::vk::CommandBufferSubmitInfo; 4]>>();
+
+        let submit_info = ash::vk::SubmitInfo2::default()
+            .command_buffer_infos(cmd_buffer_infos.as_slice())
+            .signal_semaphore_infos(signal_semaphore_infos.as_slice())
+            .wait_semaphore_infos(wait_semaphore_infos.as_slice());
+
+        let submits = [submit_info];
+
+        unsafe {
+            self.get_parent_queue_family()
+                .get_parent_device()
+                .ash_handle()
+                .queue_submit2(self.ash_handle(), submits.as_slice(), fence.ash_handle())
+        }
+        .map_err(|err| {
+            VulkanError::Vulkan(
+                err.as_raw(),
+                Some(format!(
+                    "Error submitting command buffers to the current queue: {}",
+                    err
+                )),
+            )
+        })?;
+
+        let used_semaphores: crate::fence::FenceWaiterSemaphoresType = wait_semaphores
+            .iter()
+            .map(|(_, sem)| sem.clone())
+            .chain(signal_semaphores.iter().cloned())
+            .collect();
+
+        Ok(FenceWaiter::new(fence, command_buffers, used_semaphores))
     }
 
     #[inline]

@@ -4,7 +4,7 @@ use std::time::Duration;
 use inline_spirv::*;
 use vulkan_framework::command_buffer::{
     AccessFlag, AccessFlags, AccessFlagsSpecifier, ClearValues, ColorClearValues,
-    CommandBufferRecorder, ImageMemoryBarrier, PrimaryCommandBuffer,
+    CommandBufferRecorder, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs, PrimaryCommandBuffer,
 };
 use vulkan_framework::command_pool::CommandPool;
 use vulkan_framework::compute_pipeline::ComputePipeline;
@@ -571,10 +571,11 @@ fn main() {
 
     match command_buffer.record_commands(|recorder| {
         recorder.image_barrier(ImageMemoryBarrier::new(
-            PipelineStages::from(&[PipelineStage::TopOfPipe], None, None, None),
-            AccessFlags::from(AccessFlagsSpecifier::from(&[], None)),
-            PipelineStages::from(&[PipelineStage::ComputeShader], None, None, None),
-            AccessFlags::from(AccessFlagsSpecifier::from(&[AccessFlag::ShaderWrite], None)),
+            image.clone(),
+            PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
+            MemoryAccess::from([].as_slice()),
+            PipelineStages::from([PipelineStage::ComputeShader].as_slice()),
+            MemoryAccess::from([MemoryAccessAs::ShaderWrite].as_slice()),
             ImageSubresourceRange::from(image.clone() as Arc<dyn ImageTrait>),
             ImageLayout::Undefined,
             ImageLayout::General,
@@ -604,13 +605,11 @@ fn main() {
         recorder.dispatch(32, 32, 1);
 
         let storage_image_transition_mem_barrier = ImageMemoryBarrier::new(
-            PipelineStages::from(&[PipelineStage::TopOfPipe], None, None, None),
-            AccessFlags::from(AccessFlagsSpecifier::from(&[], None)),
-            PipelineStages::from(&[PipelineStage::Transfer], None, None, None),
-            AccessFlags::from(AccessFlagsSpecifier::from(
-                &[AccessFlag::TransferRead],
-                None,
-            )),
+            image.clone(),
+            PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
+            MemoryAccess::from([].as_slice()),
+            PipelineStages::from([PipelineStage::Transfer].as_slice()),
+            MemoryAccess::from([MemoryAccessAs::TransferRead].as_slice()),
             ImageSubresourceRange::from(image.clone() as Arc<dyn ImageTrait>),
             ImageLayout::General,
             renderquad_image_imput_format,
@@ -784,7 +783,7 @@ fn main() {
                     .submit(
                         &[present_command_buffers[swapchain_index as usize].clone()],
                         &[(
-                            PipelineStages::from(&[PipelineStage::Transfer], None, None, None),
+                            PipelineStages::from([PipelineStage::Transfer].as_slice()),
                             image_available_semaphores[current_frame].clone(),
                         )],
                         &[present_ready[swapchain_index as usize].clone()],

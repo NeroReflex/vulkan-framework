@@ -6,6 +6,8 @@ use vulkan_framework::command_buffer::AccessFlag;
 use vulkan_framework::command_buffer::AccessFlags;
 use vulkan_framework::command_buffer::AccessFlagsSpecifier;
 use vulkan_framework::command_buffer::ImageMemoryBarrier;
+use vulkan_framework::command_buffer::MemoryAccess;
+use vulkan_framework::command_buffer::MemoryAccessAs;
 use vulkan_framework::command_buffer::PrimaryCommandBuffer;
 use vulkan_framework::command_pool::CommandPool;
 use vulkan_framework::compute_pipeline::ComputePipeline;
@@ -338,10 +340,11 @@ fn main() {
 
     match command_buffer.record_commands(|recorder| {
         recorder.image_barrier(ImageMemoryBarrier::new(
-            PipelineStages::from(&[PipelineStage::TopOfPipe], None, None, None),
-            AccessFlags::from(AccessFlagsSpecifier::from(&[AccessFlag::MemoryRead], None)),
-            PipelineStages::from(&[PipelineStage::ComputeShader], None, None, None),
-            AccessFlags::from(AccessFlagsSpecifier::from(&[AccessFlag::ShaderWrite], None)),
+            image.clone(),
+            PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
+            MemoryAccess::from([MemoryAccessAs::MemoryRead].as_slice()),
+            PipelineStages::from([PipelineStage::ComputeShader].as_slice()),
+            MemoryAccess::from([MemoryAccessAs::ShaderWrite].as_slice()),
             ImageSubresourceRange::from(image.clone() as Arc<dyn ImageTrait>),
             ImageLayout::Undefined,
             ImageLayout::General,

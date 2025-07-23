@@ -12,7 +12,8 @@ use vulkan_framework::{
     buffer::BufferUsage,
     command_buffer::{
         AccessFlag, AccessFlags, AccessFlagsSpecifier, ClearValues, ColorClearValues,
-        CommandBufferRecorder, ImageMemoryBarrier, PrimaryCommandBuffer,
+        CommandBufferRecorder, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs,
+        PrimaryCommandBuffer,
     },
     command_pool::CommandPool,
     descriptor_pool::DescriptorPoolSizesAcceletarionStructureKHR,
@@ -941,18 +942,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .record_commands(|recorder: &mut CommandBufferRecorder| {
                         // TODO: HERE transition the image layout from UNDEFINED to GENERAL so that ray tracing pipeline can write to it
                         recorder.image_barrier(ImageMemoryBarrier::new(
-                            PipelineStages::from(&[PipelineStage::TopOfPipe], None, None, None),
-                            AccessFlags::Unmanaged(0),
+                            rt_images[swapchain_index as usize].clone(),
+                            PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
+                            MemoryAccess::from([].as_slice()),
                             PipelineStages::from(
-                                &[],
-                                None,
-                                None,
-                                Some(&[PipelineStageRayTracingPipelineKHR::RayTracingShader]),
+                                [PipelineStage::RayTracingPipelineKHR(
+                                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                                )]
+                                .as_slice(),
                             ),
-                            AccessFlags::Managed(AccessFlagsSpecifier::from(
-                                &[AccessFlag::ShaderWrite],
-                                None,
-                            )),
+                            MemoryAccess::from([MemoryAccessAs::ShaderWrite].as_slice()),
                             ImageSubresourceRange::from(
                                 rt_images[swapchain_index as usize].clone() as Arc<dyn ImageTrait>,
                             ),
@@ -975,26 +974,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         // HERE wait for the ray tracing pipeline to transition image layout from GENERAL to renderquad_texture_layout
                         recorder.image_barrier(ImageMemoryBarrier::new(
+                            rt_images[swapchain_index as usize].clone(),
                             PipelineStages::from(
-                                &[],
-                                None,
-                                None,
-                                Some(&[PipelineStageRayTracingPipelineKHR::RayTracingShader]),
+                                [PipelineStage::RayTracingPipelineKHR(
+                                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                                )]
+                                .as_slice(),
                             ),
-                            AccessFlags::Managed(AccessFlagsSpecifier::from(
-                                &[AccessFlag::ShaderWrite],
-                                None,
-                            )),
-                            PipelineStages::from(
-                                &[PipelineStage::FragmentShader],
-                                None,
-                                None,
-                                None,
-                            ),
-                            AccessFlags::Managed(AccessFlagsSpecifier::from(
-                                &[AccessFlag::ShaderRead],
-                                None,
-                            )),
+                            MemoryAccess::from([MemoryAccessAs::ShaderWrite].as_slice()),
+                            PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
+                            MemoryAccess::from([MemoryAccessAs::ShaderRead].as_slice()),
                             ImageSubresourceRange::from(
                                 rt_images[swapchain_index as usize].clone() as Arc<dyn ImageTrait>,
                             ),
@@ -1031,12 +1020,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .submit(
                             &[present_command_buffers[swapchain_index as usize].clone()],
                             &[(
-                                PipelineStages::from(
-                                    &[PipelineStage::FragmentShader],
-                                    None,
-                                    None,
-                                    None,
-                                ),
+                                PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
                                 image_available_semaphores[current_frame].clone(),
                             )],
                             &[present_ready[swapchain_index as usize].clone()],
