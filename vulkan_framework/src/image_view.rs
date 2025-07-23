@@ -238,7 +238,7 @@ impl ImageView {
         let srr = ash::vk::ImageSubresourceRange {
             aspect_mask: match maybe_aspect {
                 Some(user_given) => user_given.ash_aspect(),
-                None => ImageViewAspect::from(format.clone()).ash_aspect(),
+                None => ImageViewAspect::from(format).ash_aspect(),
             },
             base_mip_level: subrange_base_mip_level,
             level_count: subrange_level_count,

@@ -20,8 +20,8 @@ use crate::{
     framebuffer::{Framebuffer, FramebufferTrait, ImagelessFramebuffer},
     graphics_pipeline::{GraphicsPipeline, Scissor, Viewport},
     image::{
-        Image1DTrait, Image2DTrait, Image3DDimensions, Image3DTrait, ImageAspects, ImageDimensions,
-        ImageLayout, ImageSubresourceLayers, ImageSubresourceRange, ImageTrait,
+        Image1DTrait, Image2DTrait, Image3DDimensions, Image3DTrait, ImageDimensions, ImageLayout,
+        ImageSubresourceLayers, ImageSubresourceRange, ImageTrait,
     },
     image_view::ImageView,
     pipeline_layout::PipelineLayout,
@@ -393,27 +393,27 @@ pub enum MemoryAccessAs {
     MemoryWrite,
 }
 
-impl Into<ash::vk::AccessFlags2> for MemoryAccessAs {
-    fn into(self) -> ash::vk::AccessFlags2 {
+impl From<MemoryAccessAs> for ash::vk::AccessFlags2 {
+    fn from(val: MemoryAccessAs) -> Self {
         type AshFlags = ash::vk::AccessFlags2;
-        match self {
-            Self::IndirectCommandRead => AshFlags::INDIRECT_COMMAND_READ,
-            Self::IndexRead => AshFlags::INDEX_READ,
-            Self::VertexAttribureRead => AshFlags::VERTEX_ATTRIBUTE_READ,
-            Self::UniformRead => AshFlags::UNIFORM_READ,
-            Self::InputAttachmentRead => AshFlags::INPUT_ATTACHMENT_READ,
-            Self::ShaderRead => AshFlags::SHADER_READ,
-            Self::ShaderWrite => AshFlags::SHADER_WRITE,
-            Self::ColorAttachmentRead => AshFlags::COLOR_ATTACHMENT_READ,
-            Self::ColorAttachmentWrite => AshFlags::COLOR_ATTACHMENT_WRITE,
-            Self::DepthStencilAttachmentRead => AshFlags::DEPTH_STENCIL_ATTACHMENT_READ,
-            Self::DepthStencilAttachmentWrite => AshFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
-            Self::TransferRead => AshFlags::TRANSFER_READ,
-            Self::TransferWrite => AshFlags::TRANSFER_WRITE,
-            Self::HostRead => AshFlags::HOST_READ,
-            Self::HostWrite => AshFlags::HOST_WRITE,
-            Self::MemoryRead => AshFlags::MEMORY_READ,
-            Self::MemoryWrite => AshFlags::MEMORY_WRITE,
+        match val {
+            MemoryAccessAs::IndirectCommandRead => AshFlags::INDIRECT_COMMAND_READ,
+            MemoryAccessAs::IndexRead => AshFlags::INDEX_READ,
+            MemoryAccessAs::VertexAttribureRead => AshFlags::VERTEX_ATTRIBUTE_READ,
+            MemoryAccessAs::UniformRead => AshFlags::UNIFORM_READ,
+            MemoryAccessAs::InputAttachmentRead => AshFlags::INPUT_ATTACHMENT_READ,
+            MemoryAccessAs::ShaderRead => AshFlags::SHADER_READ,
+            MemoryAccessAs::ShaderWrite => AshFlags::SHADER_WRITE,
+            MemoryAccessAs::ColorAttachmentRead => AshFlags::COLOR_ATTACHMENT_READ,
+            MemoryAccessAs::ColorAttachmentWrite => AshFlags::COLOR_ATTACHMENT_WRITE,
+            MemoryAccessAs::DepthStencilAttachmentRead => AshFlags::DEPTH_STENCIL_ATTACHMENT_READ,
+            MemoryAccessAs::DepthStencilAttachmentWrite => AshFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
+            MemoryAccessAs::TransferRead => AshFlags::TRANSFER_READ,
+            MemoryAccessAs::TransferWrite => AshFlags::TRANSFER_WRITE,
+            MemoryAccessAs::HostRead => AshFlags::HOST_READ,
+            MemoryAccessAs::HostWrite => AshFlags::HOST_WRITE,
+            MemoryAccessAs::MemoryRead => AshFlags::MEMORY_READ,
+            MemoryAccessAs::MemoryWrite => AshFlags::MEMORY_WRITE,
         }
     }
 }
@@ -425,7 +425,7 @@ pub struct MemoryAccess(ash::vk::AccessFlags2);
 impl From<&[MemoryAccessAs]> for MemoryAccess {
     fn from(value: &[MemoryAccessAs]) -> Self {
         let mut flags = ash::vk::AccessFlags2::empty();
-        for v in value.into_iter() {
+        for v in value.iter() {
             flags |= v.to_owned().into();
         }
 
@@ -439,9 +439,9 @@ impl From<ash::vk::AccessFlags2> for MemoryAccess {
     }
 }
 
-impl Into<ash::vk::AccessFlags2> for MemoryAccess {
-    fn into(self) -> ash::vk::AccessFlags2 {
-        self.0
+impl From<MemoryAccess> for ash::vk::AccessFlags2 {
+    fn from(val: MemoryAccess) -> Self {
+        val.0
     }
 }
 
@@ -492,19 +492,19 @@ impl ImageMemoryBarrier {
     }
 }
 
-impl<'a> Into<ash::vk::ImageMemoryBarrier2<'a>> for ImageMemoryBarrier {
-    fn into(self) -> ash::vk::ImageMemoryBarrier2<'a> {
+impl<'a> From<ImageMemoryBarrier> for ash::vk::ImageMemoryBarrier2<'a> {
+    fn from(val: ImageMemoryBarrier) -> Self {
         ash::vk::ImageMemoryBarrier2::default()
-            .image(ash::vk::Image::from_raw(self.image.native_handle()))
-            .src_access_mask(self.src_access.into())
-            .src_stage_mask(self.src_stages.into())
-            .dst_access_mask(self.dst_access.into())
-            .dst_stage_mask(self.dst_stages.into())
-            .old_layout(self.old_layout.ash_layout())
-            .new_layout(self.new_layout.ash_layout())
-            .src_queue_family_index(self.src_queue_family.get_family_index())
-            .dst_queue_family_index(self.dst_queue_family.get_family_index())
-            .subresource_range(self.subresource_range.ash_subresource_range())
+            .image(ash::vk::Image::from_raw(val.image.native_handle()))
+            .src_access_mask(val.src_access.into())
+            .src_stage_mask(val.src_stages.into())
+            .dst_access_mask(val.dst_access.into())
+            .dst_stage_mask(val.dst_stages.into())
+            .old_layout(val.old_layout.ash_layout())
+            .new_layout(val.new_layout.ash_layout())
+            .src_queue_family_index(val.src_queue_family.get_family_index())
+            .dst_queue_family_index(val.dst_queue_family.get_family_index())
+            .subresource_range(val.subresource_range.ash_subresource_range())
     }
 }
 

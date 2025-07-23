@@ -8,10 +8,7 @@ use std::{
 
 use sdl2::VideoSubsystem;
 use vulkan_framework::{
-    command_buffer::{
-        AccessFlag, AccessFlags, AccessFlagsSpecifier, ImageMemoryBarrier, MemoryAccess,
-        MemoryAccessAs, PrimaryCommandBuffer,
-    },
+    command_buffer::{ImageMemoryBarrier, MemoryAccess, MemoryAccessAs, PrimaryCommandBuffer},
     command_pool::CommandPool,
     device::{Device, DeviceOwned},
     fence::{Fence, FenceWaiter},
@@ -134,11 +131,11 @@ impl System {
             .window("Window", initial_width, initial_height)
             .vulkan()
             .build()
-            .map_err(|err| RenderingError::Window(err))?;
+            .map_err(RenderingError::Window)?;
 
         let required_extensions = window
             .vulkan_instance_extensions()
-            .map_err(|err| RenderingError::Unknown(err))?;
+            .map_err(RenderingError::Unknown)?;
         let instance_extensions = instance_extensions
             .into_iter()
             .chain(
@@ -196,7 +193,6 @@ impl System {
             )?;
 
         let rendering_fences = (0..swapchain_images_count)
-            .into_iter()
             .map(|idx| {
                 Fence::new(
                     device.clone(),

@@ -11,8 +11,7 @@ use vulkan_framework::{
     memory_allocator::DefaultAllocator,
     memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryHostVisibility, MemoryType},
     memory_pool::{MemoryPool, MemoryPoolBacked, MemoryPoolFeature, MemoryPoolFeatures},
-    queue::Queue,
-    queue_family::{QueueFamily, QueueFamilyOwned},
+    queue_family::QueueFamily,
 };
 
 pub struct ResourceManager {

@@ -2,9 +2,6 @@ use std::io::Write;
 use std::sync::Arc;
 
 use inline_spirv::*;
-use vulkan_framework::command_buffer::AccessFlag;
-use vulkan_framework::command_buffer::AccessFlags;
-use vulkan_framework::command_buffer::AccessFlagsSpecifier;
 use vulkan_framework::command_buffer::ImageMemoryBarrier;
 use vulkan_framework::command_buffer::MemoryAccess;
 use vulkan_framework::command_buffer::MemoryAccessAs;

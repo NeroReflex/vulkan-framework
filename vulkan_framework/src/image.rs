@@ -11,7 +11,7 @@ use crate::{
     queue_family::QueueFamily,
 };
 
-use std::{borrow::Borrow, sync::Arc};
+use std::sync::Arc;
 
 #[repr(u32)]
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
@@ -337,6 +337,24 @@ pub enum ImageDimensions {
     Image1D { extent: Image1DDimensions },
     Image2D { extent: Image2DDimensions },
     Image3D { extent: Image3DDimensions },
+}
+
+impl From<Image1DDimensions> for ImageDimensions {
+    fn from(extent: Image1DDimensions) -> Self {
+        Self::Image1D { extent }
+    }
+}
+
+impl From<Image2DDimensions> for ImageDimensions {
+    fn from(extent: Image2DDimensions) -> Self {
+        Self::Image2D { extent }
+    }
+}
+
+impl From<Image3DDimensions> for ImageDimensions {
+    fn from(extent: Image3DDimensions) -> Self {
+        Self::Image3D { extent }
+    }
 }
 
 impl ImageDimensions {

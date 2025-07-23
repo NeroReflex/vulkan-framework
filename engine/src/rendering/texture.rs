@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use vulkan_framework::{
     buffer::BufferTrait,
-    command_buffer::{self, PrimaryCommandBuffer},
+    command_buffer::PrimaryCommandBuffer,
     command_pool::CommandPool,
     descriptor_pool::{
         DescriptorPool, DescriptorPoolConcreteDescriptor, DescriptorPoolSizesConcreteDescriptor,
@@ -21,7 +21,7 @@ use vulkan_framework::{
     memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryType},
     memory_pool::{MemoryPool, MemoryPoolFeature, MemoryPoolFeatures},
     queue::Queue,
-    queue_family::{QueueFamily, QueueFamilyOwned},
+    queue_family::QueueFamily,
     sampler::{Filtering, MipmapMode, Sampler},
     shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType},
     shader_stage_access::ShaderStagesAccess,
@@ -106,7 +106,7 @@ impl TextureManager {
             DescriptorSetLayout::new(device.clone(), &[binding_descriptor.clone()])?;
 
         let mut descriptor_sets: DescriptorSetsType = smallvec::smallvec![];
-        for _ in (0..frames_in_flight as usize).into_iter() {
+        for _ in 0..frames_in_flight as usize {
             let descriptor_set =
                 DescriptorSet::new(descriptor_pool.clone(), descriptor_set_layout.clone())?;
 
@@ -149,10 +149,7 @@ impl TextureManager {
 
         let stub_image = AllocatedImage::new(memory_pool.clone(), stub_image)?;
 
-        let textures: TexturesMapType = (0..max_textures as usize)
-            .into_iter()
-            .map(|_| Option::None)
-            .collect();
+        let textures: TexturesMapType = (0..max_textures as usize).map(|_| Option::None).collect();
 
         let sampler = Sampler::new(
             device.clone(),

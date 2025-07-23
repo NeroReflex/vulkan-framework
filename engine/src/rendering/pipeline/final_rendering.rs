@@ -95,7 +95,7 @@ impl FinalRendering {
                 device.clone(),
                 ConcreteImageDescriptor::new(
                     ImageDimensions::Image2D {
-                        extent: image_dimensions.clone(),
+                        extent: image_dimensions,
                     },
                     ImageUsage::Managed(ImageUsageSpecifier::new(
                         false, false, true, false, true, false, false, false,
@@ -119,8 +119,7 @@ impl FinalRendering {
             .map(|obj| obj.memory_requirements().size() + obj.memory_requirements().alignment())
             .sum();
 
-        let minimum_memory =
-            (memory_required as u64) + (4096u64 * (frames_in_flight as u64 + 4u64));
+        let minimum_memory = memory_required + (4096u64 * (frames_in_flight as u64 + 4u64));
         // add space for frames_in_flight images
 
         // add some leftover space to account for alignment

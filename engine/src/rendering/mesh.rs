@@ -1,18 +1,14 @@
 use std::sync::Arc;
 
 use vulkan_framework::{
-    command_pool::CommandPool,
     descriptor_pool::{
         DescriptorPool, DescriptorPoolConcreteDescriptor,
         DescriptorPoolSizesAcceletarionStructureKHR, DescriptorPoolSizesConcreteDescriptor,
     },
-    descriptor_set::DescriptorSet,
     device::Device,
-    image::AllocatedImage,
-    sampler::Sampler,
 };
 
-use crate::rendering::{MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingResult};
+use crate::rendering::RenderingResult;
 
 pub struct MeshManager {
     device: Arc<Device>,

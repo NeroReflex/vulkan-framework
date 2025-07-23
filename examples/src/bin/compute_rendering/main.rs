@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use inline_spirv::*;
 use vulkan_framework::command_buffer::{
-    AccessFlag, AccessFlags, AccessFlagsSpecifier, ClearValues, ColorClearValues,
-    CommandBufferRecorder, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs, PrimaryCommandBuffer,
+    ClearValues, ColorClearValues, CommandBufferRecorder, ImageMemoryBarrier, MemoryAccess,
+    MemoryAccessAs, PrimaryCommandBuffer,
 };
 use vulkan_framework::command_pool::CommandPool;
 use vulkan_framework::compute_pipeline::ComputePipeline;

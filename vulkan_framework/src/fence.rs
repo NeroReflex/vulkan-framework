@@ -4,7 +4,6 @@ use crate::{
     command_buffer::CommandBufferTrait,
     device::{Device, DeviceOwned},
     instance::InstanceOwned,
-    pipeline_stage::PipelineStages,
     prelude::{FrameworkError, VulkanError, VulkanResult},
     semaphore::Semaphore,
 };

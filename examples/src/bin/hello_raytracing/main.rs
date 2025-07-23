@@ -11,9 +11,8 @@ use vulkan_framework::{
     binding_tables::{required_memory_type, RaytracingBindingTables},
     buffer::BufferUsage,
     command_buffer::{
-        AccessFlag, AccessFlags, AccessFlagsSpecifier, ClearValues, ColorClearValues,
-        CommandBufferRecorder, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs,
-        PrimaryCommandBuffer,
+        ClearValues, ColorClearValues, CommandBufferRecorder, ImageMemoryBarrier, MemoryAccess,
+        MemoryAccessAs, PrimaryCommandBuffer,
     },
     command_pool::CommandPool,
     descriptor_pool::DescriptorPoolSizesAcceletarionStructureKHR,
