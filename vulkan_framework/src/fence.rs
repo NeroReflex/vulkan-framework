@@ -90,8 +90,7 @@ impl Fence {
 
         match &device {
             Some(dev) => {
-                let reset_result =
-                    unsafe { dev.ash_handle().reset_fences(native_fences.as_ref()) };
+                let reset_result = unsafe { dev.ash_handle().reset_fences(native_fences.as_ref()) };
 
                 match reset_result {
                     Ok(_) => Ok(()),

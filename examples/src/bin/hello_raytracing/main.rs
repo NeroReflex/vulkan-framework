@@ -389,23 +389,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let memory_required: u64 = rt_image_handles
             .iter()
-            .map(|obj| obj.memory_requirements().size() + (2u64 * obj.memory_requirements().alignment()))
+            .map(|obj| {
+                obj.memory_requirements().size() + (2u64 * obj.memory_requirements().alignment())
+            })
             .sum();
 
         let memory_required = (4096 * 4) + memory_required;
 
-        let hints: smallvec::SmallVec<[&dyn MemoryRequiring; 8]> =
-            rt_image_handles
-                .iter()
-                .map(|a| a as &dyn MemoryRequiring)
-                .collect();
+        let hints: smallvec::SmallVec<[&dyn MemoryRequiring; 8]> = rt_image_handles
+            .iter()
+            .map(|a| a as &dyn MemoryRequiring)
+            .collect();
 
         let device_local_memory_heap = MemoryHeap::new(
             dev.clone(),
-            ConcreteMemoryHeapDescriptor::new(
-                MemoryType::DeviceLocal(None),
-                memory_required,
-            ),
+            ConcreteMemoryHeapDescriptor::new(MemoryType::DeviceLocal(None), memory_required),
             hints
                 .iter()
                 .map(|h| *h as &dyn MemoryRequiring)

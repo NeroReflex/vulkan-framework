@@ -142,10 +142,10 @@ impl MemoryAllocator for DefaultAllocator {
             // waste the first block for aligning the rest, otherwise it will be 1
             // (meaning the first block if used to align the data)
             let block_offset_alignment = if ((i * self.block_size) % alignment) == 0 {
-                    0
-                } else {
-                    1
-                };
+                0
+            } else {
+                1
+            };
 
             let next_aligned_start_addr = ((i * self.block_size) / alignment) * alignment;
 
@@ -156,15 +156,16 @@ impl MemoryAllocator for DefaultAllocator {
             // if the address range represented by + and i+1 do not contains the aligned address
             // this block is skipped
             if !contains_aligned_start {
-                i+= 1;
+                i += 1;
                 continue 'find_first_block;
             }
 
-            let required_number_of_blocks = block_offset_alignment + 1u64 + (size / self.block_size);
+            let required_number_of_blocks =
+                block_offset_alignment + 1u64 + (size / self.block_size);
 
             // make sure there is enough room to allocate the memory
             if (i + required_number_of_blocks) >= total_number_of_blocks {
-                return None
+                return None;
             }
 
             // make sure the requested memory is free
@@ -201,7 +202,8 @@ impl MemoryAllocator for DefaultAllocator {
 
     fn dealloc(&self, allocation: &mut AllocationResult) {
         let first_block = allocation.allocation_start / self.block_size;
-        let number_of_allocated_blocks = (allocation.allocation_end / self.block_size) - first_block;
+        let number_of_allocated_blocks =
+            (allocation.allocation_end / self.block_size) - first_block;
 
         if (first_block + number_of_allocated_blocks) > (self.total_size / self.block_size) {
             panic!("Memory was not allocated from this pool! :O");
