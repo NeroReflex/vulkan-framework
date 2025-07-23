@@ -11,5 +11,4 @@ vulkan_framework_sdl2_glue = { path = "../vulkan_framework_sdl2_glue" }
 vulkan_framework_glfw_glue = { path = "../vulkan_framework_glfw_glue" }
 inline-spirv = "0.1.6"
 "sdl2" = "*"
-"ash" = "*"
 smallvec = "^1"

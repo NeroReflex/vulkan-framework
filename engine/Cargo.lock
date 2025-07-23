@@ -12,12 +12,13 @@ checksum = "e16d2d3311acee920a9eb8d33b8cbc1787ce4a264e85f964c2404b969bdcd487"
 name = "artrtic"
 version = "0.1.0"
 dependencies = [
- "inline-spirv 0.2.1",
+ "inline-spirv",
  "rust-embed",
  "sdl2",
  "smallvec",
  "thiserror",
  "vulkan_framework",
+ "vulkan_framework_glfw_glue",
 ]
 
 [[package]]
@@ -64,9 +65,9 @@ checksum = "5c76a5792e44e4abe34d3abf15636779261d45a7450612059293d1d2cfc63422"
 
 [[package]]
 name = "cc"
-version = "1.2.29"
+version = "1.2.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c1599538de2394445747c8cf7935946e3cc27e9625f889d979bfb2aaf569362"
+checksum = "deec109607ca693028562ed836a5f1c4b8bd77755c4e132fc5ce11b0b6211ae7"
 dependencies = [
  "shlex",
 ]
@@ -122,18 +123,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "examples"
-version = "0.0.1"
-dependencies = [
- "inline-spirv 0.1.6",
- "sdl2",
- "smallvec",
- "vulkan_framework",
- "vulkan_framework_glfw_glue",
- "vulkan_framework_sdl2_glue",
-]
-
-[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -171,17 +160,6 @@ dependencies = [
 
 [[package]]
 name = "inline-spirv"
-version = "0.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b167f7553467c596aa5a432ea130dce4da07f44f40c60251b2369904663eceb3"
-dependencies = [
- "quote",
- "shaderc",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "inline-spirv"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9431a82932b93a63b22f9d27f9c9bba276e65d2d6a908dcab444753d49acd21e"
@@ -189,7 +167,7 @@ dependencies = [
  "quote",
  "shaderc",
  "spq-spvasm",
- "syn 2.0.104",
+ "syn",
 ]
 
 [[package]]
@@ -221,16 +199,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9fbbcab51052fe104eb5e5d351cf728d30a5be1fe14d9be8a3b097481fb97de"
 
 [[package]]
-name = "lock_api"
-version = "0.4.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96936507f153605bddfcda068dd804796c84324ed2510809e5b2a624c81da765"
-dependencies = [
- "autocfg",
- "scopeguard",
-]
-
-[[package]]
 name = "num-derive"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -238,7 +206,7 @@ checksum = "ed3955f1a9c7c0c15e092f9c887db08b1fc683305fdf6eb6684f22555355e202"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.104",
+ "syn",
 ]
 
 [[package]]
@@ -261,29 +229,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "parking_lot"
-version = "0.12.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70d58bf43669b5795d1576d0641cfb6fbb2057bf629506267a92807158584a13"
-dependencies = [
- "lock_api",
- "parking_lot_core",
-]
-
-[[package]]
-name = "parking_lot_core"
-version = "0.9.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc838d2a56b5b1a6c25f55575dfc605fabb63bb2365f6c2353ef9159aa69e4a5"
-dependencies = [
- "cfg-if",
- "libc",
- "redox_syscall",
- "smallvec",
- "windows-targets 0.52.6",
-]
-
-[[package]]
 name = "proc-macro2"
 version = "1.0.95"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -299,15 +244,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1885c039570dc00dcb4ff087a89e185fd56bae234ddc7f056a945bf36467248d"
 dependencies = [
  "proc-macro2",
-]
-
-[[package]]
-name = "redox_syscall"
-version = "0.5.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d04b7d0ee6b4a0207a0a7adb104d23ecb0b47d6beae7152d0fa34b692b29fd6"
-dependencies = [
- "bitflags 2.9.1",
 ]
 
 [[package]]
@@ -339,7 +275,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "rust-embed-utils",
- "syn 2.0.104",
+ "syn",
  "walkdir",
 ]
 
@@ -361,12 +297,6 @@ checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
 ]
-
-[[package]]
-name = "scopeguard"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "sdl2"
@@ -486,17 +416,6 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "1.0.109"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72b64191b275b66ffe2469e8af2c1cfe3bafa67b529ead792a6d0160888b4237"
-dependencies = [
- "proc-macro2",
- "quote",
- "unicode-ident",
-]
-
-[[package]]
-name = "syn"
 version = "2.0.104"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "17b6f705963418cdb9927482fa304bc562ece2fdd4f616084c50b7023b435a40"
@@ -523,7 +442,7 @@ checksum = "7f7cf42b4507d8ea322120659672cf1b9dbb93f8f2d4ecfd6e51350ff5b17a1d"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.104",
+ "syn",
 ]
 
 [[package]]
@@ -553,9 +472,9 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 [[package]]
 name = "vulkan_framework"
 version = "0.1.6"
+source = "git+https://github.com/NeroReflex/vulkan-framework.git#f93cb203f18aff1917ab3f2f2ac409a4fe159378"
 dependencies = [
  "ash",
- "parking_lot",
  "smallvec",
  "thiserror",
 ]
@@ -563,17 +482,10 @@ dependencies = [
 [[package]]
 name = "vulkan_framework_glfw_glue"
 version = "0.1.0"
+source = "git+https://github.com/NeroReflex/vulkan-framework.git#f93cb203f18aff1917ab3f2f2ac409a4fe159378"
 dependencies = [
  "ash",
  "glfw-sys",
-]
-
-[[package]]
-name = "vulkan_framework_sdl2_glue"
-version = "0.1.0"
-dependencies = [
- "sdl2-sys",
- "vulkan_framework",
 ]
 
 [[package]]

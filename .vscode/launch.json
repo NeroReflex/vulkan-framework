@@ -7,6 +7,24 @@
         {
             "type": "lldb",
             "request": "launch",
+            "name": "Debug engine 'artrtic'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=artrtic",
+                    "--package=artrtic"
+                ],
+                "filter": {
+                    "name": "artrtic",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
             "name": "Debug unit tests in library 'examples'",
             "cargo": {
                 "args": [

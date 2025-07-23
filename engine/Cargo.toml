@@ -1,0 +1,12 @@
+[package]
+name = "artrtic"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+inline-spirv = "0.2.1"
+rust-embed = "8.7.2"
+sdl2 = "^0"
+smallvec = "^1"
+thiserror = "^2"
+vulkan_framework = { path = "../vulkan_framework" }

@@ -5,4 +5,5 @@ members = [
     "vulkan_framework",
     "vulkan_framework_sdl2_glue",
     "vulkan_framework_glfw_glue",
+    "engine",
 ]
