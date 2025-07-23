@@ -14,6 +14,7 @@ use crate::{
         AllowedBuildingDevice,
     },
     binding_tables::RaytracingBindingTables,
+    buffer::BufferTrait,
     command_pool::{CommandPool, CommandPoolOwned},
     device::DeviceOwned,
     framebuffer::{Framebuffer, FramebufferTrait, ImagelessFramebuffer},
@@ -43,6 +44,7 @@ enum CommandBufferReferencedResource {
     PipelineLayout(Arc<PipelineLayout>),
     Framebuffer(Arc<dyn FramebufferTrait>),
     Image(Arc<dyn ImageTrait>),
+    Buffer(Arc<dyn BufferTrait>),
     //ImageView(Arc<ImageView>),
 }
 
@@ -59,6 +61,7 @@ impl CommandBufferReferencedResource {
             Self::Framebuffer(l0) => (0b0100u128 << 124u128) | (l0.native_handle() as u128),
             Self::GraphicsPipeline(l0) => (0b0101u128 << 124u128) | (l0.native_handle() as u128),
             Self::RaytracingPipeline(l0) => (0b0110u128 << 124u128) | (l0.native_handle() as u128),
+            Self::Buffer(l0) => (0b0111u128 << 124u128) | (l0.native_handle() as u128),
             //Self::ImageView(l0) => (0b0111u128 << 124u128) | (l0.native_handle() as u128),
         }
     }
@@ -86,6 +89,7 @@ impl PartialEq for CommandBufferReferencedResource {
                 l0.native_handle() == r0.native_handle()
             }
             (Self::Image(l0), Self::Image(r0)) => l0.native_handle() == r0.native_handle(),
+            (Self::Buffer(l0), Self::Buffer(r0)) => l0.native_handle() == r0.native_handle(),
             //(Self::ImageView(l0), Self::Image(r0)) => l0.native_handle() == r0.native_handle(),
             _ => false,
         }
@@ -911,6 +915,40 @@ impl<'a> CommandBufferRecorder<'a> {
                 &render_pass_begin_info,
                 ash::vk::SubpassContents::INLINE,
             )
+        }
+    }
+
+    pub fn copy_buffer_to_image(
+        &mut self,
+        src: Arc<dyn BufferTrait>,
+        //src_subresource: ImageSubresourceLayers,
+        dst_layout: ImageLayout,
+        dst_subresource: ImageSubresourceLayers,
+        dst: Arc<dyn ImageTrait>,
+        extent: ImageDimensions,
+    ) {
+        let dst_offset = ash::vk::Offset3D::default().x(0).y(0).z(0);
+
+        let regions = ash::vk::BufferImageCopy::default()
+            .buffer_offset(0u64)
+            .image_offset(dst_offset)
+            .image_extent(extent.ash_extent_3d())
+            .image_subresource(dst_subresource.ash_subresource_layers());
+
+        self.used_resources
+            .insert(CommandBufferReferencedResource::Buffer(src.clone()));
+
+        self.used_resources
+            .insert(CommandBufferReferencedResource::Image(dst.clone()));
+
+        unsafe {
+            self.device.ash_handle().cmd_copy_buffer_to_image(
+                self.command_buffer.ash_handle(),
+                ash::vk::Buffer::from_raw(src.native_handle()),
+                ash::vk::Image::from_raw(dst.native_handle()),
+                dst_layout.ash_layout(),
+                &[regions],
+            );
         }
     }
 
