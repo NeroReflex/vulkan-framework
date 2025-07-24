@@ -308,7 +308,7 @@ impl Drop for SwapchainKHR {
 impl SwapchainKHR {
     #[inline]
     pub fn queue_families(&self) -> &[Arc<QueueFamily>] {
-        &self.queue_families.as_slice()
+        self.queue_families.as_slice()
     }
 
     #[inline]

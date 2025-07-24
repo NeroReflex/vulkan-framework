@@ -114,9 +114,9 @@ pub enum BufferUseAs {
     RayTracing(BufferUsageRayTracingPipelineKHR),
 }
 
-impl Into<ash::vk::BufferUsageFlags> for &BufferUseAs {
-    fn into(self) -> ash::vk::BufferUsageFlags {
-        match self {
+impl From<&BufferUseAs> for ash::vk::BufferUsageFlags {
+    fn from(val: &BufferUseAs) -> Self {
+        match val {
             BufferUseAs::TransferSrc => ash::vk::BufferUsageFlags::TRANSFER_SRC,
             BufferUseAs::TransferDst => ash::vk::BufferUsageFlags::TRANSFER_DST,
             BufferUseAs::UniformTexelBuffer => ash::vk::BufferUsageFlags::UNIFORM_TEXEL_BUFFER,

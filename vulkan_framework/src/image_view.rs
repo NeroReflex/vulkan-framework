@@ -6,7 +6,7 @@ use crate::{
     prelude::{VulkanError, VulkanResult},
 };
 
-use std::{borrow::Borrow, sync::Arc};
+use std::sync::Arc;
 
 #[derive(Debug, Copy, Clone)]
 pub enum ImageViewType {

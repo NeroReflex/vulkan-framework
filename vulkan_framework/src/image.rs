@@ -416,10 +416,10 @@ pub enum ImageUseAs {
     InputAttachment,
 }
 
-impl Into<ash::vk::ImageUsageFlags> for &ImageUseAs {
-    fn into(self) -> ash::vk::ImageUsageFlags {
+impl From<&ImageUseAs> for ash::vk::ImageUsageFlags {
+    fn from(val: &ImageUseAs) -> Self {
         type FlagType = ash::vk::ImageUsageFlags;
-        match self {
+        match val {
             ImageUseAs::TransferSrc => FlagType::TRANSFER_SRC,
             ImageUseAs::TransferDst => FlagType::TRANSFER_DST,
             ImageUseAs::Sampled => FlagType::SAMPLED,
@@ -442,9 +442,9 @@ impl From<u32> for ImageUsage {
     }
 }
 
-impl Into<ash::vk::ImageUsageFlags> for ImageUsage {
-    fn into(self) -> ash::vk::ImageUsageFlags {
-        self.0.to_owned()
+impl From<ImageUsage> for ash::vk::ImageUsageFlags {
+    fn from(val: ImageUsage) -> Self {
+        val.0.to_owned()
     }
 }
 

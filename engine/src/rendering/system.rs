@@ -76,9 +76,8 @@ impl Drop for System {
     fn drop(&mut self) {
         // wait for all fences to be signaled: meaning execution has ended
         for w in 0..self.frames_in_flight.len() {
-            match self.frames_in_flight[w].take() {
-                Some(fence_waiter) => drop(fence_waiter),
-                None => {}
+            if let Some(fence_waiter) = self.frames_in_flight[w].take() {
+                drop(fence_waiter)
             }
         }
 
