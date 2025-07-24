@@ -189,7 +189,7 @@ impl From<MemoryAccess> for ash::vk::AccessFlags2 {
     fn from(val: MemoryAccess) -> Self {
         match &val.0 {
             Some(flags) => flags.to_owned(),
-            None => ash::vk::AccessFlags2::NONE
+            None => ash::vk::AccessFlags2::NONE,
         }
     }
 }
