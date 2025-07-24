@@ -23,7 +23,7 @@ use vulkan_framework::{
     memory_pool::{MemoryPool, MemoryPoolFeature, MemoryPoolFeatures},
     pipeline_stage::{PipelineStage, PipelineStages},
     queue::Queue,
-    queue_family::QueueFamily,
+    queue_family::{QueueFamily, QueueFamilyOwned},
     sampler::{Filtering, MipmapMode, Sampler},
     shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType},
     shader_stage_access::ShaderStagesAccess,
@@ -162,55 +162,17 @@ impl TextureManager {
 
         let load_fence = Fence::new(device.clone(), false, Some("texture_manager.load_fence"))?;
 
-        command_buffer.record_one_time_submit(|recorder| {
-            let before_transfer_barrier = ImageMemoryBarrier::new(
-                PipelineStages::from([PipelineStage::TopOfPipe].as_ref()),
-                MemoryAccess::default(),
-                PipelineStages::from([PipelineStage::Transfer].as_ref()),
-                MemoryAccess::from([MemoryAccessAs::MemoryWrite].as_slice()),
-                ImageSubresourceRange::from(stub_image.clone() as Arc<dyn ImageTrait>),
-                ImageLayout::Undefined,
-                ImageLayout::TransferDstOptimal,
-                queue_family.clone(),
-                queue_family.clone(),
-            );
-
-            recorder.image_barrier(before_transfer_barrier);
-
-            recorder.copy_buffer_to_image(
-                stub_image_data,
-                ImageLayout::TransferDstOptimal,
-                ImageSubresourceLayers::new(
-                    ImageAspects::from([ImageAspect::Color].as_ref()),
-                    0,
-                    0,
-                    1,
-                ),
-                stub_image.clone(),
-                stub_image.dimensions(),
-            );
-
-            let after_transfer_barrier = ImageMemoryBarrier::new(
-                PipelineStages::from([PipelineStage::Transfer].as_ref()),
-                MemoryAccess::from([MemoryAccessAs::MemoryWrite].as_slice()),
-                PipelineStages::from([PipelineStage::BottomOfPipe].as_ref()),
-                MemoryAccess::default(),
-                ImageSubresourceRange::from(stub_image.clone() as Arc<dyn ImageTrait>),
-                ImageLayout::TransferDstOptimal,
-                ImageLayout::ShaderReadOnlyOptimal,
-                queue_family.clone(),
-                queue_family.clone(),
-            );
-
-            recorder.image_barrier(after_transfer_barrier);
-        })?;
-
-        let load_fence_waiter =
-            queue.submit(&[command_buffer.clone()], &[], &[], load_fence.clone());
+        let load_fence_waiter = Self::setup_load_image_operation(
+            command_buffer.clone(),
+            stub_image_data,
+            stub_image.clone(),
+            load_fence.clone(),
+            queue.clone(),
+        )?;
 
         // this will wait for the GPU to finish the resource copy
         // and the fence will be resetted back in unsignaled state
-        drop(load_fence_waiter.unwrap());
+        drop(load_fence_waiter);
 
         Ok(Self {
             device,
@@ -233,5 +195,63 @@ impl TextureManager {
             load_fence,
             load_fence_waiter: Option::None,
         })
+    }
+
+    fn setup_load_image_operation(
+        command_buffer: Arc<PrimaryCommandBuffer>,
+        image_data: Arc<dyn BufferTrait>,
+        image: Arc<dyn ImageTrait>,
+        load_fence: Arc<Fence>,
+        queue: Arc<Queue>,
+    ) -> RenderingResult<FenceWaiter> {
+        let queue_family = queue.get_parent_queue_family();
+
+        command_buffer.record_one_time_submit(|recorder| {
+            let before_transfer_barrier = ImageMemoryBarrier::new(
+                PipelineStages::from([PipelineStage::TopOfPipe].as_ref()),
+                MemoryAccess::default(),
+                PipelineStages::from([PipelineStage::Transfer].as_ref()),
+                MemoryAccess::from([MemoryAccessAs::MemoryWrite].as_slice()),
+                ImageSubresourceRange::from(image.clone() as Arc<dyn ImageTrait>),
+                ImageLayout::Undefined,
+                ImageLayout::TransferDstOptimal,
+                queue_family.clone(),
+                queue_family.clone(),
+            );
+
+            recorder.image_barrier(before_transfer_barrier);
+
+            recorder.copy_buffer_to_image(
+                image_data,
+                ImageLayout::TransferDstOptimal,
+                ImageSubresourceLayers::new(
+                    ImageAspects::from([ImageAspect::Color].as_ref()),
+                    0,
+                    0,
+                    1,
+                ),
+                image.clone(),
+                image.dimensions(),
+            );
+
+            let after_transfer_barrier = ImageMemoryBarrier::new(
+                PipelineStages::from([PipelineStage::Transfer].as_ref()),
+                MemoryAccess::from([MemoryAccessAs::MemoryWrite].as_slice()),
+                PipelineStages::from([PipelineStage::BottomOfPipe].as_ref()),
+                MemoryAccess::default(),
+                ImageSubresourceRange::from(image),
+                ImageLayout::TransferDstOptimal,
+                ImageLayout::ShaderReadOnlyOptimal,
+                queue_family.clone(),
+                queue_family.clone(),
+            );
+
+            recorder.image_barrier(after_transfer_barrier);
+        })?;
+
+        let load_fence_waiter =
+            queue.submit(&[command_buffer.clone()], &[], &[], load_fence.clone())?;
+
+        Ok(load_fence_waiter)
     }
 }
