@@ -316,7 +316,7 @@ impl System {
 
             let mut images = SwapchainImagesType::default();
             for index in 0..self.surface.images_count() {
-                images.push(swapchain.image(index)?);
+                images.push(SwapchainKHR::image(swapchain.clone(), index)?);
             }
 
             let mut image_views = SwapchainImageViewsType::default();

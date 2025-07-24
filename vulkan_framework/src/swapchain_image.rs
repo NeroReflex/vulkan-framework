@@ -3,10 +3,11 @@ use std::sync::Arc;
 use crate::{
     device::{Device, DeviceOwned},
     image::{Image2DDimensions, ImageDimensions, ImageFlags, ImageFormat, ImageTrait, ImageUsage},
+    swapchain::SwapchainKHR,
 };
 
 pub struct ImageSwapchainKHR {
-    device: Arc<Device>,
+    swapchain: Arc<SwapchainKHR>,
     flags: ImageFlags,
     usage: ImageUsage,
     format: ImageFormat,
@@ -18,7 +19,7 @@ pub struct ImageSwapchainKHR {
 
 impl DeviceOwned for ImageSwapchainKHR {
     fn get_parent_device(&self) -> std::sync::Arc<Device> {
-        self.device.clone()
+        self.swapchain.get_parent_device()
     }
 }
 
@@ -61,7 +62,7 @@ impl ImageTrait for ImageSwapchainKHR {
 
 impl ImageSwapchainKHR {
     pub(crate) fn new(
-        device: Arc<Device>,
+        swapchain: Arc<SwapchainKHR>,
         flags: ImageFlags,
         usage: ImageUsage,
         format: ImageFormat,
@@ -71,7 +72,7 @@ impl ImageSwapchainKHR {
         image: ash::vk::Image,
     ) -> Self {
         Self {
-            device,
+            swapchain,
             image,
             flags,
             usage,
@@ -80,5 +81,11 @@ impl ImageSwapchainKHR {
             layers_count,
             mip_levels_count,
         }
+    }
+}
+
+impl Drop for ImageSwapchainKHR {
+    fn drop(&mut self) {
+        println!("Dropped ImageSwapchainKHR")
     }
 }

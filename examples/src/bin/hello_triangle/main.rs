@@ -322,8 +322,8 @@ fn main() {
         println!("Graphics pipeline created!");
 
         let mut swapchain_images = vec![];
-        for idx in 0..swapchain_images_count {
-            swapchain_images.push(swapchain.image(idx).unwrap());
+        for index in 0..swapchain_images_count {
+            swapchain_images.push(SwapchainKHR::image(swapchain.clone(), index).unwrap());
         }
 
         let mut swapchain_image_views = vec![];

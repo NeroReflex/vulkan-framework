@@ -15,10 +15,9 @@ use crate::{
     device::{Device, DeviceOwned},
     fence::Fence,
     image::{
-        Image1DTrait, Image2DDimensions, Image2DTrait, ImageFlags, ImageFormat, ImageTrait,
+        Image1DTrait, Image2DDimensions, Image2DTrait, ImageFlags, ImageFormat,
         ImageUsage,
     },
-    image_view::{ImageView, ImageViewType},
     instance::InstanceOwned,
     prelude::{FrameworkError, VulkanError, VulkanResult},
     queue::Queue,
@@ -255,8 +254,6 @@ impl DeviceSurfaceInfo {
     }
 }
 
-type ImagesCollectionType = smallvec::SmallVec<[Arc<ImageSwapchainKHR>; 8]>;
-
 pub struct SwapchainKHR {
     device: Arc<Device>,
     surface: Arc<Surface>,
@@ -268,7 +265,7 @@ pub struct SwapchainKHR {
     composite_alpha: CompositeAlphaSwapchainKHR,
     min_image_count: u32,
     image_layers: u32,
-    images: Option<ImagesCollectionType>,
+    images: Vec<ash::vk::Image>,
 }
 
 impl DeviceOwned for SwapchainKHR {
@@ -281,6 +278,19 @@ impl DeviceOwned for SwapchainKHR {
 impl Drop for SwapchainKHR {
     #[inline]
     fn drop(&mut self) {
+        println!("Dropped ImageSwapchainKHR");
+
+        let Some(ext) = self.device.ash_ext_swapchain_khr() else {
+            panic!("Swapchain extension is not available anymore. This should not happend. If you read this main developer of this crate made something bad.");
+        };
+
+        unsafe {
+            ext.destroy_swapchain(
+                self.swapchain,
+                self.device.get_parent_instance().get_alloc_callbacks(),
+            )
+        }
+
         match self.device.swapchain_exists.compare_exchange(
             true,
             false,
@@ -294,17 +304,6 @@ impl Drop for SwapchainKHR {
                 );
             }
         };
-
-        let Some(ext) = self.device.ash_ext_swapchain_khr() else {
-            panic!("Swapchain extension is not available anymore. This should not happend. If you read this main developer of this crate made something bad.");
-        };
-
-        unsafe {
-            ext.destroy_swapchain(
-                self.swapchain,
-                self.device.get_parent_instance().get_alloc_callbacks(),
-            )
-        }
     }
 }
 
@@ -314,27 +313,30 @@ impl SwapchainKHR {
         self.swapchain
     }
 
-    pub fn image(&self, index: u32) -> VulkanResult<Arc<ImageSwapchainKHR>> {
-        let Some(images) = &self.images else {
-            return Err(VulkanError::Framework(
-                FrameworkError::SwapchainInvalidState,
-            ));
-        };
-
+    /// Get a new reference to the swapchain image with the provided index.
+    /// The caller should avoid calling this at every frame,
+    /// and should opt to cache resulting images.
+    pub fn image(swapchain: Arc<Self>, index: u32) -> VulkanResult<Arc<ImageSwapchainKHR>> {
         let requested_index = index as usize;
-        if requested_index >= images.len() {
+        let Some(image_handle) = swapchain.images.get(requested_index) else {
             return Err(VulkanError::Framework(
-                FrameworkError::InvalidSwapchainImageIndex(requested_index, images.len()),
+                FrameworkError::InvalidSwapchainImageIndex(requested_index, swapchain.images.len()),
             ));
         };
 
-        let Some(image) = images.get(requested_index) else {
-            return Err(VulkanError::Framework(
-                FrameworkError::InvalidSwapchainImageIndex(requested_index, images.len()),
-            ));
-        };
+        let swapchain_cloned = swapchain.clone();
+        let image = ImageSwapchainKHR::new(
+            swapchain_cloned,
+            ImageFlags::Unmanaged(0),
+            swapchain.images_usage(),
+            swapchain.images_format(),
+            swapchain.images_extent(),
+            swapchain.images_layers_count(),
+            swapchain.images_layers_count(),
+            ash::vk::Image::from_raw(image_handle.as_raw()),
+        );
 
-        Ok(image.clone())
+        Ok(Arc::new(image))
     }
 
     #[inline]
@@ -654,7 +656,7 @@ impl SwapchainKHR {
         // the old swapchain (or at least my handle of it) must be removed AFTER the creation of the new one, not BEFORE!
         std::mem::drop(old_swapchain);
 
-        let image_handles = unsafe { ext.get_swapchain_images(swapchain) }.map_err(|err| {
+        let images = unsafe { ext.get_swapchain_images(swapchain) }.map_err(|err| {
             // avoid leaking the swapchain
             unsafe {
                 ext.destroy_swapchain(
@@ -674,22 +676,6 @@ impl SwapchainKHR {
             )
         })?;
 
-        let images: ImagesCollectionType = image_handles
-            .into_iter()
-            .map(|swapchain_image| {
-                Arc::new(ImageSwapchainKHR::new(
-                    device.clone(),
-                    ImageFlags::Unmanaged(0),
-                    image_usage,
-                    image_format,
-                    extent,
-                    image_layers,
-                    image_layers,
-                    swapchain_image,
-                ))
-            })
-            .collect();
-
         Ok(Arc::new(Self {
             device,
             surface,
@@ -701,7 +687,7 @@ impl SwapchainKHR {
             image_usage,
             extent,
             image_layers,
-            images: Some(images),
+            images,
         }))
     }
 }

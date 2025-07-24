@@ -62,8 +62,6 @@ pub enum FrameworkError {
     SwapchainAlreadyExists,
     #[error("Invalid swapchain image index {0}, the swapchain currently holds {1} images")]
     InvalidSwapchainImageIndex(usize, usize),
-    #[error("The swapchain is in an invalid state")]
-    SwapchainInvalidState,
 }
 
 #[derive(Debug, Error, Clone)]
