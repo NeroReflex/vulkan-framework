@@ -133,7 +133,7 @@ impl BottomLevelAccelerationStructureTransformBuffer {
             device.clone(),
             ConcreteBufferDescriptor::new(
                 BufferUsage::from(
-                    usage.ash_usage().as_raw() |
+                    <BufferUsage as Into<ash::vk::BufferUsageFlags>>::into(usage).as_raw() |
                     (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                         | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
                         .as_raw(),
@@ -195,7 +195,7 @@ impl BottomLevelAccelerationStructureIndexBuffer {
             device.clone(),
             ConcreteBufferDescriptor::new(
                 BufferUsage::from(
-                    usage.ash_usage().as_raw() |
+                    <BufferUsage as Into<ash::vk::BufferUsageFlags>>::into(usage).as_raw() |
                     (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                         | ash::vk::BufferUsageFlags::INDEX_BUFFER
                         | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
@@ -253,7 +253,7 @@ impl BottomLevelAccelerationStructureVertexBuffer {
             device.clone(),
             ConcreteBufferDescriptor::new(
                 BufferUsage::from(
-                    usage.ash_usage().as_raw() |
+                    <BufferUsage as Into<ash::vk::BufferUsageFlags>>::into(usage).as_raw() |
                     (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                         | ash::vk::BufferUsageFlags::VERTEX_BUFFER
                         | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)

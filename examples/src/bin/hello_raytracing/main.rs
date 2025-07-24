@@ -766,9 +766,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 0u64,
             ),
             AllowedBuildingDevice::DeviceOnly,
-            BufferUsage::empty(),
-            BufferUsage::empty(),
-            BufferUsage::empty(),
+            BufferUsage::default(),
+            BufferUsage::default(),
+            BufferUsage::default(),
             None,
             Some("my_blas"),
         )
@@ -803,7 +803,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             AllowedBuildingDevice::DeviceOnly,
             TopLevelBLASGroupDecl::new(),
             2,
-            BufferUsage::empty(),
+            BufferUsage::default(),
             None,
             Some("tlas"),
         )

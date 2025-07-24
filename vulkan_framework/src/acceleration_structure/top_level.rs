@@ -67,7 +67,7 @@ impl TopLevelAccelerationStructureInstanceBuffer {
             device.clone(),
             ConcreteBufferDescriptor::new(
                 BufferUsage::from(
-                    usage.ash_usage().as_raw() |
+                    <BufferUsage as Into<ash::vk::BufferUsageFlags>>::into(usage).as_raw() |
                     (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                         //| ash::vk::BufferUsageFlags::STORAGE_BUFFER
                         | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)

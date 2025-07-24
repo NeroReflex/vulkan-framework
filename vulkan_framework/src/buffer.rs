@@ -137,21 +137,24 @@ impl BufferUseAs {
 }
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
-pub struct BufferUsage {
-    usage: ash::vk::BufferUsageFlags,
-}
+#[repr(transparent)]
+pub struct BufferUsage(ash::vk::BufferUsageFlags);
 
 impl From<u32> for BufferUsage {
     fn from(value: u32) -> Self {
-        Self {
-            usage: ash::vk::BufferUsageFlags::from_raw(value),
-        }
+        Self(ash::vk::BufferUsageFlags::from_raw(value))
     }
 }
 
 impl From<crate::ash::vk::BufferUsageFlags> for BufferUsage {
     fn from(usage: crate::ash::vk::BufferUsageFlags) -> Self {
-        Self { usage }
+        Self(usage)
+    }
+}
+
+impl Into<crate::ash::vk::BufferUsageFlags> for BufferUsage {
+    fn into(self) -> crate::ash::vk::BufferUsageFlags {
+        self.0.to_owned()
     }
 }
 
@@ -162,17 +165,7 @@ impl From<&[BufferUseAs]> for BufferUsage {
             usage |= flag.ash_usage()
         }
 
-        Self { usage }
-    }
-}
-
-impl BufferUsage {
-    pub fn empty() -> Self {
-        Self::default()
-    }
-
-    pub(crate) fn ash_usage(&self) -> ash::vk::BufferUsageFlags {
-        self.usage.to_owned()
+        Self(usage)
     }
 }
 
@@ -186,7 +179,7 @@ impl ConcreteBufferDescriptor {
     pub fn new(usage: BufferUsage, size: u64) -> Self {
         Self {
             size: size as ash::vk::DeviceSize,
-            usage: usage.ash_usage(),
+            usage: usage.into(),
         }
     }
 
