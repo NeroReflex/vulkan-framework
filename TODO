@@ -1,2 +1,5 @@
 - Review all TODO(s) in the code
 - Write documentation
+- Make ImageSpwachainKHR to hold an handle to Arc<Swapchain> (no, it's impossible to get a mutable swapchain to recreate/delete it this way)
+- ImageUsageSpecifier is too verbose: make it similar to BufferUsage / BufferUseAs
+- ImageAspect should probably be an enum (?)
