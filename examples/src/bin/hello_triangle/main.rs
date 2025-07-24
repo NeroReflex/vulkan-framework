@@ -178,7 +178,6 @@ fn main() {
         let swapchain = SwapchainKHR::new(
             &device_swapchain_info,
             &[queue_family.clone()],
-            None,
             PresentModeSwapchainKHR::FIFO,
             color_space,
             CompositeAlphaSwapchainKHR::Opaque,

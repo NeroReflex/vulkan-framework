@@ -29,12 +29,6 @@ struct DeviceExtensions {
     acceleration_structure_khr_ext: Option<ash::khr::acceleration_structure::Device>,
 }
 
-impl Drop for DeviceExtensions {
-    fn drop(&mut self) {
-        println!("Dropped DeviceExtensions");
-    }
-}
-
 struct DeviceData<'a> {
     selected_physical_device: ash::vk::PhysicalDevice,
     selected_device_features: ash::vk::PhysicalDeviceFeatures,
@@ -173,7 +167,6 @@ impl InstanceOwned for Device {
 
 impl Drop for Device {
     fn drop(&mut self) {
-        println!("Dropped device");
         self.wait_idle().unwrap();
         let alloc_callbacks = self.instance.get_alloc_callbacks();
         unsafe { self.device.destroy_device(alloc_callbacks) }

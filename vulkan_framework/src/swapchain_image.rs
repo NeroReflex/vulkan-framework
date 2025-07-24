@@ -83,9 +83,3 @@ impl ImageSwapchainKHR {
         }
     }
 }
-
-impl Drop for ImageSwapchainKHR {
-    fn drop(&mut self) {
-        println!("Dropped ImageSwapchainKHR")
-    }
-}

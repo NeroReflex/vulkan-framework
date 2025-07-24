@@ -251,8 +251,11 @@ impl DeviceSurfaceInfo {
     }
 }
 
+type QueueFamiliesType = smallvec::SmallVec<[Arc<QueueFamily>; 4]>;
+
 pub struct SwapchainKHR {
     device: Arc<Device>,
+    queue_families: QueueFamiliesType,
     surface: Arc<Surface>,
     swapchain: ash::vk::SwapchainKHR,
     image_format: ImageFormat,
@@ -275,8 +278,6 @@ impl DeviceOwned for SwapchainKHR {
 impl Drop for SwapchainKHR {
     #[inline]
     fn drop(&mut self) {
-        println!("Dropped SwapchainKHR");
-
         let Some(ext) = self.device.ash_ext_swapchain_khr() else {
             panic!("Swapchain extension is not available anymore. This should not happend. If you read this main developer of this crate made something bad.");
         };
@@ -305,6 +306,11 @@ impl Drop for SwapchainKHR {
 }
 
 impl SwapchainKHR {
+    #[inline]
+    pub fn queue_families(&self) -> &[Arc<QueueFamily>] {
+        &self.queue_families.as_slice()
+    }
+
     #[inline]
     pub(crate) fn ash_handle(&self) -> ash::vk::SwapchainKHR {
         self.swapchain
@@ -562,11 +568,20 @@ impl SwapchainKHR {
             ))),
         }
     }
+    /*
+        pub fn recreate(&mut self) -> VulkanResult<()> {
 
+            .old_swapchain(match &old_swapchain {
+                    Some(old) => old.swapchain,
+                    None => ash::vk::SwapchainKHR::from_raw(0),
+                })
+
+            Ok(())
+        }
+    */
     pub fn new(
         device_info: &DeviceSurfaceInfo,
         queue_families: &[Arc<QueueFamily>],
-        old_swapchain: Option<Arc<Self>>,
         present_mode: PresentModeSwapchainKHR,
         color_space: SurfaceColorspaceSwapchainKHR,
         composite_alpha: CompositeAlphaSwapchainKHR,
@@ -578,6 +593,8 @@ impl SwapchainKHR {
         min_image_count: u32,
         image_layers: u32,
     ) -> VulkanResult<Arc<Self>> {
+        let queue_families: QueueFamiliesType = queue_families.iter().cloned().collect();
+
         let queue_family_indexes: Vec<u32> = queue_families
             .iter()
             .map(|family| family.get_family_index())
@@ -598,10 +615,6 @@ impl SwapchainKHR {
         );
 
         let create_info = ash::vk::SwapchainCreateInfoKHR::default()
-            .old_swapchain(match &old_swapchain {
-                Some(old) => old.swapchain,
-                None => ash::vk::SwapchainKHR::from_raw(0),
-            })
             .image_extent(
                 ash::vk::Extent2D::default()
                     .height(extent.height())
@@ -650,9 +663,6 @@ impl SwapchainKHR {
             )
         })?;
 
-        // the old swapchain (or at least my handle of it) must be removed AFTER the creation of the new one, not BEFORE!
-        std::mem::drop(old_swapchain);
-
         let images = unsafe { ext.get_swapchain_images(swapchain) }.map_err(|err| {
             // avoid leaking the swapchain
             unsafe {
@@ -675,6 +685,7 @@ impl SwapchainKHR {
 
         Ok(Arc::new(Self {
             device,
+            queue_families,
             surface,
             swapchain,
             min_image_count,

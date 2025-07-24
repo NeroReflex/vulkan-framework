@@ -299,7 +299,6 @@ impl System {
             let swapchain = SwapchainKHR::new(
                 self.surface.device_swapchain_info(),
                 render_queue_families.as_slice(),
-                None,
                 PresentModeSwapchainKHR::FIFO,
                 self.surface.color_space(),
                 CompositeAlphaSwapchainKHR::Opaque,
