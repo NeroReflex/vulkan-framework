@@ -214,10 +214,10 @@ pub enum ImageAspect {
     Metadata,
 }
 
-impl Into<ash::vk::ImageAspectFlags> for &ImageAspect {
-    fn into(self) -> ash::vk::ImageAspectFlags {
+impl From<&ImageAspect> for ash::vk::ImageAspectFlags {
+    fn from(val: &ImageAspect) -> Self {
         type FlagType = ash::vk::ImageAspectFlags;
-        match self {
+        match val {
             ImageAspect::Color => FlagType::COLOR,
             ImageAspect::Depth => FlagType::DEPTH,
             ImageAspect::Stencil => FlagType::STENCIL,
@@ -692,9 +692,9 @@ impl From<crate::ash::vk::Format> for ImageFormat {
     }
 }
 
-impl Into<crate::ash::vk::Format> for ImageFormat {
-    fn into(self) -> ash::vk::Format {
-        self.0.to_owned()
+impl From<ImageFormat> for crate::ash::vk::Format {
+    fn from(val: ImageFormat) -> Self {
+        val.0.to_owned()
     }
 }
 
