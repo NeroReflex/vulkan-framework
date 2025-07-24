@@ -66,14 +66,15 @@ impl RecognisedImageAspect {
     }
 
     pub fn from_format(img_format: &ImageFormat) -> Option<Self> {
-        match img_format {
-            ImageFormat::s8_uint => Some(Self::new(false, false, true, false)),
-            ImageFormat::d16_unorm => Some(Self::new(false, true, false, false)),
-            ImageFormat::d32_sfloat => Some(Self::new(false, true, false, false)),
-            ImageFormat::x8_d24_unorm_pack32 => Some(Self::new(true, true, false, false)),
-            ImageFormat::d32_sfloat_s8_uint => Some(Self::new(false, true, true, false)),
-            ImageFormat::d16_unorm_s8_uint => Some(Self::new(false, true, true, false)),
-            ImageFormat::d24_unorm_s8_uint => Some(Self::new(false, true, true, false)),
+        type FormatType = crate::ash::vk::Format;
+        match img_format.to_owned().into() {
+            FormatType::S8_UINT => Some(Self::new(false, false, true, false)),
+            FormatType::D16_UNORM => Some(Self::new(false, true, false, false)),
+            FormatType::D32_SFLOAT => Some(Self::new(false, true, false, false)),
+            FormatType::X8_D24_UNORM_PACK32 => Some(Self::new(true, true, false, false)),
+            FormatType::D32_SFLOAT_S8_UINT => Some(Self::new(false, true, true, false)),
+            FormatType::D16_UNORM_S8_UINT => Some(Self::new(false, true, true, false)),
+            FormatType::D24_UNORM_S8_UINT => Some(Self::new(false, true, true, false)),
             _ => None,
         }
     }
@@ -253,7 +254,7 @@ impl ImageView {
 
         let create_info = ash::vk::ImageViewCreateInfo::default()
             .image(ash::vk::Image::from_raw(image.native_handle()))
-            .format(image.format().ash_format())
+            .format(image.format().into())
             .subresource_range(srr)
             .view_type(view_type.ash_viewtype());
 

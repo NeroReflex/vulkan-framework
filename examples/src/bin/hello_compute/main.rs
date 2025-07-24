@@ -16,11 +16,13 @@ use vulkan_framework::descriptor_set_layout::DescriptorSetLayout;
 use vulkan_framework::device::*;
 use vulkan_framework::fence::Fence;
 use vulkan_framework::image::AllocatedImage;
+use vulkan_framework::image::CommonImageFormat;
 use vulkan_framework::image::ConcreteImageDescriptor;
 use vulkan_framework::image::Image;
 use vulkan_framework::image::Image2DDimensions;
 use vulkan_framework::image::ImageDimensions;
 use vulkan_framework::image::ImageFlags;
+use vulkan_framework::image::ImageFormat;
 use vulkan_framework::image::ImageLayout;
 use vulkan_framework::image::ImageMultisampling;
 use vulkan_framework::image::ImageSubresourceRange;
@@ -138,7 +140,7 @@ fn main() {
             ImageMultisampling::SamplesPerPixel1,
             1,
             1,
-            vulkan_framework::image::ImageFormat::r32g32b32a32_sfloat,
+            ImageFormat::from(CommonImageFormat::r32g32b32a32_sfloat),
             ImageFlags::empty(),
             ImageTiling::Linear,
         ),

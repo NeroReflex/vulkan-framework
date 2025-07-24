@@ -174,7 +174,7 @@ impl DeviceSurfaceInfo {
         format: &ImageFormat,
     ) -> bool {
         let fmt = ash::vk::SurfaceFormatKHR::default()
-            .format(format.ash_format())
+            .format(format.to_owned().into())
             .color_space(color_space.ash_colorspace());
 
         self.surface_formats.contains(&fmt)
@@ -628,7 +628,7 @@ impl SwapchainKHR {
             })
             .image_usage(image_usage.into())
             .image_array_layers(image_layers)
-            .image_format(image_format.ash_format())
+            .image_format(image_format.into())
             .image_color_space(color_space.ash_colorspace())
             .present_mode(present_mode.ash_value())
             .clipped(clipped)

@@ -147,7 +147,10 @@ impl ImagelessFramebufferAttachmentImageInfo {
 
     #[inline]
     pub fn ash_view_formats(&self) -> smallvec::SmallVec<[ash::vk::Format; 2]> {
-        self.view_formats.iter().map(|f| f.ash_format()).collect()
+        self.view_formats
+            .iter()
+            .map(|f| f.to_owned().into())
+            .collect()
     }
 
     #[inline]

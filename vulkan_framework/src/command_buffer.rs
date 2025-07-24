@@ -701,7 +701,6 @@ impl<'a> CommandBufferRecorder<'a> {
     pub fn copy_buffer_to_image(
         &mut self,
         src: Arc<dyn BufferTrait>,
-        //src_subresource: ImageSubresourceLayers,
         dst_layout: ImageLayout,
         dst_subresource: ImageSubresourceLayers,
         dst: Arc<dyn ImageTrait>,

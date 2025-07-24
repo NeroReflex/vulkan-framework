@@ -56,7 +56,7 @@ pub struct AttachmentDescription {
 impl AttachmentDescription {
     pub(crate) fn ash_description(&self) -> ash::vk::AttachmentDescription {
         ash::vk::AttachmentDescription::default()
-            .format(self.format.ash_format())
+            .format(self.format.into())
             .samples(self.samples.ash_samples())
             .initial_layout(self.initial_layout.ash_layout())
             .final_layout(self.final_layout.ash_layout())

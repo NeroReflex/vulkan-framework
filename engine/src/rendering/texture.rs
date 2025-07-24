@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use vulkan_framework::{
     buffer::BufferTrait,
-    command_buffer::PrimaryCommandBuffer,
+    command_buffer::{ImageMemoryBarrier, MemoryAccess, MemoryAccessAs, PrimaryCommandBuffer},
     command_pool::CommandPool,
     descriptor_pool::{
         DescriptorPool, DescriptorPoolConcreteDescriptor, DescriptorPoolSizesConcreteDescriptor,
@@ -12,13 +12,16 @@ use vulkan_framework::{
     device::{Device, DeviceOwned},
     fence::{Fence, FenceWaiter},
     image::{
-        AllocatedImage, ConcreteImageDescriptor, Image, Image2DDimensions, ImageDimensions,
-        ImageFlags, ImageFormat, ImageMultisampling, ImageTiling, ImageUsage, ImageUseAs,
+        AllocatedImage, CommonImageFormat, ConcreteImageDescriptor, Image, Image2DDimensions,
+        ImageAspect, ImageAspects, ImageDimensions, ImageFlags, ImageFormat, ImageLayout,
+        ImageMultisampling, ImageSubresourceLayers, ImageSubresourceRange, ImageTiling, ImageTrait,
+        ImageUsage, ImageUseAs,
     },
     image_view::ImageView,
     memory_allocator::DefaultAllocator,
     memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryType},
     memory_pool::{MemoryPool, MemoryPoolFeature, MemoryPoolFeatures},
+    pipeline_stage::{PipelineStage, PipelineStages},
     queue::Queue,
     queue_family::QueueFamily,
     sampler::{Filtering, MipmapMode, Sampler},
@@ -70,7 +73,8 @@ impl TextureManager {
 
         let queue = Queue::new(queue_family.clone(), Some("texture_manager.queue"))?;
 
-        let command_pool = CommandPool::new(queue_family, Some("texture_manager.command_pool"))?;
+        let command_pool =
+            CommandPool::new(queue_family.clone(), Some("texture_manager.command_pool"))?;
         let command_buffer =
             PrimaryCommandBuffer::new(command_pool.clone(), Some("texture_manager.command_pool"))?;
 
@@ -122,7 +126,7 @@ impl TextureManager {
                 ImageMultisampling::SamplesPerPixel1,
                 1,
                 1,
-                ImageFormat::bc7_srgb_block,
+                ImageFormat::from(CommonImageFormat::bc7_srgb_block),
                 ImageFlags::empty(),
                 ImageTiling::Optimal,
             ),
@@ -157,26 +161,48 @@ impl TextureManager {
         )?;
 
         let load_fence = Fence::new(device.clone(), false, Some("texture_manager.load_fence"))?;
-        /*
+
         command_buffer.record_commands(|recorder| {
+            let before_transfer_barrier = ImageMemoryBarrier::new(
+                PipelineStages::from([PipelineStage::TopOfPipe].as_ref()),
+                MemoryAccess::default(),
+                PipelineStages::from([PipelineStage::Transfer].as_ref()),
+                MemoryAccess::from([MemoryAccessAs::MemoryWrite].as_slice()),
+                ImageSubresourceRange::from(stub_image.clone() as Arc<dyn ImageTrait>),
+                ImageLayout::Undefined,
+                ImageLayout::TransferDstOptimal,
+                queue_family.clone(),
+                queue_family.clone(),
+            );
+
+            recorder.image_barrier(before_transfer_barrier);
+
             recorder.copy_buffer_to_image(
                 stub_image_data,
                 ImageLayout::TransferDstOptimal,
-                ImageSubresourceLayers::new(ImageAspects::new(true, true, false, false), 1, 0, 1),
+                ImageSubresourceLayers::new(
+                    ImageAspects::from([ImageAspect::Color].as_ref()),
+                    0,
+                    0,
+                    1,
+                ),
                 stub_image.clone(),
                 stub_image.dimensions(),
             );
 
-            //recorder.copy_image(
-            //    src_layout,
-            //    src_subresource,
-            //    src,
-            //    dst_layout,
-            //    dst_subresource,
-            //    dst,
-            //    extent,
-            //);
+            let after_transfer_barrier = ImageMemoryBarrier::new(
+                PipelineStages::from([PipelineStage::Transfer].as_ref()),
+                MemoryAccess::from([MemoryAccessAs::MemoryWrite].as_slice()),
+                PipelineStages::from([PipelineStage::BottomOfPipe].as_ref()),
+                MemoryAccess::default(),
+                ImageSubresourceRange::from(stub_image.clone() as Arc<dyn ImageTrait>),
+                ImageLayout::TransferDstOptimal,
+                ImageLayout::ShaderReadOnlyOptimal,
+                queue_family.clone(),
+                queue_family.clone(),
+            );
 
+            recorder.image_barrier(after_transfer_barrier);
         })?;
 
         let load_fence_waiter =
@@ -185,7 +211,6 @@ impl TextureManager {
         // this will wait for the GPU to finish the resource copy
         // and the fence will be resetted back in unsignaled state
         drop(load_fence_waiter.unwrap());
-        */
 
         Ok(Self {
             device,

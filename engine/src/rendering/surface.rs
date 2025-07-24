@@ -1,5 +1,5 @@
 use vulkan_framework::{
-    image::ImageFormat,
+    image::{CommonImageFormat, ImageFormat},
     swapchain::{DeviceSurfaceInfo, PresentModeSwapchainKHR, SurfaceColorspaceSwapchainKHR},
 };
 
@@ -91,7 +91,7 @@ impl SurfaceHelper {
             panic!("Device does not support the most common present mode. LOL.");
         }
 
-        let final_format = ImageFormat::b8g8r8a8_srgb;
+        let final_format = ImageFormat::from(CommonImageFormat::b8g8r8a8_srgb);
         let color_space = SurfaceColorspaceSwapchainKHR::SRGBNonlinear;
 
         if !device_swapchain_info.format_supported(&color_space, &final_format) {

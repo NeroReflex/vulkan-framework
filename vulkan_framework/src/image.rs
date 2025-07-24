@@ -11,77 +11,281 @@ use crate::{
     queue_family::QueueFamily,
 };
 
-use std::sync::Arc;
+use std::{fmt::Display, sync::Arc};
 
-#[repr(u32)]
+/// Represents commonly used image formats
+#[allow(non_camel_case_types)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[repr(i32)]
+pub enum CommonImageFormat {
+    undefined = 0,
+    r4g4_unorm_pack8 = 1,
+    r4g4b4a4_unorm_pack16 = 2,
+    b4g4r4a4_unorm_pack16 = 3,
+    r5g6b5_unorm_pack16 = 4,
+    b5g6r5_unorm_pack16 = 5,
+    r5g5b5a1_unorm_pack16 = 6,
+    b5g5r5a1_unorm_pack16 = 7,
+    a1r5g5b5_unorm_pack16 = 8,
+    r8_unorm = 9,
+    r8_snorm = 10,
+    r8_uscaled = 11,
+    r8_sscaled = 12,
+    r8_uint = 13,
+    r8_sint = 14,
+    r8_srgb = 15,
+    r8g8_unorm = 16,
+    r8g8_snorm = 17,
+    r8g8_uscaled = 18,
+    r8g8_sscaled = 19,
+    r8g8_uint = 20,
+    r8g8_sint = 21,
+    r8g8_srgb = 22,
+    r8g8b8_unorm = 23,
+    r8g8b8_snorm = 24,
+    r8g8b8_uscaled = 25,
+    r8g8b8_sscaled = 26,
+    r8g8b8_uint = 27,
+    r8g8b8_sint = 28,
+    r8g8b8_srgb = 29,
+    b8g8r8_unorm = 30,
+    b8g8r8_snorm = 31,
+    b8g8r8_uscaled = 32,
+    b8g8r8_sscaled = 33,
+    b8g8r8_uint = 34,
+    b8g8r8_sint = 35,
+    b8g8r8_srgb = 36,
+    r8g8b8a8_unorm = 37,
+    r8g8b8a8_snorm = 38,
+    r8g8b8a8_uscaled = 39,
+    r8g8b8a8_sscaled = 40,
+    r8g8b8a8_uint = 41,
+    r8g8b8a8_sint = 42,
+    r8g8b8a8_srgb = 43,
+    b8g8r8a8_unorm = 44,
+    b8g8r8a8_snorm = 45,
+    b8g8r8a8_uscaled = 46,
+    b8g8r8a8_sscaled = 47,
+    b8g8r8a8_uint = 48,
+    b8g8r8a8_sint = 49,
+    b8g8r8a8_srgb = 50,
+    a8b8g8r8_unorm_pack32 = 51,
+    a8b8g8r8_snorm_pack32 = 52,
+    a8b8g8r8_uscaled_pack32 = 53,
+    a8b8g8r8_sscaled_pack32 = 54,
+    a8b8g8r8_uint_pack32 = 55,
+    a8b8g8r8_sint_pack32 = 56,
+    a8b8g8r8_srgb_pack32 = 57,
+    a2r10g10b10_unorm_pack32 = 58,
+    a2r10g10b10_snorm_pack32 = 59,
+    a2r10g10b10_uscaled_pack32 = 60,
+    a2r10g10b10_sscaled_pack32 = 61,
+    a2r10g10b10_uint_pack32 = 62,
+    a2r10g10b10_sint_pack32 = 63,
+    a2b10g10r10_unorm_pack32 = 64,
+    a2b10g10r10_snorm_pack32 = 65,
+    a2b10g10r10_uscaled_pack32 = 66,
+    a2b10g10r10_sscaled_pack32 = 67,
+    a2b10g10r10_uint_pack32 = 68,
+    a2b10g10r10_sint_pack32 = 69,
+    r16_unorm = 70,
+    r16_snorm = 71,
+    r16_uscaled = 72,
+    r16_sscaled = 73,
+    r16_uint = 74,
+    r16_sint = 75,
+    r16_sfloat = 76,
+    r16g16_unorm = 77,
+    r16g16_snorm = 78,
+    r16g16_uscaled = 79,
+    r16g16_sscaled = 80,
+    r16g16_uint = 81,
+    r16g16_sint = 82,
+    r16g16_sfloat = 83,
+    r16g16b16_unorm = 84,
+    r16g16b16_snorm = 85,
+    r16g16b16_uscaled = 86,
+    r16g16b16_sscaled = 87,
+    r16g16b16_uint = 88,
+    r16g16b16_sint = 89,
+    r16g16b16_sfloat = 90,
+    r16g16b16a16_unorm = 91,
+    r16g16b16a16_snorm = 92,
+    r16g16b16a16_uscaled = 93,
+    r16g16b16a16_sscaled = 94,
+    r16g16b16a16_uint = 95,
+    r16g16b16a16_sint = 96,
+    r16g16b16a16_sfloat = 97,
+    r32_uint = 98,
+    r32_sint = 99,
+    r32_sfloat = 100,
+    r32g32_uint = 101,
+    r32g32_sint = 102,
+    r32g32_sfloat = 103,
+    r32g32b32_uint = 104,
+    r32g32b32_sint = 105,
+    r32g32b32_sfloat = 106,
+    r32g32b32a32_uint = 107,
+    r32g32b32a32_sint = 108,
+    r32g32b32a32_sfloat = 109,
+    r64_uint = 110,
+    r64_sint = 111,
+    r64_sfloat = 112,
+    r64g64_uint = 113,
+    r64g64_sint = 114,
+    r64g64_sfloat = 115,
+    r64g64b64_uint = 116,
+    r64g64b64_sint = 117,
+    r64g64b64_sfloat = 118,
+    r64g64b64a64_uint = 119,
+    r64g64b64a64_sint = 120,
+    r64g64b64a64_sfloat = 121,
+    b10g11r11_ufloat_pack32 = 122,
+    e5b9g9r9_ufloat_pack32 = 123,
+    d16_unorm = 124,
+    x8_d24_unorm_pack32 = 125,
+    d32_sfloat = 126,
+    s8_uint = 127,
+    d16_unorm_s8_uint = 128,
+    d24_unorm_s8_uint = 129,
+    d32_sfloat_s8_uint = 130,
+    bc1_rgb_unorm_block = 131,
+    bc1_rgb_srgb_block = 132,
+    bc1_rgba_unorm_block = 133,
+    bc1_rgba_srgb_block = 134,
+    bc2_unorm_block = 135,
+    bc2_srgb_block = 136,
+    bc3_unorm_block = 137,
+    bc3_srgb_block = 138,
+    bc4_unorm_block = 139,
+    bc4_snorm_block = 140,
+    bc5_unorm_block = 141,
+    bc5_snorm_block = 142,
+    bc6h_ufloat_block = 143,
+    bc6h_sfloat_block = 144,
+    bc7_unorm_block = 145,
+    bc7_srgb_block = 146,
+    etc2_r8g8b8_unorm_block = 147,
+    etc2_r8g8b8_srgb_block = 148,
+    etc2_r8g8b8a1_unorm_block = 149,
+    etc2_r8g8b8a1_srgb_block = 150,
+    etc2_r8g8b8a8_unorm_block = 151,
+    etc2_r8g8b8a8_srgb_block = 152,
+    eac_r11_unorm_block = 153,
+    eac_r11_snorm_block = 154,
+    eac_r11g11_unorm_block = 155,
+    eac_r11g11_snorm_block = 156,
+    astc_4x4_unorm_block = 157,
+    astc_4x4_srgb_block = 158,
+    astc_5x4_unorm_block = 159,
+    astc_5x4_srgb_block = 160,
+    astc_5x5_unorm_block = 161,
+    astc_5x5_srgb_block = 162,
+    astc_6x5_unorm_block = 163,
+    astc_6x5_srgb_block = 164,
+    astc_6x6_unorm_block = 165,
+    astc_6x6_srgb_block = 166,
+    astc_8x5_unorm_block = 167,
+    astc_8x5_srgb_block = 168,
+    astc_8x6_unorm_block = 169,
+    astc_8x6_srgb_block = 170,
+    astc_8x8_unorm_block = 171,
+    astc_8x8_srgb_block = 172,
+    astc_10x5_unorm_block = 173,
+    astc_10x5_srgb_block = 174,
+    astc_10x6_unorm_block = 175,
+    astc_10x6_srgb_block = 176,
+    astc_10x8_unorm_block = 177,
+    astc_10x8_srgb_block = 178,
+    astc_10x10_unorm_block = 179,
+    astc_10x10_srgb_block = 180,
+    astc_12x10_unorm_block = 181,
+    astc_12x10_srgb_block = 182,
+    astc_12x12_unorm_block = 183,
+    astc_12x12_srgb_block = 184,
+    Other(u32),
+}
+
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum ImageAspect {
-    Color = 0x00000001u32,
-    Depth = 0x00000002u32,
-    Stencil = 0x00000004u32,
-    Metadata = 0x00000008u32,
+    Color,
+    Depth,
+    Stencil,
+    Metadata,
+}
+
+impl Into<ash::vk::ImageAspectFlags> for &ImageAspect {
+    fn into(self) -> ash::vk::ImageAspectFlags {
+        type FlagType = ash::vk::ImageAspectFlags;
+        match self {
+            ImageAspect::Color => FlagType::COLOR,
+            ImageAspect::Depth => FlagType::DEPTH,
+            ImageAspect::Stencil => FlagType::STENCIL,
+            ImageAspect::Metadata => FlagType::METADATA,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
-pub struct ImageAspects {
-    color: bool,
-    depth: bool,
-    stencil: bool,
-    metadata: bool,
+#[repr(transparent)]
+pub struct ImageAspects(ash::vk::ImageAspectFlags);
+
+impl From<u32> for ImageAspects {
+    fn from(value: u32) -> Self {
+        Self(ash::vk::ImageAspectFlags::from_raw(value))
+    }
 }
 
-impl ImageAspects {
-    pub(crate) fn ash_flags(&self) -> ash::vk::ImageAspectFlags {
-        (match self.color {
-            true => ash::vk::ImageAspectFlags::COLOR,
-            false => ash::vk::ImageAspectFlags::empty(),
-        }) | (match self.depth {
-            true => ash::vk::ImageAspectFlags::DEPTH,
-            false => ash::vk::ImageAspectFlags::empty(),
-        }) | (match self.stencil {
-            true => ash::vk::ImageAspectFlags::STENCIL,
-            false => ash::vk::ImageAspectFlags::empty(),
-        }) | (match self.metadata {
-            true => ash::vk::ImageAspectFlags::METADATA,
-            false => ash::vk::ImageAspectFlags::empty(),
-        })
+impl From<crate::ash::vk::ImageAspectFlags> for ImageAspects {
+    fn from(usage: crate::ash::vk::ImageAspectFlags) -> Self {
+        Self(usage)
     }
+}
 
-    pub fn new(color: bool, depth: bool, stencil: bool, metadata: bool) -> Self {
-        Self {
-            color,
-            depth,
-            stencil,
-            metadata,
+impl From<ImageAspects> for crate::ash::vk::ImageAspectFlags {
+    fn from(val: ImageAspects) -> Self {
+        val.0.to_owned()
+    }
+}
+
+impl From<&[ImageAspect]> for ImageAspects {
+    fn from(value: &[ImageAspect]) -> Self {
+        let mut usage = ash::vk::ImageAspectFlags::empty();
+        for flag in value.iter() {
+            usage |= flag.into()
         }
-    }
 
-    pub fn from(aspects: &[ImageAspect]) -> Self {
-        Self {
-            color: aspects.contains(&ImageAspect::Color),
-            depth: aspects.contains(&ImageAspect::Depth),
-            stencil: aspects.contains(&ImageAspect::Stencil),
-            metadata: aspects.contains(&ImageAspect::Metadata),
-        }
+        Self(usage)
     }
+}
 
-    pub fn all_from_format(format: &ImageFormat) -> Self {
-        match format {
-            ImageFormat::undefined => todo!(),
-            ImageFormat::s8_uint => Self::from(&[]),
-            ImageFormat::d16_unorm => Self::from(&[ImageAspect::Depth]),
-            ImageFormat::x8_d24_unorm_pack32 => Self::from(&[ImageAspect::Depth]),
-            ImageFormat::d32_sfloat => Self::from(&[ImageAspect::Depth]),
-            ImageFormat::d32_sfloat_s8_uint => {
-                Self::from(&[ImageAspect::Stencil, ImageAspect::Depth])
+impl From<ImageFormat> for ImageAspects {
+    fn from(value: ImageFormat) -> Self {
+        type FormatType = crate::ash::vk::Format;
+        match value.into() {
+            FormatType::UNDEFINED => panic!("Undefined image format is not allowed"),
+            FormatType::S8_UINT => Self::from([].as_ref()),
+            FormatType::D16_UNORM => Self::from([ImageAspect::Depth].as_ref()),
+            FormatType::X8_D24_UNORM_PACK32 => Self::from([ImageAspect::Depth].as_ref()),
+            FormatType::D32_SFLOAT => Self::from([ImageAspect::Depth].as_ref()),
+            FormatType::D32_SFLOAT_S8_UINT => {
+                Self::from([ImageAspect::Stencil, ImageAspect::Depth].as_ref())
             }
-            ImageFormat::d16_unorm_s8_uint => {
-                Self::from(&[ImageAspect::Stencil, ImageAspect::Depth])
+            FormatType::D16_UNORM_S8_UINT => {
+                Self::from([ImageAspect::Stencil, ImageAspect::Depth].as_ref())
             }
-            ImageFormat::d24_unorm_s8_uint => {
-                Self::from(&[ImageAspect::Stencil, ImageAspect::Depth])
+            FormatType::D24_UNORM_S8_UINT => {
+                Self::from([ImageAspect::Stencil, ImageAspect::Depth].as_ref())
             }
-            _ => Self::from(&[ImageAspect::Color]),
+            FormatType::R32G32B32A32_SFLOAT => Self::from([ImageAspect::Color].as_ref()),
+            FormatType::R32G32B32_SFLOAT => Self::from([ImageAspect::Color].as_ref()),
+            fmt => {
+                println!(
+                    "Check available image aspects for this format: {}",
+                    fmt.as_raw()
+                );
+                Self::from([ImageAspect::Color].as_ref())
+            }
         }
     }
 }
@@ -97,7 +301,7 @@ pub struct ImageSubresourceLayers {
 impl ImageSubresourceLayers {
     pub(crate) fn ash_subresource_layers(&self) -> ash::vk::ImageSubresourceLayers {
         ash::vk::ImageSubresourceLayers::default()
-            .aspect_mask(self.image_aspect.ash_flags())
+            .aspect_mask(self.image_aspect.into())
             .base_array_layer(self.base_array_layer)
             .layer_count(self.array_layers_count)
             .mip_level(self.mip_level)
@@ -121,7 +325,7 @@ impl ImageSubresourceLayers {
 #[derive(Clone)]
 pub struct ImageSubresourceRange {
     image: Arc<dyn ImageTrait>,
-    image_aspect: ImageAspects,
+    image_aspects: ImageAspects,
     base_mip_level: u32,
     mip_levels_count: u32,
     base_array_layer: u32,
@@ -132,7 +336,7 @@ impl From<Arc<dyn ImageTrait>> for ImageSubresourceRange {
     fn from(image: Arc<dyn ImageTrait>) -> Self {
         Self::new(
             image.clone(),
-            ImageAspects::all_from_format(&(image.as_ref().format())),
+            ImageAspects::from(image.as_ref().format()),
             0,
             image.mip_levels_count(),
             0,
@@ -150,7 +354,7 @@ impl ImageSubresourceRange {
     #[inline]
     pub fn new(
         image: Arc<dyn ImageTrait>,
-        image_aspect: ImageAspects,
+        image_aspects: ImageAspects,
         base_mip_level: u32,
         mip_levels_count: u32,
         base_array_layer: u32,
@@ -158,7 +362,7 @@ impl ImageSubresourceRange {
     ) -> Self {
         Self {
             image,
-            image_aspect,
+            image_aspects,
             base_mip_level,
             mip_levels_count,
             base_array_layer,
@@ -168,7 +372,7 @@ impl ImageSubresourceRange {
 
     pub(crate) fn ash_subresource_range(&self) -> ash::vk::ImageSubresourceRange {
         ash::vk::ImageSubresourceRange::default()
-            .aspect_mask(self.image_aspect.ash_flags())
+            .aspect_mask(self.image_aspects.into())
             .base_array_layer(self.base_array_layer)
             .layer_count(self.array_layers_count)
             .base_mip_level(self.base_mip_level)
@@ -459,210 +663,38 @@ impl From<&[ImageUseAs]> for ImageUsage {
     }
 }
 
-/**
- * Specify the image format for an image.
- *
- * Common image formats has a name for convenience,
- * but it is always possible to specify Other(VkFormat).
- */
-#[allow(non_camel_case_types)]
+/// Represents the format of an Image
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
-#[repr(i32)]
-pub enum ImageFormat {
-    undefined = 0,
-    r4g4_unorm_pack8 = 1,
-    r4g4b4a4_unorm_pack16 = 2,
-    b4g4r4a4_unorm_pack16 = 3,
-    r5g6b5_unorm_pack16 = 4,
-    b5g6r5_unorm_pack16 = 5,
-    r5g5b5a1_unorm_pack16 = 6,
-    b5g5r5a1_unorm_pack16 = 7,
-    a1r5g5b5_unorm_pack16 = 8,
-    r8_unorm = 9,
-    r8_snorm = 10,
-    r8_uscaled = 11,
-    r8_sscaled = 12,
-    r8_uint = 13,
-    r8_sint = 14,
-    r8_srgb = 15,
-    r8g8_unorm = 16,
-    r8g8_snorm = 17,
-    r8g8_uscaled = 18,
-    r8g8_sscaled = 19,
-    r8g8_uint = 20,
-    r8g8_sint = 21,
-    r8g8_srgb = 22,
-    r8g8b8_unorm = 23,
-    r8g8b8_snorm = 24,
-    r8g8b8_uscaled = 25,
-    r8g8b8_sscaled = 26,
-    r8g8b8_uint = 27,
-    r8g8b8_sint = 28,
-    r8g8b8_srgb = 29,
-    b8g8r8_unorm = 30,
-    b8g8r8_snorm = 31,
-    b8g8r8_uscaled = 32,
-    b8g8r8_sscaled = 33,
-    b8g8r8_uint = 34,
-    b8g8r8_sint = 35,
-    b8g8r8_srgb = 36,
-    r8g8b8a8_unorm = 37,
-    r8g8b8a8_snorm = 38,
-    r8g8b8a8_uscaled = 39,
-    r8g8b8a8_sscaled = 40,
-    r8g8b8a8_uint = 41,
-    r8g8b8a8_sint = 42,
-    r8g8b8a8_srgb = 43,
-    b8g8r8a8_unorm = 44,
-    b8g8r8a8_snorm = 45,
-    b8g8r8a8_uscaled = 46,
-    b8g8r8a8_sscaled = 47,
-    b8g8r8a8_uint = 48,
-    b8g8r8a8_sint = 49,
-    b8g8r8a8_srgb = 50,
-    a8b8g8r8_unorm_pack32 = 51,
-    a8b8g8r8_snorm_pack32 = 52,
-    a8b8g8r8_uscaled_pack32 = 53,
-    a8b8g8r8_sscaled_pack32 = 54,
-    a8b8g8r8_uint_pack32 = 55,
-    a8b8g8r8_sint_pack32 = 56,
-    a8b8g8r8_srgb_pack32 = 57,
-    a2r10g10b10_unorm_pack32 = 58,
-    a2r10g10b10_snorm_pack32 = 59,
-    a2r10g10b10_uscaled_pack32 = 60,
-    a2r10g10b10_sscaled_pack32 = 61,
-    a2r10g10b10_uint_pack32 = 62,
-    a2r10g10b10_sint_pack32 = 63,
-    a2b10g10r10_unorm_pack32 = 64,
-    a2b10g10r10_snorm_pack32 = 65,
-    a2b10g10r10_uscaled_pack32 = 66,
-    a2b10g10r10_sscaled_pack32 = 67,
-    a2b10g10r10_uint_pack32 = 68,
-    a2b10g10r10_sint_pack32 = 69,
-    r16_unorm = 70,
-    r16_snorm = 71,
-    r16_uscaled = 72,
-    r16_sscaled = 73,
-    r16_uint = 74,
-    r16_sint = 75,
-    r16_sfloat = 76,
-    r16g16_unorm = 77,
-    r16g16_snorm = 78,
-    r16g16_uscaled = 79,
-    r16g16_sscaled = 80,
-    r16g16_uint = 81,
-    r16g16_sint = 82,
-    r16g16_sfloat = 83,
-    r16g16b16_unorm = 84,
-    r16g16b16_snorm = 85,
-    r16g16b16_uscaled = 86,
-    r16g16b16_sscaled = 87,
-    r16g16b16_uint = 88,
-    r16g16b16_sint = 89,
-    r16g16b16_sfloat = 90,
-    r16g16b16a16_unorm = 91,
-    r16g16b16a16_snorm = 92,
-    r16g16b16a16_uscaled = 93,
-    r16g16b16a16_sscaled = 94,
-    r16g16b16a16_uint = 95,
-    r16g16b16a16_sint = 96,
-    r16g16b16a16_sfloat = 97,
-    r32_uint = 98,
-    r32_sint = 99,
-    r32_sfloat = 100,
-    r32g32_uint = 101,
-    r32g32_sint = 102,
-    r32g32_sfloat = 103,
-    r32g32b32_uint = 104,
-    r32g32b32_sint = 105,
-    r32g32b32_sfloat = 106,
-    r32g32b32a32_uint = 107,
-    r32g32b32a32_sint = 108,
-    r32g32b32a32_sfloat = 109,
-    r64_uint = 110,
-    r64_sint = 111,
-    r64_sfloat = 112,
-    r64g64_uint = 113,
-    r64g64_sint = 114,
-    r64g64_sfloat = 115,
-    r64g64b64_uint = 116,
-    r64g64b64_sint = 117,
-    r64g64b64_sfloat = 118,
-    r64g64b64a64_uint = 119,
-    r64g64b64a64_sint = 120,
-    r64g64b64a64_sfloat = 121,
-    b10g11r11_ufloat_pack32 = 122,
-    e5b9g9r9_ufloat_pack32 = 123,
-    d16_unorm = 124,
-    x8_d24_unorm_pack32 = 125,
-    d32_sfloat = 126,
-    s8_uint = 127,
-    d16_unorm_s8_uint = 128,
-    d24_unorm_s8_uint = 129,
-    d32_sfloat_s8_uint = 130,
-    bc1_rgb_unorm_block = 131,
-    bc1_rgb_srgb_block = 132,
-    bc1_rgba_unorm_block = 133,
-    bc1_rgba_srgb_block = 134,
-    bc2_unorm_block = 135,
-    bc2_srgb_block = 136,
-    bc3_unorm_block = 137,
-    bc3_srgb_block = 138,
-    bc4_unorm_block = 139,
-    bc4_snorm_block = 140,
-    bc5_unorm_block = 141,
-    bc5_snorm_block = 142,
-    bc6h_ufloat_block = 143,
-    bc6h_sfloat_block = 144,
-    bc7_unorm_block = 145,
-    bc7_srgb_block = 146,
-    etc2_r8g8b8_unorm_block = 147,
-    etc2_r8g8b8_srgb_block = 148,
-    etc2_r8g8b8a1_unorm_block = 149,
-    etc2_r8g8b8a1_srgb_block = 150,
-    etc2_r8g8b8a8_unorm_block = 151,
-    etc2_r8g8b8a8_srgb_block = 152,
-    eac_r11_unorm_block = 153,
-    eac_r11_snorm_block = 154,
-    eac_r11g11_unorm_block = 155,
-    eac_r11g11_snorm_block = 156,
-    astc_4x4_unorm_block = 157,
-    astc_4x4_srgb_block = 158,
-    astc_5x4_unorm_block = 159,
-    astc_5x4_srgb_block = 160,
-    astc_5x5_unorm_block = 161,
-    astc_5x5_srgb_block = 162,
-    astc_6x5_unorm_block = 163,
-    astc_6x5_srgb_block = 164,
-    astc_6x6_unorm_block = 165,
-    astc_6x6_srgb_block = 166,
-    astc_8x5_unorm_block = 167,
-    astc_8x5_srgb_block = 168,
-    astc_8x6_unorm_block = 169,
-    astc_8x6_srgb_block = 170,
-    astc_8x8_unorm_block = 171,
-    astc_8x8_srgb_block = 172,
-    astc_10x5_unorm_block = 173,
-    astc_10x5_srgb_block = 174,
-    astc_10x6_unorm_block = 175,
-    astc_10x6_srgb_block = 176,
-    astc_10x8_unorm_block = 177,
-    astc_10x8_srgb_block = 178,
-    astc_10x10_unorm_block = 179,
-    astc_10x10_srgb_block = 180,
-    astc_12x10_unorm_block = 181,
-    astc_12x10_srgb_block = 182,
-    astc_12x12_unorm_block = 183,
-    astc_12x12_srgb_block = 184,
-    Other(u32),
+#[repr(transparent)]
+pub struct ImageFormat(ash::vk::Format);
+
+impl Display for ImageFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.as_raw())
+    }
 }
 
-impl ImageFormat {
-    pub(crate) fn ash_format(&self) -> ash::vk::Format {
-        ash::vk::Format::from_raw(match self {
-            ImageFormat::Other(fmt) => *fmt,
-            fmt => unsafe { std::mem::transmute_copy::<ImageFormat, u32>(fmt) },
-        } as i32)
+impl From<CommonImageFormat> for ImageFormat {
+    fn from(value: CommonImageFormat) -> Self {
+        unsafe { std::mem::transmute_copy::<CommonImageFormat, i32>(&value) }.into()
+    }
+}
+
+impl From<i32> for ImageFormat {
+    fn from(value: i32) -> Self {
+        Self(crate::ash::vk::Format::from_raw(value))
+    }
+}
+
+impl From<crate::ash::vk::Format> for ImageFormat {
+    fn from(value: crate::ash::vk::Format) -> Self {
+        Self(value)
+    }
+}
+
+impl Into<crate::ash::vk::Format> for ImageFormat {
+    fn into(self) -> ash::vk::Format {
+        self.0.to_owned()
     }
 }
 
@@ -762,7 +794,7 @@ impl ConcreteImageDescriptor {
     }
 
     pub(crate) fn ash_format(&self) -> ash::vk::Format {
-        self.img_format.ash_format()
+        self.img_format.to_owned().into()
     }
 
     pub(crate) fn ash_image_type(&self) -> ImageType {

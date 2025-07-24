@@ -25,9 +25,9 @@ use vulkan_framework::{
         PolygonMode, Rasterizer, Scissor, Viewport,
     },
     image::{
-        ConcreteImageDescriptor, Image2DDimensions, Image3DDimensions, ImageDimensions, ImageFlags,
-        ImageFormat, ImageLayout, ImageLayoutSwapchainKHR, ImageMultisampling,
-        ImageSubresourceRange, ImageTiling, ImageTrait, ImageUsage, ImageUseAs,
+        CommonImageFormat, ConcreteImageDescriptor, Image2DDimensions, Image3DDimensions,
+        ImageDimensions, ImageFlags, ImageFormat, ImageLayout, ImageLayoutSwapchainKHR,
+        ImageMultisampling, ImageSubresourceRange, ImageTiling, ImageTrait, ImageUsage, ImageUseAs,
     },
     image_view::ImageView,
     instance::*,
@@ -326,7 +326,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             panic!("Device does not support the most common present mode. LOL.");
         }
 
-        let final_format = ImageFormat::b8g8r8a8_srgb;
+        let final_format = ImageFormat::from(CommonImageFormat::b8g8r8a8_srgb);
         let color_space = SurfaceColorspaceSwapchainKHR::SRGBNonlinear;
         if !device_swapchain_info.format_supported(&color_space, &final_format) {
             panic!("Device does not support the most common format. LOL.");
@@ -369,7 +369,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         ImageMultisampling::SamplesPerPixel1,
                         1,
                         1,
-                        ImageFormat::r32g32b32a32_sfloat,
+                        ImageFormat::from(CommonImageFormat::r32g32b32a32_sfloat),
                         ImageFlags::empty(),
                         ImageTiling::Optimal,
                     ),

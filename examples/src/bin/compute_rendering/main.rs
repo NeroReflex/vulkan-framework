@@ -21,9 +21,9 @@ use vulkan_framework::graphics_pipeline::{
     Rasterizer, Scissor, Viewport,
 };
 use vulkan_framework::image::{
-    AllocatedImage, ConcreteImageDescriptor, Image, Image2DDimensions, ImageDimensions, ImageFlags,
-    ImageFormat, ImageLayout, ImageLayoutSwapchainKHR, ImageMultisampling, ImageSubresourceRange,
-    ImageTiling, ImageTrait, ImageUsage, ImageUseAs,
+    AllocatedImage, CommonImageFormat, ConcreteImageDescriptor, Image, Image2DDimensions,
+    ImageDimensions, ImageFlags, ImageFormat, ImageLayout, ImageLayoutSwapchainKHR,
+    ImageMultisampling, ImageSubresourceRange, ImageTiling, ImageTrait, ImageUsage, ImageUseAs,
 };
 use vulkan_framework::image_view::{ImageView, ImageViewType};
 use vulkan_framework::instance::*;
@@ -256,7 +256,7 @@ fn main() {
         panic!("Device does not support the most common present mode. LOL.");
     }
 
-    let final_format = ImageFormat::b8g8r8a8_srgb;
+    let final_format = ImageFormat::from(CommonImageFormat::b8g8r8a8_srgb);
     let color_space = SurfaceColorspaceSwapchainKHR::SRGBNonlinear;
     if !device_swapchain_info.format_supported(&color_space, &final_format) {
         panic!("Device does not support the most common format. LOL.");
@@ -301,7 +301,7 @@ fn main() {
             ImageMultisampling::SamplesPerPixel1,
             1,
             1,
-            ImageFormat::r32g32b32a32_sfloat,
+            ImageFormat::from(CommonImageFormat::r32g32b32a32_sfloat),
             ImageFlags::empty(),
             ImageTiling::Optimal,
         ),

@@ -13,8 +13,8 @@ use vulkan_framework::{
         Rasterizer, Scissor, Viewport,
     },
     image::{
-        AllocatedImage, ConcreteImageDescriptor, Image, Image1DTrait, Image2DDimensions,
-        Image2DTrait, ImageDimensions, ImageFlags, ImageFormat, ImageLayout,
+        AllocatedImage, CommonImageFormat, ConcreteImageDescriptor, Image, Image1DTrait,
+        Image2DDimensions, Image2DTrait, ImageDimensions, ImageFlags, ImageFormat, ImageLayout,
         ImageLayoutSwapchainKHR, ImageMultisampling, ImageSubresourceRange, ImageTiling,
         ImageTrait, ImageUsage, ImageUseAs,
     },
@@ -76,7 +76,7 @@ impl FinalRendering {
     }
 
     fn output_image_format() -> ImageFormat {
-        ImageFormat::r32g32b32a32_sfloat
+        ImageFormat::from(CommonImageFormat::r32g32b32a32_sfloat)
     }
 
     pub fn new(
