@@ -568,17 +568,35 @@ impl SwapchainKHR {
             ))),
         }
     }
-    /*
-        pub fn recreate(&mut self) -> VulkanResult<()> {
 
-            .old_swapchain(match &old_swapchain {
-                    Some(old) => old.swapchain,
-                    None => ash::vk::SwapchainKHR::from_raw(0),
-                })
+    /// Recreates the swapchain.
+    ///
+    /// This function should be called when `acquire_next_image_index` indicates that the image is suboptimal.
+    ///
+    /// To recreate the swapchain (which will be an `Arc<SwapchainKHR>` instance), you must first obtain a mutable reference
+    /// by calling `Arc::get_mut()` on it. This will only succeed if there are no other references to the `Arc`, as Rust
+    /// enforces that a mutable reference can only exist when no other references are present.
+    ///
+    /// Note that the framework tracks resource usage, and the relationships between resources are as follows:
+    /// - Each `ImageSwapchainKHR` image contains a reference to the swapchain.
+    /// - Each `ImageView` contains a reference to the `ImageSwapchainKHR` it was created from.
+    /// - Each `Framebuffer` contains a reference to the `ImageView` it was created from.
+    ///
+    /// Therefore, before attempting to recreate the swapchain, ensure that all command buffers using any of these resources
+    /// are either dropped or have been recorded with the `record_one_time_submit` method and you have awaited the termination of
+    /// execution by dropping the `Arc<FenceWaiter>` returned by the `Queue` when the command buffer was submitted.
+    ///
+    /// # Returns
+    /// A `VulkanResult<()>` indicating the success or failure of the operation.
+    pub fn recreate(&mut self) -> VulkanResult<()> {
+        //.old_swapchain(match &old_swapchain {
+        //        Some(old) => old.swapchain,
+        //        None => ash::vk::SwapchainKHR::from_raw(0),
+        //    })
 
-            Ok(())
-        }
-    */
+        todo!()
+    }
+
     pub fn new(
         device_info: &DeviceSurfaceInfo,
         queue_families: &[Arc<QueueFamily>],
