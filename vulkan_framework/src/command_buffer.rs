@@ -155,9 +155,12 @@ impl From<MemoryAccessAs> for ash::vk::AccessFlags2 {
     }
 }
 
+/// Represents AccessFlags2
+///
+/// When the contained value is None it is the same as having VK_ACCESS_2_NONE
+/// otherwise at least one access flag is present.
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
-#[repr(transparent)]
-pub struct MemoryAccess(ash::vk::AccessFlags2);
+pub struct MemoryAccess(Option<ash::vk::AccessFlags2>);
 
 impl From<&[MemoryAccessAs]> for MemoryAccess {
     fn from(value: &[MemoryAccessAs]) -> Self {
@@ -166,19 +169,28 @@ impl From<&[MemoryAccessAs]> for MemoryAccess {
             flags |= v.to_owned().into();
         }
 
-        Self(flags)
+        Self(match flags {
+            ash::vk::AccessFlags2::NONE => None,
+            flags => Some(flags),
+        })
     }
 }
 
 impl From<ash::vk::AccessFlags2> for MemoryAccess {
     fn from(value: ash::vk::AccessFlags2) -> Self {
-        Self(value)
+        Self(match value {
+            ash::vk::AccessFlags2::NONE => None,
+            value => Some(value),
+        })
     }
 }
 
 impl From<MemoryAccess> for ash::vk::AccessFlags2 {
     fn from(val: MemoryAccess) -> Self {
-        val.0
+        match &val.0 {
+            Some(flags) => flags.to_owned(),
+            None => ash::vk::AccessFlags2::NONE
+        }
     }
 }
 
