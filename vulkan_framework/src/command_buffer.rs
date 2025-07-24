@@ -1148,14 +1148,12 @@ impl PrimaryCommandBuffer {
 
         let result = commands_writer_fn(&mut recorder);
 
-        let _ = unsafe { device.ash_handle().end_command_buffer(self.ash_handle()) }.map_err(
-            |err| {
-                VulkanError::Vulkan(
-                    err.as_raw(),
-                    Some(format!("Error updating the command buffer: {}", err)),
-                )
-            },
-        )?;
+        unsafe { device.ash_handle().end_command_buffer(self.ash_handle()) }.map_err(|err| {
+            VulkanError::Vulkan(
+                err.as_raw(),
+                Some(format!("Error updating the command buffer: {}", err)),
+            )
+        })?;
         *resources_lck = recorder.used_resources;
         drop(resources_lck);
 
