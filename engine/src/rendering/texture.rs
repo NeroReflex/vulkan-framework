@@ -160,7 +160,7 @@ impl TextureManager {
         )?;
 
         let load_fence = Fence::new(device.clone(), false, Some("texture_manager.load_fence"))?;
-
+        /*
         command_buffer.record_commands(|recorder| {
             recorder.copy_buffer_to_image(
                 stub_image_data,
@@ -169,17 +169,17 @@ impl TextureManager {
                 stub_image.clone(),
                 stub_image.dimensions(),
             );
-            /*
-            recorder.copy_image(
-                src_layout,
-                src_subresource,
-                src,
-                dst_layout,
-                dst_subresource,
-                dst,
-                extent,
-            );
-            */
+
+            //recorder.copy_image(
+            //    src_layout,
+            //    src_subresource,
+            //    src,
+            //    dst_layout,
+            //    dst_subresource,
+            //    dst,
+            //    extent,
+            //);
+
         })?;
 
         let load_fence_waiter =
@@ -188,6 +188,7 @@ impl TextureManager {
         // this will wait for the GPU to finish the resource copy
         // and the fence will be resetted back in unsignaled state
         drop(load_fence_waiter.unwrap());
+        */
 
         Ok(Self {
             device,

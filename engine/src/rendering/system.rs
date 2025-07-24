@@ -14,6 +14,7 @@ use vulkan_framework::{
     fence::{Fence, FenceWaiter},
     framebuffer::Framebuffer,
     image::{Image2DDimensions, ImageUsage, ImageUsageSpecifier},
+    image_view::ImageView,
     instance::InstanceOwned,
     pipeline_stage::{PipelineStage, PipelineStages},
     queue::Queue,
@@ -26,6 +27,7 @@ use vulkan_framework::{
         CompositeAlphaSwapchainKHR, DeviceSurfaceInfo, PresentModeSwapchainKHR,
         SurfaceTransformSwapchainKHR, SwapchainKHR,
     },
+    swapchain_image::ImageSwapchainKHR,
 };
 
 use crate::rendering::{
@@ -35,10 +37,13 @@ use crate::rendering::{
     surface::SurfaceHelper,
 };
 
+type SwapchainImagesType =
+    smallvec::SmallVec<[Arc<ImageSwapchainKHR>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
+type SwapchainImageViewsType = smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
 type FramebuffersType = smallvec::SmallVec<[Arc<Framebuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
 
 pub struct System {
-    swapchain: Option<(Arc<SwapchainKHR>, FramebuffersType)>,
+    swapchain: Option<(Arc<SwapchainKHR>, SwapchainImageViewsType, FramebuffersType)>,
 
     window: sdl2::video::Window,
     queue: Arc<vulkan_framework::queue::Queue>,
@@ -309,22 +314,44 @@ impl System {
                 1,
             )?;
 
+            let mut images = SwapchainImagesType::default();
+            for index in 0..self.surface.images_count() {
+                images.push(swapchain.image(index)?);
+            }
+
+            let mut image_views = SwapchainImageViewsType::default();
+            for (index, image) in images.iter().enumerate() {
+                let image_view_name = format!("swapchain_image_views[{index}]");
+                image_views.push(ImageView::new(
+                    image.clone(),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(image_view_name.as_str()),
+                )?);
+            }
+
             let mut framebuffers: FramebuffersType = Default::default();
             for index in 0..self.surface.images_count() {
                 let framebuffer = Framebuffer::new(
                     self.renderquad.renderpass(),
-                    &[swapchain.image_view(index as usize)?],
+                    [image_views[index as usize].clone()].as_ref(),
                     swapchain.images_extent(),
                     swapchain.images_layers_count(),
                 )?;
                 framebuffers.push(framebuffer);
             }
 
-            self.swapchain = Some((swapchain, framebuffers))
+            self.swapchain = Some((swapchain, image_views, framebuffers))
         }
 
         // if there is still no swapchain then somethign has gone horribly wrong
-        let Some((swapchain, framebuffers)) = &self.swapchain else {
+        let Some((swapchain, image_views, framebuffers)) = &self.swapchain else {
             return Err(RenderingError::NotEnoughSwapchainImages);
         };
 
@@ -354,7 +381,6 @@ impl System {
             let renderquad_input_image_layout = RenderQuad::image_input_format();
 
             recorder.image_barrier(ImageMemoryBarrier::new(
-                todo!(),
                 PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
                 MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
                 PipelineStages::from([PipelineStage::FragmentShader].as_slice()),

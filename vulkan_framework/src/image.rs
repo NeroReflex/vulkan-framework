@@ -118,7 +118,7 @@ impl ImageSubresourceLayers {
     }
 }
 
-//#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct ImageSubresourceRange {
     image: Arc<dyn ImageTrait>,
     image_aspect: ImageAspects,

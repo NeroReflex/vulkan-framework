@@ -1,4 +1,7 @@
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{atomic::Ordering, Arc},
+    time::Duration,
+};
 
 use ash::vk::Handle;
 
@@ -17,7 +20,7 @@ use crate::{
     },
     image_view::{ImageView, ImageViewType},
     instance::InstanceOwned,
-    prelude::{VulkanError, VulkanResult},
+    prelude::{FrameworkError, VulkanError, VulkanResult},
     queue::Queue,
     queue_family::{QueueFamily, QueueFamilyOwned},
     semaphore::Semaphore,
@@ -253,7 +256,6 @@ impl DeviceSurfaceInfo {
 }
 
 type ImagesCollectionType = smallvec::SmallVec<[Arc<ImageSwapchainKHR>; 8]>;
-type ImageViewsCollectionType = smallvec::SmallVec<[Arc<ImageView>; 8]>;
 
 pub struct SwapchainKHR {
     device: Arc<Device>,
@@ -266,8 +268,7 @@ pub struct SwapchainKHR {
     composite_alpha: CompositeAlphaSwapchainKHR,
     min_image_count: u32,
     image_layers: u32,
-    images: ImagesCollectionType,
-    image_views: ImageViewsCollectionType,
+    images: Option<ImagesCollectionType>,
 }
 
 impl DeviceOwned for SwapchainKHR {
@@ -280,16 +281,29 @@ impl DeviceOwned for SwapchainKHR {
 impl Drop for SwapchainKHR {
     #[inline]
     fn drop(&mut self) {
-        match self.device.ash_ext_swapchain_khr() {
-            Some(ext) => unsafe {
-                ext.destroy_swapchain(
-                    self.swapchain,
-                    self.device.get_parent_instance().get_alloc_callbacks(),
-                )
-            },
-            None => {
-                panic!("Swapchain extension is not available anymore. This should not happend. If you read this main developer of this crate made something bad.");
+        match self.device.swapchain_exists.compare_exchange(
+            true,
+            false,
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+        ) {
+            Ok(_) => {}
+            Err(err) => {
+                panic!(
+                    "Error while informing the device that the swapchain is being destroyed {err}"
+                );
             }
+        };
+
+        let Some(ext) = self.device.ash_ext_swapchain_khr() else {
+            panic!("Swapchain extension is not available anymore. This should not happend. If you read this main developer of this crate made something bad.");
+        };
+
+        unsafe {
+            ext.destroy_swapchain(
+                self.swapchain,
+                self.device.get_parent_instance().get_alloc_callbacks(),
+            )
         }
     }
 }
@@ -300,8 +314,27 @@ impl SwapchainKHR {
         self.swapchain
     }
 
-    pub fn image_view(&self, index: usize) -> VulkanResult<Arc<ImageView>> {
-        Ok(self.image_views[index].clone())
+    pub fn image(&self, index: u32) -> VulkanResult<Arc<ImageSwapchainKHR>> {
+        let Some(images) = &self.images else {
+            return Err(VulkanError::Framework(
+                FrameworkError::SwapchainInvalidState,
+            ));
+        };
+
+        let requested_index = index as usize;
+        if requested_index >= images.len() {
+            return Err(VulkanError::Framework(
+                FrameworkError::InvalidSwapchainImageIndex(requested_index, images.len()),
+            ));
+        };
+
+        let Some(image) = images.get(requested_index) else {
+            return Err(VulkanError::Framework(
+                FrameworkError::InvalidSwapchainImageIndex(requested_index, images.len()),
+            ));
+        };
+
+        Ok(image.clone())
     }
 
     #[inline]
@@ -554,125 +587,121 @@ impl SwapchainKHR {
         let device = device_info.device.clone();
         let surface = device_info.surface.clone();
 
-        match device.ash_ext_swapchain_khr() {
-            Some(ext) => {
-                assert!(
-                    device_info.format_supported(&color_space, &image_format)
-                        && device_info.present_mode_supported(&present_mode)
-                );
+        let Some(ext) = device.ash_ext_swapchain_khr() else {
+            return Err(VulkanError::MissingExtension(String::from(
+                "VK_KHR_swapchain",
+            )));
+        };
 
-                let create_info = ash::vk::SwapchainCreateInfoKHR::default()
-                    .old_swapchain(match &old_swapchain {
-                        Some(old) => old.swapchain,
-                        None => ash::vk::SwapchainKHR::from_raw(0),
-                    })
-                    .image_extent(
-                        ash::vk::Extent2D::default()
-                            .height(extent.height())
-                            .width(extent.width()),
-                    )
-                    .surface(*surface.ash_handle())
-                    .queue_family_indices(queue_family_indexes.as_slice())
-                    .image_sharing_mode(match queue_family_indexes.len() <= 1 {
-                        true => ash::vk::SharingMode::EXCLUSIVE,
-                        false => ash::vk::SharingMode::CONCURRENT,
-                    })
-                    .image_usage(image_usage.ash_usage())
-                    .image_array_layers(image_layers)
-                    .image_format(image_format.ash_format())
-                    .image_color_space(color_space.ash_colorspace())
-                    .present_mode(present_mode.ash_value())
-                    .clipped(clipped)
-                    .pre_transform(transform.ash_transform())
-                    .composite_alpha(composite_alpha.ash_alpha())
-                    .min_image_count(min_image_count);
+        assert!(
+            device_info.format_supported(&color_space, &image_format)
+                && device_info.present_mode_supported(&present_mode)
+        );
 
-                //let surface_capabilities =
+        let create_info = ash::vk::SwapchainCreateInfoKHR::default()
+            .old_swapchain(match &old_swapchain {
+                Some(old) => old.swapchain,
+                None => ash::vk::SwapchainKHR::from_raw(0),
+            })
+            .image_extent(
+                ash::vk::Extent2D::default()
+                    .height(extent.height())
+                    .width(extent.width()),
+            )
+            .surface(*surface.ash_handle())
+            .queue_family_indices(queue_family_indexes.as_slice())
+            .image_sharing_mode(match queue_family_indexes.len() <= 1 {
+                true => ash::vk::SharingMode::EXCLUSIVE,
+                false => ash::vk::SharingMode::CONCURRENT,
+            })
+            .image_usage(image_usage.ash_usage())
+            .image_array_layers(image_layers)
+            .image_format(image_format.ash_format())
+            .image_color_space(color_space.ash_colorspace())
+            .present_mode(present_mode.ash_value())
+            .clipped(clipped)
+            .pre_transform(transform.ash_transform())
+            .composite_alpha(composite_alpha.ash_alpha())
+            .min_image_count(min_image_count);
 
-                let swapchain = unsafe {
-                    ext.create_swapchain(
-                        &create_info,
-                        device.get_parent_instance().get_alloc_callbacks(),
-                    )
-                }
-                .map_err(|err| {
-                    VulkanError::Vulkan(
-                        err.as_raw(),
-                        Some(format!("Error creating the swapchain: {}", err)),
-                    )
-                })?;
+        match device.swapchain_exists.compare_exchange(
+            false,
+            true,
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+        ) {
+            Ok(_) => {}
+            Err(_) => {
+                return Err(VulkanError::Framework(
+                    FrameworkError::SwapchainAlreadyExists,
+                ))
+            }
+        };
 
-                // the old swapchain (or at least my handle of it) must be removed AFTER the creation of the new one, not BEFORE!
-                std::mem::drop(old_swapchain);
+        let swapchain = unsafe {
+            ext.create_swapchain(
+                &create_info,
+                device.get_parent_instance().get_alloc_callbacks(),
+            )
+        }
+        .map_err(|err| {
+            VulkanError::Vulkan(
+                err.as_raw(),
+                Some(format!("Error creating the swapchain: {}", err)),
+            )
+        })?;
 
-                let image_handles =
-                    unsafe { ext.get_swapchain_images(swapchain) }.map_err(|err| {
-                        // avoid leaking the swapchain
-                        unsafe {
-                            ext.destroy_swapchain(
-                                swapchain,
-                                device.get_parent_instance().get_alloc_callbacks(),
-                            )
-                        }
+        // the old swapchain (or at least my handle of it) must be removed AFTER the creation of the new one, not BEFORE!
+        std::mem::drop(old_swapchain);
 
-                        VulkanError::Vulkan(
-                            err.as_raw(),
-                            Some(format!("Error fetching images from the swapchain: {}", err)),
-                        )
-                    })?;
-
-                let images: ImagesCollectionType = image_handles
-                    .into_iter()
-                    .map(|swapchain_image| {
-                        Arc::new(ImageSwapchainKHR::new(
-                            device.clone(),
-                            ImageFlags::Unmanaged(0),
-                            image_usage,
-                            image_format,
-                            extent,
-                            image_layers,
-                            image_layers,
-                            swapchain_image,
-                        ))
-                    })
-                    .collect();
-
-                let mut image_views: ImageViewsCollectionType = Default::default();
-                for img in images.iter() {
-                    let image_view = ImageView::from_arc(
-                        img.clone(),
-                        ImageViewType::Image2D,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                    )?;
-
-                    image_views.push(image_view);
-                }
-
-                Ok(Arc::new(Self {
-                    device,
-                    surface,
+        let image_handles = unsafe { ext.get_swapchain_images(swapchain) }.map_err(|err| {
+            // avoid leaking the swapchain
+            unsafe {
+                ext.destroy_swapchain(
                     swapchain,
-                    min_image_count,
-                    transform,
-                    composite_alpha,
-                    image_format,
+                    device.get_parent_instance().get_alloc_callbacks(),
+                )
+            }
+
+            let _ = device
+                .swapchain_exists
+                .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
+                .unwrap();
+
+            VulkanError::Vulkan(
+                err.as_raw(),
+                Some(format!("Error fetching images from the swapchain: {}", err)),
+            )
+        })?;
+
+        let images: ImagesCollectionType = image_handles
+            .into_iter()
+            .map(|swapchain_image| {
+                Arc::new(ImageSwapchainKHR::new(
+                    device.clone(),
+                    ImageFlags::Unmanaged(0),
                     image_usage,
+                    image_format,
                     extent,
                     image_layers,
-                    images,
-                    image_views,
-                }))
-            }
-            None => Err(VulkanError::MissingExtension(String::from(
-                "VK_KHR_swapchain",
-            ))),
-        }
+                    image_layers,
+                    swapchain_image,
+                ))
+            })
+            .collect();
+
+        Ok(Arc::new(Self {
+            device,
+            surface,
+            swapchain,
+            min_image_count,
+            transform,
+            composite_alpha,
+            image_format,
+            image_usage,
+            extent,
+            image_layers,
+            images: Some(images),
+        }))
     }
 }

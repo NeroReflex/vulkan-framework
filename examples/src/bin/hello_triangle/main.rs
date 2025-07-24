@@ -16,6 +16,7 @@ use vulkan_framework::{
         Image2DDimensions, ImageFormat, ImageLayout, ImageLayoutSwapchainKHR, ImageMultisampling,
         ImageUsage, ImageUsageSpecifier,
     },
+    image_view::ImageView,
     instance::*,
     pipeline_layout::PipelineLayout,
     pipeline_stage::{PipelineStage, PipelineStages},
@@ -320,9 +321,29 @@ fn main() {
         .unwrap();
         println!("Graphics pipeline created!");
 
-        let mut swapchain_image_views = vec![];
+        let mut swapchain_images = vec![];
         for idx in 0..swapchain_images_count {
-            swapchain_image_views.push(swapchain.image_view(idx as usize).unwrap());
+            swapchain_images.push(swapchain.image(idx).unwrap());
+        }
+
+        let mut swapchain_image_views = vec![];
+        for (idx, img) in swapchain_images.iter().enumerate() {
+            let swapchain_image_name = format!("swapchain_image_views[{idx}]");
+            swapchain_image_views.push(
+                ImageView::new(
+                    img.clone(),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(swapchain_image_name.as_str()),
+                )
+                .unwrap(),
+            );
         }
 
         let swapchain_framebuffers = swapchain_image_views

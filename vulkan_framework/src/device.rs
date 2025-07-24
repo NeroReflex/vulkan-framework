@@ -5,6 +5,7 @@ use ash;
 
 use std::ffi::CString;
 use std::os::raw::c_char;
+use std::sync::atomic::AtomicBool;
 
 #[cfg(feature = "better_mutex")]
 use parking_lot::{const_mutex, Mutex};
@@ -149,6 +150,7 @@ pub struct Device {
     device: ash::Device,
     pub(crate) physical_device: ash::vk::PhysicalDevice,
     ray_tracing_info: Option<RaytracingInfo>,
+    pub(crate) swapchain_exists: AtomicBool,
 }
 
 impl PartialEq for Device {
@@ -816,6 +818,7 @@ impl Device {
                         supported_extension_names: selected_device.supported_extension_names,
                         physical_device: selected_device.selected_physical_device,
                         ray_tracing_info: raytracing_info,
+                        swapchain_exists: AtomicBool::new(false),
                     }))
                 }
             }

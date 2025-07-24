@@ -451,9 +451,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let rt_image_views = rt_images
             .iter()
             .map(|rt_img| {
-                ImageView::from_arc(
+                ImageView::new(
                     rt_img.clone(),
-                    ImageViewType::Image2D,
+                    None,
                     None,
                     None,
                     None,
@@ -566,9 +566,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap();
         println!("Pipeline layout created!");
 
-        let mut swapchain_image_views = vec![];
+        let mut swapchain_images = vec![];
         for idx in 0..swapchain_images_count {
-            swapchain_image_views.push(swapchain.image_view(idx as usize).unwrap());
+            swapchain_images.push(swapchain.image(idx).unwrap());
+        }
+
+        let mut swapchain_image_views = vec![];
+        for (idx, img) in swapchain_images.iter().enumerate() {
+            let swapchain_image_name = format!("swapchain_image_views[{idx}]");
+            swapchain_image_views.push(
+                ImageView::new(
+                    img.clone(),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(swapchain_image_name.as_str()),
+                )
+                .unwrap(),
+            );
         }
 
         let renderquad_sampler = vulkan_framework::sampler::Sampler::new(
@@ -941,7 +961,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .record_commands(|recorder: &mut CommandBufferRecorder| {
                         // TODO: HERE transition the image layout from UNDEFINED to GENERAL so that ray tracing pipeline can write to it
                         recorder.image_barrier(ImageMemoryBarrier::new(
-                            rt_images[swapchain_index as usize].clone(),
                             PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
                             MemoryAccess::from([].as_slice()),
                             PipelineStages::from(
@@ -973,7 +992,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         // HERE wait for the ray tracing pipeline to transition image layout from GENERAL to renderquad_texture_layout
                         recorder.image_barrier(ImageMemoryBarrier::new(
-                            rt_images[swapchain_index as usize].clone(),
                             PipelineStages::from(
                                 [PipelineStage::RayTracingPipelineKHR(
                                     PipelineStageRayTracingPipelineKHR::RayTracingShader,

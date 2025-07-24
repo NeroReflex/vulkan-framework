@@ -18,7 +18,7 @@ use vulkan_framework::{
         ImageLayoutSwapchainKHR, ImageMultisampling, ImageSubresourceRange, ImageTiling,
         ImageTrait, ImageUsage, ImageUsageSpecifier,
     },
-    image_view::{self, ImageView},
+    image_view::{self, ImageView, ImageViewType},
     memory_allocator::DefaultAllocator,
     memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryType},
     memory_pool::{MemoryPool, MemoryPoolFeatures},
@@ -158,9 +158,9 @@ impl FinalRendering {
             images.push(allocated_image.clone());
 
             let image_view_name = format!("final_rendering_image_view[{index}]");
-            let image_view = ImageView::from_arc(
+            let image_view = ImageView::new(
                 allocated_image,
-                image_view::ImageViewType::Image2D,
+                Some(ImageViewType::Image2D),
                 None,
                 None,
                 None,

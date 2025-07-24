@@ -191,9 +191,9 @@ fn main() {
         Err(err) => panic!("Error allocating the image: {err}"),
     };
 
-    let image_view = match ImageView::from_arc(
+    let image_view = match ImageView::new(
         image.clone(),
-        ImageViewType::Image2D,
+        Some(ImageViewType::Image2D),
         None,
         None,
         None,
@@ -337,7 +337,6 @@ fn main() {
 
     match command_buffer.record_commands(|recorder| {
         recorder.image_barrier(ImageMemoryBarrier::new(
-            image.clone(),
             PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
             MemoryAccess::from([MemoryAccessAs::MemoryRead].as_slice()),
             PipelineStages::from([PipelineStage::ComputeShader].as_slice()),

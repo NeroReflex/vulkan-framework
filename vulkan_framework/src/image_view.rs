@@ -133,7 +133,7 @@ impl From<ImageFormat> for ImageViewAspect {
 }
 
 pub struct ImageView {
-    image: Box<dyn Borrow<dyn ImageTrait>>,
+    image: Arc<dyn ImageTrait>,
     image_view: ash::vk::ImageView,
     view_type: ImageViewType,
     color_mapping: ImageViewColorMapping,
@@ -145,7 +145,7 @@ pub struct ImageView {
 
 impl Drop for ImageView {
     fn drop(&mut self) {
-        let device = self.image.as_ref().borrow().get_parent_device();
+        let device = self.image.get_parent_device();
 
         unsafe {
             device.ash_handle().destroy_image_view(
@@ -158,8 +158,8 @@ impl Drop for ImageView {
 
 impl ImageView {
     #[inline]
-    pub fn get_image(&self) -> &dyn ImageTrait {
-        self.image.as_ref().borrow()
+    pub fn image(&self) -> Arc<dyn ImageTrait> {
+        self.image.clone()
     }
 
     #[inline]
@@ -211,8 +211,8 @@ impl ImageView {
      * this is to allow to create an image view with a format different from the image's own format.
      */
     pub fn new(
-        image: impl Borrow<dyn ImageTrait> + 'static,
-        view_type: ImageViewType,
+        image: Arc<dyn ImageTrait>,
+        maybe_view_type: Option<ImageViewType>,
         maybe_format: Option<ImageFormat>,
         maybe_aspect: Option<ImageViewAspect>,
         maybe_specified_color_mapping: Option<ImageViewColorMapping>,
@@ -227,13 +227,18 @@ impl ImageView {
             maybe_specified_color_mapping.unwrap_or(ImageViewColorMapping::rgba_rgba);
         let subrange_base_mip_level = maybe_specified_subrange_base_mip_level.unwrap_or(0);
         let subrange_level_count =
-            maybe_specified_subrange_level_count.unwrap_or(image.borrow().mip_levels_count());
+            maybe_specified_subrange_level_count.unwrap_or(image.mip_levels_count());
         let subrange_base_array_layer = maybe_specified_subrange_base_array_layer.unwrap_or(0);
         let subrange_layer_count = maybe_specified_subrange_layer_count.unwrap_or(1);
+        let view_type = maybe_view_type.unwrap_or(match image.dimensions() {
+            ImageDimensions::Image1D { extent: _ } => ImageViewType::Image1D,
+            ImageDimensions::Image2D { extent: _ } => ImageViewType::Image2D,
+            ImageDimensions::Image3D { extent: _ } => ImageViewType::Image3D,
+        });
 
-        let format = maybe_format.unwrap_or(image.borrow().format());
+        let format = maybe_format.unwrap_or(image.format());
 
-        let device = image.borrow().get_parent_device();
+        let device = image.get_parent_device();
 
         let srr = ash::vk::ImageSubresourceRange {
             aspect_mask: match maybe_aspect {
@@ -247,8 +252,8 @@ impl ImageView {
         };
 
         let create_info = ash::vk::ImageViewCreateInfo::default()
-            .image(ash::vk::Image::from_raw(image.borrow().native_handle()))
-            .format(image.borrow().format().ash_format())
+            .image(ash::vk::Image::from_raw(image.native_handle()))
+            .format(image.format().ash_format())
             .subresource_range(srr)
             .view_type(view_type.ash_viewtype());
 
@@ -291,7 +296,6 @@ impl ImageView {
             }
         }
 
-        let image = Box::new(image);
         Ok(Arc::new(Self {
             image,
             image_view,
@@ -302,31 +306,5 @@ impl ImageView {
             subrange_base_array_layer,
             subrange_layer_count,
         }))
-    }
-
-    pub fn from_arc(
-        image: Arc<dyn ImageTrait>,
-        view_type: ImageViewType,
-        maybe_format: Option<ImageFormat>,
-        maybe_aspect: Option<ImageViewAspect>,
-        maybe_specified_color_mapping: Option<ImageViewColorMapping>,
-        maybe_specified_subrange_base_mip_level: Option<u32>,
-        maybe_specified_subrange_level_count: Option<u32>,
-        maybe_specified_subrange_base_array_layer: Option<u32>,
-        maybe_specified_subrange_layer_count: Option<u32>,
-        debug_name: Option<&str>,
-    ) -> VulkanResult<Arc<Self>> {
-        Self::new(
-            image,
-            view_type,
-            maybe_format,
-            maybe_aspect,
-            maybe_specified_color_mapping,
-            maybe_specified_subrange_base_mip_level,
-            maybe_specified_subrange_level_count,
-            maybe_specified_subrange_base_array_layer,
-            maybe_specified_subrange_layer_count,
-            debug_name,
-        )
     }
 }

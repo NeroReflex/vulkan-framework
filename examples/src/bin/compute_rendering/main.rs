@@ -344,9 +344,9 @@ fn main() {
 
     let image = AllocatedImage::new(stack_allocator, image).unwrap();
 
-    let image_view = match ImageView::from_arc(
+    let image_view = match ImageView::new(
         image.clone(),
-        ImageViewType::Image2D,
+        Some(ImageViewType::Image2D),
         None,
         None,
         None,
@@ -571,7 +571,6 @@ fn main() {
 
     match command_buffer.record_commands(|recorder| {
         recorder.image_barrier(ImageMemoryBarrier::new(
-            image.clone(),
             PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
             MemoryAccess::from([].as_slice()),
             PipelineStages::from([PipelineStage::ComputeShader].as_slice()),
@@ -605,7 +604,6 @@ fn main() {
         recorder.dispatch(32, 32, 1);
 
         let storage_image_transition_mem_barrier = ImageMemoryBarrier::new(
-            image.clone(),
             PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
             MemoryAccess::from([].as_slice()),
             PipelineStages::from([PipelineStage::Transfer].as_slice()),
@@ -674,9 +672,30 @@ fn main() {
         })
         .collect::<Vec<Arc<PrimaryCommandBuffer>>>();
 
-    let swapchain_images_imageview = (0..(swapchain_images_count))
-        .map(|idx| swapchain.image_view(idx as usize).unwrap())
-        .collect::<Vec<Arc<ImageView>>>();
+    let mut swapchain_images = vec![];
+    for idx in 0..swapchain_images_count {
+        swapchain_images.push(swapchain.image(idx).unwrap());
+    }
+
+    let mut swapchain_images_imageview = vec![];
+    for (idx, img) in swapchain_images.iter().enumerate() {
+        let swapchain_image_name = format!("swapchain_images_imageview[{idx}]");
+        swapchain_images_imageview.push(
+            ImageView::new(
+                img.clone(),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(swapchain_image_name.as_str()),
+            )
+            .unwrap(),
+        );
+    }
 
     let rendequad_framebuffers = (0..(swapchain_images_count))
         .map(|idx| {

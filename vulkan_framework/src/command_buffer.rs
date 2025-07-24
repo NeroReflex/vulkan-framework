@@ -196,7 +196,6 @@ impl ImageMemoryBarrier {
 
     #[inline]
     pub fn new(
-        image: Arc<dyn ImageTrait>,
         src_stages: PipelineStages,
         src_access: MemoryAccess,
         dst_stages: PipelineStages,
@@ -207,6 +206,7 @@ impl ImageMemoryBarrier {
         src_queue_family: Arc<QueueFamily>,
         dst_queue_family: Arc<QueueFamily>,
     ) -> Self {
+        let image = subresource_range.image();
         Self {
             image,
             src_stages,
