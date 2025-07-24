@@ -152,9 +152,9 @@ impl From<crate::ash::vk::BufferUsageFlags> for BufferUsage {
     }
 }
 
-impl Into<crate::ash::vk::BufferUsageFlags> for BufferUsage {
-    fn into(self) -> crate::ash::vk::BufferUsageFlags {
-        self.0.to_owned()
+impl From<BufferUsage> for crate::ash::vk::BufferUsageFlags {
+    fn from(val: BufferUsage) -> Self {
+        val.0.to_owned()
     }
 }
 
