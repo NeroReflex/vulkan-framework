@@ -27,7 +27,7 @@ use vulkan_framework::image::ImageSubresourceRange;
 use vulkan_framework::image::ImageTiling;
 use vulkan_framework::image::ImageTrait;
 use vulkan_framework::image::ImageUsage;
-use vulkan_framework::image::ImageUsageSpecifier;
+use vulkan_framework::image::ImageUseAs;
 use vulkan_framework::image_view::ImageView;
 use vulkan_framework::image_view::ImageViewType;
 use vulkan_framework::instance::*;
@@ -134,9 +134,7 @@ fn main() {
             ImageDimensions::Image2D {
                 extent: Image2DDimensions::new(1024, 1024),
             },
-            ImageUsage::Managed(ImageUsageSpecifier::new(
-                true, false, false, true, false, false, false, false,
-            )),
+            ImageUsage::from([ImageUseAs::TransferSrc, ImageUseAs::Storage].as_slice()),
             ImageMultisampling::SamplesPerPixel1,
             1,
             1,

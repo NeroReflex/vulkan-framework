@@ -114,8 +114,8 @@ pub enum BufferUseAs {
     RayTracing(BufferUsageRayTracingPipelineKHR),
 }
 
-impl BufferUseAs {
-    pub(crate) fn ash_usage(&self) -> ash::vk::BufferUsageFlags {
+impl Into<ash::vk::BufferUsageFlags> for &BufferUseAs {
+    fn into(self) -> ash::vk::BufferUsageFlags {
         match self {
             BufferUseAs::TransferSrc => ash::vk::BufferUsageFlags::TRANSFER_SRC,
             BufferUseAs::TransferDst => ash::vk::BufferUsageFlags::TRANSFER_DST,
@@ -162,7 +162,7 @@ impl From<&[BufferUseAs]> for BufferUsage {
     fn from(value: &[BufferUseAs]) -> Self {
         let mut usage = ash::vk::BufferUsageFlags::empty();
         for flag in value.iter() {
-            usage |= flag.ash_usage()
+            usage |= flag.into()
         }
 
         Self(usage)

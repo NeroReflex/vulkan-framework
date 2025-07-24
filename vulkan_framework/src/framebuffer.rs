@@ -157,7 +157,7 @@ impl ImagelessFramebufferAttachmentImageInfo {
 
     #[inline]
     pub(crate) fn ash_usage(&self) -> ash::vk::ImageUsageFlags {
-        self.img_usage.ash_usage()
+        self.img_usage.into()
     }
 
     #[inline]

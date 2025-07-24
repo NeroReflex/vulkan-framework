@@ -12,9 +12,8 @@ use vulkan_framework::{
     device::{Device, DeviceOwned},
     fence::{Fence, FenceWaiter},
     image::{
-        AllocatedImage, ConcreteImageDescriptor, Image, Image2DDimensions, ImageAspects,
-        ImageDimensions, ImageFlags, ImageFormat, ImageLayout, ImageMultisampling,
-        ImageSubresourceLayers, ImageTiling, ImageTrait, ImageUsage, ImageUsageSpecifier,
+        AllocatedImage, ConcreteImageDescriptor, Image, Image2DDimensions, ImageDimensions,
+        ImageFlags, ImageFormat, ImageMultisampling, ImageTiling, ImageUsage, ImageUseAs,
     },
     image_view::ImageView,
     memory_allocator::DefaultAllocator,
@@ -119,9 +118,7 @@ impl TextureManager {
                 ImageDimensions::Image2D {
                     extent: Image2DDimensions::new(400, 400),
                 },
-                ImageUsage::Managed(ImageUsageSpecifier::new(
-                    false, true, true, false, false, false, false, false,
-                )),
+                ImageUsage::from([ImageUseAs::TransferDst, ImageUseAs::Sampled].as_slice()),
                 ImageMultisampling::SamplesPerPixel1,
                 1,
                 1,

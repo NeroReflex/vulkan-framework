@@ -27,7 +27,7 @@ use vulkan_framework::{
     image::{
         ConcreteImageDescriptor, Image2DDimensions, Image3DDimensions, ImageDimensions, ImageFlags,
         ImageFormat, ImageLayout, ImageLayoutSwapchainKHR, ImageMultisampling,
-        ImageSubresourceRange, ImageTiling, ImageTrait, ImageUsage, ImageUsageSpecifier,
+        ImageSubresourceRange, ImageTiling, ImageTrait, ImageUsage, ImageUseAs,
     },
     image_view::ImageView,
     instance::*,
@@ -349,9 +349,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             SurfaceTransformSwapchainKHR::Identity,
             true,
             final_format,
-            ImageUsage::Managed(ImageUsageSpecifier::new(
-                false, true, false, false, true, false, false, false,
-            )),
+            ImageUsage::from([ImageUseAs::TransferDst, ImageUseAs::ColorAttachment].as_slice()),
             swapchain_extent,
             swapchain_images_count,
             1,
@@ -367,9 +365,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         ImageDimensions::Image2D {
                             extent: swapchain_extent,
                         },
-                        ImageUsage::Managed(ImageUsageSpecifier::new(
-                            false, false, true, true, false, false, false, false,
-                        )),
+                        ImageUsage::from([ImageUseAs::Sampled, ImageUseAs::Storage].as_slice()),
                         ImageMultisampling::SamplesPerPixel1,
                         1,
                         1,

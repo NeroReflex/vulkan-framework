@@ -626,7 +626,7 @@ impl SwapchainKHR {
                 true => ash::vk::SharingMode::EXCLUSIVE,
                 false => ash::vk::SharingMode::CONCURRENT,
             })
-            .image_usage(image_usage.ash_usage())
+            .image_usage(image_usage.into())
             .image_array_layers(image_layers)
             .image_format(image_format.ash_format())
             .image_color_space(color_space.ash_colorspace())

@@ -404,129 +404,58 @@ impl ImageMultisampling {
     }
 }
 
-/**
- *
- */
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
-pub struct ImageUsageSpecifier {
-    transfer_src: bool,
-    transfer_dst: bool,
-    sampled: bool,
-    storage: bool,
-    color_attachment: bool,
-    depth_stencil_attachment: bool,
-    transient_attachment: bool,
-    input_attachment: bool,
-}
-
-impl ImageUsageSpecifier {
-    pub fn transfer_src(&self) -> bool {
-        self.transfer_src
-    }
-
-    pub fn transfer_dst(&self) -> bool {
-        self.transfer_dst
-    }
-
-    pub fn sampled(&self) -> bool {
-        self.sampled
-    }
-
-    pub fn storage(&self) -> bool {
-        self.storage
-    }
-
-    pub fn color_attachment(&self) -> bool {
-        self.color_attachment
-    }
-
-    pub fn depth_stencil_attachment(&self) -> bool {
-        self.depth_stencil_attachment
-    }
-
-    pub fn transient_attachment(&self) -> bool {
-        self.transient_attachment
-    }
-
-    pub fn input_attachment(&self) -> bool {
-        self.input_attachment
-    }
-
-    pub fn new(
-        transfer_src: bool,
-        transfer_dst: bool,
-        sampled: bool,
-        storage: bool,
-        color_attachment: bool,
-        depth_stencil_attachment: bool,
-        transient_attachment: bool,
-        input_attachment: bool,
-    ) -> Self {
-        Self {
-            transfer_src,
-            transfer_dst,
-            sampled,
-            storage,
-            color_attachment,
-            depth_stencil_attachment,
-            transient_attachment,
-            input_attachment,
-        }
-    }
-}
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum ImageUsage {
-    Managed(ImageUsageSpecifier),
-    Unmanaged(u32),
+pub enum ImageUseAs {
+    TransferSrc,
+    TransferDst,
+    Sampled,
+    Storage,
+    ColorAttachment,
+    DepthStencilAttachment,
+    TransientAttachment,
+    InputAttachment,
 }
 
-impl ImageUsage {
-    pub(crate) fn ash_usage(&self) -> ash::vk::ImageUsageFlags {
-        match &self {
-            ImageUsage::Managed(flags) => {
-                let raw_flags = (match flags.transfer_src() {
-                    true => {
-                        ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::TRANSFER_SRC)
-                    }
-                    false => 0x00000000u32,
-                }) | (match flags.transfer_dst() {
-                    true => {
-                        ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::TRANSFER_DST)
-                    }
-                    false => 0x00000000u32,
-                }) | (match flags.sampled() {
-                    true => ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::SAMPLED),
-                    false => 0x00000000u32,
-                }) | (match flags.storage() {
-                    true => ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::STORAGE),
-                    false => 0x00000000u32,
-                }) | (match flags.color_attachment() {
-                    true => {
-                        ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::COLOR_ATTACHMENT)
-                    }
-                    false => 0x00000000u32,
-                }) | (match flags.depth_stencil_attachment() {
-                    true => ash::vk::ImageUsageFlags::as_raw(
-                        ash::vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
-                    ),
-                    false => 0x00000000u32,
-                }) | (match flags.transient_attachment() {
-                    true => ash::vk::ImageUsageFlags::as_raw(
-                        ash::vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
-                    ),
-                    false => 0x00000000u32,
-                }) | (match flags.input_attachment() {
-                    true => {
-                        ash::vk::ImageUsageFlags::as_raw(ash::vk::ImageUsageFlags::INPUT_ATTACHMENT)
-                    }
-                    false => 0x00000000u32,
-                });
-
-                ash::vk::ImageUsageFlags::from_raw(raw_flags)
-            }
-            ImageUsage::Unmanaged(raw_flags) => ash::vk::ImageUsageFlags::from_raw(*raw_flags),
+impl Into<ash::vk::ImageUsageFlags> for &ImageUseAs {
+    fn into(self) -> ash::vk::ImageUsageFlags {
+        type FlagType = ash::vk::ImageUsageFlags;
+        match self {
+            ImageUseAs::TransferSrc => FlagType::TRANSFER_SRC,
+            ImageUseAs::TransferDst => FlagType::TRANSFER_DST,
+            ImageUseAs::Sampled => FlagType::SAMPLED,
+            ImageUseAs::Storage => FlagType::STORAGE,
+            ImageUseAs::ColorAttachment => FlagType::COLOR_ATTACHMENT,
+            ImageUseAs::DepthStencilAttachment => FlagType::DEPTH_STENCIL_ATTACHMENT,
+            ImageUseAs::TransientAttachment => FlagType::TRANSIENT_ATTACHMENT,
+            ImageUseAs::InputAttachment => FlagType::INPUT_ATTACHMENT,
         }
+    }
+}
+
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct ImageUsage(ash::vk::ImageUsageFlags);
+
+impl From<u32> for ImageUsage {
+    fn from(value: u32) -> Self {
+        Self(ash::vk::ImageUsageFlags::from_raw(value))
+    }
+}
+
+impl Into<ash::vk::ImageUsageFlags> for ImageUsage {
+    fn into(self) -> ash::vk::ImageUsageFlags {
+        self.0.to_owned()
+    }
+}
+
+impl From<&[ImageUseAs]> for ImageUsage {
+    fn from(value: &[ImageUseAs]) -> Self {
+        let mut usage = ash::vk::ImageUsageFlags::empty();
+        for flag in value.iter() {
+            usage |= flag.into()
+        }
+
+        Self(usage)
     }
 }
 
@@ -829,7 +758,7 @@ impl ConcreteImageDescriptor {
     }
 
     pub(crate) fn ash_usage(&self) -> ash::vk::ImageUsageFlags {
-        self.img_usage.ash_usage()
+        self.img_usage.into()
     }
 
     pub(crate) fn ash_format(&self) -> ash::vk::Format {

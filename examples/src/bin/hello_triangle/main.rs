@@ -14,7 +14,7 @@ use vulkan_framework::{
     },
     image::{
         Image2DDimensions, ImageFormat, ImageLayout, ImageLayoutSwapchainKHR, ImageMultisampling,
-        ImageUsage, ImageUsageSpecifier,
+        ImageUsage, ImageUseAs,
     },
     image_view::ImageView,
     instance::*,
@@ -184,9 +184,7 @@ fn main() {
             SurfaceTransformSwapchainKHR::Identity,
             true,
             final_format,
-            ImageUsage::Managed(ImageUsageSpecifier::new(
-                false, true, false, false, true, false, false, false,
-            )),
+            ImageUsage::from([ImageUseAs::TransferDst, ImageUseAs::ColorAttachment].as_slice()),
             Image2DDimensions::new(WIDTH, HEIGHT),
             swapchain_images_count,
             1,

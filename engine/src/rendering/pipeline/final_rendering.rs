@@ -16,9 +16,9 @@ use vulkan_framework::{
         AllocatedImage, ConcreteImageDescriptor, Image, Image1DTrait, Image2DDimensions,
         Image2DTrait, ImageDimensions, ImageFlags, ImageFormat, ImageLayout,
         ImageLayoutSwapchainKHR, ImageMultisampling, ImageSubresourceRange, ImageTiling,
-        ImageTrait, ImageUsage, ImageUsageSpecifier,
+        ImageTrait, ImageUsage, ImageUseAs,
     },
-    image_view::{self, ImageView, ImageViewType},
+    image_view::{ImageView, ImageViewType},
     memory_allocator::DefaultAllocator,
     memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryType},
     memory_pool::{MemoryPool, MemoryPoolFeatures},
@@ -97,9 +97,7 @@ impl FinalRendering {
                     ImageDimensions::Image2D {
                         extent: image_dimensions,
                     },
-                    ImageUsage::Managed(ImageUsageSpecifier::new(
-                        false, false, true, false, true, false, false, false,
-                    )),
+                    ImageUsage::from([ImageUseAs::Sampled, ImageUseAs::ColorAttachment].as_slice()),
                     ImageMultisampling::SamplesPerPixel1,
                     1,
                     1,

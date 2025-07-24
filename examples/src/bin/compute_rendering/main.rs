@@ -23,7 +23,7 @@ use vulkan_framework::graphics_pipeline::{
 use vulkan_framework::image::{
     AllocatedImage, ConcreteImageDescriptor, Image, Image2DDimensions, ImageDimensions, ImageFlags,
     ImageFormat, ImageLayout, ImageLayoutSwapchainKHR, ImageMultisampling, ImageSubresourceRange,
-    ImageTiling, ImageTrait, ImageUsage, ImageUsageSpecifier,
+    ImageTiling, ImageTrait, ImageUsage, ImageUseAs,
 };
 use vulkan_framework::image_view::{ImageView, ImageViewType};
 use vulkan_framework::instance::*;
@@ -283,9 +283,7 @@ fn main() {
         SurfaceTransformSwapchainKHR::Identity,
         true,
         final_format,
-        ImageUsage::Managed(ImageUsageSpecifier::new(
-            false, false, false, false, true, false, false, false,
-        )),
+        ImageUsage::from([ImageUseAs::ColorAttachment].as_slice()),
         swapchain_extent,
         swapchain_images_count,
         1,
@@ -299,9 +297,7 @@ fn main() {
             ImageDimensions::Image2D {
                 extent: Image2DDimensions::new(1024, 1024),
             },
-            ImageUsage::Managed(ImageUsageSpecifier::new(
-                false, false, true, true, false, false, false, false,
-            )),
+            ImageUsage::from([ImageUseAs::Sampled, ImageUseAs::Storage].as_slice()),
             ImageMultisampling::SamplesPerPixel1,
             1,
             1,
