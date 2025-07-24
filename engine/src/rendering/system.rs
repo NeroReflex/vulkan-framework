@@ -45,7 +45,6 @@ type FramebuffersType = smallvec::SmallVec<[Arc<Framebuffer>; MAX_FRAMES_IN_FLIG
 pub struct System {
     swapchain: Option<(Arc<SwapchainKHR>, SwapchainImagesType, FramebuffersType)>,
 
-    window: sdl2::video::Window,
     queue: Arc<vulkan_framework::queue::Queue>,
     rendering_fences: smallvec::SmallVec<[Arc<Fence>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
 
@@ -67,6 +66,10 @@ pub struct System {
     resources_manager: Arc<Mutex<ResourceManager>>,
 
     frames_in_flight: smallvec::SmallVec<[Option<FenceWaiter>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
+
+    // It is VERY important that the window is dropped early
+    // Otherwise it will be impossible to destroy the swapchain
+    window: sdl2::video::Window,
 }
 
 impl Drop for System {
@@ -81,11 +84,6 @@ impl Drop for System {
 
         // wait for every other device operation to terminate
         self.device().wait_idle().unwrap();
-
-        match self.swapchain.take() {
-            Some(swapchain_elements) => drop(swapchain_elements),
-            None => {}
-        }
     }
 }
 
