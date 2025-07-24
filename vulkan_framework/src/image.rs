@@ -279,6 +279,7 @@ impl From<ImageFormat> for ImageAspects {
             }
             FormatType::R32G32B32A32_SFLOAT => Self::from([ImageAspect::Color].as_ref()),
             FormatType::R32G32B32_SFLOAT => Self::from([ImageAspect::Color].as_ref()),
+            FormatType::BC7_SRGB_BLOCK => Self::from([ImageAspect::Color].as_ref()),
             fmt => {
                 println!(
                     "Check available image aspects for this format: {}",
