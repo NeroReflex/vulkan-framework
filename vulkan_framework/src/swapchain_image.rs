@@ -77,7 +77,7 @@ impl ImageSwapchainKHR {
             flags,
             usage,
             format,
-            dimensions: ImageDimensions::Image2D { extent },
+            dimensions: extent.into(),
             layers_count,
             mip_levels_count,
         }
