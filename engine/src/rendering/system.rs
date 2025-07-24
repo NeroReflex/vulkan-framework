@@ -288,14 +288,31 @@ impl System {
         })
     }
 
-    pub fn render(&mut self) -> RenderingResult<()> {
+    pub fn recreate_swapchain(&mut self) -> RenderingResult<()> {
         let (new_width, new_height) = self.window.drawable_size();
         let new_dimensions = Image2DDimensions::new(new_width, new_height);
         let render_queue_families = [self.queue_family()];
 
         // create the new swapchain if none is present
-        if self.swapchain.is_none() {
-            let swapchain = SwapchainKHR::new(
+        let swapchain = match self.swapchain.take() {
+            Some((mut swapchain, images, framebuffers)) => {
+                drop(framebuffers);
+                drop(images);
+
+                match Arc::get_mut(&mut swapchain) {
+                    Some(swapchain) => {
+                        // TODO: regenerate the swapchain with new dimensions
+                    }
+                    None => {
+                        // the swapchain (or one of its images) is currently in use
+                        // so warn the user about it.
+                        println!("The swapchain is not ready to be regenerated.");
+                    }
+                }
+
+                swapchain
+            }
+            None => SwapchainKHR::new(
                 self.surface.device_swapchain_info(),
                 render_queue_families.as_slice(),
                 PresentModeSwapchainKHR::FIFO,
@@ -308,42 +325,52 @@ impl System {
                 new_dimensions,
                 self.surface.images_count(),
                 1,
+            )?,
+        };
+
+        let mut images = SwapchainImagesType::default();
+        for index in 0..self.surface.images_count() {
+            images.push(SwapchainKHR::image(swapchain.clone(), index)?);
+        }
+
+        let mut image_views = SwapchainImageViewsType::default();
+        for (index, image) in images.iter().enumerate() {
+            let image_view_name = format!("swapchain_image_views[{index}]");
+            image_views.push(ImageView::new(
+                image.clone(),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(image_view_name.as_str()),
+            )?);
+        }
+
+        let mut framebuffers: FramebuffersType = Default::default();
+        for index in 0..self.surface.images_count() {
+            let framebuffer = Framebuffer::new(
+                self.renderquad.renderpass(),
+                [image_views[index as usize].clone()].as_ref(),
+                swapchain.images_extent(),
+                swapchain.images_layers_count(),
             )?;
+            framebuffers.push(framebuffer);
+        }
 
-            let mut images = SwapchainImagesType::default();
-            for index in 0..self.surface.images_count() {
-                images.push(SwapchainKHR::image(swapchain.clone(), index)?);
-            }
+        self.swapchain = Some((swapchain, images, framebuffers));
 
-            let mut image_views = SwapchainImageViewsType::default();
-            for (index, image) in images.iter().enumerate() {
-                let image_view_name = format!("swapchain_image_views[{index}]");
-                image_views.push(ImageView::new(
-                    image.clone(),
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    Some(image_view_name.as_str()),
-                )?);
-            }
+        Ok(())
+    }
 
-            let mut framebuffers: FramebuffersType = Default::default();
-            for index in 0..self.surface.images_count() {
-                let framebuffer = Framebuffer::new(
-                    self.renderquad.renderpass(),
-                    [image_views[index as usize].clone()].as_ref(),
-                    swapchain.images_extent(),
-                    swapchain.images_layers_count(),
-                )?;
-                framebuffers.push(framebuffer);
-            }
-
-            self.swapchain = Some((swapchain, images, framebuffers))
+    pub fn render(&mut self) -> RenderingResult<()> {
+        // Ensure the swapchain is available and evey resource tied to is is usable
+        // create the new swapchain if none is present
+        if self.swapchain.is_none() {
+            Self::recreate_swapchain(self)?;
         }
 
         // if there is still no swapchain then somethign has gone horribly wrong
@@ -418,8 +445,8 @@ impl System {
                 drop(self.frames_in_flight[frame_in_flight].take())
             }
 
-            // TODO: recreate the swapchain
-            //todo!();
+            // Regenerate the swapchain
+            Self::recreate_swapchain(self)?;
         }
 
         Ok(())
