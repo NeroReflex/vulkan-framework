@@ -9,7 +9,6 @@ fn main() {
     let app_name = String::from("hello_window");
 
     let device_extensions: Vec<String> = vec![String::from("VK_KHR_swapchain")];
-    let device_layers: Vec<String> = vec![];
 
     // initialize sdl2 context
     vulkan_framework_sdl2_glue::init();
@@ -69,7 +68,6 @@ fn main() {
                                 )]
                                 .as_slice(),
                                 device_extensions.as_slice(),
-                                device_layers.as_slice(),
                                 Some("Opened Device"),
                             ) {
                                 println!("Device opened successfully");

@@ -8,7 +8,6 @@ fn main() {
     let app_name = String::from("hello_window");
 
     let device_extensions: Vec<String> = vec![String::from("VK_KHR_swapchain")];
-    let device_layers: Vec<String> = vec![];
 
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
@@ -78,7 +77,6 @@ fn main() {
                                         )]
                                         .as_slice(),
                                         device_extensions.as_slice(),
-                                        device_layers.as_slice(),
                                         Some("Opened Device"),
                                     ) {
                                         println!("Device opened successfully");

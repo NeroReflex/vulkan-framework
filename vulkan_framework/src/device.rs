@@ -29,6 +29,12 @@ struct DeviceExtensions {
     acceleration_structure_khr_ext: Option<ash::khr::acceleration_structure::Device>,
 }
 
+impl Drop for DeviceExtensions {
+    fn drop(&mut self) {
+        println!("Dropped DeviceExtensions");
+    }
+}
+
 struct DeviceData<'a> {
     selected_physical_device: ash::vk::PhysicalDevice,
     selected_device_features: ash::vk::PhysicalDeviceFeatures,
@@ -36,7 +42,6 @@ struct DeviceData<'a> {
     required_family_collection: Vec<Option<(u32, ConcreteQueueFamilyDescriptor)>>,
     supported_extension_names: Vec<String>,
     enabled_extensions: Vec<Arc<CString>>,
-    enabled_layers: Vec<Arc<CString>>,
 }
 
 pub struct RaytracingInfo {
@@ -168,6 +173,7 @@ impl InstanceOwned for Device {
 
 impl Drop for Device {
     fn drop(&mut self) {
+        println!("Dropped device");
         self.wait_idle().unwrap();
         let alloc_callbacks = self.instance.get_alloc_callbacks();
         unsafe { self.device.destroy_device(alloc_callbacks) }
@@ -409,7 +415,6 @@ impl Device {
         instance: Arc<Instance>,
         queue_descriptors: &[ConcreteQueueFamilyDescriptor],
         device_extensions: &[String],
-        device_layers: &[String],
         debug_name: Option<&str>,
     ) -> VulkanResult<Arc<Self>> {
         // queue cannot be capable of nothing...
@@ -436,8 +441,6 @@ impl Device {
                     }
 
                     let enabled_extensions = Self::ffi_strings(device_extensions);
-
-                    let enabled_layers = Self::ffi_strings(device_layers);
 
                     'suitable_device_search: for phy_device in physical_devices.iter() {
                         let phy_device_features = instance
@@ -585,7 +588,6 @@ impl Device {
                             required_family_collection,
                             supported_extension_names,
                             enabled_extensions: enabled_extensions.clone(),
-                            enabled_layers: enabled_layers.clone(),
                         };
 
                         println!("Found suitable device: {phy_device_name}");

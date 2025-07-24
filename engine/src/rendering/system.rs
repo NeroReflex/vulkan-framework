@@ -43,39 +43,49 @@ type SwapchainImageViewsType = smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN
 type FramebuffersType = smallvec::SmallVec<[Arc<Framebuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
 
 pub struct System {
-    swapchain: Option<(Arc<SwapchainKHR>, SwapchainImageViewsType, FramebuffersType)>,
+    swapchain: Option<(Arc<SwapchainKHR>, SwapchainImagesType, FramebuffersType)>,
 
     window: sdl2::video::Window,
     queue: Arc<vulkan_framework::queue::Queue>,
     rendering_fences: smallvec::SmallVec<[Arc<Fence>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
+
+    current_frame: AtomicUsize,
+
     image_available_semaphores:
         smallvec::SmallVec<[Arc<Semaphore>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
+
     _command_pool: Arc<CommandPool>,
     present_command_buffers:
         smallvec::SmallVec<[Arc<PrimaryCommandBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
-
-    current_frame: AtomicUsize,
-    surface: SurfaceHelper,
-
     present_ready: smallvec::SmallVec<[Arc<Semaphore>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
+
+    surface: SurfaceHelper,
 
     renderquad: Arc<RenderQuad>,
     final_rendering: Arc<FinalRendering>,
 
-    frames_in_flight: smallvec::SmallVec<[Option<FenceWaiter>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
-
     resources_manager: Arc<Mutex<ResourceManager>>,
+
+    frames_in_flight: smallvec::SmallVec<[Option<FenceWaiter>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
 }
 
 impl Drop for System {
     fn drop(&mut self) {
         // wait for all fences to be signaled: meaning execution has ended
         for w in 0..self.frames_in_flight.len() {
-            drop(self.frames_in_flight[w].take())
+            match self.frames_in_flight[w].take() {
+                Some(fence_waiter) => drop(fence_waiter),
+                None => {}
+            }
         }
 
         // wait for every other device operation to terminate
         self.device().wait_idle().unwrap();
+
+        match self.swapchain.take() {
+            Some(swapchain_elements) => drop(swapchain_elements),
+            None => {}
+        }
     }
 }
 
@@ -96,10 +106,6 @@ impl System {
 
     pub fn resources_manager(&self) -> Arc<Mutex<ResourceManager>> {
         self.resources_manager.clone()
-    }
-
-    fn required_device_layers() -> Vec<String> {
-        vec![]
     }
 
     pub fn device(&self) -> Arc<vulkan_framework::device::Device> {
@@ -164,9 +170,6 @@ impl System {
                 .unwrap(),
         )?;
 
-        let device_extensions = Self::required_device_extensions();
-        let device_layers = Self::required_device_layers();
-
         let device = Device::new(
             surface.get_parent_instance(),
             [ConcreteQueueFamilyDescriptor::new(
@@ -179,8 +182,7 @@ impl System {
                 [1.0f32].as_slice(),
             )]
             .as_slice(),
-            device_extensions.as_slice(),
-            device_layers.as_slice(),
+            Self::required_device_extensions().as_slice(),
             Some("Device"),
         )?;
 
@@ -347,11 +349,11 @@ impl System {
                 framebuffers.push(framebuffer);
             }
 
-            self.swapchain = Some((swapchain, image_views, framebuffers))
+            self.swapchain = Some((swapchain, images, framebuffers))
         }
 
         // if there is still no swapchain then somethign has gone horribly wrong
-        let Some((swapchain, image_views, framebuffers)) = &self.swapchain else {
+        let Some((swapchain, _, framebuffers)) = &self.swapchain else {
             return Err(RenderingError::NotEnoughSwapchainImages);
         };
 

@@ -14,10 +14,7 @@ use crate::synchronization::{
 use crate::{
     device::{Device, DeviceOwned},
     fence::Fence,
-    image::{
-        Image1DTrait, Image2DDimensions, Image2DTrait, ImageFlags, ImageFormat,
-        ImageUsage,
-    },
+    image::{Image1DTrait, Image2DDimensions, Image2DTrait, ImageFlags, ImageFormat, ImageUsage},
     instance::InstanceOwned,
     prelude::{FrameworkError, VulkanError, VulkanResult},
     queue::Queue,
@@ -278,7 +275,7 @@ impl DeviceOwned for SwapchainKHR {
 impl Drop for SwapchainKHR {
     #[inline]
     fn drop(&mut self) {
-        println!("Dropped ImageSwapchainKHR");
+        println!("Dropped SwapchainKHR");
 
         let Some(ext) = self.device.ash_ext_swapchain_khr() else {
             panic!("Swapchain extension is not available anymore. This should not happend. If you read this main developer of this crate made something bad.");
@@ -300,7 +297,7 @@ impl Drop for SwapchainKHR {
             Ok(_) => {}
             Err(err) => {
                 panic!(
-                    "Error while informing the device that the swapchain is being destroyed {err}"
+                    "Error while informing the device that the swapchain has been destroyed {err}"
                 );
             }
         };

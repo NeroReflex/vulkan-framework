@@ -29,7 +29,7 @@ use vulkan_framework::{
         ImageFormat, ImageLayout, ImageLayoutSwapchainKHR, ImageMultisampling,
         ImageSubresourceRange, ImageTiling, ImageTrait, ImageUsage, ImageUsageSpecifier,
     },
-    image_view::{ImageView, ImageViewType},
+    image_view::ImageView,
     instance::*,
     memory_allocator::*,
     memory_heap::*,
@@ -230,7 +230,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         String::from("VK_KHR_spirv_1_4"),
         String::from("VK_KHR_shader_float_controls"),
     ];
-    let device_layers: Vec<String> = vec![];
 
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
@@ -309,7 +308,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             )]
             .as_slice(),
             device_extensions.as_slice(),
-            device_layers.as_slice(),
             Some("Opened Device"),
         )
         .unwrap();

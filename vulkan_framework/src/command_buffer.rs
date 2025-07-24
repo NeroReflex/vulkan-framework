@@ -891,7 +891,8 @@ pub struct PrimaryCommandBuffer {
 
 impl Drop for PrimaryCommandBuffer {
     fn drop(&mut self) {
-        // Command buffers will be automatically freed when their command pool is destroyed, so we don't need explicit cleanup.
+        // Command buffers will be automatically freed when their command pool is destroyed,
+        // so we don't need any explicit cleanup here.
     }
 }
 
@@ -944,43 +945,40 @@ impl PrimaryCommandBuffer {
         let begin_info = ash::vk::CommandBufferBeginInfo::default()
             .flags(ash::vk::CommandBufferUsageFlags::empty() /*ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT*/);
 
-        match unsafe {
+        unsafe {
             device
                 .ash_handle()
                 .begin_command_buffer(self.ash_handle(), &begin_info)
-        } {
-            Ok(_) => {
-                let mut recorder = CommandBufferRecorder {
-                    device: device.clone(),
-                    command_buffer: self,
-                    used_resources: HashSet::new(),
-                };
+        }
+        .map_err(|err| {
+            VulkanError::Vulkan(
+                // the command buffer is in the previous state... A good one unless the error is DEVICE_LOST
+                err.as_raw(),
+                Some(format!(
+                    "Error opening the command buffer for writing: {}",
+                    err
+                )),
+            )
+        })?;
 
-                commands_writer_fn(&mut recorder);
+        let mut recorder = CommandBufferRecorder {
+            device: device.clone(),
+            command_buffer: self,
+            used_resources: HashSet::new(),
+        };
 
-                match unsafe { device.ash_handle().end_command_buffer(self.ash_handle()) } {
-                    Ok(()) => {
-                        *resources_lck = recorder.used_resources;
+        commands_writer_fn(&mut recorder);
 
-                        Ok(())
-                    }
-                    Err(err) => Err(VulkanError::Vulkan(
-                        err.as_raw(),
-                        Some(format!("Error updating the command buffer: {}", err)),
-                    )),
-                }
+        match unsafe { device.ash_handle().end_command_buffer(self.ash_handle()) } {
+            Ok(()) => {
+                *resources_lck = recorder.used_resources;
+
+                Ok(())
             }
-            Err(err) =>
-            // the command buffer is in the previous state... A good one unless the error is DEVICE_LOST
-            {
-                Err(VulkanError::Vulkan(
-                    err.as_raw(),
-                    Some(format!(
-                        "Error opening the command buffer for writing: {}",
-                        err
-                    )),
-                ))
-            }
+            Err(err) => Err(VulkanError::Vulkan(
+                err.as_raw(),
+                Some(format!("Error updating the command buffer: {}", err)),
+            )),
         }
     }
 
