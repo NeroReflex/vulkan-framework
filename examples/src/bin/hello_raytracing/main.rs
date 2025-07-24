@@ -866,7 +866,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let blas_building =
             PrimaryCommandBuffer::new(command_pool.clone(), Some("BLAS_Builder")).unwrap();
         blas_building
-            .record_commands(|cmd| {
+            .record_one_time_submit(|cmd| {
                 cmd.build_blas(blas.clone(), 0, 1, 0, 0);
             })
             .unwrap();
@@ -882,7 +882,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let tlas_building = PrimaryCommandBuffer::new(command_pool, Some("TLAS_Builder")).unwrap();
         tlas_building
-            .record_commands(|cmd| cmd.build_tlas(tlas.clone(), 0, 2))
+            .record_one_time_submit(|cmd| cmd.build_tlas(tlas.clone(), 0, 2))
             .unwrap();
         let tlas_building_fence =
             Fence::new(dev.clone(), false, Some("tlas_building_fence")).unwrap();
@@ -951,7 +951,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .unwrap();
 
                 present_command_buffers[swapchain_index as usize]
-                    .record_commands(|recorder: &mut CommandBufferRecorder| {
+                    .record_one_time_submit(|recorder: &mut CommandBufferRecorder| {
                         // TODO: HERE transition the image layout from UNDEFINED to GENERAL so that ray tracing pipeline can write to it
                         recorder.image_barrier(ImageMemoryBarrier::new(
                             PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),

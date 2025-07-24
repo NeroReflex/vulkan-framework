@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use crate::{
     command_buffer::CommandBufferTrait,
@@ -220,7 +220,7 @@ pub(crate) type FenceWaiterSemaphoresType = smallvec::SmallVec<[Arc<Semaphore>; 
 
 pub struct FenceWaiter {
     fence: Arc<Fence>,
-    _command_buffers: FenceWaiterCommandBuffersType,
+    command_buffers: FenceWaiterCommandBuffersType,
     _semaphores: FenceWaiterSemaphoresType,
 }
 
@@ -232,13 +232,19 @@ impl Drop for FenceWaiter {
                 FenceWaitFor::All,
                 Duration::from_millis(u64::MAX),
             ) {
-                Ok(_) => return self.fence.reset().unwrap(),
+                Ok(_) => break,
                 Err(err) => match err.is_timeout() {
                     true => continue,
                     false => panic!("Error while waiting for fence"),
                 },
             }
         }
+
+        for cb in self.command_buffers.iter() {
+            cb.mark_execution_complete().unwrap();
+        }
+
+        self.fence.reset().unwrap()
     }
 }
 
@@ -253,7 +259,7 @@ impl FenceWaiter {
 
         Self {
             fence,
-            _command_buffers: command_buffers,
+            command_buffers,
             _semaphores: semaphores,
         }
     }

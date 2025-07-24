@@ -366,7 +366,7 @@ impl System {
 
         // here register the command buffer: command buffer at index i is associated with rendering_fences[i],
         // that I just awaited above, so thecommand buffer is surely NOT currently in use
-        self.present_command_buffers[current_frame].record_commands(|recorder| {
+        self.present_command_buffers[current_frame].record_one_time_submit(|recorder| {
             let (rendered_image, subresource_range, final_rendering_output_image_layout) = self
                 .final_rendering
                 .record_rendering_commands(current_frame, recorder);

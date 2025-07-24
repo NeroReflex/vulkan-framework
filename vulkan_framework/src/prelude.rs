@@ -62,6 +62,20 @@ pub enum FrameworkError {
     SwapchainAlreadyExists,
     #[error("Invalid swapchain image index {0}, the swapchain currently holds {1} images")]
     InvalidSwapchainImageIndex(usize, usize),
+    #[error("Command buffer was submitted while no commands were registered")]
+    CommandBufferSubmitNoCommands,
+    #[error("Command buffer was submitted while commands were still recording")]
+    CommandBufferSubmitRecording,
+    #[error("Command buffer was submitted while already running")]
+    CommandBufferSubmitAlreadyRunning,
+    #[error("Command buffer record attempt while commands were still recording")]
+    CommandBufferRecordRecording,
+    #[error("Command buffer record attempt while commands were still running")]
+    CommandBufferRecordRunning,
+    #[error("Command buffer internal error: {0}")]
+    CommandBufferInternalError(u32),
+    #[error("Command buffer is in an invalid state")]
+    CommandBufferInvalidState,
 }
 
 #[derive(Debug, Error, Clone)]

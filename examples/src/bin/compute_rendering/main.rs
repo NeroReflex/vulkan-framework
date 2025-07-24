@@ -562,7 +562,7 @@ fn main() {
     let command_buffer =
         PrimaryCommandBuffer::new(command_pool.clone(), Some("my command buffer <3")).unwrap();
 
-    match command_buffer.record_commands(|recorder| {
+    match command_buffer.record_one_time_submit(|recorder| {
         recorder.image_barrier(ImageMemoryBarrier::new(
             PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
             MemoryAccess::from([].as_slice()),
@@ -766,7 +766,7 @@ fn main() {
                 .unwrap();
 
             present_command_buffers[swapchain_index as usize]
-                .record_commands(|recorder: &mut CommandBufferRecorder| {
+                .record_one_time_submit(|recorder: &mut CommandBufferRecorder| {
                     // when submitting wait for the image available semaphore before beginning transfer
 
                     recorder.begin_renderpass(

@@ -33,6 +33,30 @@ impl Drop for Queue {
 }
 
 impl Queue {
+    fn mark_command_buffers_as_running(
+        command_buffers: &[Arc<dyn CommandBufferTrait>],
+    ) -> VulkanResult<()> {
+        let mut marked = 1;
+        let mut maybe_error = Option::None;
+        while marked <= command_buffers.len() {
+            match command_buffers[marked - 1].mark_execution_begin() {
+                Ok(_) => marked += 1,
+                Err(err) => maybe_error = Some(err),
+            };
+        }
+
+        match maybe_error {
+            None => Ok(()),
+            Some(err) => {
+                while marked > 0 {
+                    command_buffers[marked].mark_execution_complete().unwrap();
+                }
+
+                Err(err)
+            }
+        }
+    }
+
     #[deprecated]
     pub fn submit_no_features2(
         &self,
@@ -86,6 +110,8 @@ impl Queue {
             .wait_semaphores(wait_sems.as_slice());
 
         let submits = [submit_info];
+
+        Self::mark_command_buffers_as_running(command_buffers)?;
 
         unsafe {
             self.get_parent_queue_family()
@@ -162,6 +188,8 @@ impl Queue {
             .wait_semaphore_infos(wait_semaphore_infos.as_slice());
 
         let submits = [submit_info];
+
+        Self::mark_command_buffers_as_running(command_buffers)?;
 
         unsafe {
             self.get_parent_queue_family()

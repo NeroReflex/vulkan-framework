@@ -333,7 +333,7 @@ fn main() {
         panic!("error in binding resources");
     }
 
-    match command_buffer.record_commands(|recorder| {
+    match command_buffer.record_one_time_submit(|recorder| {
         recorder.image_barrier(ImageMemoryBarrier::new(
             PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
             MemoryAccess::from([MemoryAccessAs::MemoryRead].as_slice()),

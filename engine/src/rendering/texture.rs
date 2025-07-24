@@ -162,7 +162,7 @@ impl TextureManager {
 
         let load_fence = Fence::new(device.clone(), false, Some("texture_manager.load_fence"))?;
 
-        command_buffer.record_commands(|recorder| {
+        command_buffer.record_one_time_submit(|recorder| {
             let before_transfer_barrier = ImageMemoryBarrier::new(
                 PipelineStages::from([PipelineStage::TopOfPipe].as_ref()),
                 MemoryAccess::default(),

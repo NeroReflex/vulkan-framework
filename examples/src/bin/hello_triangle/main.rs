@@ -388,7 +388,7 @@ fn main() {
                     .unwrap();
 
                 present_command_buffers[swapchain_index as usize]
-                    .record_commands(|recorder: &mut CommandBufferRecorder| {
+                    .record_one_time_submit(|recorder: &mut CommandBufferRecorder| {
                         recorder.begin_renderpass(
                             swapchain_framebuffers[swapchain_index as usize].clone(),
                             &[ClearValues::new(Some(ColorClearValues::Vec4(

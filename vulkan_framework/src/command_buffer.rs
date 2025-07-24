@@ -1,4 +1,11 @@
-use std::{collections::HashSet, hash::Hash, sync::Arc};
+use std::{
+    collections::HashSet,
+    hash::Hash,
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        Arc,
+    },
+};
 
 #[cfg(feature = "better_mutex")]
 use parking_lot::{const_mutex, Mutex};
@@ -872,19 +879,31 @@ impl<'a> CommandBufferRecorder<'a> {
     }
 }
 
-pub trait CommandBufferTrait: CommandPoolOwned {
-    fn native_handle(&self) -> u64;
+pub(crate) trait SubmittableCommandBufferTrait {
+    fn mark_execution_begin(&self) -> VulkanResult<()>;
 
-    fn flag_execution_as_finished(&self);
+    fn mark_execution_complete(&self) -> VulkanResult<()>;
+}
+
+pub trait CommandBufferTrait: SubmittableCommandBufferTrait + CommandPoolOwned {
+    fn native_handle(&self) -> u64;
 }
 
 pub(crate) trait CommandBufferCrateTrait: CommandBufferTrait {
     fn ash_handle(&self) -> ash::vk::CommandBuffer;
 }
 
+const PRIMARY_COMMAND_BUFFER_STATUS_NO_COMMANDS: u32 = 0;
+const PRIMARY_COMMAND_BUFFER_STATUS_RECORDING: u32 = 1;
+const PRIMARY_COMMAND_BUFFER_STATUS_READY: u32 = 2;
+const PRIMARY_COMMAND_BUFFER_STATUS_READY_ONE_TIME: u32 = 3;
+const PRIMARY_COMMAND_BUFFER_STATUS_RUNNING: u32 = 4;
+const PRIMARY_COMMAND_BUFFER_STATUS_RUNNING_ONE_TIME: u32 = 5;
+
 pub struct PrimaryCommandBuffer {
     command_pool: Arc<CommandPool>,
     command_buffer: ash::vk::CommandBuffer,
+    processing: AtomicU32,
     resources_in_use: Mutex<HashSet<CommandBufferReferencedResource>>,
 }
 
@@ -901,14 +920,122 @@ impl CommandPoolOwned for PrimaryCommandBuffer {
     }
 }
 
+impl SubmittableCommandBufferTrait for PrimaryCommandBuffer {
+    fn mark_execution_begin(&self) -> VulkanResult<()> {
+        let cb_status: u32 = self.processing.fetch_min(u32::MAX, Ordering::SeqCst);
+        let new_status = match cb_status {
+            PRIMARY_COMMAND_BUFFER_STATUS_NO_COMMANDS => {
+                return Err(VulkanError::Framework(
+                    FrameworkError::CommandBufferSubmitNoCommands,
+                ))
+            }
+            PRIMARY_COMMAND_BUFFER_STATUS_RECORDING => {
+                return Err(VulkanError::Framework(
+                    FrameworkError::CommandBufferSubmitRecording,
+                ))
+            }
+            PRIMARY_COMMAND_BUFFER_STATUS_READY => PRIMARY_COMMAND_BUFFER_STATUS_RUNNING,
+            PRIMARY_COMMAND_BUFFER_STATUS_READY_ONE_TIME => {
+                PRIMARY_COMMAND_BUFFER_STATUS_RUNNING_ONE_TIME
+            }
+            PRIMARY_COMMAND_BUFFER_STATUS_RUNNING => {
+                return Err(VulkanError::Framework(
+                    FrameworkError::CommandBufferSubmitAlreadyRunning,
+                ))
+            }
+            PRIMARY_COMMAND_BUFFER_STATUS_RUNNING_ONE_TIME => {
+                return Err(VulkanError::Framework(
+                    FrameworkError::CommandBufferSubmitAlreadyRunning,
+                ))
+            }
+            _ => {
+                return Err(VulkanError::Framework(
+                    FrameworkError::CommandBufferInvalidState,
+                ))
+            }
+        };
+
+        self.processing
+            .compare_exchange(cb_status, new_status, Ordering::SeqCst, Ordering::SeqCst)
+            .map_err(|cb_status| match cb_status {
+                PRIMARY_COMMAND_BUFFER_STATUS_NO_COMMANDS => {
+                    VulkanError::Framework(FrameworkError::CommandBufferSubmitNoCommands)
+                }
+                PRIMARY_COMMAND_BUFFER_STATUS_RECORDING => {
+                    VulkanError::Framework(FrameworkError::CommandBufferSubmitRecording)
+                }
+                PRIMARY_COMMAND_BUFFER_STATUS_READY => {
+                    VulkanError::Framework(FrameworkError::CommandBufferInternalError(cb_status))
+                }
+                PRIMARY_COMMAND_BUFFER_STATUS_READY_ONE_TIME => {
+                    VulkanError::Framework(FrameworkError::CommandBufferInternalError(cb_status))
+                }
+                PRIMARY_COMMAND_BUFFER_STATUS_RUNNING => {
+                    VulkanError::Framework(FrameworkError::CommandBufferSubmitAlreadyRunning)
+                }
+                PRIMARY_COMMAND_BUFFER_STATUS_RUNNING_ONE_TIME => {
+                    VulkanError::Framework(FrameworkError::CommandBufferSubmitAlreadyRunning)
+                }
+                _ => VulkanError::Framework(FrameworkError::CommandBufferInvalidState),
+            })?;
+
+        Ok(())
+    }
+
+    fn mark_execution_complete(&self) -> VulkanResult<()> {
+        let cb_status: u32 = self.processing.fetch_min(u32::MAX, Ordering::SeqCst);
+        let new_status = match cb_status {
+            PRIMARY_COMMAND_BUFFER_STATUS_NO_COMMANDS => {
+                return Err(VulkanError::Framework(
+                    FrameworkError::CommandBufferInternalError(cb_status),
+                ))
+            }
+            PRIMARY_COMMAND_BUFFER_STATUS_RECORDING => {
+                return Err(VulkanError::Framework(
+                    FrameworkError::CommandBufferInternalError(cb_status),
+                ))
+            }
+            PRIMARY_COMMAND_BUFFER_STATUS_READY => {
+                return Err(VulkanError::Framework(
+                    FrameworkError::CommandBufferInternalError(cb_status),
+                ))
+            }
+            PRIMARY_COMMAND_BUFFER_STATUS_READY_ONE_TIME => {
+                return Err(VulkanError::Framework(
+                    FrameworkError::CommandBufferInternalError(cb_status),
+                ))
+            }
+            PRIMARY_COMMAND_BUFFER_STATUS_RUNNING => PRIMARY_COMMAND_BUFFER_STATUS_READY,
+            PRIMARY_COMMAND_BUFFER_STATUS_RUNNING_ONE_TIME => {
+                match self.resources_in_use.lock() {
+                    Ok(mut lock) => lock.clear(),
+                    Err(err) => {
+                        return Err(VulkanError::Framework(FrameworkError::MutexError(format!(
+                            "{err}"
+                        ))))
+                    }
+                }
+
+                PRIMARY_COMMAND_BUFFER_STATUS_NO_COMMANDS
+            }
+            _ => {
+                return Err(VulkanError::Framework(
+                    FrameworkError::CommandBufferInvalidState,
+                ))
+            }
+        };
+
+        self.processing
+            .compare_exchange(cb_status, new_status, Ordering::SeqCst, Ordering::SeqCst)
+            .map_err(|_| VulkanError::Framework(FrameworkError::CommandBufferInvalidState))?;
+
+        Ok(())
+    }
+}
+
 impl CommandBufferTrait for PrimaryCommandBuffer {
     fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.command_buffer)
-    }
-
-    fn flag_execution_as_finished(&self) {
-        // TODO: if the record was a one-time-submit clear the list of used resources
-        //self.recording_status.store(0, Ordering::Release);
     }
 }
 
@@ -919,9 +1046,13 @@ impl CommandBufferCrateTrait for PrimaryCommandBuffer {
 }
 
 impl PrimaryCommandBuffer {
-    pub fn record_commands<F>(&self, commands_writer_fn: F) -> VulkanResult<()>
+    pub(crate) fn record_commands_raw<F, T>(
+        &self,
+        commands_writer_fn: F,
+        flags: crate::ash::vk::CommandBufferUsageFlags,
+    ) -> VulkanResult<T>
     where
-        F: FnOnce(&mut CommandBufferRecorder) + Sized,
+        F: FnOnce(&mut CommandBufferRecorder) -> T + Sized,
     {
         let device = self
             .get_parent_command_pool()
@@ -930,6 +1061,46 @@ impl PrimaryCommandBuffer {
 
         #[cfg(feature = "better_mutex")]
         let mut resources_lck = self.resources_in_use.lock();
+
+        let begin_info = ash::vk::CommandBufferBeginInfo::default().flags(flags);
+
+        // transition to recording command so no other thread can record at the same time
+        {
+            let cb_status: u32 = self.processing.fetch_min(u32::MAX, Ordering::SeqCst);
+            let new_status = match cb_status {
+                PRIMARY_COMMAND_BUFFER_STATUS_NO_COMMANDS => {
+                    PRIMARY_COMMAND_BUFFER_STATUS_RECORDING
+                }
+                PRIMARY_COMMAND_BUFFER_STATUS_RECORDING => {
+                    return Err(VulkanError::Framework(
+                        FrameworkError::CommandBufferRecordRecording,
+                    ))
+                }
+                PRIMARY_COMMAND_BUFFER_STATUS_READY => PRIMARY_COMMAND_BUFFER_STATUS_RECORDING,
+                PRIMARY_COMMAND_BUFFER_STATUS_READY_ONE_TIME => {
+                    PRIMARY_COMMAND_BUFFER_STATUS_RECORDING
+                }
+                PRIMARY_COMMAND_BUFFER_STATUS_RUNNING => {
+                    return Err(VulkanError::Framework(
+                        FrameworkError::CommandBufferRecordRunning,
+                    ))
+                }
+                PRIMARY_COMMAND_BUFFER_STATUS_RUNNING_ONE_TIME => {
+                    return Err(VulkanError::Framework(
+                        FrameworkError::CommandBufferRecordRunning,
+                    ))
+                }
+                _ => {
+                    return Err(VulkanError::Framework(
+                        FrameworkError::CommandBufferInvalidState,
+                    ))
+                }
+            };
+
+            self.processing
+                .compare_exchange(cb_status, new_status, Ordering::SeqCst, Ordering::SeqCst)
+                .map_err(|_| VulkanError::Framework(FrameworkError::CommandBufferInvalidState))?;
+        }
 
         #[cfg(not(feature = "better_mutex"))]
         let mut resources_lck = match self.resources_in_use.lock() {
@@ -940,9 +1111,6 @@ impl PrimaryCommandBuffer {
                 ))))
             }
         };
-
-        let begin_info = ash::vk::CommandBufferBeginInfo::default()
-            .flags(ash::vk::CommandBufferUsageFlags::empty() /*ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT*/);
 
         unsafe {
             device
@@ -966,19 +1134,62 @@ impl PrimaryCommandBuffer {
             used_resources: HashSet::new(),
         };
 
-        commands_writer_fn(&mut recorder);
+        let result = commands_writer_fn(&mut recorder);
 
-        match unsafe { device.ash_handle().end_command_buffer(self.ash_handle()) } {
-            Ok(()) => {
-                *resources_lck = recorder.used_resources;
+        let _ = unsafe { device.ash_handle().end_command_buffer(self.ash_handle()) }.map_err(
+            |err| {
+                VulkanError::Vulkan(
+                    err.as_raw(),
+                    Some(format!("Error updating the command buffer: {}", err)),
+                )
+            },
+        )?;
+        *resources_lck = recorder.used_resources;
+        drop(resources_lck);
 
-                Ok(())
-            }
-            Err(err) => Err(VulkanError::Vulkan(
-                err.as_raw(),
-                Some(format!("Error updating the command buffer: {}", err)),
-            )),
+        // transition to recording command so no other thread can record at the same time
+        {
+            let cb_status: u32 = self.processing.fetch_min(u32::MAX, Ordering::SeqCst);
+            let new_status = match cb_status {
+                PRIMARY_COMMAND_BUFFER_STATUS_RECORDING => {
+                    match flags.contains(crate::ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT) {
+                        true => PRIMARY_COMMAND_BUFFER_STATUS_READY_ONE_TIME,
+                        false => PRIMARY_COMMAND_BUFFER_STATUS_READY,
+                    }
+                }
+                _ => {
+                    return Err(VulkanError::Framework(
+                        FrameworkError::CommandBufferInvalidState,
+                    ))
+                }
+            };
+
+            self.processing
+                .compare_exchange(cb_status, new_status, Ordering::SeqCst, Ordering::SeqCst)
+                .map_err(|_| VulkanError::Framework(FrameworkError::CommandBufferInvalidState))?;
         }
+
+        Ok(result)
+    }
+
+    pub fn record_one_time_submit<F, T>(&self, commands_writer_fn: F) -> VulkanResult<T>
+    where
+        F: FnOnce(&mut CommandBufferRecorder) -> T + Sized,
+    {
+        self.record_commands_raw(
+            commands_writer_fn,
+            crate::ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT,
+        )
+    }
+
+    pub fn record<F, T>(&self, commands_writer_fn: F) -> VulkanResult<T>
+    where
+        F: FnOnce(&mut CommandBufferRecorder) -> T + Sized,
+    {
+        self.record_commands_raw(
+            commands_writer_fn,
+            crate::ash::vk::CommandBufferUsageFlags::empty(),
+        )
     }
 
     pub fn new(
@@ -992,55 +1203,53 @@ impl PrimaryCommandBuffer {
             .level(ash::vk::CommandBufferLevel::PRIMARY)
             .command_buffer_count(1);
 
-        match unsafe { device.ash_handle().allocate_command_buffers(&create_info) } {
-            Ok(command_buffers) => {
-                let command_buffer = command_buffers[0];
+        let command_buffers = unsafe { device.ash_handle().allocate_command_buffers(&create_info) }
+            .map_err(|err| {
+                VulkanError::Vulkan(
+                    err.as_raw(),
+                    Some(format!("Error creating the command buffer: {}", err)),
+                )
+            })?;
 
-                let mut obj_name_bytes = vec![];
-                if let Some(ext) = device.ash_ext_debug_utils_ext() {
-                    if let Some(name) = debug_name {
-                        for name_ch in name.as_bytes().iter() {
-                            obj_name_bytes.push(*name_ch);
-                        }
-                        obj_name_bytes.push(0x00);
+        let command_buffer = command_buffers[0];
 
-                        unsafe {
-                            let object_name = std::ffi::CStr::from_bytes_with_nul_unchecked(
-                                obj_name_bytes.as_slice(),
-                            );
-                            // set device name for debugging
-                            let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::default()
-                                .object_handle(command_buffer)
-                                .object_name(object_name);
+        let mut obj_name_bytes = vec![];
+        if let Some(ext) = device.ash_ext_debug_utils_ext() {
+            if let Some(name) = debug_name {
+                for name_ch in name.as_bytes().iter() {
+                    obj_name_bytes.push(*name_ch);
+                }
+                obj_name_bytes.push(0x00);
 
-                            if let Err(err) = ext.set_debug_utils_object_name(&dbg_info) {
-                                #[cfg(debug_assertions)]
-                                {
-                                    println!("Error setting the Debug name for the newly created Command Pool, will use handle. Error: {}", err)
-                                }
-                            }
+                unsafe {
+                    let object_name =
+                        std::ffi::CStr::from_bytes_with_nul_unchecked(obj_name_bytes.as_slice());
+                    // set device name for debugging
+                    let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::default()
+                        .object_handle(command_buffer)
+                        .object_name(object_name);
+
+                    if let Err(err) = ext.set_debug_utils_object_name(&dbg_info) {
+                        #[cfg(debug_assertions)]
+                        {
+                            println!("Error setting the Debug name for the newly created Command Pool, will use handle. Error: {}", err)
                         }
                     }
                 }
-
-                #[cfg(feature = "better_mutex")]
-                let resources_in_use = const_mutex(HashSet::new());
-
-                #[cfg(not(feature = "better_mutex"))]
-                let resources_in_use: Mutex<
-                    HashSet<CommandBufferReferencedResource>,
-                > = Mutex::new(HashSet::new());
-
-                Ok(Arc::new(Self {
-                    command_buffer,
-                    command_pool,
-                    resources_in_use,
-                }))
             }
-            Err(err) => Err(VulkanError::Vulkan(
-                err.as_raw(),
-                Some(format!("Error creating the command buffer: {}", err)),
-            )),
         }
+
+        #[cfg(feature = "better_mutex")]
+        let resources_in_use = const_mutex(HashSet::new());
+
+        #[cfg(not(feature = "better_mutex"))]
+        let resources_in_use = Mutex::new(HashSet::new());
+
+        Ok(Arc::new(Self {
+            command_buffer,
+            command_pool,
+            processing: AtomicU32::new(PRIMARY_COMMAND_BUFFER_STATUS_NO_COMMANDS),
+            resources_in_use,
+        }))
     }
 }
