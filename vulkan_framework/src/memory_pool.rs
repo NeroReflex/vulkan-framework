@@ -5,10 +5,16 @@ use crate::{
     instance::InstanceOwned,
     memory_allocator::*,
     memory_heap::{MemoryHeap, MemoryHeapOwned},
-    prelude::{VulkanError, VulkanResult},
+    prelude::{FrameworkError, VulkanError, VulkanResult},
 };
 
-use std::{mem::size_of, sync::Arc};
+use std::{
+    mem::size_of,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum MemoryPoolFeature {
@@ -41,6 +47,7 @@ pub struct MemoryPool {
     allocator: Arc<dyn MemoryAllocator>,
     memory: ash::vk::DeviceMemory,
     features: MemoryPoolFeatures,
+    mapped: AtomicBool,
 }
 
 impl MemoryHeapOwned for MemoryPool {
@@ -190,6 +197,8 @@ impl MemoryPool {
                 &mut memory_flags as *mut ash::vk::MemoryAllocateFlagsInfo as *mut std::ffi::c_void;
         }
 
+        let mapped = AtomicBool::new(false);
+
         unsafe {
             match device.ash_handle().allocate_memory(
                 &create_info,
@@ -200,6 +209,7 @@ impl MemoryPool {
                     allocator,
                     memory,
                     features,
+                    mapped,
                 })),
                 Err(err) => Err(VulkanError::Vulkan(
                     err.as_raw(),
@@ -207,5 +217,97 @@ impl MemoryPool {
                 )),
             }
         }
+    }
+}
+
+pub struct MemoryMap {
+    memory_pool: Arc<MemoryPool>,
+    ptr: *mut std::ffi::c_void,
+}
+
+impl Drop for MemoryMap {
+    fn drop(&mut self) {
+        let memory_heap = self.memory_pool.get_parent_memory_heap();
+        let device = memory_heap.get_parent_device();
+
+        let old_val = self.memory_pool
+            .mapped
+            .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).unwrap();
+
+        assert_eq!(old_val, true);
+
+        unsafe { device.ash_handle().unmap_memory(self.memory_pool.memory) }
+    }
+}
+
+impl MemoryMap {
+    pub fn new(memory_pool: Arc<MemoryPool>) -> VulkanResult<Self> {
+        let memory_heap = memory_pool.get_parent_memory_heap();
+        let device = memory_heap.get_parent_device();
+
+        if !memory_heap.is_host_mappable() {
+            return Err(VulkanError::Framework(
+                crate::prelude::FrameworkError::MapMemoryError,
+            ));
+        }
+
+        let old_val = memory_pool
+            .mapped
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .map_err(|_| VulkanError::Framework(FrameworkError::MemoryPoolAlreadyMapped))?;
+
+        assert_eq!(old_val, false);
+
+        let ptr = unsafe {
+            device.ash_handle().map_memory(
+                memory_pool.memory,
+                0,
+                memory_pool.allocator.total_size(),
+                vk::MemoryMapFlags::empty(),
+            )
+        }
+        .map_err(|err| {
+            VulkanError::Vulkan(
+                err.as_raw(),
+                Some(format!("Error in mapping memory: {}", err)),
+            )
+        })?;
+
+        Ok(Self { memory_pool, ptr })
+    }
+
+    pub fn as_slice<T>(&self, resource: impl AsRef<dyn MemoryPoolBacked>) -> VulkanResult<&[T]>
+    where
+        T: Sized,
+    {
+        let res = resource.as_ref();
+
+        let slice = unsafe {
+            std::slice::from_raw_parts(
+                self.ptr.add(res.allocation_offset() as usize) as *const T,
+                (res.allocation_size() as usize) / size_of::<T>(),
+            )
+        };
+
+        Ok(slice)
+    }
+
+    pub fn as_mut_slice<T>(
+        &mut self,
+        resource: impl AsRef<dyn MemoryPoolBacked>,
+    ) -> VulkanResult<&mut [T]>
+    where
+        T: Sized,
+    {
+        let res = resource.as_ref();
+
+        let slice = unsafe {
+            std::slice::from_raw_parts_mut(
+                self.ptr.add(res.allocation_offset() as usize) as *mut T,
+                (res.allocation_size() as usize) / size_of::<T>(),
+            )
+        };
+
+        Ok(slice)
     }
 }

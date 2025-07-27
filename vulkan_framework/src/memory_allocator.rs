@@ -181,6 +181,18 @@ impl MemoryAllocator for DefaultAllocator {
                 (*lck)[j as usize] = 1u8
             }
 
+            #[cfg(debug_assertions)]
+            {
+                let mut free_blocks = 0;
+                for a in lck.iter() {
+                    if *a == 0 {
+                        free_blocks += 1;
+                    }
+                }
+
+                println!("free blocks: {free_blocks}");
+            }
+
             // early drop the mutex lock when not needed anymore
             drop(lck);
 
@@ -195,6 +207,28 @@ impl MemoryAllocator for DefaultAllocator {
                 allocation_start,
                 allocation_end,
             ));
+        }
+
+        #[cfg(debug_assertions)]
+        {
+            println!(
+                "out-of-memory: {} blocks were needed",
+                (size / self.block_size) + 2
+            );
+            let mut i = 0;
+            for a in lck.iter() {
+                if *a == 0 {
+                    print!(".");
+                } else {
+                    print!("-");
+                }
+
+                i += 1;
+
+                if i % 16 == 0 {
+                    println!("");
+                }
+            }
         }
 
         None

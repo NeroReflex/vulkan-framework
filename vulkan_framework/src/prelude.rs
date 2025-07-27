@@ -52,6 +52,8 @@ pub enum FrameworkError {
     IncompatibleResources,
     #[error("Missing feature on MemoryPool: device_addressable need to be set")]
     MemoryPoolNotAddressable,
+    #[error("The memory pool is already mapped in host memory")]
+    MemoryPoolAlreadyMapped,
     #[error("Error creating the descriptor set layout: no binding descriptors specified")]
     NoBindingDescriptorsSpecified,
     #[error("Mutex error: {0}")]

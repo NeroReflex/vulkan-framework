@@ -1,4 +1,5 @@
 use std::{
+    path::PathBuf,
     sync::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
@@ -33,7 +34,7 @@ use vulkan_framework::{
 use crate::rendering::{
     MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingError, RenderingResult,
     pipeline::{final_rendering::FinalRendering, renderquad::RenderQuad},
-    resources::ResourceManager,
+    resources::object::Manager as ResourceManager,
     surface::SurfaceHelper,
 };
 
@@ -117,6 +118,14 @@ impl System {
         self.queue.clone()
     }
 
+    pub fn test(&mut self) {
+        let mut manager = self.resources_manager.lock().unwrap();
+
+        manager
+            .load_object(PathBuf::from("crytek_sponza.tar"))
+            .unwrap();
+    }
+
     pub fn new(
         app_name: String,
         video_subsystem: VideoSubsystem,
@@ -129,6 +138,7 @@ impl System {
         // Enable vulkan debug utils on debug builds
         #[cfg(debug_assertions)]
         {
+            println!("Running with debugging features...");
             instance_extensions.push(String::from("VK_EXT_debug_utils"));
             instance_layers.push(String::from("VK_LAYER_KHRONOS_validation"));
         }

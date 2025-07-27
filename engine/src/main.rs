@@ -19,6 +19,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     .map_err(|err| panic!("{err}"))
     .unwrap();
 
+    // a test call
+    renderer.test();
+
     let mut start_time = Instant::now();
     let mut frame_count = 0;
     let mut event_pump = sdl_context.event_pump().unwrap();

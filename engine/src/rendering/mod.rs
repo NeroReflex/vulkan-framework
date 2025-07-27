@@ -1,12 +1,12 @@
-pub mod mesh;
 pub mod pipeline;
 pub mod resources;
 pub mod surface;
 pub mod system;
-pub mod texture;
 
 use sdl2::video::WindowBuildError;
 use thiserror::Error;
+
+use crate::rendering::resources::ResourceError;
 
 #[derive(Error, Debug)]
 pub enum RenderingError {
@@ -15,6 +15,12 @@ pub enum RenderingError {
 
     #[error("SDL errored while creating the window")]
     Window(#[from] WindowBuildError),
+
+    #[error("I/O error: {0}")]
+    IOError(#[from] std::io::Error),
+
+    #[error("Resource error: {0}")]
+    ResourceError(#[from] ResourceError),
 
     #[error("An unexpected number of swapchain images has been returned")]
     NotEnoughSwapchainImages,

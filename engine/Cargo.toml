@@ -8,5 +8,6 @@ inline-spirv = "0.2.1"
 rust-embed = "8.7.2"
 sdl2 = "^0"
 smallvec = "^1"
+tar = "0.4.44"
 thiserror = "^2"
 vulkan_framework = { path = "../vulkan_framework" }
