@@ -1,10 +1,6 @@
 use ash::vk::{Handle, ImageAspectFlags};
 
-use crate::{
-    image::*,
-    instance::InstanceOwned,
-    prelude::{VulkanError, VulkanResult},
-};
+use crate::{image::*, instance::InstanceOwned, prelude::VulkanResult};
 
 use std::sync::Arc;
 

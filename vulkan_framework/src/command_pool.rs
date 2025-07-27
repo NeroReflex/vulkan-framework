@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::{
     device::DeviceOwned,
     instance::InstanceOwned,
-    prelude::{VulkanError, VulkanResult},
+    prelude::VulkanResult,
     queue_family::{QueueFamily, QueueFamilyOwned},
 };
 

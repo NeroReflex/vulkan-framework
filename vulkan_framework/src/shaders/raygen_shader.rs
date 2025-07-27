@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::device::{Device, DeviceOwned};
 use crate::instance::InstanceOwned;
-use crate::prelude::{VulkanError, VulkanResult};
+use crate::prelude::VulkanResult;
 
 use crate::shader_trait::{PrivateShaderTrait, ShaderTrait, ShaderType, ShaderTypeRayTracingKHR};
 

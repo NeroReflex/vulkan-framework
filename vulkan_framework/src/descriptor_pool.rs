@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::{
     device::{Device, DeviceOwned},
     instance::InstanceOwned,
-    prelude::{VulkanError, VulkanResult},
+    prelude::VulkanResult,
 };
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

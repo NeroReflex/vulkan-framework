@@ -216,7 +216,7 @@ impl Drop for MemoryMap {
             .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
             .unwrap();
 
-        assert_eq!(old_val, true);
+        assert!(old_val);
 
         unsafe { device.ash_handle().unmap_memory(self.memory_pool.memory) }
     }
@@ -238,7 +238,7 @@ impl MemoryMap {
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
             .map_err(|_| VulkanError::Framework(FrameworkError::MemoryPoolAlreadyMapped))?;
 
-        assert_eq!(old_val, false);
+        assert!(!old_val);
 
         let ptr = unsafe {
             device.ash_handle().map_memory(

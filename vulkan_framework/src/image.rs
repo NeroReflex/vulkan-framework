@@ -1058,9 +1058,8 @@ impl AllocatedImage {
                 memory_pool.ash_handle(),
                 reserved_memory_from_pool.offset_in_pool(),
             )
-        }.map_err(|err| {
-            println!("ERROR: Error allocating memory on the device: {}, probably this is due to an incorrect implementation of the memory allocation algorithm", err);
-        err})?;
+        }.inspect_err(|&err| {
+            println!("ERROR: Error allocating memory on the device: {}, probably this is due to an incorrect implementation of the memory allocation algorithm", err);})?;
 
         Ok(Arc::new(Self {
             memory_pool,

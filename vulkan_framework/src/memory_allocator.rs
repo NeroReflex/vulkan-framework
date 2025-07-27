@@ -226,7 +226,7 @@ impl MemoryAllocator for DefaultAllocator {
                 i += 1;
 
                 if i % 16 == 0 {
-                    println!("");
+                    println!();
                 }
             }
         }

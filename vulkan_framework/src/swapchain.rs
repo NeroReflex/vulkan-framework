@@ -641,7 +641,7 @@ impl SwapchainKHR {
             )
         }?;
 
-        let images = unsafe { ext.get_swapchain_images(swapchain) }.map_err(|err| {
+        let images = unsafe { ext.get_swapchain_images(swapchain) }.inspect_err(|err| {
             // avoid leaking the swapchain
             unsafe {
                 ext.destroy_swapchain(
@@ -654,8 +654,6 @@ impl SwapchainKHR {
                 .swapchain_exists
                 .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
                 .unwrap();
-
-            err
         })?;
 
         Ok(Arc::new(Self {

@@ -365,10 +365,8 @@ impl AllocatedBuffer {
                 memory_pool.ash_handle(),
                 reserved_memory_from_pool.offset_in_pool(),
             )
-        }.map_err(|err| {
-            println!("ERROR: Error allocating memory, probably this is due to an incorrect implementation of the memory allocation algorithm");
-
-            err
+        }.inspect_err(|err| {
+            println!("ERROR: Error allocating memory: {err}, probably this is due to an incorrect implementation of the memory allocation algorithm");
         })?;
 
         Ok(Arc::new(Self {

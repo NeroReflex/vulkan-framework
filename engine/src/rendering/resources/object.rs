@@ -150,12 +150,12 @@ impl Manager {
                 true => String::from(&path_str[2..]),
                 false => String::from(path_str),
             };
-            let splitted_path = path_trimmed.split('/').map(|val| val).collect::<Vec<_>>();
-            if splitted_path.len() < 1 {
+            let splitted_path = path_trimmed.split('/').collect::<Vec<_>>();
+            if splitted_path.is_empty() {
                 println!("Invalid file name {:?}", file.header().path()?);
             }
 
-            let obj_type = *(splitted_path.get(0).unwrap());
+            let obj_type = *(splitted_path.first().unwrap());
             match splitted_path.get(1) {
                 Some(obj_name) => match obj_type {
                     "textures" => {
@@ -195,7 +195,7 @@ impl Manager {
                                     let slice = mem_map.as_mut_slice::<u32>(
                                         buffer.clone() as Arc<dyn MemoryPoolBacked>
                                     )?;
-                                    let len = slice.len() * std::mem::size_of::<u32>();
+                                    let len = std::mem::size_of_val(slice);
                                     let ptr = slice.as_mut_ptr() as *mut u8;
                                     let slice_u8 =
                                         unsafe { std::slice::from_raw_parts_mut(ptr, len) };
@@ -375,7 +375,7 @@ impl Manager {
                                     let slice = mem_map.as_mut_slice::<u32>(
                                         buffer.clone() as Arc<dyn MemoryPoolBacked>
                                     )?;
-                                    let len = slice.len() * std::mem::size_of::<u32>();
+                                    let len = std::mem::size_of_val(slice);
                                     let ptr = slice.as_mut_ptr() as *mut u8;
                                     let slice_u8 =
                                         unsafe { std::slice::from_raw_parts_mut(ptr, len) };
@@ -396,8 +396,8 @@ impl Manager {
                         print!("WARNING: unrecognised object type");
                     }
                 },
-                None => match obj_type {
-                    "vertex_buffer" => {
+                None => {
+                    if obj_type == "vertex_buffer" {
                         // Allocate the buffer that will be used to upload the vertex data to the vulkan device
                         let buffer = Buffer::new(
                             self.device.clone(),
@@ -416,14 +416,13 @@ impl Manager {
                             let mut mem_map = MemoryMap::new(self.memory_pool.clone())?;
                             let slice =
                                 mem_map.as_mut_slice::<u32>(buffer as Arc<dyn MemoryPoolBacked>)?;
-                            let len = slice.len() * std::mem::size_of::<u32>();
+                            let len = std::mem::size_of_val(slice);
                             let ptr = slice.as_mut_ptr() as *mut u8;
                             let slice_u8 = unsafe { std::slice::from_raw_parts_mut(ptr, len) };
                             file.read_exact(slice_u8).unwrap();
                         }
                     }
-                    _ => {}
-                },
+                }
             };
         }
 
@@ -447,7 +446,7 @@ impl Manager {
             };
         }
 
-        for (k, v) in materials.iter() {
+        for (_k, v) in materials.iter() {
             if let Some(texture_name) = &v.diffuse_texture {}
         }
 

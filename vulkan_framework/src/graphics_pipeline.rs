@@ -9,7 +9,7 @@ use crate::renderpass::RenderPass;
 use crate::shaders::{fragment_shader::FragmentShader, vertex_shader::VertexShader};
 
 use crate::pipeline_layout::{PipelineLayout, PipelineLayoutDependant};
-use crate::prelude::{VulkanError, VulkanResult};
+use crate::prelude::VulkanResult;
 use crate::shader_trait::PrivateShaderTrait;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

@@ -5,7 +5,7 @@ use crate::device::{Device, DeviceOwned};
 use crate::instance::InstanceOwned;
 
 use crate::pipeline_layout::{PipelineLayout, PipelineLayoutDependant};
-use crate::prelude::{VulkanError, VulkanResult};
+use crate::prelude::VulkanResult;
 use crate::shader_trait::PrivateShaderTrait;
 use crate::shaders::compute_shader::ComputeShader;
 

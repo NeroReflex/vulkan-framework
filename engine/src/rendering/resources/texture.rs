@@ -13,7 +13,6 @@ use vulkan_framework::{
     descriptor_set::DescriptorSet,
     descriptor_set_layout::DescriptorSetLayout,
     device::{Device, DeviceOwned},
-    fence::Fence,
     image::{
         AllocatedImage, CommonImageFormat, ConcreteImageDescriptor, Image, Image2DDimensions,
         ImageAspect, ImageAspects, ImageFlags, ImageFormat, ImageLayout, ImageMultisampling,
@@ -245,7 +244,7 @@ impl TextureManager {
         texture: Image,
     ) -> RenderingResult<Arc<ImageView>> {
         let texture = AllocatedImage::new(memory_pool, texture)?;
-        let texture_imageview_name = format!("texture_manager.texture[...].imageview");
+        let texture_imageview_name = "texture_manager.texture[...].imageview".to_string();
         let texture_imageview = ImageView::new(
             texture.clone(),
             None,
