@@ -36,7 +36,7 @@ pub struct Manager {
 
 impl Manager {
     fn memory_pool_size(frames_in_flight: u32) -> u64 {
-        (1024u64 * 1024u64 * 256u64) + (frames_in_flight as u64 * 8192u64)
+        (1024u64 * 1024u64 * 128u64) + (frames_in_flight as u64 * 8192u64)
     }
 
     pub fn new(queue_family: Arc<QueueFamily>, frames_in_flight: u32) -> RenderingResult<Self> {
@@ -185,7 +185,7 @@ impl Manager {
                                     Some("resource_management.vertex_buffer"),
                                 )?;
 
-                                println!("allocating texture size: {texture_size}");
+                                //println!("allocating texture size: {texture_size}");
                                 let buffer =
                                     AllocatedBuffer::new(self.memory_pool.clone(), buffer).unwrap();
 
@@ -365,7 +365,7 @@ impl Manager {
                                     Some("resource_management.vertex_buffer"),
                                 )?;
 
-                                println!("allocating index buffer size: {indexes_size}");
+                                //println!("allocating index buffer size: {indexes_size}");
                                 let buffer =
                                     AllocatedBuffer::new(self.memory_pool.clone(), buffer).unwrap();
 
