@@ -86,7 +86,7 @@ pub enum VulkanError {
     Framework(#[from] FrameworkError),
 
     #[error("Framework error: {0}")]
-    Vulkan(i32, Option<String>),
+    Vulkan(#[from] crate::ash::vk::Result),
 
     #[error("Missing extension: {0}")]
     MissingExtension(String),
@@ -96,8 +96,8 @@ pub type VulkanResult<T> = Result<T, VulkanError>;
 
 impl VulkanError {
     pub fn is_timeout(&self) -> bool {
-        if let Self::Vulkan(err_code, _) = self {
-            return *err_code == 2;
+        if let Self::Vulkan(result) = self {
+            return result.as_raw() == ash::vk::Result::TIMEOUT.as_raw();
         }
 
         false

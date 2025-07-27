@@ -931,19 +931,11 @@ impl Image {
             .tiling(descriptor.ash_tiling());
 
         let image = unsafe {
-            match device.ash_handle().create_image(
+            device.ash_handle().create_image(
                 &create_info,
                 device.get_parent_instance().get_alloc_callbacks(),
-            ) {
-                Ok(image) => image,
-                Err(err) => {
-                    return Err(VulkanError::Vulkan(
-                        err.as_raw(),
-                        Some(format!("Error creating the image: {}", err)),
-                    ))
-                }
-            }
-        };
+            )
+        }?;
 
         let mut obj_name_bytes = vec![];
         if let Some(ext) = device.ash_ext_debug_utils_ext() {
@@ -1066,7 +1058,9 @@ impl AllocatedImage {
                 memory_pool.ash_handle(),
                 reserved_memory_from_pool.offset_in_pool(),
             )
-        }.map_err(|err| VulkanError::Vulkan(err.as_raw(), Some(format!("Error allocating memory on the device: {}, probably this is due to an incorrect implementation of the memory allocation algorithm", err))))?;
+        }.map_err(|err| {
+            println!("ERROR: Error allocating memory on the device: {}, probably this is due to an incorrect implementation of the memory allocation algorithm", err);
+        err})?;
 
         Ok(Arc::new(Self {
             memory_pool,

@@ -135,8 +135,7 @@ impl RaytracingBindingTables {
                 group_count,
                 sbt_size as usize,
             )
-        }
-        .map_err(|err| VulkanError::Vulkan(err.as_raw(), None))?;
+        }?;
 
         let raygen_buffer = AllocatedBuffer::new(
             memory_pool.clone(),

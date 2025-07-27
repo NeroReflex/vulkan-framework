@@ -72,22 +72,18 @@ impl FragmentShader {
 
         let create_info = ash::vk::ShaderModuleCreateInfo::default().code(code);
 
-        match unsafe {
+        let module = unsafe {
             device.ash_handle().create_shader_module(
                 &create_info,
                 device.get_parent_instance().get_alloc_callbacks(),
             )
-        } {
-            Ok(module) => Ok(Arc::new(Self {
-                device,
-                //push_constant_ranges: push_constant_ranges.iter().map(|cr| cr.clone()).collect(),
-                //descriptor_bindings: descriptor_bindings.to_vec(),
-                module,
-            })),
-            Err(err) => Err(VulkanError::Vulkan(
-                err.as_raw(),
-                Some(format!("Error creating the fragment shader: {}", err)),
-            )),
-        }
+        }?;
+
+        Ok(Arc::new(Self {
+            device,
+            //push_constant_ranges: push_constant_ranges.iter().map(|cr| cr.clone()).collect(),
+            //descriptor_bindings: descriptor_bindings.to_vec(),
+            module,
+        }))
     }
 }

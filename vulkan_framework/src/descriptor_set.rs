@@ -629,31 +629,25 @@ impl DescriptorSet {
             .descriptor_pool(pool.ash_handle())
             .set_layouts(&layouts);
 
-        match unsafe {
+        let descriptor_set = unsafe {
             pool.get_parent_device()
                 .ash_handle()
                 .allocate_descriptor_sets(&create_info)
-        } {
-            Ok(descriptor_set) => {
-                let guarded_resource = (0..(max_idx + 1)).map(|_idx| Option::default()).collect();
+        }?;
 
-                #[cfg(feature = "better_mutex")]
-                let bound_resources = const_mutex(guarded_resource);
+        let guarded_resource = (0..(max_idx + 1)).map(|_idx| Option::default()).collect();
 
-                #[cfg(not(feature = "better_mutex"))]
-                let bound_resources = Mutex::new(guarded_resource);
+        #[cfg(feature = "better_mutex")]
+        let bound_resources = const_mutex(guarded_resource);
 
-                Ok(Arc::new(Self {
-                    pool,
-                    descriptor_set: descriptor_set[0],
-                    layout,
-                    bound_resources,
-                }))
-            }
-            Err(err) => Err(VulkanError::Vulkan(
-                err.as_raw(),
-                Some(format!("Error creating the descriptor set: {}", err)),
-            )),
-        }
+        #[cfg(not(feature = "better_mutex"))]
+        let bound_resources = Mutex::new(guarded_resource);
+
+        Ok(Arc::new(Self {
+            pool,
+            descriptor_set: descriptor_set[0],
+            layout,
+            bound_resources,
+        }))
     }
 }

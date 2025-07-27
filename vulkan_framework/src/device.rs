@@ -221,13 +221,7 @@ impl Device {
     }
 
     pub fn wait_idle(&self) -> VulkanResult<()> {
-        match unsafe { self.device.device_wait_idle() } {
-            Ok(_) => Ok(()),
-            Err(err) => Err(VulkanError::Vulkan(
-                err.as_raw(),
-                Some(format!("Error waiting for device to be idle: {}", err)),
-            )),
-        }
+        Ok(unsafe { self.device.device_wait_idle() }?)
     }
 
     /**
@@ -418,405 +412,377 @@ impl Device {
         }
 
         unsafe {
-            match instance.ash_handle().enumerate_physical_devices() {
-                Err(err) => Err(VulkanError::Vulkan(
-                    err.as_raw(),
-                    Some(format!("Error enumerating physical devices: {}", err)),
-                )),
-                Ok(physical_devices) => {
-                    let mut best_physical_device_score: i128 = -1;
-                    let mut selected_physical_device: Option<DeviceData> = None;
+            let physical_devices = instance.ash_handle().enumerate_physical_devices()?;
+            let mut best_physical_device_score: i128 = -1;
+            let mut selected_physical_device: Option<DeviceData> = None;
 
-                    if physical_devices.is_empty() {
-                        return Err(VulkanError::Framework(
-                            FrameworkError::NoSuitableDeviceFound,
-                        ));
-                    }
+            if physical_devices.is_empty() {
+                return Err(VulkanError::Framework(
+                    FrameworkError::NoSuitableDeviceFound,
+                ));
+            }
 
-                    let enabled_extensions = Self::ffi_strings(device_extensions);
+            let enabled_extensions = Self::ffi_strings(device_extensions);
 
-                    'suitable_device_search: for phy_device in physical_devices.iter() {
-                        let phy_device_features = instance
-                            .ash_handle()
-                            .get_physical_device_features(phy_device.to_owned());
-                        let phy_device_properties = instance
-                            .ash_handle()
-                            .get_physical_device_properties(phy_device.to_owned());
-                        let phy_device_extensions = instance
-                            .ash_handle()
-                            .enumerate_device_extension_properties(phy_device.to_owned());
-                        let phy_device_name = std::str::from_utf8_unchecked(
-                            std::ptr::slice_from_raw_parts(
-                                phy_device_properties.to_owned().device_name.as_ptr() as *const u8,
-                                phy_device_properties.to_owned().device_name.len(),
-                            )
-                            .as_ref()
-                            .unwrap(),
-                        );
+            'suitable_device_search: for phy_device in physical_devices.iter() {
+                let phy_device_features = instance
+                    .ash_handle()
+                    .get_physical_device_features(phy_device.to_owned());
+                let phy_device_properties = instance
+                    .ash_handle()
+                    .get_physical_device_properties(phy_device.to_owned());
+                let phy_device_extensions = instance
+                    .ash_handle()
+                    .enumerate_device_extension_properties(phy_device.to_owned());
+                let phy_device_name = std::str::from_utf8_unchecked(
+                    std::ptr::slice_from_raw_parts(
+                        phy_device_properties.to_owned().device_name.as_ptr() as *const u8,
+                        phy_device_properties.to_owned().device_name.len(),
+                    )
+                    .as_ref()
+                    .unwrap(),
+                );
 
-                        let supported_extension_names = match phy_device_extensions {
-                            Ok(supported_extensions) => {
-                                let supproted_extensions_map = supported_extensions
-                                    .iter()
-                                    .map(|f| f.extension_name.to_vec())
-                                    .collect::<Vec<Vec<i8>>>();
+                let supported_extension_names = match phy_device_extensions {
+                    Ok(supported_extensions) => {
+                        let supproted_extensions_map = supported_extensions
+                            .iter()
+                            .map(|f| f.extension_name.to_vec())
+                            .collect::<Vec<Vec<i8>>>();
 
-                                let supported_extensions_strings =
-                                    Self::strings_ffi(supproted_extensions_map);
+                        let supported_extensions_strings =
+                            Self::strings_ffi(supproted_extensions_map);
 
-                                for requested_extension in device_extensions.iter() {
-                                    if !supported_extensions_strings
-                                        .iter()
-                                        .any(|supported_ext| requested_extension == supported_ext)
-                                    {
-                                        println!("Requested extension {requested_extension} is not supported by physical device {phy_device_name}. This device won't be selected.");
-                                        continue 'suitable_device_search;
-                                    }
-                                }
-
-                                supported_extensions_strings
-                            }
-                            Err(err) => {
-                                println!("Error enumerating device extensions for device {phy_device_name}: {err}. Will skip this device.");
+                        for requested_extension in device_extensions.iter() {
+                            if !supported_extensions_strings
+                                .iter()
+                                .any(|supported_ext| requested_extension == supported_ext)
+                            {
+                                println!("Requested extension {requested_extension} is not supported by physical device {phy_device_name}. This device won't be selected.");
                                 continue 'suitable_device_search;
                             }
-                        };
+                        }
 
-                        let msbytes = match phy_device_properties.device_type {
-                            ash::vk::PhysicalDeviceType::DISCRETE_GPU => 0xC000000000000000u64,
-                            ash::vk::PhysicalDeviceType::INTEGRATED_GPU => 0x8000000000000000u64,
-                            ash::vk::PhysicalDeviceType::CPU => 0x4000000000000000u64,
-                            _ => 0x0000000000000000u64,
-                        };
+                        supported_extensions_strings
+                    }
+                    Err(err) => {
+                        println!("Error enumerating device extensions for device {phy_device_name}: {err}. Will skip this device.");
+                        continue 'suitable_device_search;
+                    }
+                };
 
-                        let current_score = msbytes;
+                let msbytes = match phy_device_properties.device_type {
+                    ash::vk::PhysicalDeviceType::DISCRETE_GPU => 0xC000000000000000u64,
+                    ash::vk::PhysicalDeviceType::INTEGRATED_GPU => 0x8000000000000000u64,
+                    ash::vk::PhysicalDeviceType::CPU => 0x4000000000000000u64,
+                    _ => 0x0000000000000000u64,
+                };
 
-                        // get queues properties (used to check if all requested queues are available on this device)
-                        let queue_family_properties = instance
-                            .ash_handle()
-                            .get_physical_device_queue_family_properties(phy_device.to_owned());
+                let current_score = msbytes;
 
-                        // Check if all requested queues are supported
-                        let mut selected_queues: Vec<ash::vk::DeviceQueueCreateInfo> = vec![];
-                        let mut required_family_collection = vec![];
+                // get queues properties (used to check if all requested queues are available on this device)
+                let queue_family_properties = instance
+                    .ash_handle()
+                    .get_physical_device_queue_family_properties(phy_device.to_owned());
 
-                        let mut available_queue_families: Vec<(
-                            usize,
-                            &ash::vk::QueueFamilyProperties,
-                        )> = queue_family_properties.iter().enumerate().collect();
+                // Check if all requested queues are supported
+                let mut selected_queues: Vec<ash::vk::DeviceQueueCreateInfo> = vec![];
+                let mut required_family_collection = vec![];
 
-                        for current_requested_queue_family_descriptor in queue_descriptors.iter() {
-                            // this is the currently selected queue family (queue_family, score)
-                            let mut selected_queue_family: Option<(usize, u16)> = None;
+                let mut available_queue_families: Vec<(usize, &ash::vk::QueueFamilyProperties)> =
+                    queue_family_properties.iter().enumerate().collect();
 
-                            // the following for loop will search for the best fit for requested capabilities
-                            /*'suitable_queue_family_search:*/
-                            for (family_index, current_descriptor) in
-                                available_queue_families.clone()
-                            {
-                                if let Some(score) = Self::corresponds(
-                                    current_requested_queue_family_descriptor
-                                        .get_supported_operations()
-                                        .iter(),
-                                    instance.ash_handle(),
-                                    phy_device,
-                                    instance.get_surface_khr_extension(),
-                                    current_descriptor,
-                                    family_index as u32,
-                                    current_requested_queue_family_descriptor.max_queues() as u32,
-                                ) {
-                                    // Found a suitable queue family.
-                                    // Use this queue family if it's a better fit than the previous one
-                                    match selected_queue_family {
-                                        Some((_, best_fit_queue_score)) => {
-                                            if best_fit_queue_score > score {
-                                                selected_queue_family = Some((family_index, score))
-                                            }
-                                        }
-                                        None => selected_queue_family = Some((family_index, score)),
+                for current_requested_queue_family_descriptor in queue_descriptors.iter() {
+                    // this is the currently selected queue family (queue_family, score)
+                    let mut selected_queue_family: Option<(usize, u16)> = None;
+
+                    // the following for loop will search for the best fit for requested capabilities
+                    /*'suitable_queue_family_search:*/
+                    for (family_index, current_descriptor) in available_queue_families.clone() {
+                        if let Some(score) = Self::corresponds(
+                            current_requested_queue_family_descriptor
+                                .get_supported_operations()
+                                .iter(),
+                            instance.ash_handle(),
+                            phy_device,
+                            instance.get_surface_khr_extension(),
+                            current_descriptor,
+                            family_index as u32,
+                            current_requested_queue_family_descriptor.max_queues() as u32,
+                        ) {
+                            // Found a suitable queue family.
+                            // Use this queue family if it's a better fit than the previous one
+                            match selected_queue_family {
+                                Some((_, best_fit_queue_score)) => {
+                                    if best_fit_queue_score > score {
+                                        selected_queue_family = Some((family_index, score))
                                     }
-
-                                    // Stop the search. This changes the algorithm from a "best fit" to a "first fit"
-                                    //break 'suitable_queue_family_search;
                                 }
+                                None => selected_queue_family = Some((family_index, score)),
                             }
 
-                            // if any of the queue is not supported continue the search for a suitable device
-                            // otherwise remove the current best fit from the queue of available queue_families to avoid choosing it two times
-                            match selected_queue_family {
-                                Some((family_index, _)) => {
-                                    let queue_create_info =
-                                        ash::vk::DeviceQueueCreateInfo::default()
-                                            .queue_family_index(family_index as u32)
-                                            .queue_priorities(
-                                                current_requested_queue_family_descriptor
-                                                    .get_queue_priorities(),
-                                            );
+                            // Stop the search. This changes the algorithm from a "best fit" to a "first fit"
+                            //break 'suitable_queue_family_search;
+                        }
+                    }
 
-                                    selected_queues.push(queue_create_info);
-                                    required_family_collection.push(Option::Some((
-                                        family_index as u32,
-                                        current_requested_queue_family_descriptor.clone(),
-                                    )));
+                    // if any of the queue is not supported continue the search for a suitable device
+                    // otherwise remove the current best fit from the queue of available queue_families to avoid choosing it two times
+                    match selected_queue_family {
+                        Some((family_index, _)) => {
+                            let queue_create_info = ash::vk::DeviceQueueCreateInfo::default()
+                                .queue_family_index(family_index as u32)
+                                .queue_priorities(
+                                    current_requested_queue_family_descriptor
+                                        .get_queue_priorities(),
+                                );
 
-                                    available_queue_families = available_queue_families.iter().filter_map(|(queue_family_index, queue_family_properties)| -> Option<(usize, &ash::vk::QueueFamilyProperties)> {
+                            selected_queues.push(queue_create_info);
+                            required_family_collection.push(Option::Some((
+                                family_index as u32,
+                                current_requested_queue_family_descriptor.clone(),
+                            )));
+
+                            available_queue_families = available_queue_families.iter().filter_map(|(queue_family_index, queue_family_properties)| -> Option<(usize, &ash::vk::QueueFamilyProperties)> {
                                         if *queue_family_index != family_index {
                                             return Some((*queue_family_index, queue_family_properties))
                                         }
 
                                         None
                                     }).collect();
-                                }
-                                None => {
-                                    println!("No suitable queue family found on device {phy_device_name}");
-                                    continue 'suitable_device_search;
-                                }
-                            }
                         }
-
-                        let currently_selected_device_data = DeviceData {
-                            selected_physical_device: *phy_device,
-                            selected_device_features: phy_device_features,
-                            selected_queues,
-                            required_family_collection,
-                            supported_extension_names,
-                            enabled_extensions: enabled_extensions.clone(),
-                        };
-
-                        println!("Found suitable device: {phy_device_name}");
-
-                        match selected_physical_device {
-                            Some(currently_selected_device) => {
-                                if best_physical_device_score < current_score as i128 {
-                                    best_physical_device_score = current_score as i128;
-                                    selected_physical_device = Some(currently_selected_device_data);
-                                } else {
-                                    selected_physical_device = Some(currently_selected_device);
-                                }
-                            }
-                            None => {
-                                best_physical_device_score = current_score as i128;
-                                selected_physical_device = Some(currently_selected_device_data);
-                            }
+                        None => {
+                            println!("No suitable queue family found on device {phy_device_name}");
+                            continue 'suitable_device_search;
                         }
                     }
+                }
 
-                    let Some(selected_device) = selected_physical_device else {
-                        return Err(VulkanError::Framework(
-                            FrameworkError::NoSuitableDeviceFound,
-                        ));
-                    };
+                let currently_selected_device_data = DeviceData {
+                    selected_physical_device: *phy_device,
+                    selected_device_features: phy_device_features,
+                    selected_queues,
+                    required_family_collection,
+                    supported_extension_names,
+                    enabled_extensions: enabled_extensions.clone(),
+                };
 
-                    let extensions_ptr = selected_device
-                        .enabled_extensions
-                        .iter()
-                        .map(|str| str.as_ptr())
-                        .collect::<Vec<*const c_char>>();
+                println!("Found suitable device: {phy_device_name}");
 
-                    let mut device_create_info_builder = ash::vk::DeviceCreateInfo::default()
-                        .queue_create_infos(selected_device.selected_queues.as_slice())
-                        .enabled_extension_names(extensions_ptr.as_slice());
+                match selected_physical_device {
+                    Some(currently_selected_device) => {
+                        if best_physical_device_score < current_score as i128 {
+                            best_physical_device_score = current_score as i128;
+                            selected_physical_device = Some(currently_selected_device_data);
+                        } else {
+                            selected_physical_device = Some(currently_selected_device);
+                        }
+                    }
+                    None => {
+                        best_physical_device_score = current_score as i128;
+                        selected_physical_device = Some(currently_selected_device_data);
+                    }
+                }
+            }
 
-                    let acceleration_structure_enabled = device_extensions.iter().any(|ext| {
-                        ext.as_str()
-                            == ash::khr::acceleration_structure::NAME
-                                .to_str()
-                                .unwrap_or("")
-                    });
+            let Some(selected_device) = selected_physical_device else {
+                return Err(VulkanError::Framework(
+                    FrameworkError::NoSuitableDeviceFound,
+                ));
+            };
 
-                    let ray_tracing_enabled = device_extensions.iter().any(|ext| {
-                        ext.as_str() == ash::khr::ray_tracing_pipeline::NAME.to_str().unwrap_or("")
-                    });
+            let extensions_ptr = selected_device
+                .enabled_extensions
+                .iter()
+                .map(|str| str.as_ptr())
+                .collect::<Vec<*const c_char>>();
 
-                    let mut features2 = ash::vk::PhysicalDeviceFeatures2::default();
-                    let mut synchronization2_features =
-                        ash::vk::PhysicalDeviceSynchronization2Features::default()
-                            .synchronization2(true);
-                    let mut accel_structure_features =
-                        ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
-                    let mut ray_tracing_pipeline_features =
-                        ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
-                    let mut get_device_address_features =
-                        ash::vk::PhysicalDeviceBufferDeviceAddressFeatures::default();
-                    let mut get_imageless_framebuffer_features =
-                        ash::vk::PhysicalDeviceImagelessFramebufferFeatures::default();
+            let mut device_create_info_builder = ash::vk::DeviceCreateInfo::default()
+                .queue_create_infos(selected_device.selected_queues.as_slice())
+                .enabled_extension_names(extensions_ptr.as_slice());
 
-                    let mut properties2 = ash::vk::PhysicalDeviceProperties2::default();
-                    let mut accel_structure_properties =
-                        ash::vk::PhysicalDeviceAccelerationStructurePropertiesKHR::default();
-                    let mut ray_tracing_pipeline_properties =
-                        ash::vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
-                    ray_tracing_pipeline_properties.p_next = &mut accel_structure_properties
-                        as *mut ash::vk::PhysicalDeviceAccelerationStructurePropertiesKHR
+            let acceleration_structure_enabled = device_extensions.iter().any(|ext| {
+                ext.as_str()
+                    == ash::khr::acceleration_structure::NAME
+                        .to_str()
+                        .unwrap_or("")
+            });
+
+            let ray_tracing_enabled = device_extensions.iter().any(|ext| {
+                ext.as_str() == ash::khr::ray_tracing_pipeline::NAME.to_str().unwrap_or("")
+            });
+
+            let mut features2 = ash::vk::PhysicalDeviceFeatures2::default();
+            let mut synchronization2_features =
+                ash::vk::PhysicalDeviceSynchronization2Features::default().synchronization2(true);
+            let mut accel_structure_features =
+                ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
+            let mut ray_tracing_pipeline_features =
+                ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
+            let mut get_device_address_features =
+                ash::vk::PhysicalDeviceBufferDeviceAddressFeatures::default();
+            let mut get_imageless_framebuffer_features =
+                ash::vk::PhysicalDeviceImagelessFramebufferFeatures::default();
+
+            let mut properties2 = ash::vk::PhysicalDeviceProperties2::default();
+            let mut accel_structure_properties =
+                ash::vk::PhysicalDeviceAccelerationStructurePropertiesKHR::default();
+            let mut ray_tracing_pipeline_properties =
+                ash::vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
+            ray_tracing_pipeline_properties.p_next = &mut accel_structure_properties
+                as *mut ash::vk::PhysicalDeviceAccelerationStructurePropertiesKHR
+                as *mut std::ffi::c_void;
+
+            // Enable raytracing if required extensions have been requested
+            if acceleration_structure_enabled {
+                if ray_tracing_enabled {
+                    properties2 = properties2.push_next(&mut ray_tracing_pipeline_properties);
+
+                    accel_structure_features.p_next = &mut ray_tracing_pipeline_features
+                        as *mut ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR
                         as *mut std::ffi::c_void;
 
-                    // Enable raytracing if required extensions have been requested
-                    if acceleration_structure_enabled {
-                        if ray_tracing_enabled {
-                            properties2 =
-                                properties2.push_next(&mut ray_tracing_pipeline_properties);
+                    ray_tracing_pipeline_features.p_next = &mut get_device_address_features
+                        as *mut ash::vk::PhysicalDeviceBufferDeviceAddressFeatures
+                        as *mut std::ffi::c_void;
+                }
+                features2 = features2.push_next(&mut accel_structure_features);
+            }
 
-                            accel_structure_features.p_next = &mut ray_tracing_pipeline_features
-                                as *mut ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR
-                                as *mut std::ffi::c_void;
+            get_imageless_framebuffer_features.p_next = features2.p_next;
+            features2.p_next =
+                &mut get_imageless_framebuffer_features as *mut _ as *mut std::ffi::c_void;
 
-                            ray_tracing_pipeline_features.p_next = &mut get_device_address_features
-                                as *mut ash::vk::PhysicalDeviceBufferDeviceAddressFeatures
-                                as *mut std::ffi::c_void;
-                        }
-                        features2 = features2.push_next(&mut accel_structure_features);
-                    }
+            synchronization2_features.p_next = features2.p_next;
+            features2.p_next = &mut synchronization2_features as *mut _ as *mut std::ffi::c_void;
 
-                    get_imageless_framebuffer_features.p_next = features2.p_next;
-                    features2.p_next =
-                        &mut get_imageless_framebuffer_features as *mut _ as *mut std::ffi::c_void;
+            instance.ash_handle().get_physical_device_features2(
+                selected_device.selected_physical_device,
+                &mut features2,
+            );
+            instance.ash_handle().get_physical_device_properties2(
+                selected_device.selected_physical_device,
+                &mut properties2,
+            );
+            device_create_info_builder = device_create_info_builder.push_next(&mut features2);
 
-                    synchronization2_features.p_next = features2.p_next;
-                    features2.p_next =
-                        &mut synchronization2_features as *mut _ as *mut std::ffi::c_void;
+            let mut raytracing_info: Option<RaytracingInfo> = Option::None;
 
-                    instance.ash_handle().get_physical_device_features2(
-                        selected_device.selected_physical_device,
-                        &mut features2,
-                    );
-                    instance.ash_handle().get_physical_device_properties2(
-                        selected_device.selected_physical_device,
-                        &mut properties2,
-                    );
-                    device_create_info_builder =
-                        device_create_info_builder.push_next(&mut features2);
+            let device_create_info = device_create_info_builder;
+            let device = instance.ash_handle().create_device(
+                selected_device.selected_physical_device.to_owned(),
+                &device_create_info,
+                instance.get_alloc_callbacks(),
+            )?;
 
-                    let mut raytracing_info: Option<RaytracingInfo> = Option::None;
+            // open requested swapchain extensions (or implied ones)
 
-                    let device_create_info = device_create_info_builder;
-                    let device = instance
-                        .ash_handle()
-                        .create_device(
-                            selected_device.selected_physical_device.to_owned(),
-                            &device_create_info,
-                            instance.get_alloc_callbacks(),
-                        )
-                        .map_err(|err| {
-                            VulkanError::Vulkan(
-                                err.as_raw(),
-                                Some(format!("Error creating the logical device: {}", err)),
-                            )
-                        })?;
+            let debug_utils_ext = instance.get_debug_ext_extension().map(|_ext| {
+                Arc::new(ash::ext::debug_utils::Device::new(
+                    instance.ash_handle(),
+                    &device,
+                ))
+            });
 
-                    // open requested swapchain extensions (or implied ones)
+            let swapchain_ext = match device_extensions
+                .iter()
+                .any(|ext| ext.as_str() == ash::khr::swapchain::NAME.to_str().unwrap_or(""))
+            {
+                true => Option::Some(ash::khr::swapchain::Device::new(
+                    instance.ash_handle(),
+                    &device,
+                )),
+                false => Option::None,
+            };
 
-                    let debug_utils_ext = instance.get_debug_ext_extension().map(|_ext| {
-                        Arc::new(ash::ext::debug_utils::Device::new(
+            let raytracing_pipeline_ext: Option<ash::khr::ray_tracing_pipeline::Device> =
+                match ray_tracing_enabled {
+                    true => {
+                        raytracing_info = Some(RaytracingInfo::from(
+                            &accel_structure_properties,
+                            &ray_tracing_pipeline_properties,
+                        ));
+
+                        Option::Some(ash::khr::ray_tracing_pipeline::Device::new(
                             instance.ash_handle(),
                             &device,
                         ))
-                    });
+                    }
+                    false => Option::None,
+                };
 
-                    let swapchain_ext = match device_extensions
-                        .iter()
-                        .any(|ext| ext.as_str() == ash::khr::swapchain::NAME.to_str().unwrap_or(""))
-                    {
-                        true => Option::Some(ash::khr::swapchain::Device::new(
-                            instance.ash_handle(),
-                            &device,
-                        )),
-                        false => Option::None,
-                    };
+            let acceleration_structure_ext: Option<ash::khr::acceleration_structure::Device> =
+                match acceleration_structure_enabled {
+                    true => Option::Some(ash::khr::acceleration_structure::Device::new(
+                        instance.ash_handle(),
+                        &device,
+                    )),
+                    false => Option::None,
+                };
 
-                    let raytracing_pipeline_ext: Option<ash::khr::ray_tracing_pipeline::Device> =
-                        match ray_tracing_enabled {
-                            true => {
-                                raytracing_info = Some(RaytracingInfo::from(
-                                    &accel_structure_properties,
-                                    &ray_tracing_pipeline_properties,
-                                ));
+            let raytracing_maintenance_ext: Option<ash::khr::ray_tracing_maintenance1::Device> =
+                match device_extensions.iter().any(|ext| {
+                    ext.as_str()
+                        == ash::khr::ray_tracing_maintenance1::NAME
+                            .to_str()
+                            .unwrap_or("")
+                }) {
+                    true => Option::Some(ash::khr::ray_tracing_maintenance1::Device::new(
+                        instance.ash_handle(),
+                        &device,
+                    )),
+                    false => Option::None,
+                };
 
-                                Option::Some(ash::khr::ray_tracing_pipeline::Device::new(
-                                    instance.ash_handle(),
-                                    &device,
-                                ))
-                            }
-                            false => Option::None,
-                        };
+            let mut obj_name_bytes = vec![];
 
-                    let acceleration_structure_ext: Option<
-                        ash::khr::acceleration_structure::Device,
-                    > = match acceleration_structure_enabled {
-                        true => Option::Some(ash::khr::acceleration_structure::Device::new(
-                            instance.ash_handle(),
-                            &device,
-                        )),
-                        false => Option::None,
-                    };
+            if let Some(ext) = debug_utils_ext.clone() {
+                if let Some(name) = debug_name {
+                    for name_ch in name.as_bytes().iter() {
+                        obj_name_bytes.push(*name_ch);
+                    }
+                    obj_name_bytes.push(0x00);
 
-                    let raytracing_maintenance_ext: Option<
-                        ash::khr::ray_tracing_maintenance1::Device,
-                    > = match device_extensions.iter().any(|ext| {
-                        ext.as_str()
-                            == ash::khr::ray_tracing_maintenance1::NAME
-                                .to_str()
-                                .unwrap_or("")
-                    }) {
-                        true => Option::Some(ash::khr::ray_tracing_maintenance1::Device::new(
-                            instance.ash_handle(),
-                            &device,
-                        )),
-                        false => Option::None,
-                    };
+                    let object_name =
+                        std::ffi::CStr::from_bytes_with_nul_unchecked(obj_name_bytes.as_slice());
+                    // set device name for debugging
+                    let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::default()
+                        .object_handle(device.handle())
+                        .object_name(object_name);
 
-                    let mut obj_name_bytes = vec![];
-
-                    if let Some(ext) = debug_utils_ext.clone() {
-                        if let Some(name) = debug_name {
-                            for name_ch in name.as_bytes().iter() {
-                                obj_name_bytes.push(*name_ch);
-                            }
-                            obj_name_bytes.push(0x00);
-
-                            let object_name = std::ffi::CStr::from_bytes_with_nul_unchecked(
-                                obj_name_bytes.as_slice(),
-                            );
-                            // set device name for debugging
-                            let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::default()
-                                .object_handle(device.handle())
-                                .object_name(object_name);
-
-                            if let Err(err) = ext.set_debug_utils_object_name(&dbg_info) {
-                                #[cfg(debug_assertions)]
-                                {
-                                    println!("Error setting the Debug name for the newly created Device, will use handle. Error: {}", err)
-                                }
-                            }
+                    if let Err(err) = ext.set_debug_utils_object_name(&dbg_info) {
+                        #[cfg(debug_assertions)]
+                        {
+                            println!("Error setting the Debug name for the newly created Device, will use handle. Error: {}", err)
                         }
                     }
-
-                    #[cfg(not(feature = "better_mutex"))]
-                    let required_family_collection =
-                        Mutex::new(selected_device.required_family_collection);
-
-                    #[cfg(feature = "better_mutex")]
-                    let required_family_collection =
-                        const_mutex(selected_device.required_family_collection);
-
-                    Ok(Arc::new(Self {
-                        //_name_bytes: obj_name_bytes,
-                        required_family_collection,
-                        device,
-                        extensions: DeviceExtensions {
-                            swapchain_khr_ext: swapchain_ext,
-                            raytracing_pipeline_khr_ext: raytracing_pipeline_ext,
-                            raytracing_maintenance_khr_ext: raytracing_maintenance_ext,
-                            acceleration_structure_khr_ext: acceleration_structure_ext,
-                            debug_utils_khr_ext: debug_utils_ext,
-                        },
-                        instance,
-                        supported_extension_names: selected_device.supported_extension_names,
-                        physical_device: selected_device.selected_physical_device,
-                        ray_tracing_info: raytracing_info,
-                        swapchain_exists: AtomicBool::new(false),
-                    }))
                 }
             }
+
+            #[cfg(not(feature = "better_mutex"))]
+            let required_family_collection = Mutex::new(selected_device.required_family_collection);
+
+            #[cfg(feature = "better_mutex")]
+            let required_family_collection =
+                const_mutex(selected_device.required_family_collection);
+
+            Ok(Arc::new(Self {
+                //_name_bytes: obj_name_bytes,
+                required_family_collection,
+                device,
+                extensions: DeviceExtensions {
+                    swapchain_khr_ext: swapchain_ext,
+                    raytracing_pipeline_khr_ext: raytracing_pipeline_ext,
+                    raytracing_maintenance_khr_ext: raytracing_maintenance_ext,
+                    acceleration_structure_khr_ext: acceleration_structure_ext,
+                    debug_utils_khr_ext: debug_utils_ext,
+                },
+                instance,
+                supported_extension_names: selected_device.supported_extension_names,
+                physical_device: selected_device.selected_physical_device,
+                ray_tracing_info: raytracing_info,
+                swapchain_exists: AtomicBool::new(false),
+            }))
         }
     }
 

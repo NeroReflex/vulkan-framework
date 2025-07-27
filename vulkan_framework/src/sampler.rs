@@ -119,21 +119,20 @@ impl Sampler {
             .mag_filter(mag_filter.ash_flags())
             .min_filter(min_filter.ash_flags());
 
-        match unsafe {
+        let sampler = unsafe {
             device.ash_handle().create_sampler(
                 &create_info,
                 device.get_parent_instance().get_alloc_callbacks(),
             )
-        } {
-            Ok(sampler) => Ok(Arc::new(Self {
-                device,
-                sampler,
-                mag_filter,
-                min_filter,
-                mipmap_mode,
-                max_anisotropy,
-            })),
-            Err(err) => Err(VulkanError::Vulkan(err.as_raw(), None)),
-        }
+        }?;
+
+        Ok(Arc::new(Self {
+            device,
+            sampler,
+            mag_filter,
+            min_filter,
+            mipmap_mode,
+            max_anisotropy,
+        }))
     }
 }

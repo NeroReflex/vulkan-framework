@@ -42,28 +42,23 @@ impl Fence {
     }
 
     pub fn is_signaled(&self) -> VulkanResult<bool> {
-        match unsafe {
+        let status = unsafe {
             self.get_parent_device()
                 .ash_handle()
                 .get_fence_status(self.fence)
-        } {
-            Ok(status) => Ok(status),
-            Err(err) => Err(VulkanError::Vulkan(
-                err.as_raw(),
-                Some(format!("Error reading fence status: {}", err)),
-            )),
-        }
+        }?;
+
+        Ok(status)
     }
 
     pub fn reset(&self) -> VulkanResult<()> {
-        match unsafe {
+        unsafe {
             self.get_parent_device()
                 .ash_handle()
                 .reset_fences(&[self.fence])
-        } {
-            Ok(()) => Ok(()),
-            Err(err) => Err(VulkanError::Vulkan(err.as_raw(), None)),
-        }
+        }?;
+
+        Ok(())
     }
 
     /**
@@ -88,17 +83,12 @@ impl Fence {
         }
 
         match &device {
-            Some(dev) => {
-                let reset_result = unsafe { dev.ash_handle().reset_fences(native_fences.as_ref()) };
-
-                match reset_result {
-                    Ok(_) => Ok(()),
-                    Err(err) => Err(VulkanError::Vulkan(err.as_raw(), None)),
-                }
-            }
+            Some(dev) => unsafe { dev.ash_handle().reset_fences(native_fences.as_ref()) }?,
             // list of fences are simply empty
-            None => Ok(()),
+            None => {}
         }
+
+        Ok(())
     }
 
     #[inline]
@@ -135,7 +125,7 @@ impl Fence {
 
         match &device {
             Some(dev) => {
-                let wait_result = unsafe {
+                unsafe {
                     dev.ash_handle().wait_for_fences(
                         native_fences.as_ref(),
                         match wait_target {
@@ -148,12 +138,9 @@ impl Fence {
                             timeout_ns as u64
                         },
                     )
-                };
+                }?;
 
-                match wait_result {
-                    Ok(_) => Ok(()),
-                    Err(err) => Err(VulkanError::Vulkan(err.as_raw(), None)),
-                }
+                Ok(())
             }
             // No fences to wait for
             None => Ok(()),
@@ -171,47 +158,40 @@ impl Fence {
                 false => ash::vk::FenceCreateFlags::from_raw(0x00u32),
             });
 
-        match unsafe {
+        let fence = unsafe {
             device.ash_handle().create_fence(
                 &create_info,
                 device.get_parent_instance().get_alloc_callbacks(),
             )
-        } {
-            Ok(fence) => {
-                let mut obj_name_bytes = vec![];
-                if let Some(ext) = device.ash_ext_debug_utils_ext() {
-                    if let Some(name) = debug_name {
-                        for name_ch in name.as_bytes().iter() {
-                            obj_name_bytes.push(*name_ch);
-                        }
-                        obj_name_bytes.push(0x00);
+        }?;
 
-                        unsafe {
-                            let object_name = std::ffi::CStr::from_bytes_with_nul_unchecked(
-                                obj_name_bytes.as_slice(),
-                            );
-                            // set device name for debugging
-                            let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::default()
-                                .object_handle(fence)
-                                .object_name(object_name);
+        let mut obj_name_bytes = vec![];
+        if let Some(ext) = device.ash_ext_debug_utils_ext() {
+            if let Some(name) = debug_name {
+                for name_ch in name.as_bytes().iter() {
+                    obj_name_bytes.push(*name_ch);
+                }
+                obj_name_bytes.push(0x00);
 
-                            if let Err(err) = ext.set_debug_utils_object_name(&dbg_info) {
-                                #[cfg(debug_assertions)]
-                                {
-                                    println!("Error setting the Debug name for the newly created Queue, will use handle. Error: {}", err)
-                                }
-                            }
+                unsafe {
+                    let object_name =
+                        std::ffi::CStr::from_bytes_with_nul_unchecked(obj_name_bytes.as_slice());
+                    // set device name for debugging
+                    let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::default()
+                        .object_handle(fence)
+                        .object_name(object_name);
+
+                    if let Err(err) = ext.set_debug_utils_object_name(&dbg_info) {
+                        #[cfg(debug_assertions)]
+                        {
+                            println!("Error setting the Debug name for the newly created Queue, will use handle. Error: {}", err)
                         }
                     }
                 }
-
-                Ok(Arc::new(Self { device, fence }))
             }
-            Err(err) => Err(VulkanError::Vulkan(
-                err.as_raw(),
-                Some(format!("Error creating the fence: {}", err)),
-            )),
         }
+
+        Ok(Arc::new(Self { device, fence }))
     }
 }
 
@@ -262,5 +242,10 @@ impl FenceWaiter {
             command_buffers,
             _semaphores: semaphores,
         }
+    }
+
+    #[inline]
+    pub fn complete(&self) -> VulkanResult<bool> {
+        self.fence.is_signaled()
     }
 }

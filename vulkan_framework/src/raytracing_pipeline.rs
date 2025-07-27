@@ -274,10 +274,7 @@ impl RaytracingPipeline {
                             callable_shader_present,
                         }))
                     }
-                    Err(err) => Err(VulkanError::Vulkan(
-                        err.1.as_raw(),
-                        Some(format!("Error creating the raytracing pipeline: {}", err.1)),
-                    )),
+                    Err((_, err)) => Err(err.into()),
                 }
             }
             None => Err(VulkanError::MissingExtension(String::from(

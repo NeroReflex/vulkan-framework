@@ -277,52 +277,45 @@ impl DescriptorPool {
             .max_sets(descriptor.max_sets)
             .pool_sizes(pool_sizes.as_slice());
 
-        match unsafe {
+        let pool = unsafe {
             device.ash_handle().create_descriptor_pool(
                 &create_info,
                 device.get_parent_instance().get_alloc_callbacks(),
             )
-        } {
-            Ok(pool) => {
-                let mut obj_name_bytes = vec![];
-                if let Some(ext) = device.ash_ext_debug_utils_ext() {
-                    if let Some(name) = debug_name {
-                        for name_ch in name.as_bytes().iter() {
-                            obj_name_bytes.push(*name_ch);
-                        }
-                        obj_name_bytes.push(0x00);
+        }?;
 
-                        unsafe {
-                            let object_name = std::ffi::CStr::from_bytes_with_nul_unchecked(
-                                obj_name_bytes.as_slice(),
-                            );
-                            // set device name for debugging
-                            let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::default()
-                                .object_handle(pool)
-                                .object_name(object_name);
+        let mut obj_name_bytes = vec![];
+        if let Some(ext) = device.ash_ext_debug_utils_ext() {
+            if let Some(name) = debug_name {
+                for name_ch in name.as_bytes().iter() {
+                    obj_name_bytes.push(*name_ch);
+                }
+                obj_name_bytes.push(0x00);
 
-                            if let Err(err) = ext.set_debug_utils_object_name(&dbg_info) {
-                                #[cfg(debug_assertions)]
-                                {
-                                    println!("Error setting the Debug name for the newly created DescriptorPool, will use handle. Error: {}", err)
-                                }
-                            }
+                unsafe {
+                    let object_name =
+                        std::ffi::CStr::from_bytes_with_nul_unchecked(obj_name_bytes.as_slice());
+                    // set device name for debugging
+                    let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::default()
+                        .object_handle(pool)
+                        .object_name(object_name);
+
+                    if let Err(err) = ext.set_debug_utils_object_name(&dbg_info) {
+                        #[cfg(debug_assertions)]
+                        {
+                            println!("Error setting the Debug name for the newly created DescriptorPool, will use handle. Error: {}", err)
                         }
                     }
                 }
-
-                Ok(Arc::new(Self {
-                    device,
-                    pool,
-                    descriptor,
-                    //allocated_sets: Arc::new(Mutex::new(0)),
-                    //lock_errored: AtomicI16::new(0i16),
-                }))
             }
-            Err(err) => Err(VulkanError::Vulkan(
-                err.as_raw(),
-                Some(format!("Error creating the descriptor pool: {}", err)),
-            )),
         }
+
+        Ok(Arc::new(Self {
+            device,
+            pool,
+            descriptor,
+            //allocated_sets: Arc::new(Mutex::new(0)),
+            //lock_errored: AtomicI16::new(0i16),
+        }))
     }
 }

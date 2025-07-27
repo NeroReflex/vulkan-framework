@@ -57,13 +57,7 @@ impl ClosestHitShader {
                 &create_info,
                 device.get_parent_instance().get_alloc_callbacks(),
             )
-        }
-        .map_err(|err| {
-            VulkanError::Vulkan(
-                err.as_raw(),
-                Some(format!("Error creating the closesthit shader: {}", err)),
-            )
-        })?;
+        }?;
 
         Ok(Arc::new(Self {
             device,

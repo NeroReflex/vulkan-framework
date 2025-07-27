@@ -334,23 +334,19 @@ impl RenderPass {
             .attachments(attachment_descriptors.as_slice())
             .subpasses(subpass_definitions.as_slice());
 
-        match unsafe {
+        let renderpass = unsafe {
             device.ash_handle().create_render_pass(
                 &create_info,
                 device.get_parent_instance().get_alloc_callbacks(),
             )
-        } {
-            Ok(renderpass) => Ok(Arc::new(Self {
-                device,
-                renderpass,
-                attachments_description: attachments_copy,
-                subpasses_description: subpasses.iter().cloned().collect(),
-            })),
-            Err(err) => Err(VulkanError::Vulkan(
-                err.as_raw(),
-                Some(format!("Error creating renderpass: {}", err)),
-            )),
-        }
+        }?;
+
+        Ok(Arc::new(Self {
+            device,
+            renderpass,
+            attachments_description: attachments_copy,
+            subpasses_description: subpasses.iter().cloned().collect(),
+        }))
     }
 }
 

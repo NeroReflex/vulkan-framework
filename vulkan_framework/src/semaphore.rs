@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::{
     device::{Device, DeviceOwned},
     instance::InstanceOwned,
-    prelude::{VulkanError, VulkanResult},
+    prelude::VulkanResult,
 };
 
 pub struct Semaphore {
@@ -80,46 +80,39 @@ impl Semaphore {
     pub fn new(device: Arc<Device>, debug_name: Option<&str>) -> VulkanResult<Arc<Self>> {
         let create_info = ash::vk::SemaphoreCreateInfo::default();
 
-        match unsafe {
+        let semaphore = unsafe {
             device.ash_handle().create_semaphore(
                 &create_info,
                 device.get_parent_instance().get_alloc_callbacks(),
             )
-        } {
-            Ok(semaphore) => {
-                let mut obj_name_bytes = vec![];
-                if let Some(ext) = device.ash_ext_debug_utils_ext() {
-                    if let Some(name) = debug_name {
-                        for name_ch in name.as_bytes().iter() {
-                            obj_name_bytes.push(*name_ch);
-                        }
-                        obj_name_bytes.push(0x00);
+        }?;
 
-                        unsafe {
-                            let object_name = std::ffi::CStr::from_bytes_with_nul_unchecked(
-                                obj_name_bytes.as_slice(),
-                            );
-                            // set device name for debugging
-                            let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::default()
-                                .object_handle(semaphore)
-                                .object_name(object_name);
+        let mut obj_name_bytes = vec![];
+        if let Some(ext) = device.ash_ext_debug_utils_ext() {
+            if let Some(name) = debug_name {
+                for name_ch in name.as_bytes().iter() {
+                    obj_name_bytes.push(*name_ch);
+                }
+                obj_name_bytes.push(0x00);
 
-                            if let Err(err) = ext.set_debug_utils_object_name(&dbg_info) {
-                                #[cfg(debug_assertions)]
-                                {
-                                    println!("Error setting the Debug name for the newly created Queue, will use handle. Error: {}", err);
-                                }
-                            }
+                unsafe {
+                    let object_name =
+                        std::ffi::CStr::from_bytes_with_nul_unchecked(obj_name_bytes.as_slice());
+                    // set device name for debugging
+                    let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::default()
+                        .object_handle(semaphore)
+                        .object_name(object_name);
+
+                    if let Err(err) = ext.set_debug_utils_object_name(&dbg_info) {
+                        #[cfg(debug_assertions)]
+                        {
+                            println!("Error setting the Debug name for the newly created Queue, will use handle. Error: {}", err);
                         }
                     }
                 }
-
-                Ok(Arc::new(Self { device, semaphore }))
             }
-            Err(err) => Err(VulkanError::Vulkan(
-                err.as_raw(),
-                Some(format!("Error creating the fence: {}", err)),
-            )),
         }
+
+        Ok(Arc::new(Self { device, semaphore }))
     }
 }

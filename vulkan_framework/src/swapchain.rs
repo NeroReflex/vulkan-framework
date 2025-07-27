@@ -183,54 +183,26 @@ impl DeviceSurfaceInfo {
     pub fn new(device: Arc<Device>, surface: Arc<Surface>) -> VulkanResult<Self> {
         match device.get_parent_instance().get_surface_khr_extension() {
             Some(sfc_ext) => {
-                let surface_capabilities_result = unsafe {
+                let surface_capabilities = unsafe {
                     sfc_ext.get_physical_device_surface_capabilities(
                         device.ash_physical_device_handle().to_owned(),
                         surface.ash_handle().to_owned(),
                     )
-                };
+                }?;
 
-                if let Err(err) = surface_capabilities_result {
-                    return Err(VulkanError::Vulkan(
-                        err.as_raw(),
-                        Some(format!("Error in fetching surface capabilities: {}", err)),
-                    ));
-                }
-
-                let surface_present_modes_result = unsafe {
+                let surface_present_modes = unsafe {
                     sfc_ext.get_physical_device_surface_present_modes(
                         device.ash_physical_device_handle().to_owned(),
                         surface.ash_handle().to_owned(),
                     )
-                };
+                }?;
 
-                if let Err(err) = surface_present_modes_result {
-                    return Err(VulkanError::Vulkan(
-                        err.as_raw(),
-                        Some(format!("Error in fetching surface present modes: {}", err)),
-                    ));
-                }
-
-                let surface_formats_result = unsafe {
+                let surface_formats = unsafe {
                     sfc_ext.get_physical_device_surface_formats(
                         device.ash_physical_device_handle().to_owned(),
                         surface.ash_handle().to_owned(),
                     )
-                };
-
-                if let Err(err) = surface_present_modes_result {
-                    return Err(VulkanError::Vulkan(
-                        err.as_raw(),
-                        Some(format!(
-                            "Error in fetching surface supported formats: {}",
-                            err
-                        )),
-                    ));
-                }
-
-                let surface_capabilities = surface_capabilities_result.unwrap();
-                let surface_present_modes = surface_present_modes_result.unwrap();
-                let surface_formats = surface_formats_result.unwrap();
+                }?;
 
                 Ok(Self {
                     device,
@@ -392,7 +364,7 @@ impl SwapchainKHR {
         queue: Arc<Queue>,
         index: u32,
         semaphores: &[Arc<Semaphore>],
-    ) -> VulkanResult<()> {
+    ) -> VulkanResult<bool> {
         if self.get_parent_device() != queue.get_parent_queue_family().get_parent_device() {
             return Err(VulkanError::Framework(
                 crate::prelude::FrameworkError::ResourceFromIncompatibleDevice,
@@ -417,10 +389,7 @@ impl SwapchainKHR {
 
         match self.get_parent_device().ash_ext_swapchain_khr() {
             Option::Some(ext) => {
-                match unsafe { ext.queue_present(queue.ash_handle(), &present_info) } {
-                    Ok(_suboptimal) => Ok(()),
-                    Err(err) => Err(VulkanError::Vulkan(err.as_raw(), None)),
-                }
+                Ok(unsafe { ext.queue_present(queue.ash_handle(), &present_info) }?)
             }
             Option::None => Err(VulkanError::MissingExtension(String::from(
                 "VK_KHR_swapchain",
@@ -537,8 +506,9 @@ impl SwapchainKHR {
     ) -> VulkanResult<(u32, bool)> {
         match self.get_parent_device().ash_ext_swapchain_khr() {
             Option::Some(ext) => {
-                match unsafe {
-                    let nanos = timeout.as_nanos();
+                let nanos = timeout.as_nanos();
+
+                let result = unsafe {
                     ext.acquire_next_image(
                         self.swapchain,
                         if nanos > (u64::MAX as u128) {
@@ -555,13 +525,9 @@ impl SwapchainKHR {
                             Option::None => ash::vk::Fence::null(),
                         },
                     )
-                } {
-                    Ok(result) => Ok(result),
-                    Err(err) => Err(VulkanError::Vulkan(
-                        err.as_raw(),
-                        Some(format!("Error creating the swapchain: {}", err)),
-                    )),
-                }
+                }?;
+
+                Ok(result)
             }
             Option::None => Err(VulkanError::MissingExtension(String::from(
                 "VK_KHR_swapchain",
@@ -673,13 +639,7 @@ impl SwapchainKHR {
                 &create_info,
                 device.get_parent_instance().get_alloc_callbacks(),
             )
-        }
-        .map_err(|err| {
-            VulkanError::Vulkan(
-                err.as_raw(),
-                Some(format!("Error creating the swapchain: {}", err)),
-            )
-        })?;
+        }?;
 
         let images = unsafe { ext.get_swapchain_images(swapchain) }.map_err(|err| {
             // avoid leaking the swapchain
@@ -695,10 +655,7 @@ impl SwapchainKHR {
                 .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
                 .unwrap();
 
-            VulkanError::Vulkan(
-                err.as_raw(),
-                Some(format!("Error fetching images from the swapchain: {}", err)),
-            )
+            err
         })?;
 
         Ok(Arc::new(Self {

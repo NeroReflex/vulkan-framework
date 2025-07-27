@@ -138,10 +138,7 @@ impl ComputePipeline {
                     pipeline,
                 }))
             }
-            Err((_, err)) => Err(VulkanError::Vulkan(
-                err.as_raw(),
-                Some(format!("Error creating the compute pipeline: {}", err)),
-            )),
+            Err((_, err)) => Err(err.into()),
         }
     }
 }

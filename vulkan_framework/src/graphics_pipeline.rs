@@ -787,10 +787,7 @@ impl GraphicsPipeline {
                     scissor,
                 }))
             }
-            Err((_, err)) => Err(VulkanError::Vulkan(
-                err.as_raw(),
-                Some(format!("Error creating the graphics pipeline: {}", err)),
-            )),
+            Err((_, err)) => Err(err.into()),
         }
     }
 }

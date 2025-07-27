@@ -654,37 +654,31 @@ impl BottomLevelAccelerationStructure {
             .create_flags(ash::vk::AccelerationStructureCreateFlagsKHR::empty());
         //.device_address(buffer_device_addr)
 
-        match unsafe {
+        let handle = unsafe {
             as_ext.create_acceleration_structure(
                 &create_info,
                 device.get_parent_instance().get_alloc_callbacks(),
             )
-        } {
-            Ok(handle) => {
-                let info = ash::vk::AccelerationStructureDeviceAddressInfoKHR::default()
-                    .acceleration_structure(handle);
-                let acceleration_structure_device_addr =
-                    unsafe { as_ext.get_acceleration_structure_device_address(&info) };
+        }?;
 
-                let triangles_decl = smallvec::smallvec![triangles_decl];
-                Ok(Arc::new(Self {
-                    triangles_decl,
-                    handle,
-                    acceleration_structure_device_addr,
-                    blas_buffer,
-                    //blas_buffer_device_addr,
-                    vertex_buffer,
-                    index_buffer,
-                    transform_buffer,
-                    allowed_building_devices,
-                    device_build_scratch_buffer,
-                }))
-            }
-            Err(err) => Err(VulkanError::Vulkan(
-                err.as_raw(),
-                Some(format!("Error creating acceleration structure: {}", err)),
-            )),
-        }
+        let info = ash::vk::AccelerationStructureDeviceAddressInfoKHR::default()
+            .acceleration_structure(handle);
+        let acceleration_structure_device_addr =
+            unsafe { as_ext.get_acceleration_structure_device_address(&info) };
+
+        let triangles_decl = smallvec::smallvec![triangles_decl];
+        Ok(Arc::new(Self {
+            triangles_decl,
+            handle,
+            acceleration_structure_device_addr,
+            blas_buffer,
+            //blas_buffer_device_addr,
+            vertex_buffer,
+            index_buffer,
+            transform_buffer,
+            allowed_building_devices,
+            device_build_scratch_buffer,
+        }))
     }
 
     pub(crate) fn ash_build_info(

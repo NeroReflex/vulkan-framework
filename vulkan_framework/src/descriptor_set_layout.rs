@@ -111,21 +111,17 @@ impl DescriptorSetLayout {
         let create_info =
             ash::vk::DescriptorSetLayoutCreateInfo::default().bindings(bindings.as_slice());
 
-        match unsafe {
+        let layout = unsafe {
             device.ash_handle().create_descriptor_set_layout(
                 &create_info,
                 device.get_parent_instance().get_alloc_callbacks(),
             )
-        } {
-            Ok(layout) => Ok(Arc::new(Self {
-                device,
-                layout,
-                descriptors: descriptors.to_vec(),
-            })),
-            Err(err) => Err(VulkanError::Vulkan(
-                err.as_raw(),
-                Some(format!("Error creating the descriptor set layout: {}", err)),
-            )),
-        }
+        }?;
+
+        Ok(Arc::new(Self {
+            device,
+            layout,
+            descriptors: descriptors.to_vec(),
+        }))
     }
 }

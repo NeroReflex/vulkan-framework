@@ -1128,17 +1128,7 @@ impl PrimaryCommandBuffer {
             device
                 .ash_handle()
                 .begin_command_buffer(self.ash_handle(), &begin_info)
-        }
-        .map_err(|err| {
-            VulkanError::Vulkan(
-                // the command buffer is in the previous state... A good one unless the error is DEVICE_LOST
-                err.as_raw(),
-                Some(format!(
-                    "Error opening the command buffer for writing: {}",
-                    err
-                )),
-            )
-        })?;
+        }?;
 
         let mut recorder = CommandBufferRecorder {
             device: device.clone(),
@@ -1148,12 +1138,7 @@ impl PrimaryCommandBuffer {
 
         let result = commands_writer_fn(&mut recorder);
 
-        unsafe { device.ash_handle().end_command_buffer(self.ash_handle()) }.map_err(|err| {
-            VulkanError::Vulkan(
-                err.as_raw(),
-                Some(format!("Error updating the command buffer: {}", err)),
-            )
-        })?;
+        unsafe { device.ash_handle().end_command_buffer(self.ash_handle()) }?;
         *resources_lck = recorder.used_resources;
         drop(resources_lck);
 
@@ -1213,14 +1198,8 @@ impl PrimaryCommandBuffer {
             .level(ash::vk::CommandBufferLevel::PRIMARY)
             .command_buffer_count(1);
 
-        let command_buffers = unsafe { device.ash_handle().allocate_command_buffers(&create_info) }
-            .map_err(|err| {
-                VulkanError::Vulkan(
-                    err.as_raw(),
-                    Some(format!("Error creating the command buffer: {}", err)),
-                )
-            })?;
-
+        let command_buffers =
+            unsafe { device.ash_handle().allocate_command_buffers(&create_info) }?;
         let command_buffer = command_buffers[0];
 
         let mut obj_name_bytes = vec![];

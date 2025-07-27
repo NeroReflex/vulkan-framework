@@ -118,16 +118,7 @@ impl Queue {
                 .get_parent_device()
                 .ash_handle()
                 .queue_submit(self.ash_handle(), submits.as_slice(), fence.ash_handle())
-        }
-        .map_err(|err| {
-            VulkanError::Vulkan(
-                err.as_raw(),
-                Some(format!(
-                    "Error submitting command buffers to the current queue: {}",
-                    err
-                )),
-            )
-        })?;
+        }?;
 
         let used_semaphores: crate::fence::FenceWaiterSemaphoresType = wait_semaphores
             .iter()
@@ -196,16 +187,7 @@ impl Queue {
                 .get_parent_device()
                 .ash_handle()
                 .queue_submit2(self.ash_handle(), submits.as_slice(), fence.ash_handle())
-        }
-        .map_err(|err| {
-            VulkanError::Vulkan(
-                err.as_raw(),
-                Some(format!(
-                    "Error submitting command buffers to the current queue: {}",
-                    err
-                )),
-            )
-        })?;
+        }?;
 
         let used_semaphores: crate::fence::FenceWaiterSemaphoresType = wait_semaphores
             .iter()

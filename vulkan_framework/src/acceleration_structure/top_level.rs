@@ -389,13 +389,7 @@ impl TopLevelAccelerationStructure {
                 &create_info,
                 device.get_parent_instance().get_alloc_callbacks(),
             )
-        }
-        .map_err(|err| {
-            VulkanError::Vulkan(
-                err.as_raw(),
-                Some(format!("Error creating acceleration structure: {err}")),
-            )
-        })?;
+        }?;
 
         let blas_decl = smallvec::smallvec![blas_decl];
 

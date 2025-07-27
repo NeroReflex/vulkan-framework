@@ -106,30 +106,22 @@ impl MemoryPool {
             ));
         }
 
-        match unsafe {
+        let ptr = unsafe {
             device.ash_handle().map_memory(
                 self.memory,
                 offset,
                 (src.len() + size_of::<T>()) as u64,
                 vk::MemoryMapFlags::empty(),
             )
-        } {
-            Ok(ptr) => {
-                // copy raw from data to ptr
+        }?;
 
-                let mapped_typed_ptr =
-                    unsafe { std::slice::from_raw_parts_mut(ptr as *mut T, src.len()) };
-                mapped_typed_ptr.copy_from_slice(src);
+        // copy raw from data to ptr
+        let mapped_typed_ptr = unsafe { std::slice::from_raw_parts_mut(ptr as *mut T, src.len()) };
+        mapped_typed_ptr.copy_from_slice(src);
 
-                unsafe { device.ash_handle().unmap_memory(self.memory) }
+        unsafe { device.ash_handle().unmap_memory(self.memory) }
 
-                Ok(())
-            }
-            Err(err) => Err(VulkanError::Vulkan(
-                err.as_raw(),
-                Some(format!("Error in mapping memory: {}", err)),
-            )),
-        }
+        Ok(())
     }
 
     pub fn read_raw_data<T>(&self, offset: u64, size: u64) -> VulkanResult<Vec<T>>
@@ -144,28 +136,20 @@ impl MemoryPool {
             ));
         }
 
-        match unsafe {
+        let ptr = unsafe {
             device
                 .ash_handle()
                 .map_memory(self.memory, offset, size, vk::MemoryMapFlags::empty())
-        } {
-            Ok(ptr) => {
-                let slice = std::ptr::slice_from_raw_parts(
-                    ptr as *const T,
-                    (size as usize) / size_of::<T>(),
-                );
+        }?;
 
-                let data = unsafe { (*slice).to_vec() };
+        let slice =
+            std::ptr::slice_from_raw_parts(ptr as *const T, (size as usize) / size_of::<T>());
 
-                unsafe { device.ash_handle().unmap_memory(self.memory) }
+        let data = unsafe { (*slice).to_vec() };
 
-                Ok(data)
-            }
-            Err(err) => Err(VulkanError::Vulkan(
-                err.as_raw(),
-                Some(format!("Error in mapping memory: {}", err)),
-            )),
-        }
+        unsafe { device.ash_handle().unmap_memory(self.memory) }
+
+        Ok(data)
     }
 
     pub fn new(
@@ -199,24 +183,20 @@ impl MemoryPool {
 
         let mapped = AtomicBool::new(false);
 
-        unsafe {
-            match device.ash_handle().allocate_memory(
+        let memory = unsafe {
+            device.ash_handle().allocate_memory(
                 &create_info,
                 device.get_parent_instance().get_alloc_callbacks(),
-            ) {
-                Ok(memory) => Ok(Arc::new(Self {
-                    memory_heap,
-                    allocator,
-                    memory,
-                    features,
-                    mapped,
-                })),
-                Err(err) => Err(VulkanError::Vulkan(
-                    err.as_raw(),
-                    Some(format!("Error creating the memory pool: {}", err)),
-                )),
-            }
-        }
+            )?
+        };
+
+        Ok(Arc::new(Self {
+            memory_heap,
+            allocator,
+            memory,
+            features,
+            mapped,
+        }))
     }
 }
 
@@ -230,9 +210,11 @@ impl Drop for MemoryMap {
         let memory_heap = self.memory_pool.get_parent_memory_heap();
         let device = memory_heap.get_parent_device();
 
-        let old_val = self.memory_pool
+        let old_val = self
+            .memory_pool
             .mapped
-            .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).unwrap();
+            .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
+            .unwrap();
 
         assert_eq!(old_val, true);
 
@@ -265,13 +247,7 @@ impl MemoryMap {
                 memory_pool.allocator.total_size(),
                 vk::MemoryMapFlags::empty(),
             )
-        }
-        .map_err(|err| {
-            VulkanError::Vulkan(
-                err.as_raw(),
-                Some(format!("Error in mapping memory: {}", err)),
-            )
-        })?;
+        }?;
 
         Ok(Self { memory_pool, ptr })
     }

@@ -263,13 +263,7 @@ impl ImageView {
                 &create_info,
                 device.get_parent_instance().get_alloc_callbacks(),
             )
-        }
-        .map_err(|err| {
-            VulkanError::Vulkan(
-                err.as_raw(),
-                Some(format!("Error creating the image view: {}", err)),
-            )
-        })?;
+        }?;
 
         let mut obj_name_bytes = vec![];
         if let Some(ext) = device.ash_ext_debug_utils_ext() {

@@ -261,20 +261,12 @@ impl Buffer {
             })
             .queue_family_indices(queue_family_indices.as_ref());
 
-        let buffer = match unsafe {
+        let buffer = unsafe {
             device.ash_handle().create_buffer(
                 &create_info,
                 device.get_parent_instance().get_alloc_callbacks(),
             )
-        } {
-            Ok(buffer) => buffer,
-            Err(err) => {
-                return Err(VulkanError::Vulkan(
-                    err.as_raw(),
-                    Some(format!("Error creating the buffer: {}", err)),
-                ))
-            }
-        };
+        }?;
 
         let mut obj_name_bytes = vec![];
         if let Some(ext) = device.ash_ext_debug_utils_ext() {
@@ -373,7 +365,11 @@ impl AllocatedBuffer {
                 memory_pool.ash_handle(),
                 reserved_memory_from_pool.offset_in_pool(),
             )
-        }.map_err(|err| VulkanError::Vulkan(err.as_raw(), Some(String::from("Error allocating memory on the device: {}, probably this is due to an incorrect implementation of the memory allocation algorithm"))))?;
+        }.map_err(|err| {
+            println!("ERROR: Error allocating memory, probably this is due to an incorrect implementation of the memory allocation algorithm");
+
+            err
+        })?;
 
         Ok(Arc::new(Self {
             memory_pool,
