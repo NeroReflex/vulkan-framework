@@ -1,3 +1,4 @@
+pub mod collection;
 pub mod mesh;
 pub mod object;
 pub mod texture;

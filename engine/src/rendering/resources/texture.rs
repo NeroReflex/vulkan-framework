@@ -2,7 +2,10 @@ use std::sync::Arc;
 
 use vulkan_framework::{
     buffer::BufferTrait,
-    command_buffer::{ImageMemoryBarrier, MemoryAccess, MemoryAccessAs, PrimaryCommandBuffer},
+    command_buffer::{
+        CommandBufferRecorder, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs,
+        PrimaryCommandBuffer,
+    },
     command_pool::CommandPool,
     descriptor_pool::{
         DescriptorPool, DescriptorPoolConcreteDescriptor, DescriptorPoolSizesConcreteDescriptor,
@@ -10,7 +13,7 @@ use vulkan_framework::{
     descriptor_set::DescriptorSet,
     descriptor_set_layout::DescriptorSetLayout,
     device::{Device, DeviceOwned},
-    fence::{Fence, FenceWaiter},
+    fence::Fence,
     image::{
         AllocatedImage, CommonImageFormat, ConcreteImageDescriptor, Image, Image2DDimensions,
         ImageAspect, ImageAspects, ImageFlags, ImageFormat, ImageLayout, ImageMultisampling,
@@ -19,7 +22,7 @@ use vulkan_framework::{
     },
     image_view::ImageView,
     memory_allocator::DefaultAllocator,
-    memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryType},
+    memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryHeapOwned, MemoryType},
     memory_pool::{MemoryPool, MemoryPoolFeature, MemoryPoolFeatures},
     pipeline_stage::{PipelineStage, PipelineStages},
     queue::Queue,
@@ -29,11 +32,12 @@ use vulkan_framework::{
     shader_stage_access::ShaderStagesAccess,
 };
 
-use crate::rendering::{MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingError, RenderingResult};
+use crate::rendering::{
+    MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingError, RenderingResult,
+    resources::collection::LoadableResourcesCollection,
+};
 
 type DescriptorSetsType = smallvec::SmallVec<[Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
-
-type TexturesMapType = smallvec::SmallVec<[Option<Arc<ImageView>>; 128]>;
 
 pub struct TextureManager {
     device: Arc<Device>,
@@ -49,18 +53,26 @@ pub struct TextureManager {
 
     memory_pool: Arc<MemoryPool>,
 
-    stub_image: Arc<AllocatedImage>,
-    textures: TexturesMapType,
+    stub_image: u32,
+    textures: LoadableResourcesCollection<Arc<ImageView>>,
     sampler: Arc<Sampler>,
-
-    load_fence: Arc<Fence>,
-    load_fence_waiter: Option<FenceWaiter>,
 }
 
 impl TextureManager {
+    #[inline]
     fn texture_memory_pool_size(max_textures: u32, frames_in_flight: u32) -> u64 {
         (1024u64 * 1024u64 * 128u64)
             + ((1024u64 * 512u64 * (max_textures as u64)) * (frames_in_flight as u64))
+    }
+
+    #[inline]
+    pub(crate) fn wait_load_nonblock(&mut self) -> RenderingResult<usize> {
+        self.textures.wait_load_nonblock()
+    }
+
+    #[inline]
+    pub fn stub_texture_index(&self) -> u32 {
+        self.stub_image.to_owned()
     }
 
     pub fn new(
@@ -138,9 +150,11 @@ impl TextureManager {
             MemoryPoolFeatures::from([MemoryPoolFeature::DeviceAddressable {}].as_slice()),
         )?;
 
-        let stub_image = AllocatedImage::new(memory_pool.clone(), stub_image)?;
-
-        let textures: TexturesMapType = (0..max_textures as usize).map(|_| Option::None).collect();
+        let mut textures = LoadableResourcesCollection::new(
+            queue_family,
+            max_textures,
+            String::from("texture_manager"),
+        )?;
 
         let sampler = Sampler::new(
             device.clone(),
@@ -150,19 +164,23 @@ impl TextureManager {
             1.0,
         )?;
 
-        let load_fence = Fence::new(device.clone(), false, Some("texture_manager.load_fence"))?;
-
-        let load_fence_waiter = Self::setup_load_image_operation(
-            command_buffer.clone(),
-            stub_image_data,
-            stub_image.clone(),
-            load_fence.clone(),
+        let Some(stub_image) = textures.load(
             queue.clone(),
-        )?;
-
-        // this will wait for the GPU to finish the resource copy
-        // and the fence will be resetted back in unsignaled state
-        drop(load_fence_waiter);
+            || Self::allocate_image(memory_pool.clone(), stub_image),
+            |recorder, image_view| {
+                Self::setup_load_image_operation(
+                    recorder,
+                    stub_image_data,
+                    image_view,
+                    queue.clone(),
+                )
+            },
+        )?
+        else {
+            return Err(RenderingError::ResourceError(
+                super::ResourceError::NoTextureSlotAvailable,
+            ));
+        };
 
         Ok(Self {
             device,
@@ -181,101 +199,19 @@ impl TextureManager {
             stub_image,
             textures,
             sampler,
-
-            load_fence,
-            load_fence_waiter: Option::None,
         })
     }
 
-    /// Sets up an image loading operation in a command buffer and submits it for execution.
-    ///
-    /// This function records a one-time submit operation to load image data from a buffer into a Vulkan image.
-    /// It performs the necessary image memory barriers to ensure proper synchronization and layout transitions
-    /// during the transfer operation.
-    ///
-    /// # Parameters
-    /// - `command_buffer`: An `Arc<PrimaryCommandBuffer>` that will be used to record the image loading commands.
-    /// - `image_data`: An `Arc<dyn BufferTrait>` representing the buffer containing the image data to be loaded.
-    /// - `image`: An `Arc<dyn ImageTrait>` representing the Vulkan image that will receive the loaded data.
-    /// - `load_fence`: An `Arc<Fence>` used to synchronize the completion of the image loading operation.
-    /// - `queue`: An `Arc<Queue>` representing the Vulkan queue to which the command buffer will be submitted.
-    ///
-    /// # Returns
-    /// A `RenderingResult<FenceWaiter>` that contains a `FenceWaiter` for waiting on the completion of the operation.
-    ///
-    /// # Errors
-    /// This function may return an error if the command buffer recording or queue submission fails.
-    ///
-    /// # Operation Overview
-    /// 1. **Image Memory Barrier (Before Transfer)**:
-    ///    - Sets up a barrier to transition the image layout from `Undefined` to `TransferDstOptimal`
-    ///      before the transfer operation begins. This ensures that the image is ready to receive data.
-    ///
-    /// 2. **Copy Buffer to Image**:
-    ///    - Copies the image data from the provided buffer to the specified image using the `copy_buffer_to_image` method.
-    ///
-    /// 3. **Image Memory Barrier (After Transfer)**:
-    ///    - Sets up another barrier to transition the image layout from `TransferDstOptimal` to `ShaderReadOnlyOptimal`
-    ///      after the transfer operation is complete, making the image ready for shader access.
-    ///
-    /// The function encapsulates the entire process of preparing the command buffer, recording the necessary operations,
-    /// and submitting the command buffer to the queue for execution.
-    fn setup_load_image_operation(
-        command_buffer: Arc<PrimaryCommandBuffer>,
-        image_data: Arc<dyn BufferTrait>,
-        image: Arc<dyn ImageTrait>,
-        load_fence: Arc<Fence>,
-        queue: Arc<Queue>,
-    ) -> RenderingResult<FenceWaiter> {
-        let queue_family = queue.get_parent_queue_family();
-
-        command_buffer.record_one_time_submit(|recorder| {
-            let before_transfer_barrier = ImageMemoryBarrier::new(
-                PipelineStages::from([PipelineStage::TopOfPipe].as_ref()),
-                MemoryAccess::default(),
-                PipelineStages::from([PipelineStage::Transfer].as_ref()),
-                MemoryAccess::from([MemoryAccessAs::MemoryWrite].as_slice()),
-                ImageSubresourceRange::from(image.clone() as Arc<dyn ImageTrait>),
-                ImageLayout::Undefined,
-                ImageLayout::TransferDstOptimal,
-                queue_family.clone(),
-                queue_family.clone(),
-            );
-
-            recorder.image_barrier(before_transfer_barrier);
-
-            recorder.copy_buffer_to_image(
-                image_data,
-                ImageLayout::TransferDstOptimal,
-                ImageSubresourceLayers::new(
-                    ImageAspects::from([ImageAspect::Color].as_ref()),
-                    0,
-                    0,
-                    1,
-                ),
-                image.clone(),
-                image.dimensions(),
-            );
-
-            let after_transfer_barrier = ImageMemoryBarrier::new(
-                PipelineStages::from([PipelineStage::Transfer].as_ref()),
-                MemoryAccess::from([MemoryAccessAs::MemoryWrite].as_slice()),
-                PipelineStages::from([PipelineStage::BottomOfPipe].as_ref()),
-                MemoryAccess::default(),
-                ImageSubresourceRange::from(image),
-                ImageLayout::TransferDstOptimal,
-                ImageLayout::ShaderReadOnlyOptimal,
-                queue_family.clone(),
-                queue_family.clone(),
-            );
-
-            recorder.image_barrier(after_transfer_barrier);
-        })?;
-
-        let load_fence_waiter =
-            queue.submit(&[command_buffer.clone()], &[], &[], load_fence.clone())?;
-
-        Ok(load_fence_waiter)
+    fn create_and_allocate_image(
+        memory_pool: Arc<MemoryPool>,
+        format: ImageFormat,
+        dimensions: Image2DDimensions,
+        mip_levels: u32,
+        debug_name: String,
+    ) -> RenderingResult<Arc<ImageView>> {
+        let device = memory_pool.get_parent_memory_heap().get_parent_device();
+        let texture = Self::create_image(device, format, dimensions, mip_levels, debug_name)?;
+        Self::allocate_image(memory_pool, texture)
     }
 
     fn create_image(
@@ -285,7 +221,7 @@ impl TextureManager {
         mip_levels: u32,
         debug_name: String,
     ) -> RenderingResult<Image> {
-        let image = Image::new(
+        let texture = Image::new(
             device.clone(),
             ConcreteImageDescriptor::new(
                 dimensions.into(),
@@ -301,7 +237,77 @@ impl TextureManager {
             Some(debug_name.as_str()),
         )?;
 
-        Ok(image)
+        Ok(texture)
+    }
+
+    fn allocate_image(
+        memory_pool: Arc<MemoryPool>,
+        texture: Image,
+    ) -> RenderingResult<Arc<ImageView>> {
+        let texture = AllocatedImage::new(memory_pool, texture)?;
+        let texture_imageview_name = format!("texture_manager.texture[...].imageview");
+        let texture_imageview = ImageView::new(
+            texture.clone(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(texture_imageview_name.as_str()),
+        )?;
+
+        Ok(texture_imageview)
+    }
+
+    fn setup_load_image_operation(
+        recorder: &mut CommandBufferRecorder,
+        image_data: Arc<dyn BufferTrait>,
+        image_view: Arc<ImageView>,
+        queue: Arc<Queue>,
+    ) -> RenderingResult<()> {
+        let queue_family = queue.get_parent_queue_family();
+        let image = image_view.image();
+
+        let before_transfer_barrier = ImageMemoryBarrier::new(
+            PipelineStages::from([PipelineStage::TopOfPipe].as_ref()),
+            MemoryAccess::default(),
+            PipelineStages::from([PipelineStage::Transfer].as_ref()),
+            MemoryAccess::from([MemoryAccessAs::MemoryWrite].as_slice()),
+            ImageSubresourceRange::from(image.clone() as Arc<dyn ImageTrait>),
+            ImageLayout::Undefined,
+            ImageLayout::TransferDstOptimal,
+            queue_family.clone(),
+            queue_family.clone(),
+        );
+
+        recorder.image_barrier(before_transfer_barrier);
+
+        recorder.copy_buffer_to_image(
+            image_data,
+            ImageLayout::TransferDstOptimal,
+            ImageSubresourceLayers::new(ImageAspects::from([ImageAspect::Color].as_ref()), 0, 0, 1),
+            image.clone(),
+            image.dimensions(),
+        );
+
+        let after_transfer_barrier = ImageMemoryBarrier::new(
+            PipelineStages::from([PipelineStage::Transfer].as_ref()),
+            MemoryAccess::from([MemoryAccessAs::MemoryWrite].as_slice()),
+            PipelineStages::from([PipelineStage::BottomOfPipe].as_ref()),
+            MemoryAccess::default(),
+            ImageSubresourceRange::from(image),
+            ImageLayout::TransferDstOptimal,
+            ImageLayout::ShaderReadOnlyOptimal,
+            queue_family.clone(),
+            queue_family.clone(),
+        );
+
+        recorder.image_barrier(after_transfer_barrier);
+
+        Ok(())
     }
 
     pub fn load(
@@ -311,57 +317,26 @@ impl TextureManager {
         image_mip_levels: u32,
         image_data: Arc<dyn BufferTrait>,
     ) -> RenderingResult<u32> {
-        for index in 0..self.textures.len() {
-            // ensure this is an avaialble slot for the new texture
-            if !self.textures[index].is_none() {
-                continue;
-            }
-
-            let texture_name = format!("texture_manager.texture[{index}].image");
-            let texture = Self::create_image(
-                self.device.clone(),
-                image_format,
-                image_dimenstions,
-                image_mip_levels,
-                texture_name,
-            )?;
-
-            let texture = AllocatedImage::new(self.memory_pool.clone(), texture)?;
-            let texture_imageview_name = format!("texture_manager.texture[{index}].imageview");
-            let texture_imageview = ImageView::new(
-                texture.clone(),
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                Some(texture_imageview_name.as_str()),
-            )?;
-
-            self.textures[index] = Some(texture_imageview);
-
-            // wait for the previous image to be loaded
-            drop(self.load_fence_waiter.take());
-
-            let fence_waiter = Self::setup_load_image_operation(
-                self.command_buffer.clone(),
-                image_data,
-                texture,
-                self.load_fence.clone(),
-                self.queue.clone(),
-            )?;
-
-            self.load_fence_waiter.replace(fence_waiter);
-
-            // the image has been created
-            return Ok(index as u32);
+        let queue = self.queue.clone();
+        match self.textures.load(
+            queue.clone(),
+            || {
+                Self::create_and_allocate_image(
+                    self.memory_pool.clone(),
+                    image_format,
+                    image_dimenstions,
+                    image_mip_levels,
+                    String::from("texture_empty_image"),
+                )
+            },
+            |recorder, image_view| {
+                Self::setup_load_image_operation(recorder, image_data, image_view, queue.clone())
+            },
+        )? {
+            Some(texture_index) => Ok(texture_index),
+            None => Err(RenderingError::ResourceError(
+                super::ResourceError::NoTextureSlotAvailable,
+            )),
         }
-
-        return Err(RenderingError::ResourceError(
-            super::ResourceError::NoTextureSlotAvailable,
-        ));
     }
 }

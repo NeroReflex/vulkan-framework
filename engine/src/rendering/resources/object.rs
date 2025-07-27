@@ -3,7 +3,8 @@ use std::{collections::HashMap, io::Read, path::PathBuf, sync::Arc};
 use tar::Archive;
 
 use crate::{
-    rendering::{resources::ResourceError, RenderingError, RenderingResult, MAX_TEXTURES}, EmbeddedAssets
+    EmbeddedAssets,
+    rendering::{MAX_TEXTURES, RenderingError, RenderingResult, resources::ResourceError},
 };
 
 use super::{mesh::MeshManager, texture::TextureManager};
@@ -26,6 +27,11 @@ pub struct Manager {
 
     mesh_manager: MeshManager,
     texture_manager: TextureManager,
+    // Used for reference counting textures bindings (as given by texture manager)
+    //textures: HashMap<u32, u32>,
+
+    // Used for reference counting materials
+    //materials: HashMap<u32, u32>,
 }
 
 impl Manager {
@@ -130,6 +136,11 @@ impl Manager {
         let mut archive = Archive::new(file);
 
         for file in archive.entries()? {
+            let loaded_resources = self.texture_manager.wait_load_nonblock()?;
+            if loaded_resources > 0 {
+                println!("Texture manager has completed loading {loaded_resources} texture(s)");
+            }
+
             let mut file = file?;
 
             let path = file.header().path()?;
@@ -250,49 +261,57 @@ impl Manager {
                         match *property {
                             "diffuse_texture" => {
                                 let Some(linkname) = file.link_name()? else {
-                                    return Err(RenderingError::ResourceError(ResourceError::InvalidObjectFormat))
+                                    return Err(RenderingError::ResourceError(
+                                        ResourceError::InvalidObjectFormat,
+                                    ));
                                 };
 
                                 let mut name = String::new();
                                 for n in linkname.to_string_lossy().split("/") {
                                     name = String::from(n);
-                                };
+                                }
 
                                 material_decl.diffuse_texture.replace(name);
                             }
                             "displacement_texture" => {
                                 let Some(linkname) = file.link_name()? else {
-                                    return Err(RenderingError::ResourceError(ResourceError::InvalidObjectFormat))
+                                    return Err(RenderingError::ResourceError(
+                                        ResourceError::InvalidObjectFormat,
+                                    ));
                                 };
 
                                 let mut name = String::new();
                                 for n in linkname.to_string_lossy().split("/") {
                                     name = String::from(n);
-                                };
+                                }
 
                                 material_decl.displacement_texture.replace(name);
                             }
                             "reflection_texture" => {
                                 let Some(linkname) = file.link_name()? else {
-                                    return Err(RenderingError::ResourceError(ResourceError::InvalidObjectFormat))
+                                    return Err(RenderingError::ResourceError(
+                                        ResourceError::InvalidObjectFormat,
+                                    ));
                                 };
 
                                 let mut name = String::new();
                                 for n in linkname.to_string_lossy().split("/") {
                                     name = String::from(n);
-                                };
+                                }
 
                                 material_decl.reflection_texture.replace(name);
                             }
                             "normal_texture" => {
                                 let Some(linkname) = file.link_name()? else {
-                                    return Err(RenderingError::ResourceError(ResourceError::InvalidObjectFormat))
+                                    return Err(RenderingError::ResourceError(
+                                        ResourceError::InvalidObjectFormat,
+                                    ));
                                 };
 
                                 let mut name = String::new();
                                 for n in linkname.to_string_lossy().split("/") {
                                     name = String::from(n);
-                                };
+                                }
 
                                 material_decl.normal_texture.replace(name);
                             }
@@ -320,13 +339,15 @@ impl Manager {
                         match *property {
                             "material" => {
                                 let Some(linkname) = file.link_name()? else {
-                                    return Err(RenderingError::ResourceError(ResourceError::InvalidObjectFormat))
+                                    return Err(RenderingError::ResourceError(
+                                        ResourceError::InvalidObjectFormat,
+                                    ));
                                 };
 
                                 let mut name = String::new();
                                 for n in linkname.to_string_lossy().split("/") {
                                     name = String::from(n);
-                                };
+                                }
 
                                 model_decl.material_name.replace(name);
                             }
@@ -427,10 +448,7 @@ impl Manager {
         }
 
         for (k, v) in materials.iter() {
-            if let Some(texture_name) = &v.diffuse_texture {
-                
-            }
-
+            if let Some(texture_name) = &v.diffuse_texture {}
         }
 
         println!();
