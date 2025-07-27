@@ -11,6 +11,9 @@ pub enum ResourceError {
 
     #[error("Incomplete texture: {0}")]
     IncompleteTexture(String),
+
+    #[error("Invalid object format")]
+    InvalidObjectFormat,
 }
 
 pub type ResourceResult<T> = Result<T, ResourceError>;

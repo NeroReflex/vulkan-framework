@@ -3,8 +3,7 @@ use std::{collections::HashMap, io::Read, path::PathBuf, sync::Arc};
 use tar::Archive;
 
 use crate::{
-    EmbeddedAssets,
-    rendering::{MAX_TEXTURES, RenderingResult, resources::ResourceError},
+    rendering::{resources::ResourceError, RenderingError, RenderingResult, MAX_TEXTURES}, EmbeddedAssets
 };
 
 use super::{mesh::MeshManager, texture::TextureManager};
@@ -112,10 +111,12 @@ impl Manager {
         #[derive(Default, Clone)]
         struct ModelDecl {
             material_name: Option<String>,
-            indexes: Option<Vec<u32>>,
+            indexes: Option<Arc<AllocatedBuffer>>,
         }
 
         let mut textures: HashMap<String, TextureDecl> = HashMap::new();
+        let mut materials: HashMap<String, MaterialDecl> = HashMap::new();
+        let mut models: HashMap<String, ModelDecl> = HashMap::new();
 
         if !file.exists() {
             panic!("File doesn't exists!");
@@ -156,7 +157,7 @@ impl Manager {
 
                         let mut texture_decl = match textures.get(&texture_name) {
                             Some(decl) => decl.clone(),
-                            None => TextureDecl::default(),
+                            None => Default::default(),
                         };
 
                         match *property {
@@ -232,23 +233,150 @@ impl Manager {
                         };
 
                         textures.insert(texture_name, texture_decl);
-
-                        print!("@");
                     }
                     "materials" => {
-                        print!(".");
+                        let material_name = String::from(*obj_name);
+
+                        let Some(property) = splitted_path.get(2) else {
+                            // this is the directory definition
+                            continue;
+                        };
+
+                        let mut material_decl = match materials.get(&material_name) {
+                            Some(decl) => decl.clone(),
+                            None => Default::default(),
+                        };
+
+                        match *property {
+                            "diffuse_texture" => {
+                                let Some(linkname) = file.link_name()? else {
+                                    return Err(RenderingError::ResourceError(ResourceError::InvalidObjectFormat))
+                                };
+
+                                let mut name = String::new();
+                                for n in linkname.to_string_lossy().split("/") {
+                                    name = String::from(n);
+                                };
+
+                                material_decl.diffuse_texture.replace(name);
+                            }
+                            "displacement_texture" => {
+                                let Some(linkname) = file.link_name()? else {
+                                    return Err(RenderingError::ResourceError(ResourceError::InvalidObjectFormat))
+                                };
+
+                                let mut name = String::new();
+                                for n in linkname.to_string_lossy().split("/") {
+                                    name = String::from(n);
+                                };
+
+                                material_decl.displacement_texture.replace(name);
+                            }
+                            "reflection_texture" => {
+                                let Some(linkname) = file.link_name()? else {
+                                    return Err(RenderingError::ResourceError(ResourceError::InvalidObjectFormat))
+                                };
+
+                                let mut name = String::new();
+                                for n in linkname.to_string_lossy().split("/") {
+                                    name = String::from(n);
+                                };
+
+                                material_decl.reflection_texture.replace(name);
+                            }
+                            "normal_texture" => {
+                                let Some(linkname) = file.link_name()? else {
+                                    return Err(RenderingError::ResourceError(ResourceError::InvalidObjectFormat))
+                                };
+
+                                let mut name = String::new();
+                                for n in linkname.to_string_lossy().split("/") {
+                                    name = String::from(n);
+                                };
+
+                                material_decl.normal_texture.replace(name);
+                            }
+                            "" => continue,
+                            _ => println!(
+                                "WARNING: unrecognised property for material {material_name}: {property}"
+                            ),
+                        };
+
+                        materials.insert(material_name, material_decl);
                     }
                     "models" => {
-                        print!("-");
+                        let model_name = String::from(*obj_name);
+
+                        let Some(property) = splitted_path.get(2) else {
+                            // this is the directory definition
+                            continue;
+                        };
+
+                        let mut model_decl = match models.get(&model_name) {
+                            Some(decl) => decl.clone(),
+                            None => Default::default(),
+                        };
+
+                        match *property {
+                            "material" => {
+                                let Some(linkname) = file.link_name()? else {
+                                    return Err(RenderingError::ResourceError(ResourceError::InvalidObjectFormat))
+                                };
+
+                                let mut name = String::new();
+                                for n in linkname.to_string_lossy().split("/") {
+                                    name = String::from(n);
+                                };
+
+                                model_decl.material_name.replace(name);
+                            }
+                            "indexes" => {
+                                let indexes_size = file.header().size()?;
+
+                                // Allocate the buffer that will be used to upload the index data to the vulkan device
+                                let buffer = Buffer::new(
+                                    self.device.clone(),
+                                    ConcreteBufferDescriptor::new(
+                                        BufferUsage::from([BufferUseAs::TransferSrc].as_slice()),
+                                        indexes_size,
+                                    ),
+                                    None,
+                                    Some("resource_management.vertex_buffer"),
+                                )?;
+
+                                println!("allocating index buffer size: {indexes_size}");
+                                let buffer =
+                                    AllocatedBuffer::new(self.memory_pool.clone(), buffer).unwrap();
+
+                                // Fill the buffer with actual data from the file
+                                {
+                                    let mut mem_map = MemoryMap::new(self.memory_pool.clone())?;
+                                    let slice = mem_map.as_mut_slice::<u32>(
+                                        buffer.clone() as Arc<dyn MemoryPoolBacked>
+                                    )?;
+                                    let len = slice.len() * std::mem::size_of::<u32>();
+                                    let ptr = slice.as_mut_ptr() as *mut u8;
+                                    let slice_u8 =
+                                        unsafe { std::slice::from_raw_parts_mut(ptr, len) };
+                                    file.read_exact(slice_u8).unwrap();
+                                }
+
+                                model_decl.indexes.replace(buffer);
+                            }
+                            "" => continue,
+                            _ => println!(
+                                "WARNING: unrecognised property for model {model_name}: {property}"
+                            ),
+                        };
+
+                        models.insert(model_name, model_decl);
                     }
                     _ => {
-                        print!("?");
+                        print!("WARNING: unrecognised object type");
                     }
                 },
                 None => match obj_type {
                     "vertex_buffer" => {
-                        print!("!");
-
                         // Allocate the buffer that will be used to upload the vertex data to the vulkan device
                         let buffer = Buffer::new(
                             self.device.clone(),
@@ -278,8 +406,6 @@ impl Manager {
             };
         }
 
-        println!("");
-
         for (k, v) in textures.iter() {
             match (&v.width, &v.height, &v.miplevel, &v.data) {
                 (Some(width), Some(height), Some(miplevel), Some(data)) => {
@@ -298,6 +424,13 @@ impl Manager {
                     ));
                 }
             };
+        }
+
+        for (k, v) in materials.iter() {
+            if let Some(texture_name) = &v.diffuse_texture {
+                
+            }
+
         }
 
         println!();
