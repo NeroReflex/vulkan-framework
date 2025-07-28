@@ -6,7 +6,7 @@ use vulkan_framework::{
     device::DeviceOwned,
     fence::{Fence, FenceWaiter},
     queue::Queue,
-    queue_family::QueueFamily,
+    queue_family::{QueueFamily, QueueFamilyOwned},
 };
 
 use crate::rendering::RenderingResult;
@@ -15,6 +15,15 @@ enum LoadableResource<T> {
     Free(Arc<Fence>, Arc<PrimaryCommandBuffer>),
     Loaded(T),
     Loading(T, FenceWaiter),
+}
+
+impl<T> LoadableResource<T> {
+    fn free(&self) -> bool {
+        match self {
+            LoadableResource::Free(_, _) => true,
+            _ => false,
+        }
+    }
 }
 
 type LoadableResourcesCollectionType<T> = smallvec::SmallVec<[LoadableResource<T>; 128]>;
@@ -36,6 +45,48 @@ where
     #[inline]
     pub(crate) fn status(&self) -> u64 {
         self.status.to_owned()
+    }
+
+    pub(crate) fn remove(&mut self, index: u32) -> RenderingResult<()> {
+        let device = self
+            .command_pool
+            .get_parent_queue_family()
+            .get_parent_device();
+        let fence_name = format!("{}.fence[{index}]", self.debug_name);
+        let command_buffer_name = format!("{}.command_buffer[{index}]", self.debug_name);
+        if self.collection[index as usize].free() {
+            self.status += 1;
+        }
+        self.collection[index as usize] = LoadableResource::Free(
+            Fence::new(device, false, Some(fence_name.as_str()))?,
+            PrimaryCommandBuffer::new(
+                self.command_pool.clone(),
+                Some(command_buffer_name.as_str()),
+            )?,
+        );
+
+        Ok(())
+    }
+
+    pub(crate) fn wait_load_blocking(&mut self) -> RenderingResult<usize> {
+        let mut loaded = 0;
+
+        for index in 0..self.collection.len() {
+            let resource = match &self.collection[index] {
+                LoadableResource::Loading(resource, _) => resource,
+                _ => continue,
+            };
+
+            // doing this means the FenceWaiter will be dropped, thus awaiting for completion
+            self.collection[index] = LoadableResource::Loaded(resource.clone());
+            loaded += 1;
+        }
+
+        if loaded > 0 {
+            self.status += 1;
+        }
+
+        Ok(loaded)
     }
 
     pub(crate) fn wait_load_nonblock(&mut self) -> RenderingResult<usize> {

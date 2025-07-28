@@ -20,7 +20,7 @@ use vulkan_framework::{
     },
     image_view::{ImageView, ImageViewType},
     memory_allocator::DefaultAllocator,
-    memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryType},
+    memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryRequirements, MemoryType},
     memory_pool::{MemoryPool, MemoryPoolFeatures},
     memory_requiring::MemoryRequiring,
     pipeline_layout::PipelineLayout,
@@ -123,17 +123,11 @@ impl FinalRendering {
         // add some leftover space to account for alignment
         //+ (1024 * 1024* 128);
 
-        let hints: smallvec::SmallVec<[&dyn MemoryRequiring; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]> =
-            image_handles
-                .iter()
-                .map(|a| a as &dyn MemoryRequiring)
-                .collect();
         let memory_heap = MemoryHeap::new(
             device.clone(),
             ConcreteMemoryHeapDescriptor::new(MemoryType::DeviceLocal(None), minimum_memory),
-            hints.as_slice(),
+            MemoryRequirements::try_from(image_handles.as_slice())?,
         )?;
-        drop(hints);
 
         let memory_pool = MemoryPool::new(
             memory_heap,

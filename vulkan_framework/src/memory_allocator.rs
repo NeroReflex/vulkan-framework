@@ -81,10 +81,7 @@ pub struct DefaultAllocator {
 }
 
 impl DefaultAllocator {
-    pub fn new(total_size: u64) -> Self {
-        let block_size = 4096u64;
-        let number_of_blocks = total_size / block_size;
-
+    pub fn with_blocksize(block_size: u64, number_of_blocks: u64) -> Self {
         println!(
             "Managing {} blocks of {} bytes each",
             number_of_blocks, block_size
@@ -105,6 +102,18 @@ impl DefaultAllocator {
             total_size: number_of_blocks * block_size,
             block_size,
         }
+    }
+
+    pub fn new(total_size: u64) -> Self {
+        let block_size = 4096u64;
+        let number_of_blocks = total_size / block_size;
+
+        println!(
+            "Managing {} blocks of {} bytes each",
+            number_of_blocks, block_size
+        );
+
+        Self::with_blocksize(block_size, number_of_blocks)
     }
 }
 

@@ -37,10 +37,12 @@ use vulkan_framework::memory_allocator::StackAllocator;
 use vulkan_framework::memory_heap::ConcreteMemoryHeapDescriptor;
 use vulkan_framework::memory_heap::MemoryHeap;
 use vulkan_framework::memory_heap::MemoryHostVisibility;
+use vulkan_framework::memory_heap::MemoryRequirements;
 use vulkan_framework::memory_heap::MemoryType;
 use vulkan_framework::memory_pool::MemoryPool;
 use vulkan_framework::memory_pool::MemoryPoolBacked;
 use vulkan_framework::memory_pool::MemoryPoolFeatures;
+use vulkan_framework::memory_requiring::MemoryRequiring;
 use vulkan_framework::pipeline_layout::PipelineLayout;
 use vulkan_framework::pipeline_stage::PipelineStage;
 use vulkan_framework::pipeline_stage::PipelineStages;
@@ -164,7 +166,7 @@ fn main() {
             })),
             1024 * 1024 * 512, // Memory heap with at least 512MiB of memory
         ),
-        &[&image_handle],
+        MemoryRequirements::try_from([&image_handle as &dyn MemoryRequiring].as_slice()).unwrap(),
     ) else {
         panic!("Error creating the memory heap :(");
     };

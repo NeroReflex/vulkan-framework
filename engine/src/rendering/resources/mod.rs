@@ -15,6 +15,12 @@ pub enum ResourceError {
 
     #[error("Invalid object format")]
     InvalidObjectFormat,
+
+    #[error("Resource is too large to fit in reserved GPU memory")]
+    ResourceTooLarge,
+
+    #[error("Cannot remove the empty texture")]
+    AttemptedRemovalOfEmptyTexture,
 }
 
 pub type ResourceResult<T> = Result<T, ResourceError>;

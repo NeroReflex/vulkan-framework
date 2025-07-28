@@ -2,11 +2,7 @@ use std::sync::Arc;
 
 use vulkan_framework::{
     buffer::BufferTrait,
-    command_buffer::{
-        CommandBufferRecorder, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs,
-        PrimaryCommandBuffer,
-    },
-    command_pool::CommandPool,
+    command_buffer::{CommandBufferRecorder, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
     descriptor_pool::{
         DescriptorPool, DescriptorPoolConcreteDescriptor, DescriptorPoolSizesConcreteDescriptor,
     },
@@ -21,7 +17,9 @@ use vulkan_framework::{
     },
     image_view::ImageView,
     memory_allocator::DefaultAllocator,
-    memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryHeapOwned, MemoryType},
+    memory_heap::{
+        ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryHeapOwned, MemoryRequirements, MemoryType,
+    },
     memory_pool::{MemoryPool, MemoryPoolFeature, MemoryPoolFeatures},
     pipeline_stage::{PipelineStage, PipelineStages},
     queue::Queue,
@@ -33,17 +31,13 @@ use vulkan_framework::{
 
 use crate::rendering::{
     MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingError, RenderingResult,
-    resources::collection::LoadableResourcesCollection,
+    resources::{ResourceError, collection::LoadableResourcesCollection},
 };
 
 type DescriptorSetsType = smallvec::SmallVec<[Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
 
 pub struct TextureManager {
-    device: Arc<Device>,
     queue: Arc<Queue>,
-
-    command_pool: Arc<CommandPool>,
-    command_buffer: Arc<PrimaryCommandBuffer>,
 
     _descriptor_pool: Arc<DescriptorPool>,
     binding_descriptor: Arc<BindingDescriptor>,
@@ -83,11 +77,6 @@ impl TextureManager {
         let device = queue_family.get_parent_device();
 
         let queue = Queue::new(queue_family.clone(), Some("texture_manager.queue"))?;
-
-        let command_pool =
-            CommandPool::new(queue_family.clone(), Some("texture_manager.command_pool"))?;
-        let command_buffer =
-            PrimaryCommandBuffer::new(command_pool.clone(), Some("texture_manager.command_pool"))?;
 
         let descriptor_pool = DescriptorPool::new(
             device.clone(),
@@ -140,13 +129,13 @@ impl TextureManager {
         let memory_heap = MemoryHeap::new(
             device.clone(),
             ConcreteMemoryHeapDescriptor::new(MemoryType::DeviceLocal(None), total_size),
-            &[&stub_image],
+            MemoryRequirements::from(&stub_image),
         )?;
 
         let memory_pool = MemoryPool::new(
             memory_heap,
             Arc::new(DefaultAllocator::new(total_size)),
-            MemoryPoolFeatures::from([MemoryPoolFeature::DeviceAddressable {}].as_slice()),
+            MemoryPoolFeatures::from([].as_slice()),
         )?;
 
         let mut textures = LoadableResourcesCollection::new(
@@ -182,11 +171,7 @@ impl TextureManager {
         };
 
         Ok(Self {
-            device,
             queue,
-
-            command_pool,
-            command_buffer,
 
             _descriptor_pool: descriptor_pool,
             binding_descriptor,
@@ -337,5 +322,17 @@ impl TextureManager {
                 super::ResourceError::NoTextureSlotAvailable,
             )),
         }
+    }
+
+    #[inline]
+    pub fn remove(&mut self, index: u32) -> RenderingResult<()> {
+        // Avoid removing the default texture
+        if index == 0 {
+            return Err(RenderingError::ResourceError(
+                ResourceError::AttemptedRemovalOfEmptyTexture,
+            ));
+        }
+
+        self.textures.remove(index)
     }
 }

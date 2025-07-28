@@ -28,9 +28,10 @@ use vulkan_framework::image::{
 use vulkan_framework::image_view::{ImageView, ImageViewType};
 use vulkan_framework::instance::*;
 use vulkan_framework::memory_allocator::StackAllocator;
-use vulkan_framework::memory_heap::ConcreteMemoryHeapDescriptor;
+use vulkan_framework::memory_heap::{ConcreteMemoryHeapDescriptor, MemoryRequirements};
 use vulkan_framework::memory_heap::{MemoryHeap, MemoryType};
 use vulkan_framework::memory_pool::{MemoryPool, MemoryPoolFeatures};
+use vulkan_framework::memory_requiring::MemoryRequiring;
 use vulkan_framework::pipeline_layout::PipelineLayout;
 use vulkan_framework::pipeline_stage::{PipelineStage, PipelineStages};
 use vulkan_framework::push_constant_range::PushConstanRange;
@@ -313,7 +314,7 @@ fn main() {
     let memory_heap = match MemoryHeap::new(
         device.clone(),
         ConcreteMemoryHeapDescriptor::new(MemoryType::DeviceLocal(None), 1024 * 1024 * 512),
-        &[&image],
+        MemoryRequirements::try_from([&image as &dyn MemoryRequiring].as_slice()).unwrap(),
     ) {
         Ok(memory_heap) => memory_heap,
         Err(err) => {

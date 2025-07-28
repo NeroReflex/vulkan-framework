@@ -389,24 +389,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let memory_required = (4096 * 4) + memory_required;
 
-        let hints: smallvec::SmallVec<[&dyn MemoryRequiring; 8]> = rt_image_handles
-            .iter()
-            .map(|a| a as &dyn MemoryRequiring)
-            .collect();
-
         let device_local_memory_heap = MemoryHeap::new(
             dev.clone(),
             ConcreteMemoryHeapDescriptor::new(MemoryType::DeviceLocal(None), memory_required),
-            hints
-                .iter()
-                .map(|h| *h as &dyn MemoryRequiring)
-                .collect::<Vec<_>>()
-                .as_slice(),
+            MemoryRequirements::try_from(rt_image_handles.as_slice()).unwrap(),
         )
         .unwrap();
         println!("Memory heap created! <3");
-
-        drop(hints);
 
         let device_local_default_allocator = MemoryPool::new(
             device_local_memory_heap,
@@ -418,7 +407,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let raytracing_memory_heap = MemoryHeap::new(
             dev.clone(),
             ConcreteMemoryHeapDescriptor::new(required_memory_type(), 1024 * 1024 * 128),
-            &[],
+            Default::default(),
         )
         .unwrap();
         println!("Memory heap created! <3");

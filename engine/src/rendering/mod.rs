@@ -36,3 +36,4 @@ pub type RenderingResult<T> = Result<T, RenderingError>;
 
 pub(crate) const MAX_FRAMES_IN_FLIGHT_NO_MALLOC: usize = 8;
 pub(crate) const MAX_TEXTURES: u32 = 256;
+pub(crate) const MAX_MATERIALS: u32 = 128;

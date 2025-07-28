@@ -68,6 +68,69 @@ impl ConcreteMemoryHeapDescriptor {
     }
 }
 
+/// Represents memory requirements as reported by the driver
+#[derive(Debug, Default, Copy, Clone)]
+pub struct MemoryRequirements {
+    memory_type_bits_requirement: u32,
+}
+
+impl<T> From<&T> for MemoryRequirements
+where
+    T: MemoryRequiring,
+{
+    fn from(resource: &T) -> Self {
+        let memory_type_bits_requirement = resource.memory_requirements().memory_type_bits();
+        Self {
+            memory_type_bits_requirement,
+        }
+    }
+}
+
+impl TryFrom<&[&dyn MemoryRequiring]> for MemoryRequirements {
+    type Error = VulkanError;
+
+    fn try_from(value: &[&dyn MemoryRequiring]) -> Result<Self, Self::Error> {
+        let mut memory_type_bits_requirement: u32 = u32::MAX;
+        for requirement in value.as_ref().iter() {
+            memory_type_bits_requirement &= requirement.memory_requirements().memory_type_bits();
+        }
+
+        if memory_type_bits_requirement == 0u32 {
+            return Err(VulkanError::Framework(
+                FrameworkError::IncompatibleResources,
+            ));
+        }
+
+        Ok(Self {
+            memory_type_bits_requirement,
+        })
+    }
+}
+
+impl<T> TryFrom<&[T]> for MemoryRequirements
+where
+    T: MemoryRequiring,
+{
+    type Error = VulkanError;
+
+    fn try_from(value: &[T]) -> Result<Self, Self::Error> {
+        let mut memory_type_bits_requirement: u32 = u32::MAX;
+        for requirement in value.as_ref().iter() {
+            memory_type_bits_requirement &= requirement.memory_requirements().memory_type_bits();
+        }
+
+        if memory_type_bits_requirement == 0u32 {
+            return Err(VulkanError::Framework(
+                FrameworkError::IncompatibleResources,
+            ));
+        }
+
+        Ok(Self {
+            memory_type_bits_requirement,
+        })
+    }
+}
+
 pub struct MemoryHeap {
     device: Arc<Device>,
     descriptor: ConcreteMemoryHeapDescriptor,
@@ -227,7 +290,7 @@ impl MemoryHeap {
     pub fn new(
         device: Arc<Device>,
         descriptor: ConcreteMemoryHeapDescriptor,
-        hints: &[&dyn MemoryRequiring],
+        requirements: MemoryRequirements,
     ) -> VulkanResult<Arc<Self>> {
         let device_memory_properties = unsafe {
             device
@@ -236,21 +299,10 @@ impl MemoryHeap {
                 .get_physical_device_memory_properties(device.physical_device.to_owned())
         };
 
-        let mut memory_type_bits_requirement: u32 = u32::MAX;
-        for requirement in hints.as_ref().iter() {
-            memory_type_bits_requirement &= requirement.memory_requirements().memory_type_bits();
-        }
-
-        if memory_type_bits_requirement == 0u32 {
-            return Err(VulkanError::Framework(
-                FrameworkError::IncompatibleResources,
-            ));
-        }
-
         let adequate_heap = Self::search_adequate_heap(
             &device_memory_properties,
             &descriptor,
-            memory_type_bits_requirement,
+            requirements.memory_type_bits_requirement,
         );
 
         let (heap_index, heap_type_index, heap_property_flags) = match adequate_heap {
