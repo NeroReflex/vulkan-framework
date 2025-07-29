@@ -6,8 +6,8 @@ use vulkan_framework::{
         bottom_level::{
             BottomLevelAccelerationStructure, BottomLevelAccelerationStructureIndexBuffer,
             BottomLevelAccelerationStructureVertexBuffer, BottomLevelIndexBufferSpecifier,
-            BottomLevelTrianglesGroupDecl, BottomLevelVerticesTopologyDecl,
-            BottomLevelVertexBufferSpecifier,
+            BottomLevelTrianglesGroupDecl, BottomLevelVertexBufferSpecifier,
+            BottomLevelVerticesTopologyDecl,
         },
     },
     binding_tables::required_memory_type,

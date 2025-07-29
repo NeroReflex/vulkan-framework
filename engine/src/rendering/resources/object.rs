@@ -14,12 +14,16 @@ use super::{mesh::MeshManager, texture::TextureManager};
 
 use vulkan_framework::{
     acceleration_structure::{
+        VertexIndexing,
         bottom_level::{
             BottomLevelAccelerationStructureIndexBuffer,
-            BottomLevelAccelerationStructureVertexBuffer, BottomLevelTrianglesGroupDecl, BottomLevelVerticesTopologyDecl,
-        }, VertexIndexing
+            BottomLevelAccelerationStructureVertexBuffer, BottomLevelTrianglesGroupDecl,
+            BottomLevelVerticesTopologyDecl,
+        },
     },
-    buffer::{AllocatedBuffer, Buffer, BufferUsage, BufferUseAs, ConcreteBufferDescriptor},
+    buffer::{
+        AllocatedBuffer, Buffer, BufferTrait, BufferUsage, BufferUseAs, ConcreteBufferDescriptor,
+    },
     device::DeviceOwned,
     graphics_pipeline::AttributeType,
     image::{CommonImageFormat, Image2DDimensions, ImageFormat},
@@ -55,7 +59,7 @@ struct LoadedVertexBuffer {
 #[derive(Debug, Default, Copy, Clone)]
 
 struct LoadedMesh {
-    index_buffer: u32,
+    mesh_index: u32,
     material: LoadedMaterial,
 }
 
@@ -77,8 +81,13 @@ pub struct MaterialGPU {
 const SIZEOF_MATERIAL_DEFINITION: usize = std::mem::size_of::<MaterialGPU>();
 
 type StateType = u64;
-type MaterialsInFlightType =
-    smallvec::SmallVec<[(StateType, Arc<AllocatedBuffer>); MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
+type MaterialsFrameInFlightType =
+    smallvec::SmallVec<[Arc<AllocatedBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
+
+type MeshToMaterialFramesInFlightType =
+    smallvec::SmallVec<[Arc<AllocatedBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
+
+type StatusFramesInFlightType = smallvec::SmallVec<[StateType; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
 
 pub struct Manager {
     debug_name: String,
@@ -92,9 +101,17 @@ pub struct Manager {
 
     // I can load up to 128 materials
     materials: u128,
-    materials_buffer: MaterialsInFlightType,
+    materials_buffer: MaterialsFrameInFlightType,
     current_materials_buffer: Arc<AllocatedBuffer>,
-    current_materials_state: StateType,
+
+    mesh_to_material_map: MeshToMaterialFramesInFlightType,
+    current_mesh_to_material_map: Arc<AllocatedBuffer>,
+
+    // this keeps track of the current status (for new frames)
+    current_status: StateType,
+
+    // this tracks the status of the frames_in_buffer
+    frames_in_flight_status: StatusFramesInFlightType,
 
     objects: HashMap<String, MeshDefinition>,
 }
@@ -221,12 +238,50 @@ impl Manager {
             MemoryPoolFeatures::from([].as_slice()),
         )?;
 
-        let current_materials_state = 0;
-        let mut materials_buffer: MaterialsInFlightType = smallvec::smallvec![];
+        let current_status = 0;
+        let frames_in_flight_status: StatusFramesInFlightType = (0..(frames_in_flight as usize))
+            .map(|_| current_status)
+            .collect();
+
+        let mut materials_buffer: MaterialsFrameInFlightType = smallvec::smallvec![];
         for buffer in materials_unallocated_buffer.into_iter() {
             let material_buffer = AllocatedBuffer::new(materials_memory_pool.clone(), buffer)?;
-            materials_buffer.push((current_materials_state, material_buffer));
+            materials_buffer.push(material_buffer);
         }
+
+        let mut mesh_to_material_map: MeshToMaterialFramesInFlightType =
+            MeshToMaterialFramesInFlightType::with_capacity(frames_in_flight as usize);
+        for index in 0..frames_in_flight {
+            let mesh_material_buffer = Buffer::new(
+                device.clone(),
+                ConcreteBufferDescriptor::new(
+                    BufferUsage::from(
+                        [BufferUseAs::TransferDst, BufferUseAs::StorageBuffer].as_slice(),
+                    ),
+                    (MAX_MESHES as u64) * 4u64,
+                ),
+                None,
+                Some(format!("resource_management.mesh_to_material_map[{index}]").as_str()),
+            )?;
+
+            mesh_to_material_map.push(AllocatedBuffer::new(
+                memory_pool.clone(),
+                mesh_material_buffer,
+            )?);
+        }
+
+        let current_mesh_to_material_map = Buffer::new(
+            device.clone(),
+            ConcreteBufferDescriptor::new(
+                BufferUsage::from([BufferUseAs::TransferSrc].as_slice()),
+                (MAX_MESHES as u64) * 4u64,
+            ),
+            None,
+            Some("resource_management.current_mesh_to_material_map"),
+        )?;
+
+        let current_mesh_to_material_map =
+            AllocatedBuffer::new(memory_pool.clone(), current_mesh_to_material_map)?;
 
         let objects = HashMap::new();
 
@@ -243,7 +298,12 @@ impl Manager {
             materials,
             materials_buffer,
             current_materials_buffer,
-            current_materials_state,
+
+            mesh_to_material_map,
+            current_mesh_to_material_map,
+
+            current_status,
+            frames_in_flight_status,
 
             objects,
         })
@@ -577,11 +637,11 @@ impl Manager {
                         if (size % vertex_size) != 0u64 {
                             panic!("AAAAAAAHHH");
                         }
-                        
+
                         let triangles_topology = BottomLevelVerticesTopologyDecl::new(
                             vertex_count as u32,
                             AttributeType::Vec3,
-                            vertex_stride
+                            vertex_stride,
                         );
 
                         // Allocate the buffer that will be used to upload the vertex data to the vulkan device
@@ -750,21 +810,38 @@ impl Manager {
             };
 
             let material = material.clone();
+            let material_index: u32 = material.material_index as u32;
 
-            let index_buffer =
-                self.mesh_manager
-                    .load(vertex_buffer.clone(), index_buffer)?;
+            let mesh_index = self
+                .mesh_manager
+                .load(vertex_buffer.clone(), index_buffer)?;
 
             loaded_models.insert(
                 k,
                 LoadedMesh {
-                    index_buffer,
+                    mesh_index,
                     material,
                 },
             );
+
+            // register into the GPU the mesh->material association
+            {
+                let mut mem_map = MemoryMap::new(
+                    self.current_mesh_to_material_map
+                        .get_backing_memory_pool()
+                        .clone(),
+                )?;
+                let slice = mem_map.as_mut_slice_with_size::<u32>(
+                    self.current_mesh_to_material_map.clone() as Arc<dyn MemoryPoolBacked>,
+                    self.current_mesh_to_material_map.size(),
+                )?;
+                assert_eq!(MAX_MESHES as usize, slice.len());
+                slice[mesh_index as usize] = material_index;
+            }
         }
 
-        println!();
+        let blas_created = self.mesh_manager.wait_load_nonblock()?;
+        println!("During loading resources GPU has already created {blas_created} BLAS");
 
         Ok(())
     }

@@ -315,8 +315,8 @@ impl BottomLevelAccelerationStructureVertexBuffer {
         debug_name: &Option<&str>,
     ) -> VulkanResult<Arc<Self>> {
         let device = memory_pool.get_parent_memory_heap().get_parent_device();
-        let buffer_size = triangles_topology.vertex_stride()
-            * triangles_topology.max_vertices() as u64;
+        let buffer_size =
+            triangles_topology.vertex_stride() * triangles_topology.max_vertices() as u64;
 
         // TODO: change vertex buffer sizes
         let vertex_buffer_debug_name = debug_name.map(|name| format!("{name}_vertex_buffer"));
@@ -661,7 +661,10 @@ impl BottomLevelAccelerationStructure {
 
     #[inline]
     pub fn max_primitives_count(&self) -> u32 {
-        self.triangles_decl().iter().map(|(_, g)| g.max_triangles()).sum()
+        self.triangles_decl()
+            .iter()
+            .map(|(_, g)| g.max_triangles())
+            .sum()
     }
 
     fn create_blas_buffer(

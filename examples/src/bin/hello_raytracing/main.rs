@@ -6,8 +6,8 @@ use vulkan_framework::{
     acceleration_structure::{
         bottom_level::{
             BottomLevelAccelerationStructure, BottomLevelIndexBufferSpecifier,
-            BottomLevelTrianglesGroupDecl, BottomLevelVerticesTopologyDecl,
-            BottomLevelVertexBufferSpecifier,
+            BottomLevelTrianglesGroupDecl, BottomLevelVertexBufferSpecifier,
+            BottomLevelVerticesTopologyDecl,
         },
         top_level::{TopLevelAccelerationStructure, TopLevelBLASGroupDecl},
         AllowedBuildingDevice, VertexIndexing,
