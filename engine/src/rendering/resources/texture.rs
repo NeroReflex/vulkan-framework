@@ -37,6 +37,8 @@ use crate::rendering::{
 type DescriptorSetsType = smallvec::SmallVec<[Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
 
 pub struct TextureManager {
+    debug_name: String,
+
     queue: Arc<Queue>,
 
     _descriptor_pool: Arc<DescriptorPool>,
@@ -73,6 +75,7 @@ impl TextureManager {
         stub_image_data: Arc<dyn BufferTrait>,
         max_textures: u32,
         frames_in_flight: u32,
+        debug_name: String,
     ) -> RenderingResult<Self> {
         let device = queue_family.get_parent_device();
 
@@ -154,7 +157,7 @@ impl TextureManager {
 
         let Some(stub_image) = textures.load(
             queue.clone(),
-            || Self::allocate_image(memory_pool.clone(), stub_image),
+            || Self::allocate_image(memory_pool.clone(), stub_image, debug_name.clone()),
             |recorder, image_view| {
                 Self::setup_load_image_operation(
                     recorder,
@@ -171,6 +174,8 @@ impl TextureManager {
         };
 
         Ok(Self {
+            debug_name,
+
             queue,
 
             _descriptor_pool: descriptor_pool,
@@ -194,8 +199,9 @@ impl TextureManager {
         debug_name: String,
     ) -> RenderingResult<Arc<ImageView>> {
         let device = memory_pool.get_parent_memory_heap().get_parent_device();
-        let texture = Self::create_image(device, format, dimensions, mip_levels, debug_name)?;
-        Self::allocate_image(memory_pool, texture)
+        let texture =
+            Self::create_image(device, format, dimensions, mip_levels, debug_name.clone())?;
+        Self::allocate_image(memory_pool, texture, debug_name)
     }
 
     fn create_image(
@@ -205,6 +211,7 @@ impl TextureManager {
         mip_levels: u32,
         debug_name: String,
     ) -> RenderingResult<Image> {
+        let texture_name = format!("debug_name.texture[...].imageview");
         let texture = Image::new(
             device.clone(),
             ConcreteImageDescriptor::new(
@@ -218,7 +225,7 @@ impl TextureManager {
                 ImageTiling::Optimal,
             ),
             None,
-            Some(debug_name.as_str()),
+            Some(texture_name.as_str()),
         )?;
 
         Ok(texture)
@@ -227,9 +234,10 @@ impl TextureManager {
     fn allocate_image(
         memory_pool: Arc<MemoryPool>,
         texture: Image,
+        debug_name: String,
     ) -> RenderingResult<Arc<ImageView>> {
         let texture = AllocatedImage::new(memory_pool, texture)?;
-        let texture_imageview_name = "texture_manager.texture[...].imageview".to_string();
+        let texture_imageview_name = format!("{debug_name}.texture[...].imageview");
         let texture_imageview = ImageView::new(
             texture.clone(),
             None,
@@ -302,7 +310,7 @@ impl TextureManager {
         image_data: Arc<dyn BufferTrait>,
     ) -> RenderingResult<u32> {
         let queue = self.queue.clone();
-        match self.textures.load(
+        let Some(texture_index) = self.textures.load(
             queue.clone(),
             || {
                 Self::create_and_allocate_image(
@@ -310,18 +318,21 @@ impl TextureManager {
                     image_format,
                     image_dimenstions,
                     image_mip_levels,
+                    // TODO: change me
                     String::from("texture_empty_image"),
                 )
             },
             |recorder, image_view| {
                 Self::setup_load_image_operation(recorder, image_data, image_view, queue.clone())
             },
-        )? {
-            Some(texture_index) => Ok(texture_index),
-            None => Err(RenderingError::ResourceError(
+        )?
+        else {
+            return Err(RenderingError::ResourceError(
                 super::ResourceError::NoTextureSlotAvailable,
-            )),
-        }
+            ));
+        };
+
+        Ok(texture_index)
     }
 
     #[inline]

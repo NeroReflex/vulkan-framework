@@ -270,6 +270,7 @@ impl System {
         let resources_manager = Arc::new(Mutex::new(ResourceManager::new(
             queue_family.clone(),
             frames_in_flight,
+            String::from("resource_manager"),
         )?));
 
         let frames_in_flight = (0..frames_in_flight).map(|_| Option::None).collect();

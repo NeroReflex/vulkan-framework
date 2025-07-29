@@ -69,9 +69,17 @@ impl ConcreteMemoryHeapDescriptor {
 }
 
 /// Represents memory requirements as reported by the driver
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct MemoryRequirements {
     memory_type_bits_requirement: u32,
+}
+
+impl Default for MemoryRequirements {
+    fn default() -> Self {
+        Self {
+            memory_type_bits_requirement: u32::MAX,
+        }
+    }
 }
 
 impl<T> From<&T> for MemoryRequirements
@@ -210,6 +218,10 @@ impl MemoryHeap {
             if device_memory_properties.memory_heaps[heap_descriptor.heap_index as usize].size
                 < requested_size
             {
+                #[cfg(debug_assertions)]
+                {
+                    println!("Skipped memory heap due to being too small");
+                }
                 continue 'suitable_heap_search;
             }
 

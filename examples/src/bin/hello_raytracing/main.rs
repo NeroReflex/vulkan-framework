@@ -4,7 +4,10 @@ use inline_spirv::*;
 
 use vulkan_framework::{
     acceleration_structure::{
-        bottom_level::{BottomLevelAccelerationStructure, BottomLevelTrianglesGroupDecl},
+        bottom_level::{
+            BottomLevelAccelerationStructure, BottomLevelIndexBufferSpecifier,
+            BottomLevelTrianglesGroupDecl, BottomLevelVertexBufferSpecifier,
+        },
         top_level::{TopLevelAccelerationStructure, TopLevelBLASGroupDecl},
         AllowedBuildingDevice, VertexIndexing,
     },
@@ -759,17 +762,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             })
             .collect::<Vec<_>>();
 
+        let vertex_stride = 0u64;
+        let vertex_size = 4u64 * 3u64;
+        let vertex_count = 3u64;
         let blas = BottomLevelAccelerationStructure::new(
             raytracing_allocator.clone(),
             BottomLevelTrianglesGroupDecl::new(
                 VertexIndexing::UInt32,
-                1,
+                (vertex_count / 3u64) as u32,
                 AttributeType::Vec3,
                 0u64,
             ),
             AllowedBuildingDevice::DeviceOnly,
-            BufferUsage::default(),
-            BufferUsage::default(),
+            BottomLevelVertexBufferSpecifier::Allocate(
+                BufferUsage::default(),
+                (vertex_size + vertex_stride) * (vertex_count * 3u64),
+            ),
+            BottomLevelIndexBufferSpecifier::default(),
             BufferUsage::default(),
             None,
             Some("my_blas"),

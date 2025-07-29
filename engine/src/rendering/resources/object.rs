@@ -5,7 +5,7 @@ use tar::Archive;
 use crate::{
     EmbeddedAssets,
     rendering::{
-        MAX_FRAMES_IN_FLIGHT_NO_MALLOC, MAX_MATERIALS, MAX_TEXTURES, RenderingError,
+        MAX_FRAMES_IN_FLIGHT_NO_MALLOC, MAX_MATERIALS, MAX_MESHES, MAX_TEXTURES, RenderingError,
         RenderingResult, resources::ResourceError,
     },
 };
@@ -13,8 +13,16 @@ use crate::{
 use super::{mesh::MeshManager, texture::TextureManager};
 
 use vulkan_framework::{
+    acceleration_structure::{
+        VertexIndexing,
+        bottom_level::{
+            BottomLevelAccelerationStructureIndexBuffer,
+            BottomLevelAccelerationStructureVertexBuffer, BottomLevelTrianglesGroupDecl,
+        },
+    },
     buffer::{AllocatedBuffer, Buffer, BufferUsage, BufferUseAs, ConcreteBufferDescriptor},
     device::DeviceOwned,
+    graphics_pipeline::AttributeType,
     image::{CommonImageFormat, Image2DDimensions, ImageFormat},
     memory_allocator::{DefaultAllocator, MemoryAllocator},
     memory_heap::{
@@ -74,6 +82,8 @@ type MaterialsInFlightType =
     smallvec::SmallVec<[(StateType, Arc<AllocatedBuffer>); MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
 
 pub struct Manager {
+    debug_name: String,
+
     queue_family: Arc<QueueFamily>,
 
     memory_pool: Arc<MemoryPool>,
@@ -95,7 +105,11 @@ impl Manager {
         (1024u64 * 1024u64 * 128u64) + (frames_in_flight as u64 * 8192u64)
     }
 
-    pub fn new(queue_family: Arc<QueueFamily>, frames_in_flight: u32) -> RenderingResult<Self> {
+    pub fn new(
+        queue_family: Arc<QueueFamily>,
+        frames_in_flight: u32,
+        debug_name: String,
+    ) -> RenderingResult<Self> {
         let device = queue_family.get_parent_device();
 
         let total_size = Self::memory_pool_size(frames_in_flight);
@@ -152,12 +166,18 @@ impl Manager {
             EmbeddedAssets::get("stub.dds").unwrap().data.as_ref(),
         )?;
 
-        let mesh_manager = MeshManager::new(device.clone(), frames_in_flight)?;
+        let mesh_manager = MeshManager::new(
+            queue_family.clone(),
+            MAX_MESHES,
+            frames_in_flight,
+            format!("{debug_name}->mesh_manager"),
+        )?;
         let texture_manager = TextureManager::new(
             queue_family.clone(),
             buffer.clone(),
             MAX_TEXTURES,
             frames_in_flight,
+            format!("{debug_name}->texture_manager"),
         )?;
 
         let materials = 0;
@@ -212,6 +232,8 @@ impl Manager {
         let objects = HashMap::new();
 
         Ok(Self {
+            debug_name,
+
             queue_family,
 
             memory_pool,
@@ -250,12 +272,17 @@ impl Manager {
         #[derive(Default, Clone)]
         struct ModelDecl {
             material_name: Option<String>,
-            indexes: Option<Arc<AllocatedBuffer>>,
+            indexes: Option<(
+                BottomLevelTrianglesGroupDecl,
+                Arc<BottomLevelAccelerationStructureIndexBuffer>,
+            )>,
         }
 
         let mut textures: HashMap<String, TextureDecl> = HashMap::new();
         let mut materials: HashMap<String, MaterialDecl> = HashMap::new();
         let mut models: HashMap<String, ModelDecl> = HashMap::new();
+        let mut vertex_buffer: Option<Arc<BottomLevelAccelerationStructureVertexBuffer>> =
+            Option::None;
 
         if !file.exists() {
             panic!("File doesn't exists!");
@@ -323,7 +350,10 @@ impl Manager {
                                         texture_size,
                                     ),
                                     None,
-                                    Some("resource_management.vertex_buffer"),
+                                    Some(
+                                        format!("resource_management.texture[{texture_name}]")
+                                            .as_str(),
+                                    ),
                                 )?;
 
                                 //println!("allocating texture size: {texture_size}");
@@ -493,37 +523,44 @@ impl Manager {
                                 model_decl.material_name.replace(name);
                             }
                             "indexes" => {
-                                let indexes_size = file.header().size()?;
+                                let size = file.header().size()?;
+                                let indexes_size = size;
+
+                                let vertex_count =
+                                    indexes_size as usize / std::mem::size_of::<u32>();
+                                let triangle_count = vertex_count as u64 / 3u64;
+
+                                let triangles_decl = BottomLevelTrianglesGroupDecl::new(
+                                    VertexIndexing::UInt32,
+                                    triangle_count as u32,
+                                    AttributeType::Vec3,
+                                    7 * 4,
+                                );
 
                                 // Allocate the buffer that will be used to upload the index data to the vulkan device
-                                let buffer = Buffer::new(
-                                    device.clone(),
-                                    ConcreteBufferDescriptor::new(
-                                        BufferUsage::from([BufferUseAs::TransferSrc].as_slice()),
-                                        indexes_size,
+                                let index_buffer = self.mesh_manager.create_index_buffer(
+                                    BufferUsage::from(
+                                        [BufferUseAs::IndexBuffer, BufferUseAs::StorageBuffer]
+                                            .as_slice(),
                                     ),
+                                    &triangles_decl,
                                     None,
-                                    Some("resource_management.vertex_buffer"),
                                 )?;
-
-                                //println!("allocating index buffer size: {indexes_size}");
-                                let buffer =
-                                    AllocatedBuffer::new(self.memory_pool.clone(), buffer).unwrap();
 
                                 // Fill the buffer with actual data from the file
                                 {
-                                    let mut mem_map = MemoryMap::new(self.memory_pool.clone())?;
-                                    let slice = mem_map.as_mut_slice::<u32>(
-                                        buffer.clone() as Arc<dyn MemoryPoolBacked>
+                                    let mut mem_map = MemoryMap::new(
+                                        index_buffer.get_backing_memory_pool().clone(),
                                     )?;
-                                    let len = std::mem::size_of_val(slice);
-                                    let ptr = slice.as_mut_ptr() as *mut u8;
-                                    let slice_u8 =
-                                        unsafe { std::slice::from_raw_parts_mut(ptr, len) };
-                                    file.read_exact(slice_u8).unwrap();
+                                    let slice = mem_map.as_mut_slice_with_size::<u8>(
+                                        index_buffer.clone() as Arc<dyn MemoryPoolBacked>,
+                                        index_buffer.size(),
+                                    )?;
+                                    assert_eq!(size as usize, slice.len());
+                                    file.read_exact(slice).unwrap();
                                 }
 
-                                model_decl.indexes.replace(buffer);
+                                model_decl.indexes.replace((triangles_decl, index_buffer));
                             }
                             "" => continue,
                             _ => println!(
@@ -539,29 +576,29 @@ impl Manager {
                 },
                 None => {
                     if obj_type == "vertex_buffer" {
+                        let size = file.header().size()?;
                         // Allocate the buffer that will be used to upload the vertex data to the vulkan device
-                        let buffer = Buffer::new(
-                            device.clone(),
-                            ConcreteBufferDescriptor::new(
-                                BufferUsage::from([BufferUseAs::TransferSrc].as_slice()),
-                                file.header().size()?,
+                        let buffer = self.mesh_manager.create_vertex_buffer(
+                            size,
+                            BufferUsage::from(
+                                [BufferUseAs::VertexBuffer, BufferUseAs::StorageBuffer].as_slice(),
                             ),
                             None,
-                            Some("resource_management.vertex_buffer"),
                         )?;
-
-                        let buffer = AllocatedBuffer::new(self.memory_pool.clone(), buffer)?;
 
                         // Fill the buffer with actual data from the file
                         {
-                            let mut mem_map = MemoryMap::new(self.memory_pool.clone())?;
-                            let slice =
-                                mem_map.as_mut_slice::<u32>(buffer as Arc<dyn MemoryPoolBacked>)?;
-                            let len = std::mem::size_of_val(slice);
-                            let ptr = slice.as_mut_ptr() as *mut u8;
-                            let slice_u8 = unsafe { std::slice::from_raw_parts_mut(ptr, len) };
-                            file.read_exact(slice_u8).unwrap();
+                            let mut mem_map =
+                                MemoryMap::new(buffer.get_backing_memory_pool().clone())?;
+                            let slice = mem_map.as_mut_slice_with_size::<u8>(
+                                buffer.clone() as Arc<dyn MemoryPoolBacked>,
+                                buffer.size(),
+                            )?;
+                            assert_eq!(size as usize, slice.len());
+                            file.read_exact(slice).unwrap();
                         }
+
+                        vertex_buffer = Some(buffer);
                     }
                 }
             };
@@ -675,6 +712,14 @@ impl Manager {
                     normal_texture,
                 },
             );
+
+            // TODO: load vertex buffer, indexes and allow for multiple instances.
+            let Some(vertex_buffer) = vertex_buffer.take() else {
+                return Err(RenderingError::ResourceError(
+                    ResourceError::MissingVertexBuffer,
+                ));
+            };
+
         }
 
         println!();

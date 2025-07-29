@@ -286,4 +286,28 @@ impl MemoryMap {
 
         Ok(slice)
     }
+
+    pub fn as_mut_slice_with_size<T>(
+        &mut self,
+        resource: impl AsRef<dyn MemoryPoolBacked>,
+        size: u64,
+    ) -> VulkanResult<&mut [T]>
+    where
+        T: Sized,
+    {
+        let res = resource.as_ref();
+
+        if size > res.allocation_size() {
+            todo!()
+        }
+
+        let slice = unsafe {
+            std::slice::from_raw_parts_mut(
+                self.ptr.add(res.allocation_offset() as usize) as *mut T,
+                (size as usize) / size_of::<T>(),
+            )
+        };
+
+        Ok(slice)
+    }
 }

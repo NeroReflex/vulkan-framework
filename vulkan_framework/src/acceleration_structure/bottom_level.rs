@@ -179,11 +179,37 @@ pub struct BottomLevelAccelerationStructureIndexBuffer {
     buffer_device_addr: u64,
 }
 
+#[derive(Clone)]
+pub enum BottomLevelIndexBufferSpecifier {
+    Preallocated(Arc<BottomLevelAccelerationStructureIndexBuffer>),
+    Allocate(BufferUsage),
+}
+
+impl Default for BottomLevelIndexBufferSpecifier {
+    fn default() -> Self {
+        Self::Allocate(BufferUsage::default())
+    }
+}
+
+impl MemoryPoolBacked for BottomLevelAccelerationStructureIndexBuffer {
+    fn get_backing_memory_pool(&self) -> Arc<MemoryPool> {
+        self.buffer.get_backing_memory_pool()
+    }
+
+    fn allocation_offset(&self) -> u64 {
+        self.buffer.allocation_offset()
+    }
+
+    fn allocation_size(&self) -> u64 {
+        self.buffer.allocation_size()
+    }
+}
+
 impl BottomLevelAccelerationStructureIndexBuffer {
     pub fn new(
         memory_pool: Arc<MemoryPool>,
         usage: BufferUsage,
-        buffer_size: u64,
+        triangles_decl: &BottomLevelTrianglesGroupDecl,
         sharing: Option<&[std::sync::Weak<QueueFamily>]>,
         debug_name: &Option<&str>,
     ) -> VulkanResult<Arc<Self>> {
@@ -201,7 +227,9 @@ impl BottomLevelAccelerationStructureIndexBuffer {
                         | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
                         .as_raw(),
                 ),
-                buffer_size,
+                // this does not include vertex stride size because it's not part of the index buffer
+                triangles_decl.vertex_indexing().size()
+                        * (triangles_decl.max_vertices() as u64),
             ),
             sharing,
             match &index_buffer_debug_name {
@@ -227,14 +255,39 @@ impl BottomLevelAccelerationStructureIndexBuffer {
     }
 
     #[inline]
+    pub fn size(&self) -> u64 {
+        self.buffer.size()
+    }
+
+    #[inline]
     pub fn buffer_device_addr(&self) -> u64 {
         self.buffer_device_addr.to_owned()
     }
 }
 
+#[derive(Clone)]
+pub enum BottomLevelVertexBufferSpecifier {
+    Preallocated(Arc<BottomLevelAccelerationStructureVertexBuffer>),
+    Allocate(BufferUsage, u64),
+}
+
 pub struct BottomLevelAccelerationStructureVertexBuffer {
     buffer: Arc<AllocatedBuffer>,
     buffer_device_addr: u64,
+}
+
+impl MemoryPoolBacked for BottomLevelAccelerationStructureVertexBuffer {
+    fn get_backing_memory_pool(&self) -> Arc<MemoryPool> {
+        self.buffer.get_backing_memory_pool()
+    }
+
+    fn allocation_offset(&self) -> u64 {
+        self.buffer.allocation_offset()
+    }
+
+    fn allocation_size(&self) -> u64 {
+        self.buffer.allocation_size()
+    }
 }
 
 impl BottomLevelAccelerationStructureVertexBuffer {
@@ -282,6 +335,11 @@ impl BottomLevelAccelerationStructureVertexBuffer {
     #[inline]
     pub fn buffer(&self) -> Arc<AllocatedBuffer> {
         self.buffer.clone()
+    }
+
+    #[inline]
+    pub fn size(&self) -> u64 {
+        self.buffer.size()
     }
 
     #[inline]
@@ -578,8 +636,8 @@ impl BottomLevelAccelerationStructure {
         memory_pool: Arc<MemoryPool>,
         triangles_decl: BottomLevelTrianglesGroupDecl,
         allowed_building_devices: AllowedBuildingDevice,
-        vertex_buffer_usage: BufferUsage,
-        index_buffer_usage: BufferUsage,
+        vertex_buffer_specification: BottomLevelVertexBufferSpecifier,
+        index_buffer_specification: BottomLevelIndexBufferSpecifier,
         transform_buffer_usage: BufferUsage,
         sharing: Option<&[std::sync::Weak<QueueFamily>]>,
         debug_name: Option<&str>,
@@ -598,23 +656,35 @@ impl BottomLevelAccelerationStructure {
             ));
         }
 
-        // WARNING: this sets the maximum number of vertices equals to the maximum number of vertices,
-        // effectively negating the benefit of having an index buffer.
-        let vertex_buffer = BottomLevelAccelerationStructureVertexBuffer::new(
-            memory_pool.clone(),
-            triangles_decl.vertex_stride() * 3u64 * (triangles_decl.max_vertices() as u64),
-            vertex_buffer_usage,
-            sharing,
-            &debug_name,
-        )?;
+        let vertex_buffer = match vertex_buffer_specification {
+            BottomLevelVertexBufferSpecifier::Preallocated(
+                bottom_level_acceleration_structure_vertex_buffer,
+            ) => bottom_level_acceleration_structure_vertex_buffer,
+            BottomLevelVertexBufferSpecifier::Allocate(vertex_buffer_usage, vertex_buffer_size) => {
+                BottomLevelAccelerationStructureVertexBuffer::new(
+                    memory_pool.clone(),
+                    vertex_buffer_size,
+                    vertex_buffer_usage,
+                    sharing,
+                    &debug_name,
+                )?
+            }
+        };
 
-        let index_buffer = BottomLevelAccelerationStructureIndexBuffer::new(
-            memory_pool.clone(),
-            index_buffer_usage,
-            triangles_decl.vertex_indexing().size() * (triangles_decl.max_vertices() as u64),
-            sharing,
-            &debug_name,
-        )?;
+        let index_buffer = match index_buffer_specification {
+            BottomLevelIndexBufferSpecifier::Preallocated(
+                bottom_level_acceleration_structure_index_buffer,
+            ) => bottom_level_acceleration_structure_index_buffer,
+            BottomLevelIndexBufferSpecifier::Allocate(index_buffer_usage) => {
+                BottomLevelAccelerationStructureIndexBuffer::new(
+                    memory_pool.clone(),
+                    index_buffer_usage,
+                    &triangles_decl,
+                    sharing,
+                    &debug_name,
+                )?
+            }
+        };
 
         let transform_buffer = BottomLevelAccelerationStructureTransformBuffer::new(
             memory_pool.clone(),
