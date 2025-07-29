@@ -6,7 +6,8 @@ use vulkan_framework::{
     acceleration_structure::{
         bottom_level::{
             BottomLevelAccelerationStructure, BottomLevelIndexBufferSpecifier,
-            BottomLevelTrianglesGroupDecl, BottomLevelVertexBufferSpecifier,
+            BottomLevelTrianglesGroupDecl, BottomLevelVerticesTopologyDecl,
+            BottomLevelVertexBufferSpecifier,
         },
         top_level::{TopLevelAccelerationStructure, TopLevelBLASGroupDecl},
         AllowedBuildingDevice, VertexIndexing,
@@ -763,22 +764,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .collect::<Vec<_>>();
 
         let vertex_stride = 0u64;
-        let vertex_size = 4u64 * 3u64;
         let vertex_count = 3u64;
         let blas = BottomLevelAccelerationStructure::new(
             raytracing_allocator.clone(),
-            BottomLevelTrianglesGroupDecl::new(
-                VertexIndexing::UInt32,
-                (vertex_count / 3u64) as u32,
-                AttributeType::Vec3,
-                0u64,
-            ),
             AllowedBuildingDevice::DeviceOnly,
             BottomLevelVertexBufferSpecifier::Allocate(
                 BufferUsage::default(),
-                (vertex_size + vertex_stride) * (vertex_count * 3u64),
+                BottomLevelVerticesTopologyDecl::new(
+                    vertex_count as u32 * 3u32,
+                    AttributeType::Vec3,
+                    vertex_stride,
+                ),
             ),
-            BottomLevelIndexBufferSpecifier::default(),
+            BottomLevelIndexBufferSpecifier::Allocate(
+                BufferUsage::default(),
+                BottomLevelTrianglesGroupDecl::new(
+                    VertexIndexing::UInt32,
+                    (vertex_count / 3u64) as u32,
+                ),
+            ),
             BufferUsage::default(),
             None,
             Some("my_blas"),

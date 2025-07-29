@@ -14,11 +14,10 @@ use super::{mesh::MeshManager, texture::TextureManager};
 
 use vulkan_framework::{
     acceleration_structure::{
-        VertexIndexing,
         bottom_level::{
             BottomLevelAccelerationStructureIndexBuffer,
-            BottomLevelAccelerationStructureVertexBuffer, BottomLevelTrianglesGroupDecl,
-        },
+            BottomLevelAccelerationStructureVertexBuffer, BottomLevelTrianglesGroupDecl, BottomLevelVerticesTopologyDecl,
+        }, VertexIndexing
     },
     buffer::{AllocatedBuffer, Buffer, BufferUsage, BufferUseAs, ConcreteBufferDescriptor},
     device::DeviceOwned,
@@ -272,10 +271,7 @@ impl Manager {
         #[derive(Default, Clone)]
         struct ModelDecl {
             material_name: Option<String>,
-            indexes: Option<(
-                BottomLevelTrianglesGroupDecl,
-                Arc<BottomLevelAccelerationStructureIndexBuffer>,
-            )>,
+            indexes: Option<Arc<BottomLevelAccelerationStructureIndexBuffer>>,
         }
 
         let mut textures: HashMap<String, TextureDecl> = HashMap::new();
@@ -419,77 +415,75 @@ impl Manager {
                     "materials" => {
                         let material_name = String::from(*obj_name);
 
-                        let Some(property) = splitted_path.get(2) else {
-                            // this is the directory definition
-                            continue;
-                        };
-
                         let mut material_decl = match materials.get(&material_name) {
                             Some(decl) => decl.clone(),
                             None => Default::default(),
                         };
 
-                        match *property {
-                            "diffuse_texture" => {
-                                let Some(linkname) = file.link_name()? else {
-                                    return Err(RenderingError::ResourceError(
-                                        ResourceError::InvalidObjectFormat,
-                                    ));
-                                };
+                        match splitted_path.get(2) {
+                            Some(property) => match *property {
+                                "diffuse_texture" => {
+                                    let Some(linkname) = file.link_name()? else {
+                                        return Err(RenderingError::ResourceError(
+                                            ResourceError::InvalidObjectFormat,
+                                        ));
+                                    };
 
-                                let mut name = String::new();
-                                for n in linkname.to_string_lossy().split("/") {
-                                    name = String::from(n);
+                                    let mut name = String::new();
+                                    for n in linkname.to_string_lossy().split("/") {
+                                        name = String::from(n);
+                                    }
+
+                                    material_decl.diffuse_texture.replace(name);
                                 }
+                                "displacement_texture" => {
+                                    let Some(linkname) = file.link_name()? else {
+                                        return Err(RenderingError::ResourceError(
+                                            ResourceError::InvalidObjectFormat,
+                                        ));
+                                    };
 
-                                material_decl.diffuse_texture.replace(name);
-                            }
-                            "displacement_texture" => {
-                                let Some(linkname) = file.link_name()? else {
-                                    return Err(RenderingError::ResourceError(
-                                        ResourceError::InvalidObjectFormat,
-                                    ));
-                                };
+                                    let mut name = String::new();
+                                    for n in linkname.to_string_lossy().split("/") {
+                                        name = String::from(n);
+                                    }
 
-                                let mut name = String::new();
-                                for n in linkname.to_string_lossy().split("/") {
-                                    name = String::from(n);
+                                    material_decl.displacement_texture.replace(name);
                                 }
+                                "reflection_texture" => {
+                                    let Some(linkname) = file.link_name()? else {
+                                        return Err(RenderingError::ResourceError(
+                                            ResourceError::InvalidObjectFormat,
+                                        ));
+                                    };
 
-                                material_decl.displacement_texture.replace(name);
-                            }
-                            "reflection_texture" => {
-                                let Some(linkname) = file.link_name()? else {
-                                    return Err(RenderingError::ResourceError(
-                                        ResourceError::InvalidObjectFormat,
-                                    ));
-                                };
+                                    let mut name = String::new();
+                                    for n in linkname.to_string_lossy().split("/") {
+                                        name = String::from(n);
+                                    }
 
-                                let mut name = String::new();
-                                for n in linkname.to_string_lossy().split("/") {
-                                    name = String::from(n);
+                                    material_decl.reflection_texture.replace(name);
                                 }
+                                "normal_texture" => {
+                                    let Some(linkname) = file.link_name()? else {
+                                        return Err(RenderingError::ResourceError(
+                                            ResourceError::InvalidObjectFormat,
+                                        ));
+                                    };
 
-                                material_decl.reflection_texture.replace(name);
-                            }
-                            "normal_texture" => {
-                                let Some(linkname) = file.link_name()? else {
-                                    return Err(RenderingError::ResourceError(
-                                        ResourceError::InvalidObjectFormat,
-                                    ));
-                                };
+                                    let mut name = String::new();
+                                    for n in linkname.to_string_lossy().split("/") {
+                                        name = String::from(n);
+                                    }
 
-                                let mut name = String::new();
-                                for n in linkname.to_string_lossy().split("/") {
-                                    name = String::from(n);
+                                    material_decl.normal_texture.replace(name);
                                 }
-
-                                material_decl.normal_texture.replace(name);
-                            }
-                            "" => continue,
-                            _ => println!(
-                                "WARNING: unrecognised property for material {material_name}: {property}"
-                            ),
+                                "" => continue,
+                                _ => println!(
+                                    "WARNING: unrecognised property for material {material_name}: {property}"
+                                ),
+                            },
+                            None => {}
                         };
 
                         materials.insert(material_name, material_decl);
@@ -533,8 +527,6 @@ impl Manager {
                                 let triangles_decl = BottomLevelTrianglesGroupDecl::new(
                                     VertexIndexing::UInt32,
                                     triangle_count as u32,
-                                    AttributeType::Vec3,
-                                    7 * 4,
                                 );
 
                                 // Allocate the buffer that will be used to upload the index data to the vulkan device
@@ -543,7 +535,7 @@ impl Manager {
                                         [BufferUseAs::IndexBuffer, BufferUseAs::StorageBuffer]
                                             .as_slice(),
                                     ),
-                                    &triangles_decl,
+                                    triangles_decl,
                                     None,
                                 )?;
 
@@ -560,7 +552,7 @@ impl Manager {
                                     file.read_exact(slice).unwrap();
                                 }
 
-                                model_decl.indexes.replace((triangles_decl, index_buffer));
+                                model_decl.indexes.replace(index_buffer);
                             }
                             "" => continue,
                             _ => println!(
@@ -576,10 +568,25 @@ impl Manager {
                 },
                 None => {
                     if obj_type == "vertex_buffer" {
+                        let vertex_stride = 7u64 * 4u64;
+                        let vertex_size = (3u64 * 4u64) + vertex_stride;
+
                         let size = file.header().size()?;
+
+                        let vertex_count = size / vertex_size;
+                        if (size % vertex_size) != 0u64 {
+                            panic!("AAAAAAAHHH");
+                        }
+                        
+                        let triangles_topology = BottomLevelVerticesTopologyDecl::new(
+                            vertex_count as u32,
+                            AttributeType::Vec3,
+                            vertex_stride
+                        );
+
                         // Allocate the buffer that will be used to upload the vertex data to the vulkan device
                         let buffer = self.mesh_manager.create_vertex_buffer(
-                            size,
+                            triangles_topology,
                             BufferUsage::from(
                                 [BufferUseAs::VertexBuffer, BufferUseAs::StorageBuffer].as_slice(),
                             ),
@@ -598,7 +605,7 @@ impl Manager {
                             file.read_exact(slice).unwrap();
                         }
 
-                        vertex_buffer = Some(buffer);
+                        vertex_buffer.replace(buffer);
                     }
                 }
             };
@@ -712,14 +719,49 @@ impl Manager {
                     normal_texture,
                 },
             );
+        }
 
-            // TODO: load vertex buffer, indexes and allow for multiple instances.
-            let Some(vertex_buffer) = vertex_buffer.take() else {
-                return Err(RenderingError::ResourceError(
-                    ResourceError::MissingVertexBuffer,
-                ));
+        // TODO: load vertex buffer, indexes and allow for multiple instances.
+        let Some(vertex_buffer) = vertex_buffer.take() else {
+            return Err(RenderingError::ResourceError(
+                ResourceError::MissingVertexBuffer,
+            ));
+        };
+
+        let mut loaded_models: HashMap<String, LoadedMesh> = HashMap::new();
+        for (k, v) in models.into_iter() {
+            let Some(index_buffer) = v.indexes else {
+                println!("WARNING: model {k} is missing its index buffer and will be skipped");
+                continue;
             };
 
+            let Some(material_name) = v.material_name else {
+                println!(
+                    "WARNING: model {k} is missing its material definition and will be skipped"
+                );
+                continue;
+            };
+
+            let Some(material) = loaded_materials.get(&material_name) else {
+                println!(
+                    "WARNING: model {k} has an invalid material definition ({material_name}) and will be skipped"
+                );
+                continue;
+            };
+
+            let material = material.clone();
+
+            let index_buffer =
+                self.mesh_manager
+                    .load(vertex_buffer.clone(), index_buffer)?;
+
+            loaded_models.insert(
+                k,
+                LoadedMesh {
+                    index_buffer,
+                    material,
+                },
+            );
         }
 
         println!();

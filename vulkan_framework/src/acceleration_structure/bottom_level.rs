@@ -19,15 +19,15 @@ use crate::{
     queue_family::QueueFamily,
 };
 
+/// This is used to describe the vertex buffer of a bottom level AS
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct BottomLevelTrianglesGroupDecl {
-    vertex_indexing: VertexIndexing,
-    max_triangles: u32,
+pub struct BottomLevelVerticesTopologyDecl {
+    max_vertices: u32,
     per_vertex_user_stride: u64,
     vertex_format: AttributeType,
 }
 
-impl BottomLevelTrianglesGroupDecl {
+impl BottomLevelVerticesTopologyDecl {
     /**
      * Define how geometry is stored in memory
      *
@@ -37,32 +37,20 @@ impl BottomLevelTrianglesGroupDecl {
      * @param per_vertex_user_stride the [unused] space (in bytes) that follows each vertex definition
      */
     pub fn new(
-        vertex_indexing: VertexIndexing,
-        max_triangles: u32,
+        max_vertices: u32,
         vertex_format: AttributeType,
         per_vertex_user_stride: u64,
     ) -> Self {
         Self {
-            vertex_indexing,
-            max_triangles,
+            max_vertices,
             per_vertex_user_stride,
             vertex_format,
         }
     }
 
     #[inline]
-    pub fn vertex_indexing(&self) -> VertexIndexing {
-        self.vertex_indexing
-    }
-
-    #[inline]
-    pub fn max_triangles(&self) -> u32 {
-        self.max_triangles
-    }
-
-    #[inline]
     pub fn max_vertices(&self) -> u32 {
-        self.max_triangles() * 3u32
+        self.max_vertices
     }
 
     #[inline]
@@ -91,21 +79,44 @@ impl BottomLevelTrianglesGroupDecl {
     pub fn vertex_format(&self) -> AttributeType {
         self.vertex_format
     }
+}
 
-    pub(crate) fn ash_geometry(&self) -> ash::vk::AccelerationStructureGeometryKHR {
-        ash::vk::AccelerationStructureGeometryKHR::default()
-            // TODO: .flags(ash::vk::GeometryFlagsKHR::NO_DUPLICATE_ANY_HIT_INVOCATION | ash::vk::GeometryFlagsKHR::OPAQUE)
-            .geometry_type(ash::vk::GeometryTypeKHR::TRIANGLES)
-            .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
-                triangles: ash::vk::AccelerationStructureGeometryTrianglesDataKHR::default()
-                    .index_type(self.vertex_indexing().ash_index_type())
-                    // this is very incredibly stupid: the vulkan specification states:
-                    // maxVertex is the number of vertices in vertexData minus one
-                    // See https://registry.khronos.org/vulkan/specs/latest/man/html/VkAccelerationStructureGeometryTrianglesDataKHR.html
-                    .max_vertex(self.max_vertices() - 1)
-                    .vertex_format(self.vertex_format.ash_format())
-                    .vertex_stride(self.vertex_stride()),
-            })
+/// This is used to describe the index buffer of a bottom level AS
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct BottomLevelTrianglesGroupDecl {
+    vertex_indexing: VertexIndexing,
+    max_triangles: u32,
+}
+
+impl BottomLevelTrianglesGroupDecl {
+    /**
+     * Define how geometry is stored in memory
+     *
+     * @param vertex_indexing the vertex indexing buffer format: None means no indexing
+     * @param max_triangles the maximum number of triangles
+     * @param vertex_format the in-memory format of the vertex position
+     * @param per_vertex_user_stride the [unused] space (in bytes) that follows each vertex definition
+     */
+    pub fn new(vertex_indexing: VertexIndexing, max_triangles: u32) -> Self {
+        Self {
+            vertex_indexing,
+            max_triangles,
+        }
+    }
+
+    #[inline]
+    pub fn vertex_indexing(&self) -> VertexIndexing {
+        self.vertex_indexing
+    }
+
+    #[inline]
+    pub fn max_triangles(&self) -> u32 {
+        self.max_triangles
+    }
+
+    #[inline]
+    pub fn max_vertices(&self) -> u32 {
+        self.max_triangles() * 3u32
     }
 }
 
@@ -177,18 +188,14 @@ impl BottomLevelAccelerationStructureTransformBuffer {
 pub struct BottomLevelAccelerationStructureIndexBuffer {
     buffer: Arc<AllocatedBuffer>,
     buffer_device_addr: u64,
+
+    triangles_decl: BottomLevelTrianglesGroupDecl,
 }
 
 #[derive(Clone)]
 pub enum BottomLevelIndexBufferSpecifier {
     Preallocated(Arc<BottomLevelAccelerationStructureIndexBuffer>),
-    Allocate(BufferUsage),
-}
-
-impl Default for BottomLevelIndexBufferSpecifier {
-    fn default() -> Self {
-        Self::Allocate(BufferUsage::default())
-    }
+    Allocate(BufferUsage, BottomLevelTrianglesGroupDecl),
 }
 
 impl MemoryPoolBacked for BottomLevelAccelerationStructureIndexBuffer {
@@ -209,13 +216,11 @@ impl BottomLevelAccelerationStructureIndexBuffer {
     pub fn new(
         memory_pool: Arc<MemoryPool>,
         usage: BufferUsage,
-        triangles_decl: &BottomLevelTrianglesGroupDecl,
+        triangles_decl: BottomLevelTrianglesGroupDecl,
         sharing: Option<&[std::sync::Weak<QueueFamily>]>,
         debug_name: &Option<&str>,
     ) -> VulkanResult<Arc<Self>> {
         let device = memory_pool.get_parent_memory_heap().get_parent_device();
-
-        // TODO: change index buffer sizes
         let index_buffer_debug_name = debug_name.map(|name| format!("{name}_index_buffer"));
         let index_buffer = Buffer::new(
             device.clone(),
@@ -246,6 +251,7 @@ impl BottomLevelAccelerationStructureIndexBuffer {
         Ok(Arc::new(Self {
             buffer,
             buffer_device_addr,
+            triangles_decl,
         }))
     }
 
@@ -263,28 +269,38 @@ impl BottomLevelAccelerationStructureIndexBuffer {
     pub fn buffer_device_addr(&self) -> u64 {
         self.buffer_device_addr.to_owned()
     }
+
+    #[inline]
+    pub fn triangles_decl(&self) -> &BottomLevelTrianglesGroupDecl {
+        &self.triangles_decl
+    }
 }
 
 #[derive(Clone)]
 pub enum BottomLevelVertexBufferSpecifier {
     Preallocated(Arc<BottomLevelAccelerationStructureVertexBuffer>),
-    Allocate(BufferUsage, u64),
+    Allocate(BufferUsage, BottomLevelVerticesTopologyDecl),
 }
 
 pub struct BottomLevelAccelerationStructureVertexBuffer {
     buffer: Arc<AllocatedBuffer>,
     buffer_device_addr: u64,
+
+    triangles_topology: BottomLevelVerticesTopologyDecl,
 }
 
 impl MemoryPoolBacked for BottomLevelAccelerationStructureVertexBuffer {
+    #[inline]
     fn get_backing_memory_pool(&self) -> Arc<MemoryPool> {
         self.buffer.get_backing_memory_pool()
     }
 
+    #[inline]
     fn allocation_offset(&self) -> u64 {
         self.buffer.allocation_offset()
     }
 
+    #[inline]
     fn allocation_size(&self) -> u64 {
         self.buffer.allocation_size()
     }
@@ -293,12 +309,14 @@ impl MemoryPoolBacked for BottomLevelAccelerationStructureVertexBuffer {
 impl BottomLevelAccelerationStructureVertexBuffer {
     pub fn new(
         memory_pool: Arc<MemoryPool>,
-        buffer_size: u64,
+        triangles_topology: BottomLevelVerticesTopologyDecl,
         usage: BufferUsage,
         sharing: Option<&[std::sync::Weak<QueueFamily>]>,
         debug_name: &Option<&str>,
     ) -> VulkanResult<Arc<Self>> {
         let device = memory_pool.get_parent_memory_heap().get_parent_device();
+        let buffer_size = triangles_topology.vertex_stride()
+            * triangles_topology.max_vertices() as u64;
 
         // TODO: change vertex buffer sizes
         let vertex_buffer_debug_name = debug_name.map(|name| format!("{name}_vertex_buffer"));
@@ -329,6 +347,7 @@ impl BottomLevelAccelerationStructureVertexBuffer {
         Ok(Arc::new(Self {
             buffer,
             buffer_device_addr,
+            triangles_topology,
         }))
     }
 
@@ -346,10 +365,20 @@ impl BottomLevelAccelerationStructureVertexBuffer {
     pub fn buffer_device_addr(&self) -> u64 {
         self.buffer_device_addr.to_owned()
     }
+
+    #[inline]
+    pub fn triangles_topology(&self) -> &BottomLevelVerticesTopologyDecl {
+        &self.triangles_topology
+    }
 }
 
 pub struct BottomLevelAccelerationStructure {
-    triangles_decl: smallvec::SmallVec<[BottomLevelTrianglesGroupDecl; 1]>,
+    triangles_decl: smallvec::SmallVec<
+        [(
+            BottomLevelVerticesTopologyDecl,
+            BottomLevelTrianglesGroupDecl,
+        ); 1],
+    >,
 
     handle: ash::vk::AccelerationStructureKHR,
     acceleration_structure_device_addr: u64,
@@ -394,7 +423,10 @@ impl BottomLevelAccelerationStructure {
      * If the operation is successful the tuple returned will be the BLAS (minimum) size.
      */
     pub fn query_minimum_buffer_size(
-        geometries_decl: &[&BottomLevelTrianglesGroupDecl],
+        geometries_decl: &[(
+            &BottomLevelVerticesTopologyDecl,
+            &BottomLevelTrianglesGroupDecl,
+        )],
         allowed_building_devices: AllowedBuildingDevice,
         vertex_buffer: Arc<BottomLevelAccelerationStructureVertexBuffer>,
         index_buffer: Arc<BottomLevelAccelerationStructureIndexBuffer>,
@@ -417,7 +449,7 @@ impl BottomLevelAccelerationStructure {
 
         let max_primitives_count = geometries_decl
             .iter()
-            .map(|g| g.max_triangles())
+            .map(|(_, g)| g.max_triangles())
             .collect::<smallvec::SmallVec<[u32; 4]>>();
 
         // See https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
@@ -441,16 +473,38 @@ impl BottomLevelAccelerationStructure {
         Ok(build_sizes.acceleration_structure_size)
     }
 
+    fn ash_geometry_single<'a>(
+        triangles_decl: &BottomLevelTrianglesGroupDecl,
+        triangles_topology: &BottomLevelVerticesTopologyDecl,
+    ) -> ash::vk::AccelerationStructureGeometryKHR<'a> {
+        ash::vk::AccelerationStructureGeometryKHR::default()
+            // TODO: .flags(ash::vk::GeometryFlagsKHR::NO_DUPLICATE_ANY_HIT_INVOCATION | ash::vk::GeometryFlagsKHR::OPAQUE)
+            .geometry_type(ash::vk::GeometryTypeKHR::TRIANGLES)
+            .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
+                triangles: ash::vk::AccelerationStructureGeometryTrianglesDataKHR::default()
+                    .index_type(triangles_decl.vertex_indexing().ash_index_type())
+                    // this is very incredibly stupid: the vulkan specification states:
+                    // maxVertex is the number of vertices in vertexData minus one
+                    // See https://registry.khronos.org/vulkan/specs/latest/man/html/VkAccelerationStructureGeometryTrianglesDataKHR.html
+                    .max_vertex(triangles_decl.max_vertices() - 1)
+                    .vertex_format(triangles_topology.vertex_format().ash_format())
+                    .vertex_stride(triangles_topology.vertex_stride()),
+            })
+    }
+
     pub(crate) fn static_ash_geometry<'a>(
-        geometries_decl: &[&'a BottomLevelTrianglesGroupDecl],
+        geometries_decl: &[(
+            &BottomLevelVerticesTopologyDecl,
+            &BottomLevelTrianglesGroupDecl,
+        )],
         vertex_buffer: Arc<BottomLevelAccelerationStructureVertexBuffer>,
         index_buffer: Arc<BottomLevelAccelerationStructureIndexBuffer>,
         transform_buffer: Arc<BottomLevelAccelerationStructureTransformBuffer>,
     ) -> smallvec::SmallVec<[ash::vk::AccelerationStructureGeometryKHR<'a>; 1]> {
         geometries_decl
             .iter()
-            .map(|g| {
-                let mut data = g.ash_geometry();
+            .map(|(t, g)| {
+                let mut data = Self::ash_geometry_single(*g, *t);
 
                 data.geometry.triangles.vertex_data = DeviceOrHostAddressConstKHR {
                     device_address: vertex_buffer.buffer_device_addr(),
@@ -474,8 +528,8 @@ impl BottomLevelAccelerationStructure {
     ) -> smallvec::SmallVec<[ash::vk::AccelerationStructureGeometryKHR<'a>; 1]> {
         self.triangles_decl
             .iter()
-            .map(|g| {
-                let mut data = g.ash_geometry();
+            .map(|(a, b)| {
+                let mut data = Self::ash_geometry_single(b, a);
 
                 data.geometry.triangles.vertex_data = DeviceOrHostAddressConstKHR {
                     device_address: self.vertex_buffer().buffer_device_addr(),
@@ -500,7 +554,10 @@ impl BottomLevelAccelerationStructure {
      * If the operation is successful the tuple returned will be the BLAS build (minimum) scratch buffer size
      */
     pub fn query_minimum_build_scratch_buffer_size(
-        geometries_decl: &[&BottomLevelTrianglesGroupDecl],
+        geometries_decl: &[(
+            &BottomLevelVerticesTopologyDecl,
+            &BottomLevelTrianglesGroupDecl,
+        )],
         allowed_building_devices: AllowedBuildingDevice,
         vertex_buffer: Arc<BottomLevelAccelerationStructureVertexBuffer>,
         index_buffer: Arc<BottomLevelAccelerationStructureIndexBuffer>,
@@ -523,7 +580,7 @@ impl BottomLevelAccelerationStructure {
 
         let max_primitives_count = geometries_decl
             .iter()
-            .map(|g| g.max_triangles())
+            .map(|(_, g)| g.max_triangles())
             .collect::<smallvec::SmallVec<[u32; 4]>>();
 
         // See https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
@@ -558,7 +615,12 @@ impl BottomLevelAccelerationStructure {
     }
 
     #[inline]
-    pub fn triangles_decl(&self) -> &[BottomLevelTrianglesGroupDecl] {
+    pub fn triangles_decl(
+        &self,
+    ) -> &[(
+        BottomLevelVerticesTopologyDecl,
+        BottomLevelTrianglesGroupDecl,
+    )] {
         self.triangles_decl.as_slice()
     }
 
@@ -595,6 +657,11 @@ impl BottomLevelAccelerationStructure {
     #[inline]
     pub(crate) fn device_build_scratch_buffer(&self) -> Arc<DeviceScratchBuffer> {
         self.device_build_scratch_buffer.clone()
+    }
+
+    #[inline]
+    pub fn max_primitives_count(&self) -> u32 {
+        self.triangles_decl().iter().map(|(_, g)| g.max_triangles()).sum()
     }
 
     fn create_blas_buffer(
@@ -634,7 +701,6 @@ impl BottomLevelAccelerationStructure {
 
     pub fn new(
         memory_pool: Arc<MemoryPool>,
-        triangles_decl: BottomLevelTrianglesGroupDecl,
         allowed_building_devices: AllowedBuildingDevice,
         vertex_buffer_specification: BottomLevelVertexBufferSpecifier,
         index_buffer_specification: BottomLevelIndexBufferSpecifier,
@@ -660,10 +726,10 @@ impl BottomLevelAccelerationStructure {
             BottomLevelVertexBufferSpecifier::Preallocated(
                 bottom_level_acceleration_structure_vertex_buffer,
             ) => bottom_level_acceleration_structure_vertex_buffer,
-            BottomLevelVertexBufferSpecifier::Allocate(vertex_buffer_usage, vertex_buffer_size) => {
+            BottomLevelVertexBufferSpecifier::Allocate(vertex_buffer_usage, triangles_topology) => {
                 BottomLevelAccelerationStructureVertexBuffer::new(
                     memory_pool.clone(),
-                    vertex_buffer_size,
+                    triangles_topology,
                     vertex_buffer_usage,
                     sharing,
                     &debug_name,
@@ -671,15 +737,17 @@ impl BottomLevelAccelerationStructure {
             }
         };
 
+        let triangles_topology = vertex_buffer.triangles_topology().to_owned();
+
         let index_buffer = match index_buffer_specification {
             BottomLevelIndexBufferSpecifier::Preallocated(
                 bottom_level_acceleration_structure_index_buffer,
             ) => bottom_level_acceleration_structure_index_buffer,
-            BottomLevelIndexBufferSpecifier::Allocate(index_buffer_usage) => {
+            BottomLevelIndexBufferSpecifier::Allocate(index_buffer_usage, triangles_decl) => {
                 BottomLevelAccelerationStructureIndexBuffer::new(
                     memory_pool.clone(),
                     index_buffer_usage,
-                    &triangles_decl,
+                    triangles_decl,
                     sharing,
                     &debug_name,
                 )?
@@ -693,8 +761,12 @@ impl BottomLevelAccelerationStructure {
             &debug_name,
         )?;
 
+        let triangles_decl = index_buffer.triangles_decl().to_owned();
+
+        let geometries_decl = [(&triangles_topology, &triangles_decl)];
+
         let blas_buffer_size = Self::query_minimum_buffer_size(
-            &[&triangles_decl],
+            geometries_decl.as_slice(),
             allowed_building_devices,
             vertex_buffer.clone(),
             index_buffer.clone(),
@@ -702,7 +774,7 @@ impl BottomLevelAccelerationStructure {
         )?;
 
         let build_scratch_buffer_size = Self::query_minimum_build_scratch_buffer_size(
-            &[&triangles_decl],
+            geometries_decl.as_slice(),
             allowed_building_devices,
             vertex_buffer.clone(),
             index_buffer.clone(),
@@ -736,7 +808,7 @@ impl BottomLevelAccelerationStructure {
         let acceleration_structure_device_addr =
             unsafe { as_ext.get_acceleration_structure_device_address(&info) };
 
-        let triangles_decl = smallvec::smallvec![triangles_decl];
+        let triangles_decl = smallvec::smallvec![(triangles_topology, triangles_decl)];
         Ok(Arc::new(Self {
             triangles_decl,
             handle,

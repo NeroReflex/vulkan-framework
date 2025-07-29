@@ -2,22 +2,22 @@ use std::sync::Arc;
 
 use vulkan_framework::{
     acceleration_structure::{
-        AllowedBuildingDevice, VertexIndexing,
+        AllowedBuildingDevice,
         bottom_level::{
             BottomLevelAccelerationStructure, BottomLevelAccelerationStructureIndexBuffer,
             BottomLevelAccelerationStructureVertexBuffer, BottomLevelIndexBufferSpecifier,
-            BottomLevelTrianglesGroupDecl, BottomLevelVertexBufferSpecifier,
+            BottomLevelTrianglesGroupDecl, BottomLevelVerticesTopologyDecl,
+            BottomLevelVertexBufferSpecifier,
         },
     },
     binding_tables::required_memory_type,
-    buffer::{BufferTrait, BufferUsage},
+    buffer::BufferUsage,
     command_buffer::CommandBufferRecorder,
     descriptor_pool::{
         DescriptorPool, DescriptorPoolConcreteDescriptor,
         DescriptorPoolSizesAcceletarionStructureKHR, DescriptorPoolSizesConcreteDescriptor,
     },
-    device::{Device, DeviceOwned},
-    graphics_pipeline::AttributeType,
+    device::DeviceOwned,
     memory_allocator::{DefaultAllocator, MemoryAllocator},
     memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap},
     memory_pool::{MemoryPool, MemoryPoolFeature, MemoryPoolFeatures},
@@ -26,7 +26,7 @@ use vulkan_framework::{
 };
 
 use crate::rendering::{
-    MAX_MESHES, RenderingError, RenderingResult, resources::collection::LoadableResourcesCollection,
+    RenderingError, RenderingResult, resources::collection::LoadableResourcesCollection,
 };
 
 pub struct MeshManager {
@@ -135,13 +135,13 @@ impl MeshManager {
 
     pub fn create_vertex_buffer(
         &self,
-        buffer_size: u64,
+        triangles_topology: BottomLevelVerticesTopologyDecl,
         usage: BufferUsage,
         sharing: Option<&[std::sync::Weak<QueueFamily>]>,
     ) -> RenderingResult<Arc<BottomLevelAccelerationStructureVertexBuffer>> {
         let vertex_buffer = BottomLevelAccelerationStructureVertexBuffer::new(
             self.memory_pool.clone(),
-            buffer_size,
+            triangles_topology,
             usage,
             sharing,
             &Option::None,
@@ -153,13 +153,13 @@ impl MeshManager {
     pub fn create_index_buffer(
         &self,
         usage: BufferUsage,
-        triangles_decl: &BottomLevelTrianglesGroupDecl,
+        triangles_decl: BottomLevelTrianglesGroupDecl,
         sharing: Option<&[std::sync::Weak<QueueFamily>]>,
     ) -> RenderingResult<Arc<BottomLevelAccelerationStructureIndexBuffer>> {
         let vertex_buffer = BottomLevelAccelerationStructureIndexBuffer::new(
             self.memory_pool.clone(),
             usage,
-            &triangles_decl,
+            triangles_decl,
             sharing,
             &Option::None,
         )?;
@@ -175,12 +175,6 @@ impl MeshManager {
     ) -> RenderingResult<Arc<BottomLevelAccelerationStructure>> {
         let blas = BottomLevelAccelerationStructure::new(
             memory_pool,
-            BottomLevelTrianglesGroupDecl::new(
-                VertexIndexing::UInt32,
-                1,
-                AttributeType::Vec3,
-                0u64,
-            ),
             AllowedBuildingDevice::DeviceOnly,
             BottomLevelVertexBufferSpecifier::Preallocated(vertex_buffer),
             BottomLevelIndexBufferSpecifier::Preallocated(index_buffer),
@@ -198,6 +192,10 @@ impl MeshManager {
         queue: Arc<Queue>,
     ) -> RenderingResult<()> {
         let queue_family = queue.get_parent_queue_family();
+
+        // create the blas
+        let max_primitives_count = blas.max_primitives_count();
+        recorder.build_blas(blas, 0, max_primitives_count, 0, 0);
 
         Ok(())
     }
