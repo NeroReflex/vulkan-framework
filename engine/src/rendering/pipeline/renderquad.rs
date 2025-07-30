@@ -100,7 +100,7 @@ pub struct RenderQuad {
 impl RenderQuad {
     /// Returns the layout of the input 2D image MUST be in where the rendering operation starts.
     #[inline]
-    pub fn image_input_format() -> ImageLayout {
+    pub fn image_input_layout() -> ImageLayout {
         ImageLayout::ShaderReadOnlyOptimal
     }
 
@@ -255,7 +255,7 @@ impl RenderQuad {
                     .bind_combined_images_samplers(
                         0,
                         &[(
-                            Self::image_input_format(),
+                            Self::image_input_layout(),
                             input_image_view,
                             self.sampler.clone(),
                         )],

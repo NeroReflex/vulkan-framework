@@ -3,30 +3,16 @@ use std::sync::Arc;
 use inline_spirv::*;
 
 use vulkan_framework::{
-    command_buffer::{ClearValues, ColorClearValues, CommandBufferRecorder},
-    descriptor_pool::{
+    command_buffer::{ClearValues, ColorClearValues, CommandBufferRecorder}, descriptor_pool::{
         DescriptorPool, DescriptorPoolConcreteDescriptor,
         DescriptorPoolSizesAcceletarionStructureKHR, DescriptorPoolSizesConcreteDescriptor,
-    },
-    descriptor_set::DescriptorSet,
-    descriptor_set_layout::DescriptorSetLayout,
-    device::Device,
-    framebuffer::Framebuffer,
-    graphics_pipeline::{
+    }, descriptor_set::DescriptorSet, descriptor_set_layout::DescriptorSetLayout, device::Device, framebuffer::Framebuffer, graphics_pipeline::{
         CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline, PolygonMode,
         Rasterizer, Scissor, Viewport,
-    },
-    image::{CommonImageFormat, ImageFormat, ImageLayout, ImageMultisampling},
-    image_view::ImageView,
-    pipeline_layout::PipelineLayout,
-    renderpass::{
+    }, image::{AllocatedImage, CommonImageFormat, ConcreteImageDescriptor, Image, ImageDimensions, ImageFlags, ImageFormat, ImageLayout, ImageMultisampling, ImageSubresourceRange, ImageTiling, ImageTrait, ImageUsage, ImageUseAs}, image_view::{ImageView, ImageViewType}, memory_allocator::{DefaultAllocator, MemoryAllocator}, memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryRequirements, MemoryType}, memory_pool::{MemoryPool, MemoryPoolFeatures}, memory_requiring::MemoryRequiring, pipeline_layout::PipelineLayout, renderpass::{
         AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp, RenderPass,
         RenderSubPassDescription,
-    },
-    sampler::{Filtering, MipmapMode, Sampler},
-    shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType},
-    shader_stage_access::ShaderStagesAccess,
-    shaders::{fragment_shader::FragmentShader, vertex_shader::VertexShader},
+    }, sampler::{Filtering, MipmapMode, Sampler}, shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType}, shader_stage_access::ShaderStagesAccess, shaders::{fragment_shader::FragmentShader, vertex_shader::VertexShader}
 };
 
 use crate::rendering::{
@@ -89,9 +75,13 @@ void main() {
 );
 
 pub struct HDRTransform {
+    _memory_pool: Arc<MemoryPool>,
     descriptor_sets: smallvec::SmallVec<[Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
     pipeline_layout: Arc<PipelineLayout>,
     graphics_pipeline: Arc<GraphicsPipeline>,
+    images: smallvec::SmallVec<[Arc<AllocatedImage>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
+    image_views: smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
+    framebuffers: smallvec::SmallVec<[Arc<Framebuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
     sampler: Arc<Sampler>,
 }
 
@@ -99,14 +89,18 @@ pub struct HDRTransform {
 /// the one that transform the raw result into something that can be sampled
 /// to generate the image to be presented: applies tone mapping and/or hdr.
 impl HDRTransform {
-    /// Returns the layout of the input 2D image MUST be in where the rendering operation starts.
+    /// Returns the format of the input 2D image MUST be in where the rendering operation starts.
     #[inline]
     pub fn image_input_format() -> ImageLayout {
         ImageLayout::ShaderReadOnlyOptimal
     }
 
+    fn output_image_layout() -> ImageLayout {
+        ImageLayout::ShaderReadOnlyOptimal
+    }
+
     #[inline]
-    pub fn image_output_format() -> ImageFormat {
+    fn image_output_format() -> ImageFormat {
         CommonImageFormat::r32g32b32a32_sfloat.into()
     }
 
@@ -190,7 +184,7 @@ impl HDRTransform {
                 Self::image_output_format(),
                 ImageMultisampling::SamplesPerPixel1,
                 ImageLayout::Undefined,
-                ImageLayout::ShaderReadOnlyOptimal,
+                Self::output_image_layout(),
                 AttachmentLoadOp::Clear,
                 AttachmentStoreOp::Store,
                 AttachmentLoadOp::Clear,
@@ -231,6 +225,91 @@ impl HDRTransform {
             Some("renderquad_pipeline"),
         )?;
 
+        let mut image_handles: smallvec::SmallVec<[_; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]> =
+            smallvec::smallvec![];
+        for index in 0..(frames_in_flight as usize) {
+            let image_name = format!("final_rendering_image[{index}]");
+            let image = Image::new(
+                device.clone(),
+                ConcreteImageDescriptor::new(
+                    image_dimensions.into(),
+                    [ImageUseAs::Sampled, ImageUseAs::ColorAttachment].as_slice().into(),
+                    ImageMultisampling::SamplesPerPixel1,
+                    1,
+                    1,
+                    Self::image_output_format(),
+                    ImageFlags::empty(),
+                    ImageTiling::Optimal,
+                ),
+                None,
+                Some(image_name.as_str()),
+            )?;
+
+            image_handles.push(image);
+        }
+
+        let memory_required: u64 = image_handles
+            .iter()
+            .map(|obj| obj.memory_requirements().size() + obj.memory_requirements().alignment())
+            .sum();
+
+        let allocator = DefaultAllocator::with_blocksize(
+            1024,
+            (frames_in_flight as u64) + (memory_required / 1024u64),
+        );
+        let memory_heap = MemoryHeap::new(
+            device.clone(),
+            ConcreteMemoryHeapDescriptor::new(
+                MemoryType::DeviceLocal(None),
+                allocator.total_size(),
+            ),
+            MemoryRequirements::try_from(image_handles.as_slice())?,
+        )?;
+
+        let memory_pool = MemoryPool::new(
+            memory_heap,
+            Arc::new(allocator),
+            MemoryPoolFeatures::from([].as_slice()),
+        )?;
+
+        let mut image_views: smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]> =
+            smallvec::smallvec![];
+        let mut images: smallvec::SmallVec<[Arc<AllocatedImage>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]> =
+            smallvec::smallvec![];
+        for (index, image) in image_handles.into_iter().enumerate() {
+            let allocated_image = AllocatedImage::new(memory_pool.clone(), image)?;
+
+            images.push(allocated_image.clone());
+
+            let image_view_name = format!("final_rendering_image_view[{index}]");
+            let image_view = ImageView::new(
+                allocated_image,
+                Some(ImageViewType::Image2D),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(image_view_name.as_str()),
+            )?;
+
+            image_views.push(image_view);
+        }
+
+        let mut framebuffers = smallvec::smallvec![];
+        for iw in 0..image_views.len() {
+            let framebuffer = Framebuffer::new(
+                renderpass.clone(),
+                [image_views[iw].clone()].as_slice(),
+                image_dimensions,
+                1,
+            )?;
+
+            framebuffers.push(framebuffer);
+        }
+
         let sampler = Sampler::new(
             device.clone(),
             Filtering::Nearest,
@@ -241,9 +320,16 @@ impl HDRTransform {
         .unwrap();
 
         Ok(Self {
+            _memory_pool: memory_pool,
+
             descriptor_sets,
             pipeline_layout,
             graphics_pipeline,
+
+            images,
+            image_views,
+            framebuffers,
+
             sampler,
         })
     }
@@ -251,10 +337,9 @@ impl HDRTransform {
     pub fn record_rendering_commands(
         &self,
         input_image_view: Arc<ImageView>,
-        framebuffer: Arc<Framebuffer>,
         current_frame: usize,
         recorder: &mut CommandBufferRecorder,
-    ) {
+    ) -> (Arc<ImageView>, ImageSubresourceRange, ImageLayout) {
         self.descriptor_sets[current_frame]
             .bind_resources(|binder| {
                 binder
@@ -271,7 +356,7 @@ impl HDRTransform {
             .unwrap();
 
         recorder.begin_renderpass(
-            framebuffer,
+            self.framebuffers[current_frame].clone(),
             &[ClearValues::new(Some(ColorClearValues::Vec4(
                 1.0, 1.0, 1.0, 1.0,
             )))],
@@ -285,5 +370,11 @@ impl HDRTransform {
         recorder.draw(0, 6, 0, 1);
 
         recorder.end_renderpass();
+
+        (
+            self.image_views[current_frame].clone(),
+            ImageSubresourceRange::from(self.images[current_frame].clone() as Arc<dyn ImageTrait>),
+            Self::output_image_layout(),
+        )
     }
 }

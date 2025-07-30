@@ -21,7 +21,7 @@ use vulkan_framework::{
         ImageTrait, ImageUsage, ImageUseAs,
     },
     image_view::{ImageView, ImageViewType},
-    memory_allocator::DefaultAllocator,
+    memory_allocator::{DefaultAllocator, MemoryAllocator},
     memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryRequirements, MemoryType},
     memory_pool::{MemoryPool, MemoryPoolFeatures},
     memory_requiring::MemoryRequiring,
@@ -64,7 +64,9 @@ void main() {
 );
 
 /// This is the stage of the pipeline that assembles every other results into what will be fed
-/// to the HDR stage
+/// to the HDR stage.
+///
+/// This is the deferred shading step, basically.
 pub struct FinalRendering {
     _memory_pool: Arc<MemoryPool>,
     image_dimensions: Image2DDimensions,
@@ -76,10 +78,10 @@ pub struct FinalRendering {
 
 impl FinalRendering {
     fn output_image_layout() -> ImageLayout {
-        ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc)
+        ImageLayout::ShaderReadOnlyOptimal
     }
 
-    fn output_image_format() -> ImageFormat {
+    pub fn output_image_format() -> ImageFormat {
         ImageFormat::from(CommonImageFormat::r32g32b32a32_sfloat)
     }
 
@@ -120,21 +122,22 @@ impl FinalRendering {
             .map(|obj| obj.memory_requirements().size() + obj.memory_requirements().alignment())
             .sum();
 
-        let minimum_memory = memory_required + (4096u64 * (frames_in_flight as u64 + 4u64));
-        // add space for frames_in_flight images
-
-        // add some leftover space to account for alignment
-        //+ (1024 * 1024* 128);
-
+        let allocator = DefaultAllocator::with_blocksize(
+            1024,
+            (frames_in_flight as u64) + (memory_required / 1024u64),
+        );
         let memory_heap = MemoryHeap::new(
             device.clone(),
-            ConcreteMemoryHeapDescriptor::new(MemoryType::DeviceLocal(None), minimum_memory),
+            ConcreteMemoryHeapDescriptor::new(
+                MemoryType::DeviceLocal(None),
+                allocator.total_size(),
+            ),
             MemoryRequirements::try_from(image_handles.as_slice())?,
         )?;
 
         let memory_pool = MemoryPool::new(
             memory_heap,
-            Arc::new(DefaultAllocator::new(minimum_memory)),
+            Arc::new(allocator),
             MemoryPoolFeatures::from([].as_slice()),
         )?;
 
@@ -143,11 +146,6 @@ impl FinalRendering {
         let mut images: smallvec::SmallVec<[Arc<AllocatedImage>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]> =
             smallvec::smallvec![];
         for (index, image) in image_handles.into_iter().enumerate() {
-            println!(
-                "Allocating {} bytes out of {minimum_memory}",
-                image.memory_requirements().size()
-            );
-
             let allocated_image = AllocatedImage::new(memory_pool.clone(), image)?;
 
             images.push(allocated_image.clone());

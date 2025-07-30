@@ -431,30 +431,49 @@ impl System {
         // here register the command buffer: command buffer at index i is associated with rendering_fences[i],
         // that I just awaited above, so thecommand buffer is surely NOT currently in use
         self.present_command_buffers[current_frame].record_one_time_submit(|recorder| {
-            let (rendered_image, subresource_range, final_rendering_output_image_layout) = self
+            let (final_rendering_output_image, final_rendering_output_image_subresource_range, final_rendering_output_image_layout) = self
                 .final_rendering
                 .record_rendering_commands(current_frame, recorder);
 
             // Insert a barrier to transition image layout from the final rendering output to renderquad input
             // while also ensuring the rendering operation of final rendering pipeline has completed before initiating
-            // the final renderquad step
-            let renderquad_input_image_layout = RenderQuad::image_input_format();
-
+            // the final renderquad step.
             recorder.image_barrier(ImageMemoryBarrier::new(
                 PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
                 MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
                 PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
                 MemoryAccess::from([MemoryAccessAs::ShaderRead].as_slice()),
-                subresource_range,
+                final_rendering_output_image_subresource_range,
                 final_rendering_output_image_layout,
-                renderquad_input_image_layout,
+                RenderQuad::image_input_layout(),
+                self.queue_family(),
+                self.queue_family(),
+            ));
+
+            let (hdr_output_image, hdr_output_image_subresource_range, hdr_output_image_layout) = self.hdr.record_rendering_commands(
+                final_rendering_output_image,
+                current_frame,
+                recorder,
+            );
+
+            // Insert a barrier to transition image layout from the final rendering output to renderquad input
+            // while also ensuring the rendering operation of final rendering pipeline has completed before initiating
+            // the final renderquad step.
+            recorder.image_barrier(ImageMemoryBarrier::new(
+                PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
+                MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
+                PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
+                MemoryAccess::from([MemoryAccessAs::ShaderRead].as_slice()),
+                hdr_output_image_subresource_range,
+                hdr_output_image_layout,
+                RenderQuad::image_input_layout(),
                 self.queue_family(),
                 self.queue_family(),
             ));
 
             // record commands to finalize the rendering image
             self.renderquad.record_rendering_commands(
-                rendered_image,
+                hdr_output_image,
                 framebuffers[swapchain_index as usize].clone(),
                 current_frame,
                 recorder,
