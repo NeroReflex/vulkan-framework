@@ -14,8 +14,7 @@ use vulkan_framework::{
     device::{Device, DeviceOwned},
     fence::{Fence, FenceWaiter},
     image::{
-        Image2DDimensions, ImageLayout, ImageLayoutSwapchainKHR, ImageTrait,
-        ImageUsage, ImageUseAs,
+        Image2DDimensions, ImageLayout, ImageLayoutSwapchainKHR, ImageTrait, ImageUsage, ImageUseAs,
     },
     image_view::ImageView,
     instance::InstanceOwned,

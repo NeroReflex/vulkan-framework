@@ -18,9 +18,7 @@ use vulkan_framework::{
         CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline, PolygonMode,
         Rasterizer, Scissor, Viewport,
     },
-    image::{
-        Image2DDimensions, ImageFormat, ImageLayout, ImageMultisampling,
-    },
+    image::{Image2DDimensions, ImageFormat, ImageLayout, ImageMultisampling},
     image_view::ImageView,
     pipeline_layout::PipelineLayout,
     sampler::{Filtering, MipmapMode, Sampler},
@@ -262,7 +260,7 @@ impl RenderQuad {
                     &[self.descriptor_sets[current_frame].clone()],
                 );
                 recorder.draw(0, 6, 0, 1);
-            }
+            },
         );
     }
 }

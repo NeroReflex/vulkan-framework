@@ -147,7 +147,11 @@ impl Manager {
                 (SIZEOF_MATERIAL_DEFINITION as u64) * (MAX_MATERIALS as u64),
             ),
             None,
-            Some("resource_management.current_materials_buffer".to_string().as_str()),
+            Some(
+                "resource_management.current_materials_buffer"
+                    .to_string()
+                    .as_str(),
+            ),
         )?;
 
         let memory_heap = MemoryHeap::new(
@@ -480,68 +484,70 @@ impl Manager {
                             None => Default::default(),
                         };
 
-                        if let Some(property) = splitted_path.get(2) { match *property {
-                            "diffuse_texture" => {
-                                let Some(linkname) = file.link_name()? else {
-                                    return Err(RenderingError::ResourceError(
-                                        ResourceError::InvalidObjectFormat,
-                                    ));
-                                };
+                        if let Some(property) = splitted_path.get(2) {
+                            match *property {
+                                "diffuse_texture" => {
+                                    let Some(linkname) = file.link_name()? else {
+                                        return Err(RenderingError::ResourceError(
+                                            ResourceError::InvalidObjectFormat,
+                                        ));
+                                    };
 
-                                let mut name = String::new();
-                                for n in linkname.to_string_lossy().split("/") {
-                                    name = String::from(n);
+                                    let mut name = String::new();
+                                    for n in linkname.to_string_lossy().split("/") {
+                                        name = String::from(n);
+                                    }
+
+                                    material_decl.diffuse_texture.replace(name);
                                 }
+                                "displacement_texture" => {
+                                    let Some(linkname) = file.link_name()? else {
+                                        return Err(RenderingError::ResourceError(
+                                            ResourceError::InvalidObjectFormat,
+                                        ));
+                                    };
 
-                                material_decl.diffuse_texture.replace(name);
-                            }
-                            "displacement_texture" => {
-                                let Some(linkname) = file.link_name()? else {
-                                    return Err(RenderingError::ResourceError(
-                                        ResourceError::InvalidObjectFormat,
-                                    ));
-                                };
+                                    let mut name = String::new();
+                                    for n in linkname.to_string_lossy().split("/") {
+                                        name = String::from(n);
+                                    }
 
-                                let mut name = String::new();
-                                for n in linkname.to_string_lossy().split("/") {
-                                    name = String::from(n);
+                                    material_decl.displacement_texture.replace(name);
                                 }
+                                "reflection_texture" => {
+                                    let Some(linkname) = file.link_name()? else {
+                                        return Err(RenderingError::ResourceError(
+                                            ResourceError::InvalidObjectFormat,
+                                        ));
+                                    };
 
-                                material_decl.displacement_texture.replace(name);
-                            }
-                            "reflection_texture" => {
-                                let Some(linkname) = file.link_name()? else {
-                                    return Err(RenderingError::ResourceError(
-                                        ResourceError::InvalidObjectFormat,
-                                    ));
-                                };
+                                    let mut name = String::new();
+                                    for n in linkname.to_string_lossy().split("/") {
+                                        name = String::from(n);
+                                    }
 
-                                let mut name = String::new();
-                                for n in linkname.to_string_lossy().split("/") {
-                                    name = String::from(n);
+                                    material_decl.reflection_texture.replace(name);
                                 }
+                                "normal_texture" => {
+                                    let Some(linkname) = file.link_name()? else {
+                                        return Err(RenderingError::ResourceError(
+                                            ResourceError::InvalidObjectFormat,
+                                        ));
+                                    };
 
-                                material_decl.reflection_texture.replace(name);
-                            }
-                            "normal_texture" => {
-                                let Some(linkname) = file.link_name()? else {
-                                    return Err(RenderingError::ResourceError(
-                                        ResourceError::InvalidObjectFormat,
-                                    ));
-                                };
+                                    let mut name = String::new();
+                                    for n in linkname.to_string_lossy().split("/") {
+                                        name = String::from(n);
+                                    }
 
-                                let mut name = String::new();
-                                for n in linkname.to_string_lossy().split("/") {
-                                    name = String::from(n);
+                                    material_decl.normal_texture.replace(name);
                                 }
-
-                                material_decl.normal_texture.replace(name);
+                                "" => continue,
+                                _ => println!(
+                                    "WARNING: unrecognised property for material {material_name}: {property}"
+                                ),
                             }
-                            "" => continue,
-                            _ => println!(
-                                "WARNING: unrecognised property for material {material_name}: {property}"
-                            ),
-                        } };
+                        };
 
                         materials.insert(material_name, material_decl);
                     }

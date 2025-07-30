@@ -403,15 +403,19 @@ impl HDRTransform {
                     &[self.descriptor_sets[current_frame].clone()],
                 );
 
-                recorder.push_constant_for_graphics_pipeline(self.pipeline_layout.clone(), 0, unsafe {
-                    ::core::slice::from_raw_parts(
-                        (hdr as *const HDR) as *const u8,
-                        ::core::mem::size_of::<HDR>(),
-                    )
-                });
+                recorder.push_constant_for_graphics_pipeline(
+                    self.pipeline_layout.clone(),
+                    0,
+                    unsafe {
+                        ::core::slice::from_raw_parts(
+                            (hdr as *const HDR) as *const u8,
+                            ::core::mem::size_of::<HDR>(),
+                        )
+                    },
+                );
 
                 recorder.draw(0, 6, 0, 1);
-            }
+            },
         );
 
         (

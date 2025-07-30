@@ -578,29 +578,29 @@ impl MeshRendering {
             None,
             |recorder| {
                 recorder.bind_graphics_pipeline(
-                self.graphics_pipeline.clone(),
-                Some(Viewport::new(
-                    0.0f32,
-                    0.0f32,
-                    self.image_dimensions.width() as f32,
-                    self.image_dimensions.height() as f32,
-                    0.0f32,
-                    0.0f32,
-                )),
-                Some(Scissor::new(0, 0, self.image_dimensions)),
-            );
+                    self.graphics_pipeline.clone(),
+                    Some(Viewport::new(
+                        0.0f32,
+                        0.0f32,
+                        self.image_dimensions.width() as f32,
+                        self.image_dimensions.height() as f32,
+                        0.0f32,
+                        0.0f32,
+                    )),
+                    Some(Scissor::new(0, 0, self.image_dimensions)),
+                );
 
-            // bind vertex buffer + bind index buffer
-            // TODO: vkCmdBindVertexBuffers vkCmdBindIndexBuffer
+                // bind vertex buffer + bind index buffer
+                // TODO: vkCmdBindVertexBuffers vkCmdBindIndexBuffer
 
-            // TODO: vkCmdPushConstants
+                // TODO: vkCmdPushConstants
 
-            // TODO: vkCmdDrawIndexed
+                // TODO: vkCmdDrawIndexed
 
-            recorder.draw(0, 3, 0, 1);
-            let meshes_lck = meshes.lock().unwrap();
-            meshes_lck.foreach_object(|loaded_obj| {});
-            }
+                recorder.draw(0, 3, 0, 1);
+                let meshes_lck = meshes.lock().unwrap();
+                meshes_lck.foreach_object(|loaded_obj| {});
+            },
         );
 
         [

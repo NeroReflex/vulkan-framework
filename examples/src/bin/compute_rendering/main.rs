@@ -776,7 +776,7 @@ fn main() {
                                 &[renderquad_descriptor_set.clone()],
                             );
                             recorder.draw(0, 6, 0, 1);
-                        }
+                        },
                     );
 
                     // Wait for the renderquad to complete the rendering so that we can then transition the image

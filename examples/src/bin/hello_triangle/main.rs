@@ -396,7 +396,7 @@ fn main() {
                                 );
 
                                 recorder.draw(0, 3, 0, 1);
-                            }
+                            },
                         );
 
                         // Wait for the graphics pipeline to complete the rendering so that we can then transition the image

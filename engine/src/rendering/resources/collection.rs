@@ -47,7 +47,9 @@ where
         F: Fn(&T),
     {
         for obj in self.collection.iter() {
-            if let LoadableResource::Loaded(loaded_obj) = obj { function(loaded_obj) }
+            if let LoadableResource::Loaded(loaded_obj) = obj {
+                function(loaded_obj)
+            }
         }
     }
 

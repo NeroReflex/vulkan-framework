@@ -270,20 +270,20 @@ impl FinalRendering {
             None,
             |recorder| {
                 recorder.bind_graphics_pipeline(
-                self.graphics_pipeline.clone(),
-                Some(Viewport::new(
-                    0.0f32,
-                    0.0f32,
-                    self.image_dimensions.width() as f32,
-                    self.image_dimensions.height() as f32,
-                    0.0f32,
-                    0.0f32,
-                )),
-                Some(Scissor::new(0, 0, self.image_dimensions)),
-            );
+                    self.graphics_pipeline.clone(),
+                    Some(Viewport::new(
+                        0.0f32,
+                        0.0f32,
+                        self.image_dimensions.width() as f32,
+                        self.image_dimensions.height() as f32,
+                        0.0f32,
+                        0.0f32,
+                    )),
+                    Some(Scissor::new(0, 0, self.image_dimensions)),
+                );
 
-            recorder.draw(0, 3, 0, 1);
-            }
+                recorder.draw(0, 3, 0, 1);
+            },
         );
 
         (

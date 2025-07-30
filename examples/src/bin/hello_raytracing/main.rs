@@ -1018,7 +1018,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     &[renderquad_descriptor_sets[swapchain_index as usize].clone()],
                                 );
                                 recorder.draw(0, 6, 0, 1);
-                            }
+                            },
                         );
 
                         // Wait for the renderquad to complete the rendering so that we can then transition the image

@@ -637,7 +637,7 @@ impl<'a> CommandBufferRecorder<'a> {
         color_attachments: &[DynamicRenderingAttachment],
         depth_attachment: Option<&DynamicRenderingAttachment>,
         stencil_attachment: Option<&DynamicRenderingAttachment>,
-        fun: impl FnOnce(&mut Self) -> T
+        fun: impl FnOnce(&mut Self) -> T,
     ) -> T {
         let mut ash_color_attachments: smallvec::SmallVec<[ash::vk::RenderingAttachmentInfo; 8]> =
             smallvec::smallvec![];
