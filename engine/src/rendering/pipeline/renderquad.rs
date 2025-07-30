@@ -126,7 +126,7 @@ impl RenderQuad {
                 ),
                 frames_in_flight,
             ),
-            Some("renderquad_descriptor_pool"),
+            Some("renderquad.descriptor_pool"),
         )?;
 
         let binding_descriptor = BindingDescriptor::new(
@@ -152,7 +152,7 @@ impl RenderQuad {
             device.clone(),
             &[descriptor_set_layout.clone()],
             &[],
-            Some("pipeline_layout"),
+            Some("renderquad.pipeline_layout"),
         )?;
 
         let vertex_shader = VertexShader::new(
@@ -197,7 +197,7 @@ impl RenderQuad {
             ),
             (vertex_shader, None),
             (fragment_shader, None),
-            Some("renderquad_pipeline"),
+            Some("renderquad.pipeline"),
         )?;
 
         let sampler = Sampler::new(

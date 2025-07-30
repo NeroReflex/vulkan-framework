@@ -98,7 +98,7 @@ impl FinalRendering {
         let mut image_handles: smallvec::SmallVec<[_; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]> =
             smallvec::smallvec![];
         for index in 0..(frames_in_flight as usize) {
-            let image_name = format!("final_rendering_image[{index}]");
+            let image_name = format!("final_rendering.image[{index}]");
             let image = Image::new(
                 device.clone(),
                 ConcreteImageDescriptor::new(
@@ -153,7 +153,7 @@ impl FinalRendering {
 
             images.push(allocated_image.clone());
 
-            let image_view_name = format!("final_rendering_image_view[{index}]");
+            let image_view_name = format!("final_rendering.image_view[{index}]");
             let image_view = ImageView::new(
                 allocated_image,
                 Some(ImageViewType::Image2D),
@@ -187,7 +187,7 @@ impl FinalRendering {
                         )*/
                     ],
             &[],
-            Some("pipeline_layout"),
+            Some("final_rendering.pipeline_layout"),
         )?;
 
         let graphics_pipeline = GraphicsPipeline::new(
@@ -217,7 +217,7 @@ impl FinalRendering {
             ),
             (vertex_shader, None),
             (fragment_shader, None),
-            Some("final_rendering_graphics_pipeline"),
+            Some("final_rendering.graphics_pipeline"),
         )?;
 
         Ok(Self {

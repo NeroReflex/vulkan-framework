@@ -1,34 +1,7 @@
 use crate::shader_trait::{ShaderType, ShaderTypeRayTracingKHR};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct ShaderStagesAccessRayTracingKHR {
-    rgen: bool,
-    miss: bool,
-    callable: bool,
-    closest_hit: bool,
-    any_hit: bool,
-    intersection: bool,
-}
-
-impl ShaderStagesAccessRayTracingKHR {
-    pub(crate) fn ash_stage_access_mask(&self) -> ash::vk::ShaderStageFlags {
-        match self.rgen {
-            true => ash::vk::ShaderStageFlags::RAYGEN_KHR,
-            false => ash::vk::ShaderStageFlags::empty(),
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum ShaderStage {
-    Compute,
-    Vertex,
-    Geometry,
-    Fragment,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum ShaderStageRayTracingKHR {
+pub enum ShaderStageAccessInRayTracingKHR {
     RayGen,
     Callable,
     Miss,
@@ -37,114 +10,148 @@ pub enum ShaderStageRayTracingKHR {
     Intersection,
 }
 
+impl From<&ShaderStageAccessInRayTracingKHR> for crate::ash::vk::ShaderStageFlags {
+    fn from(value: &ShaderStageAccessInRayTracingKHR) -> Self {
+        match value {
+            ShaderStageAccessInRayTracingKHR::RayGen => ash::vk::ShaderStageFlags::RAYGEN_KHR,
+            ShaderStageAccessInRayTracingKHR::Callable => ash::vk::ShaderStageFlags::CALLABLE_KHR,
+            ShaderStageAccessInRayTracingKHR::Miss => ash::vk::ShaderStageFlags::MISS_KHR,
+            ShaderStageAccessInRayTracingKHR::ClosestHit => {
+                ash::vk::ShaderStageFlags::CLOSEST_HIT_KHR
+            }
+            ShaderStageAccessInRayTracingKHR::AnyHit => ash::vk::ShaderStageFlags::ANY_HIT_KHR,
+            ShaderStageAccessInRayTracingKHR::Intersection => {
+                ash::vk::ShaderStageFlags::INTERSECTION_KHR
+            }
+        }
+    }
+}
+
+impl From<ShaderStageAccessInRayTracingKHR> for crate::ash::vk::ShaderStageFlags {
+    fn from(value: ShaderStageAccessInRayTracingKHR) -> Self {
+        (&value).into()
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum ShaderStageAccessIn {
+    Compute,
+    Vertex,
+    Geometry,
+    Fragment,
+    RayTracing(ShaderStageAccessInRayTracingKHR),
+}
+
+impl From<&ShaderStageAccessIn> for crate::ash::vk::ShaderStageFlags {
+    fn from(value: &ShaderStageAccessIn) -> Self {
+        match value {
+            ShaderStageAccessIn::Compute => ash::vk::ShaderStageFlags::COMPUTE,
+            ShaderStageAccessIn::Vertex => ash::vk::ShaderStageFlags::VERTEX,
+            ShaderStageAccessIn::Geometry => ash::vk::ShaderStageFlags::GEOMETRY,
+            ShaderStageAccessIn::Fragment => ash::vk::ShaderStageFlags::FRAGMENT,
+            ShaderStageAccessIn::RayTracing(ray_tracing_khr) => ray_tracing_khr.into(),
+        }
+    }
+}
+
+impl From<ShaderStageAccessIn> for crate::ash::vk::ShaderStageFlags {
+    fn from(value: ShaderStageAccessIn) -> Self {
+        (&value).into()
+    }
+}
+
 #[derive(Copy, Clone, PartialEq, Eq)]
-pub struct ShaderStagesAccess {
-    compute: bool,
-    vertex: bool,
-    geometry: bool,
-    fragment: bool,
-    ray_tracing: ShaderStagesAccessRayTracingKHR,
+#[repr(transparent)]
+pub struct ShaderStagesAccess(crate::ash::vk::ShaderStageFlags);
+
+impl From<u32> for ShaderStagesAccess {
+    fn from(value: u32) -> Self {
+        Self(ash::vk::ShaderStageFlags::from_raw(value))
+    }
+}
+
+impl From<crate::ash::vk::ShaderStageFlags> for ShaderStagesAccess {
+    fn from(stages: crate::ash::vk::ShaderStageFlags) -> Self {
+        Self(stages)
+    }
+}
+
+impl From<ShaderStagesAccess> for crate::ash::vk::ShaderStageFlags {
+    fn from(val: ShaderStagesAccess) -> Self {
+        val.0.to_owned()
+    }
+}
+
+impl From<&[ShaderStageAccessIn]> for ShaderStagesAccess {
+    fn from(value: &[ShaderStageAccessIn]) -> Self {
+        let mut access = ash::vk::ShaderStageFlags::empty();
+        for flag in value.iter() {
+            access |= flag.into()
+        }
+
+        Self(access)
+    }
+}
+
+impl From<&[&ShaderStageAccessIn]> for ShaderStagesAccess {
+    fn from(value: &[&ShaderStageAccessIn]) -> Self {
+        let mut access = ash::vk::ShaderStageFlags::empty();
+        for flag in value.iter() {
+            access |= (*flag).into()
+        }
+
+        Self(access)
+    }
 }
 
 impl ShaderStagesAccess {
-    pub fn from(stages: &[ShaderStage], ray_tracing: &[ShaderStageRayTracingKHR]) -> Self {
-        Self {
-            compute: stages.contains(&ShaderStage::Compute),
-            vertex: stages.contains(&ShaderStage::Vertex),
-            fragment: stages.contains(&ShaderStage::Fragment),
-            geometry: stages.contains(&ShaderStage::Geometry),
-            ray_tracing: ShaderStagesAccessRayTracingKHR {
-                rgen: ray_tracing.contains(&ShaderStageRayTracingKHR::RayGen),
-                miss: ray_tracing.contains(&ShaderStageRayTracingKHR::Miss),
-                callable: ray_tracing.contains(&ShaderStageRayTracingKHR::Callable),
-                closest_hit: ray_tracing.contains(&ShaderStageRayTracingKHR::ClosestHit),
-                any_hit: ray_tracing.contains(&ShaderStageRayTracingKHR::AnyHit),
-                intersection: ray_tracing.contains(&ShaderStageRayTracingKHR::Intersection),
-            },
-        }
-    }
-
     pub fn raytracing() -> Self {
-        Self {
-            compute: false,
-            vertex: false,
-            geometry: false,
-            fragment: false,
-            ray_tracing: ShaderStagesAccessRayTracingKHR {
-                rgen: true,
-                miss: true,
-                callable: true,
-                closest_hit: true,
-                any_hit: true,
-                intersection: true,
-            },
-        }
+        [
+            ShaderStageAccessIn::RayTracing(ShaderStageAccessInRayTracingKHR::RayGen),
+            ShaderStageAccessIn::RayTracing(ShaderStageAccessInRayTracingKHR::Callable),
+            ShaderStageAccessIn::RayTracing(ShaderStageAccessInRayTracingKHR::Miss),
+            ShaderStageAccessIn::RayTracing(ShaderStageAccessInRayTracingKHR::ClosestHit),
+            ShaderStageAccessIn::RayTracing(ShaderStageAccessInRayTracingKHR::AnyHit),
+            ShaderStageAccessIn::RayTracing(ShaderStageAccessInRayTracingKHR::Intersection),
+        ]
+        .as_slice()
+        .into()
     }
 
     pub fn graphics() -> Self {
-        Self {
-            compute: false,
-            vertex: true,
-            geometry: true,
-            fragment: true,
-            ray_tracing: ShaderStagesAccessRayTracingKHR {
-                rgen: false,
-                miss: false,
-                callable: false,
-                closest_hit: false,
-                any_hit: false,
-                intersection: false,
-            },
-        }
+        Self(ash::vk::ShaderStageFlags::ALL_GRAPHICS)
     }
 
     pub fn compute() -> Self {
-        Self {
-            compute: true,
-            vertex: false,
-            geometry: false,
-            fragment: false,
-            ray_tracing: ShaderStagesAccessRayTracingKHR {
-                rgen: false,
-                miss: false,
-                callable: false,
-                closest_hit: false,
-                any_hit: false,
-                intersection: false,
-            },
-        }
+        [ShaderStageAccessIn::Compute].as_slice().into()
     }
 
     pub fn is_accessible_by(&self, shader_type: &ShaderType) -> bool {
         match shader_type {
-            ShaderType::Compute => self.compute,
-            ShaderType::Vertex => self.vertex,
-            ShaderType::Geometry => self.geometry,
-            ShaderType::Fragment => self.fragment,
+            ShaderType::Compute => self.0.contains(ash::vk::ShaderStageFlags::COMPUTE),
+            ShaderType::Vertex => self.0.contains(ash::vk::ShaderStageFlags::VERTEX),
+            ShaderType::Geometry => self.0.contains(ash::vk::ShaderStageFlags::GEOMETRY),
+            ShaderType::Fragment => self.0.contains(ash::vk::ShaderStageFlags::FRAGMENT),
             ShaderType::RayTracingKHR(raytracing_khr) => match raytracing_khr {
-                ShaderTypeRayTracingKHR::RayGen => self.ray_tracing.rgen,
-                ShaderTypeRayTracingKHR::Miss => self.ray_tracing.miss,
-                ShaderTypeRayTracingKHR::Callable => self.ray_tracing.callable,
-                ShaderTypeRayTracingKHR::ClosestHit => self.ray_tracing.closest_hit,
-                ShaderTypeRayTracingKHR::AnyHit => self.ray_tracing.any_hit,
-                ShaderTypeRayTracingKHR::Intersection => self.ray_tracing.intersection,
+                ShaderTypeRayTracingKHR::RayGen => {
+                    self.0.contains(ash::vk::ShaderStageFlags::RAYGEN_KHR)
+                }
+                ShaderTypeRayTracingKHR::Miss => {
+                    self.0.contains(ash::vk::ShaderStageFlags::MISS_KHR)
+                }
+                ShaderTypeRayTracingKHR::Callable => {
+                    self.0.contains(ash::vk::ShaderStageFlags::CALLABLE_KHR)
+                }
+                ShaderTypeRayTracingKHR::ClosestHit => {
+                    self.0.contains(ash::vk::ShaderStageFlags::CLOSEST_HIT_KHR)
+                }
+                ShaderTypeRayTracingKHR::AnyHit => {
+                    self.0.contains(ash::vk::ShaderStageFlags::ANY_HIT_KHR)
+                }
+                ShaderTypeRayTracingKHR::Intersection => {
+                    self.0.contains(ash::vk::ShaderStageFlags::INTERSECTION_KHR)
+                }
             },
         }
-    }
-
-    pub(crate) fn ash_stage_access_mask(&self) -> ash::vk::ShaderStageFlags {
-        (match self.vertex {
-            true => ash::vk::ShaderStageFlags::VERTEX,
-            false => ash::vk::ShaderStageFlags::empty(),
-        }) | (match self.geometry {
-            true => ash::vk::ShaderStageFlags::GEOMETRY,
-            false => ash::vk::ShaderStageFlags::empty(),
-        }) | (match self.fragment {
-            true => ash::vk::ShaderStageFlags::FRAGMENT,
-            false => ash::vk::ShaderStageFlags::empty(),
-        }) | (match self.compute {
-            true => ash::vk::ShaderStageFlags::COMPUTE,
-            false => ash::vk::ShaderStageFlags::empty(),
-        }) | self.ray_tracing.ash_stage_access_mask()
     }
 }

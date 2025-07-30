@@ -50,7 +50,9 @@ use vulkan_framework::{
     shader_layout_binding::{
         AccelerationStructureBindingType, BindingDescriptor, BindingType, NativeBindingType,
     },
-    shader_stage_access::{ShaderStageRayTracingKHR, ShaderStagesAccess},
+    shader_stage_access::{
+        ShaderStageAccessIn, ShaderStageAccessInRayTracingKHR, ShaderStagesAccess,
+    },
     shaders::{
         closest_hit_shader::ClosestHitShader, fragment_shader::FragmentShader,
         miss_shader::MissShader, raygen_shader::RaygenShader, vertex_shader::VertexShader,
@@ -516,14 +518,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .collect::<Vec<_>>();
 
         let rt_output_image_descriptor = BindingDescriptor::new(
-            ShaderStagesAccess::from(&[], &[ShaderStageRayTracingKHR::RayGen]),
+            [ShaderStageAccessIn::RayTracing(
+                ShaderStageAccessInRayTracingKHR::RayGen,
+            )]
+            .as_slice()
+            .into(),
             BindingType::Native(NativeBindingType::StorageImage),
             0,
             1,
         );
 
         let rt_acceleration_structure_descriptor = BindingDescriptor::new(
-            ShaderStagesAccess::from(&[], &[ShaderStageRayTracingKHR::RayGen]),
+            [ShaderStageAccessIn::RayTracing(
+                ShaderStageAccessInRayTracingKHR::RayGen,
+            )]
+            .as_slice()
+            .into(),
             BindingType::AccelerationStructure(
                 AccelerationStructureBindingType::AccelerationStructure,
             ),

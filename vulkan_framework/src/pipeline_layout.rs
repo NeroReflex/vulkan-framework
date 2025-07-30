@@ -67,7 +67,7 @@ impl PipelineLayout {
 
         let ranges = constant_ranges
             .iter()
-            .map(|r| r.ash_handle())
+            .map(|r| r.as_ref().into())
             .collect::<SmallVec<[ash::vk::PushConstantRange; 8]>>();
 
         let create_info = ash::vk::PipelineLayoutCreateInfo::default()

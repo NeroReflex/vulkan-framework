@@ -470,9 +470,6 @@ fn main() {
         1,
     );
 
-    let image_dimensions_shader_push_constant =
-        PushConstanRange::new(0, 8, ShaderStagesAccess::compute());
-
     let compute_shader = match ComputeShader::new(
         device.clone(),
         //&[image_dimensions_shader_push_constant.clone()],
@@ -500,6 +497,9 @@ fn main() {
                 return;
             }
         };
+
+    let image_dimensions_shader_push_constant =
+        PushConstanRange::new(0, 8, ShaderStagesAccess::compute());
 
     let compute_pipeline_layout = PipelineLayout::new(
         device.clone(),
@@ -561,8 +561,9 @@ fn main() {
         }]
         .concat();
 
-        recorder.push_constant_for_compute_pipeline(
+        recorder.push_constant(
             compute_pipeline_layout.clone(),
+            ShaderStagesAccess::compute(),
             0,
             data.as_slice(),
         );

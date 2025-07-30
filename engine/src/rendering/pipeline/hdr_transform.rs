@@ -37,7 +37,7 @@ use vulkan_framework::{
     queue_family::QueueFamily,
     sampler::{Filtering, MipmapMode, Sampler},
     shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType},
-    shader_stage_access::ShaderStagesAccess,
+    shader_stage_access::{ShaderStageAccessIn, ShaderStagesAccess},
     shaders::{fragment_shader::FragmentShader, vertex_shader::VertexShader},
 };
 
@@ -110,12 +110,17 @@ void main() {
 
 pub struct HDRTransform {
     _memory_pool: Arc<MemoryPool>,
+
     descriptor_sets: smallvec::SmallVec<[Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
+
+    push_constant_access: ShaderStagesAccess,
     pipeline_layout: Arc<PipelineLayout>,
     graphics_pipeline: Arc<GraphicsPipeline>,
+
     image_dimensions: Image2DDimensions,
     images: smallvec::SmallVec<[Arc<AllocatedImage>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
     image_views: smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
+
     sampler: Arc<Sampler>,
 }
 
@@ -164,7 +169,7 @@ impl HDRTransform {
                 ),
                 frames_in_flight,
             ),
-            Some("renderquad_descriptor_pool"),
+            Some("hdr_transform.descriptor_pool"),
         )?;
 
         let binding_descriptor = BindingDescriptor::new(
@@ -186,11 +191,13 @@ impl HDRTransform {
             descriptor_sets.push(descriptor_set);
         }
 
+        let push_constant_access = [ShaderStageAccessIn::Fragment].as_slice().into();
+
         let pipeline_layout = PipelineLayout::new(
             device.clone(),
             &[descriptor_set_layout.clone()],
-            &[],
-            Some("pipeline_layout"),
+            &[PushConstanRange::new(0, 4u32 * 2u32, push_constant_access)],
+            Some("hdr_transform.pipeline_layout"),
         )?;
 
         let vertex_shader = VertexShader::new(
@@ -205,7 +212,7 @@ impl HDRTransform {
             &[PushConstanRange::new(
                 0,
                 (std::mem::size_of::<u32>() as u32) * 2u32,
-                ShaderStagesAccess::graphics(),
+                push_constant_access,
             )],
             binding_descriptors.as_slice(),
             RENDERQUAD_FRAGMENT_SPV,
@@ -239,13 +246,13 @@ impl HDRTransform {
             ),
             (vertex_shader, None),
             (fragment_shader, None),
-            Some("renderquad_pipeline"),
+            Some("hdr_transform.pipeline"),
         )?;
 
         let mut image_handles: smallvec::SmallVec<[_; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]> =
             smallvec::smallvec![];
         for index in 0..(frames_in_flight as usize) {
-            let image_name = format!("final_rendering_image[{index}]");
+            let image_name = format!("hdr_transform.image[{index}]");
             let image = Image::new(
                 device.clone(),
                 ConcreteImageDescriptor::new(
@@ -300,7 +307,7 @@ impl HDRTransform {
 
             images.push(allocated_image.clone());
 
-            let image_view_name = format!("final_rendering_image_view[{index}]");
+            let image_view_name = format!("hdr_transform.image_view[{index}]");
             let image_view = ImageView::new(
                 allocated_image,
                 Some(ImageViewType::Image2D),
@@ -330,6 +337,8 @@ impl HDRTransform {
             _memory_pool: memory_pool,
 
             descriptor_sets,
+
+            push_constant_access,
             pipeline_layout,
             graphics_pipeline,
 
@@ -403,8 +412,9 @@ impl HDRTransform {
                     &[self.descriptor_sets[current_frame].clone()],
                 );
 
-                recorder.push_constant_for_graphics_pipeline(
+                recorder.push_constant(
                     self.pipeline_layout.clone(),
+                    self.push_constant_access,
                     0,
                     unsafe {
                         ::core::slice::from_raw_parts(

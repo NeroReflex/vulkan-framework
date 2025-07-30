@@ -8,14 +8,22 @@ pub struct PushConstanRange {
     shader_access: ShaderStagesAccess,
 }
 
-impl PushConstanRange {
-    pub(crate) fn ash_handle(&self) -> ash::vk::PushConstantRange {
-        ash::vk::PushConstantRange::default()
-            .offset(self.offset)
-            .size(self.size)
-            .stage_flags(self.shader_access.ash_stage_access_mask())
+impl From<PushConstanRange> for crate::ash::vk::PushConstantRange {
+    fn from(range: PushConstanRange) -> crate::ash::vk::PushConstantRange {
+        (&range).into()
     }
+}
 
+impl From<&PushConstanRange> for crate::ash::vk::PushConstantRange {
+    fn from(range: &PushConstanRange) -> crate::ash::vk::PushConstantRange {
+        ash::vk::PushConstantRange::default()
+            .offset(range.offset)
+            .size(range.size)
+            .stage_flags(range.shader_access.into())
+    }
+}
+
+impl PushConstanRange {
     pub fn shader_access(&self) -> ShaderStagesAccess {
         self.shader_access
     }

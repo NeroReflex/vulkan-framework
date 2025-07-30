@@ -36,6 +36,7 @@ use crate::{
     prelude::{FrameworkError, VulkanError, VulkanResult},
     queue_family::QueueFamily,
     raytracing_pipeline::RaytracingPipeline,
+    shader_stage_access::ShaderStagesAccess,
 };
 use crate::{
     compute_pipeline::ComputePipeline, descriptor_set::DescriptorSet, device::Device,
@@ -863,9 +864,10 @@ impl<'a> CommandBufferRecorder<'a> {
             ));
     }
 
-    pub fn push_constant_for_compute_pipeline(
+    pub fn push_constant(
         &mut self,
         pipeline_layout: Arc<PipelineLayout>,
+        access: ShaderStagesAccess,
         offset: u32,
         data: &[u8],
     ) {
@@ -873,29 +875,7 @@ impl<'a> CommandBufferRecorder<'a> {
             self.device.ash_handle().cmd_push_constants(
                 self.command_buffer.ash_handle(),
                 pipeline_layout.ash_handle(),
-                ash::vk::ShaderStageFlags::COMPUTE,
-                offset,
-                data,
-            )
-        }
-
-        self.used_resources
-            .insert(CommandBufferReferencedResource::PipelineLayout(
-                pipeline_layout,
-            ));
-    }
-
-    pub fn push_constant_for_graphics_pipeline(
-        &mut self,
-        pipeline_layout: Arc<PipelineLayout>,
-        offset: u32,
-        data: &[u8],
-    ) {
-        unsafe {
-            self.device.ash_handle().cmd_push_constants(
-                self.command_buffer.ash_handle(),
-                pipeline_layout.ash_handle(),
-                ash::vk::ShaderStageFlags::ALL_GRAPHICS,
+                access.into(),
                 offset,
                 data,
             )

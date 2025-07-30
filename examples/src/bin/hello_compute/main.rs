@@ -365,8 +365,9 @@ fn main() {
         }]
         .concat();
 
-        recorder.push_constant_for_compute_pipeline(
+        recorder.push_constant(
             compute_pipeline_layout.clone(),
+            ShaderStagesAccess::compute(),
             0,
             data.as_slice(),
         );

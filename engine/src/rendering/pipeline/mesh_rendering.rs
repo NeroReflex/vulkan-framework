@@ -397,7 +397,7 @@ impl MeshRendering {
                         )*/
                     ],
             &[],
-            Some("pipeline_layout"),
+            Some("mesh_rendering.pipeline_layout"),
         )?;
 
         let graphics_pipeline = GraphicsPipeline::new(
