@@ -612,9 +612,12 @@ impl Device {
                 ext.as_str() == ash::khr::ray_tracing_pipeline::NAME.to_str().unwrap_or("")
             });
 
+            // prepare the list of features that the driver will fill, declaring what features it supports
             let mut features2 = ash::vk::PhysicalDeviceFeatures2::default();
-            let mut synchronization2_features =
-                ash::vk::PhysicalDeviceSynchronization2Features::default().synchronization2(true);
+            let mut get_synchronization2_features =
+                ash::vk::PhysicalDeviceSynchronization2Features::default().synchronization2(false);
+            let mut get_dynamic_rendering_features =
+                ash::vk::PhysicalDeviceDynamicRenderingFeatures::default().dynamic_rendering(false);
             let mut accel_structure_features =
                 ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
             let mut ray_tracing_pipeline_features =
@@ -653,8 +656,13 @@ impl Device {
             features2.p_next =
                 &mut get_imageless_framebuffer_features as *mut _ as *mut std::ffi::c_void;
 
-            synchronization2_features.p_next = features2.p_next;
-            features2.p_next = &mut synchronization2_features as *mut _ as *mut std::ffi::c_void;
+            get_synchronization2_features.p_next = features2.p_next;
+            features2.p_next =
+                &mut get_synchronization2_features as *mut _ as *mut std::ffi::c_void;
+
+            get_dynamic_rendering_features.p_next = get_synchronization2_features.p_next;
+            get_synchronization2_features.p_next =
+                &mut get_dynamic_rendering_features as *mut _ as *mut std::ffi::c_void;
 
             instance.ash_handle().get_physical_device_features2(
                 selected_device.selected_physical_device,
@@ -665,6 +673,12 @@ impl Device {
                 &mut properties2,
             );
             device_create_info_builder = device_create_info_builder.push_next(&mut features2);
+
+            // make sure synchronization2 features are enabled: it is required for the framework to work
+            assert!(get_synchronization2_features.synchronization2 != 0);
+
+            // make sure dynamic rendering is enbaled
+            assert!(get_dynamic_rendering_features.dynamic_rendering != 0);
 
             let mut raytracing_info: Option<RaytracingInfo> = Option::None;
 

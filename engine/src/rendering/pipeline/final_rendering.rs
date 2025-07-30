@@ -7,9 +7,14 @@ use crate::rendering::{
 };
 
 use vulkan_framework::{
-    command_buffer::{ClearValues, ColorClearValues, CommandBufferRecorder},
+    command_buffer::{
+        ClearValues, ColorClearValues, CommandBufferRecorder, ImageMemoryBarrier, MemoryAccess,
+        MemoryAccessAs,
+    },
     device::Device,
-    framebuffer::Framebuffer,
+    dynamic_rendering::{
+        AttachmentLoadOp, AttachmentStoreOp, DynamicRendering, DynamicRenderingAttachment,
+    },
     graphics_pipeline::{
         CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline, PolygonMode,
         Rasterizer, Scissor, Viewport,
@@ -17,8 +22,7 @@ use vulkan_framework::{
     image::{
         AllocatedImage, CommonImageFormat, ConcreteImageDescriptor, Image, Image1DTrait,
         Image2DDimensions, Image2DTrait, ImageDimensions, ImageFlags, ImageFormat, ImageLayout,
-        ImageLayoutSwapchainKHR, ImageMultisampling, ImageSubresourceRange, ImageTiling,
-        ImageTrait, ImageUsage, ImageUseAs,
+        ImageMultisampling, ImageSubresourceRange, ImageTiling, ImageTrait, ImageUsage, ImageUseAs,
     },
     image_view::{ImageView, ImageViewType},
     memory_allocator::{DefaultAllocator, MemoryAllocator},
@@ -26,10 +30,8 @@ use vulkan_framework::{
     memory_pool::{MemoryPool, MemoryPoolFeatures},
     memory_requiring::MemoryRequiring,
     pipeline_layout::PipelineLayout,
-    renderpass::{
-        AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp, RenderPass,
-        RenderSubPassDescription,
-    },
+    pipeline_stage::{PipelineStage, PipelineStages},
+    queue_family::QueueFamily,
     shaders::{fragment_shader::FragmentShader, vertex_shader::VertexShader},
 };
 
@@ -69,16 +71,17 @@ void main() {
 /// This is the deferred shading step, basically.
 pub struct FinalRendering {
     _memory_pool: Arc<MemoryPool>,
+
     image_dimensions: Image2DDimensions,
     images: smallvec::SmallVec<[Arc<AllocatedImage>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
     image_views: smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
-    framebuffers: smallvec::SmallVec<[Arc<Framebuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
+
     graphics_pipeline: Arc<GraphicsPipeline>,
 }
 
 impl FinalRendering {
     fn output_image_layout() -> ImageLayout {
-        ImageLayout::ShaderReadOnlyOptimal
+        ImageLayout::ColorAttachmentOptimal
     }
 
     pub fn output_image_format() -> ImageFormat {
@@ -167,35 +170,6 @@ impl FinalRendering {
             image_views.push(image_view);
         }
 
-        let renderpass = RenderPass::new(
-            device.clone(),
-            &[
-                AttachmentDescription::new(
-                    Self::output_image_format(),
-                    ImageMultisampling::SamplesPerPixel1,
-                    ImageLayout::Undefined,
-                    Self::output_image_layout(),
-                    AttachmentLoadOp::Clear,
-                    AttachmentStoreOp::Store,
-                    AttachmentLoadOp::Clear,
-                    AttachmentStoreOp::Store,
-                ),
-                /*
-                // depth
-                AttachmentDescription::new(
-                    final_format,
-                    ImageMultisampling::SamplesPerPixel1,
-                    ImageLayout::Undefined,
-                    ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
-                    AttachmentLoadOp::Clear,
-                    AttachmentStoreOp::Store,
-                    AttachmentLoadOp::Clear,
-                    AttachmentStoreOp::Store,
-                )*/
-            ],
-            &[RenderSubPassDescription::new(&[], &[0], None)],
-        )?;
-
         let vertex_shader =
             VertexShader::new(device.clone(), &[], &[], FINAL_RENDERING_VERTEX_SPV).unwrap();
 
@@ -218,8 +192,7 @@ impl FinalRendering {
 
         let graphics_pipeline = GraphicsPipeline::new(
             None,
-            renderpass.clone(),
-            0,
+            DynamicRendering::new([Self::output_image_format()].as_slice(), None, None),
             ImageMultisampling::SamplesPerPixel1,
             Some(DepthConfiguration::new(
                 true,
@@ -247,58 +220,71 @@ impl FinalRendering {
             Some("final_rendering_graphics_pipeline"),
         )?;
 
-        let mut framebuffers = smallvec::smallvec![];
-        for iw in 0..image_views.len() {
-            let framebuffer = Framebuffer::new(
-                renderpass.clone(),
-                [image_views[iw].clone()].as_slice(),
-                image_dimensions,
-                1,
-            )?;
-
-            framebuffers.push(framebuffer);
-        }
-
         Ok(Self {
-            image_dimensions,
             _memory_pool: memory_pool,
-            graphics_pipeline,
-            framebuffers,
+
+            image_dimensions,
             image_views,
             images,
+
+            graphics_pipeline,
         })
     }
 
     pub fn record_rendering_commands(
         &self,
+        queue_family: Arc<QueueFamily>,
         current_frame: usize,
         recorder: &mut CommandBufferRecorder,
     ) -> (Arc<ImageView>, ImageSubresourceRange, ImageLayout) {
         let image_view = self.image_views[current_frame].clone();
 
-        recorder.begin_renderpass(
-            self.framebuffers[current_frame].clone(),
-            &[ClearValues::new(Some(ColorClearValues::Vec4(
-                0.0, 0.0, 0.0, 1.0,
-            )))],
+        // Transition the framebuffer image into color attachment optimal layout,
+        // so that the graphics pipeline has it in the best format
+        recorder.image_barriers(
+            [ImageMemoryBarrier::new(
+                PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
+                MemoryAccess::from([].as_slice()),
+                PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
+                MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
+                image_view.image().into(),
+                ImageLayout::Undefined,
+                ImageLayout::ColorAttachmentOptimal,
+                queue_family.clone(),
+                queue_family.clone(),
+            )]
+            .as_slice(),
         );
 
-        recorder.bind_graphics_pipeline(
-            self.graphics_pipeline.clone(),
-            Some(Viewport::new(
-                0.0f32,
-                0.0f32,
-                self.image_dimensions.width() as f32,
-                self.image_dimensions.height() as f32,
-                0.0f32,
-                0.0f32,
-            )),
-            Some(Scissor::new(0, 0, self.image_dimensions)),
+        let rendering_color_attachments = [DynamicRenderingAttachment::new(
+            image_view.clone(),
+            Self::output_image_layout(),
+            ClearValues::new(Some(ColorClearValues::Vec4(0.0, 0.0, 0.0, 1.0))),
+            AttachmentLoadOp::Clear,
+            AttachmentStoreOp::Store,
+        )];
+        recorder.graphics_rendering(
+            self.image_dimensions.clone(),
+            rendering_color_attachments.as_slice(),
+            None,
+            None,
+            |recorder| {
+                recorder.bind_graphics_pipeline(
+                self.graphics_pipeline.clone(),
+                Some(Viewport::new(
+                    0.0f32,
+                    0.0f32,
+                    self.image_dimensions.width() as f32,
+                    self.image_dimensions.height() as f32,
+                    0.0f32,
+                    0.0f32,
+                )),
+                Some(Scissor::new(0, 0, self.image_dimensions)),
+            );
+
+            recorder.draw(0, 3, 0, 1);
+            }
         );
-
-        recorder.draw(0, 3, 0, 1);
-
-        recorder.end_renderpass();
 
         (
             image_view,

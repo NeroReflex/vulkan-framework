@@ -8,9 +8,14 @@ use crate::rendering::{
 };
 
 use vulkan_framework::{
-    command_buffer::{ClearValues, ColorClearValues, CommandBufferRecorder},
+    command_buffer::{
+        ClearValues, ColorClearValues, CommandBufferRecorder, ImageMemoryBarrier, MemoryAccess,
+        MemoryAccessAs,
+    },
     device::Device,
-    framebuffer::Framebuffer,
+    dynamic_rendering::{
+        AttachmentLoadOp, AttachmentStoreOp, DynamicRendering, DynamicRenderingAttachment,
+    },
     graphics_pipeline::{
         AttributeType, CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline,
         PolygonMode, Rasterizer, Scissor, VertexInputAttribute, VertexInputBinding,
@@ -19,7 +24,7 @@ use vulkan_framework::{
     image::{
         AllocatedImage, CommonImageFormat, ConcreteImageDescriptor, Image, Image1DTrait,
         Image2DDimensions, Image2DTrait, ImageDimensions, ImageFlags, ImageFormat, ImageLayout,
-        ImageMultisampling, ImageSubresourceRange, ImageTiling, ImageTrait, ImageUsage, ImageUseAs,
+        ImageMultisampling, ImageSubresourceRange, ImageTiling, ImageUsage, ImageUseAs,
     },
     image_view::{ImageView, ImageViewType},
     memory_allocator::{DefaultAllocator, MemoryAllocator},
@@ -27,10 +32,8 @@ use vulkan_framework::{
     memory_pool::{MemoryPool, MemoryPoolFeatures},
     memory_requiring::MemoryRequiring,
     pipeline_layout::PipelineLayout,
-    renderpass::{
-        AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp, RenderPass,
-        RenderSubPassDescription,
-    },
+    pipeline_stage::{PipelineStage, PipelineStages},
+    queue_family::QueueFamily,
     shaders::{fragment_shader::FragmentShader, vertex_shader::VertexShader},
 };
 
@@ -84,13 +87,12 @@ pub struct MeshRendering {
         smallvec::SmallVec<[Arc<AllocatedImage>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
     gbuffer_texture_image_views:
         smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
-    framebuffers: smallvec::SmallVec<[Arc<Framebuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
     graphics_pipeline: Arc<GraphicsPipeline>,
 }
 
 impl MeshRendering {
     fn output_image_color_layout() -> ImageLayout {
-        ImageLayout::ShaderReadOnlyOptimal
+        ImageLayout::ColorAttachmentOptimal
     }
 
     fn output_image_depth_stencil_layout() -> ImageLayout {
@@ -378,57 +380,6 @@ impl MeshRendering {
             )?);
         }
 
-        let renderpass = RenderPass::new(
-            device.clone(),
-            &[
-                // depth+stencil attachment
-                AttachmentDescription::new(
-                    Self::output_image_depth_stencil_format(),
-                    ImageMultisampling::SamplesPerPixel1,
-                    ImageLayout::Undefined,
-                    Self::output_image_depth_stencil_layout(),
-                    AttachmentLoadOp::Clear,
-                    AttachmentStoreOp::Store,
-                    AttachmentLoadOp::Clear,
-                    AttachmentStoreOp::Store,
-                ),
-                // vPosition attachment
-                AttachmentDescription::new(
-                    Self::output_image_color_format(),
-                    ImageMultisampling::SamplesPerPixel1,
-                    ImageLayout::Undefined,
-                    Self::output_image_color_layout(),
-                    AttachmentLoadOp::Clear,
-                    AttachmentStoreOp::Store,
-                    AttachmentLoadOp::Clear,
-                    AttachmentStoreOp::Store,
-                ),
-                // vNormal attachment
-                AttachmentDescription::new(
-                    Self::output_image_color_format(),
-                    ImageMultisampling::SamplesPerPixel1,
-                    ImageLayout::Undefined,
-                    Self::output_image_color_layout(),
-                    AttachmentLoadOp::Clear,
-                    AttachmentStoreOp::Store,
-                    AttachmentLoadOp::Clear,
-                    AttachmentStoreOp::Store,
-                ),
-                // vTexture attachment
-                AttachmentDescription::new(
-                    Self::output_image_color_format(),
-                    ImageMultisampling::SamplesPerPixel1,
-                    ImageLayout::Undefined,
-                    Self::output_image_color_layout(),
-                    AttachmentLoadOp::Clear,
-                    AttachmentStoreOp::Store,
-                    AttachmentLoadOp::Clear,
-                    AttachmentStoreOp::Store,
-                ),
-            ],
-            &[RenderSubPassDescription::new(&[], &[1, 2, 3], Some(0))],
-        )?;
-
         let vertex_shader =
             VertexShader::new(device.clone(), &[], &[], FINAL_RENDERING_VERTEX_SPV).unwrap();
 
@@ -451,8 +402,16 @@ impl MeshRendering {
 
         let graphics_pipeline = GraphicsPipeline::new(
             None,
-            renderpass.clone(),
-            0,
+            DynamicRendering::new(
+                [
+                    Self::output_image_color_format(),
+                    Self::output_image_color_format(),
+                    Self::output_image_color_format(),
+                ]
+                .as_slice(),
+                Some(Self::output_image_depth_stencil_format()),
+                None,
+            ),
             ImageMultisampling::SamplesPerPixel1,
             Some(DepthConfiguration::new(
                 true,
@@ -502,24 +461,6 @@ impl MeshRendering {
             Some("mesh_rendering.graphics_pipeline"),
         )?;
 
-        let mut framebuffers = smallvec::smallvec![];
-        for iw in 0..(frames_in_flight as usize) {
-            let framebuffer = Framebuffer::new(
-                renderpass.clone(),
-                [
-                    gbuffer_depth_stencil_image_views[iw].clone(),
-                    gbuffer_position_image_views[iw].clone(),
-                    gbuffer_normal_image_views[iw].clone(),
-                    gbuffer_texture_image_views[iw].clone(),
-                ]
-                .as_slice(),
-                image_dimensions,
-                1,
-            )?;
-
-            framebuffers.push(framebuffer);
-        }
-
         Ok(Self {
             image_dimensions,
             _memory_pool: memory_pool,
@@ -533,70 +474,154 @@ impl MeshRendering {
             gbuffer_normal_image_views,
             gbuffer_texture_images,
             gbuffer_texture_image_views,
-
-            framebuffers,
         })
     }
 
     pub fn record_rendering_commands(
         &self,
+        queue_family: Arc<QueueFamily>,
         current_frame: usize,
         meshes: Arc<Mutex<Manager>>,
         recorder: &mut CommandBufferRecorder,
-    ) -> [(Arc<ImageView>, ImageSubresourceRange, ImageLayout); 3] {
-        recorder.begin_renderpass(
-            self.framebuffers[current_frame].clone(),
-            &[ClearValues::new(Some(ColorClearValues::Vec4(
-                0.0, 0.0, 0.0, 1.0,
-            )))],
+    ) -> [(Arc<ImageView>, ImageSubresourceRange, ImageLayout); 4] {
+        let position_imageview = self.gbuffer_position_image_views[current_frame].clone();
+        let normal_imageview = self.gbuffer_normal_image_views[current_frame].clone();
+        let texture_imageview = self.gbuffer_texture_image_views[current_frame].clone();
+        let depth_stencil_imageview = self.gbuffer_depth_stencil_image_views[current_frame].clone();
+
+        // Transition the framebuffer images into depth/color attachment optimal layout,
+        // so that the graphics pipeline has it in the best format
+        recorder.image_barriers(
+            [
+                ImageMemoryBarrier::new(
+                    PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
+                    MemoryAccess::from([].as_slice()),
+                    PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
+                    MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
+                    position_imageview.image().into(),
+                    ImageLayout::Undefined,
+                    Self::output_image_color_layout(),
+                    queue_family.clone(),
+                    queue_family.clone(),
+                ),
+                ImageMemoryBarrier::new(
+                    PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
+                    MemoryAccess::from([].as_slice()),
+                    PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
+                    MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
+                    normal_imageview.image().into(),
+                    ImageLayout::Undefined,
+                    Self::output_image_color_layout(),
+                    queue_family.clone(),
+                    queue_family.clone(),
+                ),
+                ImageMemoryBarrier::new(
+                    PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
+                    MemoryAccess::from([].as_slice()),
+                    PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
+                    MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
+                    texture_imageview.image().into(),
+                    ImageLayout::Undefined,
+                    Self::output_image_color_layout(),
+                    queue_family.clone(),
+                    queue_family.clone(),
+                ),
+                ImageMemoryBarrier::new(
+                    PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
+                    MemoryAccess::from([].as_slice()),
+                    PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
+                    MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
+                    depth_stencil_imageview.image().into(),
+                    ImageLayout::Undefined,
+                    Self::output_image_color_layout(),
+                    queue_family.clone(),
+                    queue_family.clone(),
+                ),
+            ]
+            .as_slice(),
         );
 
-        recorder.bind_graphics_pipeline(
-            self.graphics_pipeline.clone(),
-            Some(Viewport::new(
-                0.0f32,
-                0.0f32,
-                self.image_dimensions.width() as f32,
-                self.image_dimensions.height() as f32,
-                0.0f32,
-                0.0f32,
-            )),
-            Some(Scissor::new(0, 0, self.image_dimensions)),
+        let rendering_color_attachments = [
+            DynamicRenderingAttachment::new(
+                position_imageview.clone(),
+                Self::output_image_color_layout(),
+                ClearValues::new(Some(ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0))),
+                AttachmentLoadOp::Clear,
+                AttachmentStoreOp::Store,
+            ),
+            DynamicRenderingAttachment::new(
+                normal_imageview.clone(),
+                Self::output_image_color_layout(),
+                ClearValues::new(Some(ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0))),
+                AttachmentLoadOp::Clear,
+                AttachmentStoreOp::Store,
+            ),
+            DynamicRenderingAttachment::new(
+                texture_imageview.clone(),
+                Self::output_image_color_layout(),
+                ClearValues::new(Some(ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0))),
+                AttachmentLoadOp::Clear,
+                AttachmentStoreOp::Store,
+            ),
+        ];
+        let rendering_depth_attachment = DynamicRenderingAttachment::new(
+            depth_stencil_imageview.clone(),
+            Self::output_image_depth_stencil_layout(),
+            ClearValues::new(Some(ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0))),
+            AttachmentLoadOp::Clear,
+            AttachmentStoreOp::Store,
         );
+        recorder.graphics_rendering(
+            self.image_dimensions.clone(),
+            rendering_color_attachments.as_slice(),
+            Some(&rendering_depth_attachment),
+            None,
+            |recorder| {
+                recorder.bind_graphics_pipeline(
+                self.graphics_pipeline.clone(),
+                Some(Viewport::new(
+                    0.0f32,
+                    0.0f32,
+                    self.image_dimensions.width() as f32,
+                    self.image_dimensions.height() as f32,
+                    0.0f32,
+                    0.0f32,
+                )),
+                Some(Scissor::new(0, 0, self.image_dimensions)),
+            );
 
-        // bind vertex buffer + bind index buffer
-        // TODO: vkCmdBindVertexBuffers vkCmdBindIndexBuffer
+            // bind vertex buffer + bind index buffer
+            // TODO: vkCmdBindVertexBuffers vkCmdBindIndexBuffer
 
-        // TODO: vkCmdPushConstants
+            // TODO: vkCmdPushConstants
 
-        // TODO: vkCmdDrawIndexed
+            // TODO: vkCmdDrawIndexed
 
-        recorder.draw(0, 3, 0, 1);
-        let meshes_lck = meshes.lock().unwrap();
-        meshes_lck.foreach_object(|loaded_obj| {});
-
-        recorder.end_renderpass();
+            recorder.draw(0, 3, 0, 1);
+            let meshes_lck = meshes.lock().unwrap();
+            meshes_lck.foreach_object(|loaded_obj| {});
+            }
+        );
 
         [
             (
-                self.gbuffer_position_image_views[current_frame].clone(),
-                ImageSubresourceRange::from(
-                    self.gbuffer_position_images[current_frame].clone() as Arc<dyn ImageTrait>
-                ),
+                position_imageview.clone(),
+                position_imageview.image().into(),
                 Self::output_image_color_layout(),
             ),
             (
-                self.gbuffer_normal_image_views[current_frame].clone(),
-                ImageSubresourceRange::from(
-                    self.gbuffer_position_images[current_frame].clone() as Arc<dyn ImageTrait>
-                ),
+                normal_imageview.clone(),
+                normal_imageview.image().into(),
                 Self::output_image_color_layout(),
             ),
             (
-                self.gbuffer_texture_image_views[current_frame].clone(),
-                ImageSubresourceRange::from(
-                    self.gbuffer_position_images[current_frame].clone() as Arc<dyn ImageTrait>
-                ),
+                texture_imageview.clone(),
+                texture_imageview.image().into(),
+                Self::output_image_color_layout(),
+            ),
+            (
+                depth_stencil_imageview.clone(),
+                depth_stencil_imageview.image().into(),
                 Self::output_image_color_layout(),
             ),
         ]

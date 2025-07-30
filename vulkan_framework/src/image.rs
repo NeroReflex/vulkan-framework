@@ -278,7 +278,14 @@ impl From<ImageFormat> for ImageAspects {
                 Self::from([ImageAspect::Stencil, ImageAspect::Depth].as_ref())
             }
             FormatType::R32G32B32A32_SFLOAT => Self::from([ImageAspect::Color].as_ref()),
+            FormatType::R32G32B32A32_SINT => Self::from([ImageAspect::Color].as_ref()),
+            FormatType::R32G32B32A32_UINT => Self::from([ImageAspect::Color].as_ref()),
             FormatType::R32G32B32_SFLOAT => Self::from([ImageAspect::Color].as_ref()),
+            FormatType::R32G32B32_SINT => Self::from([ImageAspect::Color].as_ref()),
+            FormatType::R32G32B32_UINT => Self::from([ImageAspect::Color].as_ref()),
+            FormatType::B8G8R8A8_SRGB => Self::from([ImageAspect::Color].as_ref()),
+            FormatType::B8G8R8A8_UINT => Self::from([ImageAspect::Color].as_ref()),
+            FormatType::B8G8R8A8_UNORM => Self::from([ImageAspect::Color].as_ref()),
             FormatType::BC7_SRGB_BLOCK => Self::from([ImageAspect::Color].as_ref()),
             fmt => {
                 println!(
@@ -387,9 +394,15 @@ pub enum ImageLayoutSwapchainKHR {
     PresentSrc = 1000001002u32,
 }
 
-impl ImageLayoutSwapchainKHR {
-    pub(crate) fn ash_layout(&self) -> u32 {
-        match self {
+impl Into<u32> for ImageLayoutSwapchainKHR {
+    fn into(self) -> u32 {
+        (&self).into()
+    }
+}
+
+impl Into<u32> for &ImageLayoutSwapchainKHR {
+    fn into(self) -> u32 {
+        match &self {
             fmt => unsafe { std::mem::transmute_copy::<ImageLayoutSwapchainKHR, u32>(fmt) },
         }
     }
@@ -411,11 +424,21 @@ pub enum ImageLayout {
     Other(u32),
 }
 
-impl ImageLayout {
-    pub(crate) fn ash_layout(&self) -> ash::vk::ImageLayout {
+impl Into<ash::vk::ImageLayout> for &ImageLayout {
+    fn into(self) -> ash::vk::ImageLayout {
         ash::vk::ImageLayout::from_raw(match self {
             ImageLayout::Other(fmt) => *fmt,
-            ImageLayout::SwapchainKHR(swapchain_fmt) => swapchain_fmt.ash_layout(),
+            ImageLayout::SwapchainKHR(swapchain_fmt) => swapchain_fmt.into(),
+            fmt => unsafe { std::mem::transmute_copy::<ImageLayout, u32>(fmt) },
+        } as i32)
+    }
+}
+
+impl Into<ash::vk::ImageLayout> for ImageLayout {
+    fn into(self) -> ash::vk::ImageLayout {
+        ash::vk::ImageLayout::from_raw(match &self {
+            ImageLayout::Other(fmt) => *fmt,
+            ImageLayout::SwapchainKHR(swapchain_fmt) => swapchain_fmt.into(),
             fmt => unsafe { std::mem::transmute_copy::<ImageLayout, u32>(fmt) },
         } as i32)
     }
@@ -695,6 +718,12 @@ impl From<crate::ash::vk::Format> for ImageFormat {
 
 impl From<ImageFormat> for crate::ash::vk::Format {
     fn from(val: ImageFormat) -> Self {
+        (&val).into()
+    }
+}
+
+impl From<&ImageFormat> for crate::ash::vk::Format {
+    fn from(val: &ImageFormat) -> Self {
         val.0.to_owned()
     }
 }

@@ -62,7 +62,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Check if one second has passed
         if start_time.elapsed() >= Duration::from_millis(1000) {
-            hdr = artrtic::core::hdr::HDR::new(random_float(&mut seed, 0.01, 4.0) as f32, random_float(&mut seed, 0.01, 4.0) as f32);
+            hdr = artrtic::core::hdr::HDR::new(
+                random_float(&mut seed, 0.01, 4.0) as f32,
+                random_float(&mut seed, 0.01, 4.0) as f32,
+            );
 
             println!("FPS: {}", frame_count);
             frame_count = 0;

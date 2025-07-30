@@ -24,11 +24,11 @@ use crate::{
     buffer::BufferTrait,
     command_pool::{CommandPool, CommandPoolOwned},
     device::DeviceOwned,
-    framebuffer::{Framebuffer, FramebufferTrait, ImagelessFramebuffer},
+    dynamic_rendering::DynamicRenderingAttachment,
     graphics_pipeline::{GraphicsPipeline, Scissor, Viewport},
     image::{
-        Image1DTrait, Image2DTrait, Image3DDimensions, Image3DTrait, ImageDimensions, ImageLayout,
-        ImageSubresourceLayers, ImageSubresourceRange, ImageTrait,
+        Image1DTrait, Image2DDimensions, Image2DTrait, Image3DDimensions, Image3DTrait,
+        ImageDimensions, ImageLayout, ImageSubresourceLayers, ImageSubresourceRange, ImageTrait,
     },
     image_view::ImageView,
     pipeline_layout::PipelineLayout,
@@ -36,7 +36,6 @@ use crate::{
     prelude::{FrameworkError, VulkanError, VulkanResult},
     queue_family::QueueFamily,
     raytracing_pipeline::RaytracingPipeline,
-    renderpass::RenderPassCompatible,
 };
 use crate::{
     compute_pipeline::ComputePipeline, descriptor_set::DescriptorSet, device::Device,
@@ -49,10 +48,9 @@ enum CommandBufferReferencedResource {
     RaytracingPipeline(Arc<RaytracingPipeline>),
     DescriptorSet(Arc<DescriptorSet>),
     PipelineLayout(Arc<PipelineLayout>),
-    Framebuffer(Arc<dyn FramebufferTrait>),
     Image(Arc<dyn ImageTrait>),
     Buffer(Arc<dyn BufferTrait>),
-    //ImageView(Arc<ImageView>),
+    ImageView(Arc<ImageView>),
 }
 
 impl Eq for CommandBufferReferencedResource {}
@@ -65,11 +63,10 @@ impl CommandBufferReferencedResource {
             Self::DescriptorSet(l0) => (0b0001u128 << 124u128) | (l0.native_handle() as u128),
             Self::PipelineLayout(l0) => (0b0010u128 << 124u128) | (l0.native_handle() as u128),
             Self::Image(l0) => (0b0011u128 << 124u128) | (l0.native_handle() as u128),
-            Self::Framebuffer(l0) => (0b0100u128 << 124u128) | (l0.native_handle() as u128),
             Self::GraphicsPipeline(l0) => (0b0101u128 << 124u128) | (l0.native_handle() as u128),
             Self::RaytracingPipeline(l0) => (0b0110u128 << 124u128) | (l0.native_handle() as u128),
             Self::Buffer(l0) => (0b0111u128 << 124u128) | (l0.native_handle() as u128),
-            //Self::ImageView(l0) => (0b0111u128 << 124u128) | (l0.native_handle() as u128),
+            Self::ImageView(l0) => (0b0111u128 << 124u128) | (l0.native_handle() as u128),
         }
     }
 }
@@ -92,12 +89,9 @@ impl PartialEq for CommandBufferReferencedResource {
             (Self::RaytracingPipeline(l0), Self::RaytracingPipeline(r0)) => {
                 l0.native_handle() == r0.native_handle()
             }
-            (Self::Framebuffer(l0), Self::Framebuffer(r0)) => {
-                l0.native_handle() == r0.native_handle()
-            }
             (Self::Image(l0), Self::Image(r0)) => l0.native_handle() == r0.native_handle(),
             (Self::Buffer(l0), Self::Buffer(r0)) => l0.native_handle() == r0.native_handle(),
-            //(Self::ImageView(l0), Self::Image(r0)) => l0.native_handle() == r0.native_handle(),
+            (Self::ImageView(l0), Self::Image(r0)) => l0.native_handle() == r0.native_handle(),
             _ => false,
         }
     }
@@ -241,19 +235,25 @@ impl ImageMemoryBarrier {
     }
 }
 
-impl<'a> From<ImageMemoryBarrier> for ash::vk::ImageMemoryBarrier2<'a> {
-    fn from(val: ImageMemoryBarrier) -> Self {
+impl<'a> From<&ImageMemoryBarrier> for ash::vk::ImageMemoryBarrier2<'a> {
+    fn from(val: &ImageMemoryBarrier) -> Self {
         ash::vk::ImageMemoryBarrier2::default()
             .image(ash::vk::Image::from_raw(val.image.native_handle()))
             .src_access_mask(val.src_access.into())
             .src_stage_mask(val.src_stages.into())
             .dst_access_mask(val.dst_access.into())
             .dst_stage_mask(val.dst_stages.into())
-            .old_layout(val.old_layout.ash_layout())
-            .new_layout(val.new_layout.ash_layout())
+            .old_layout(val.old_layout.into())
+            .new_layout(val.new_layout.into())
             .src_queue_family_index(val.src_queue_family.get_family_index())
             .dst_queue_family_index(val.dst_queue_family.get_family_index())
             .subresource_range(val.subresource_range.ash_subresource_range())
+    }
+}
+
+impl<'a> From<ImageMemoryBarrier> for ash::vk::ImageMemoryBarrier2<'a> {
+    fn from(val: ImageMemoryBarrier) -> Self {
+        (&val).into()
     }
 }
 
@@ -626,95 +626,95 @@ impl<'a> CommandBufferRecorder<'a> {
             ));
     }
 
-    pub fn end_renderpass(&mut self) {
+    /// Implemented using dynamic rendering: roughly equivalent to using a renderpass,
+    /// except ImageViews are used directly and no framebuffer is required.
+    ///
+    /// You are free to use less attachments than what the graphics pipeline supports,
+    /// and/or exclude the depth or stencil buffer.
+    pub fn graphics_rendering<T>(
+        &mut self,
+        render_extent: Image2DDimensions,
+        color_attachments: &[DynamicRenderingAttachment],
+        depth_attachment: Option<&DynamicRenderingAttachment>,
+        stencil_attachment: Option<&DynamicRenderingAttachment>,
+        fun: impl FnOnce(&mut Self) -> T
+    ) -> T {
+        let mut ash_color_attachments: smallvec::SmallVec<[ash::vk::RenderingAttachmentInfo; 8]> =
+            smallvec::smallvec![];
+        for attachment in color_attachments.iter() {
+            // TODO: check for dimensions to fit into the render_extent
+
+            ash_color_attachments.push(
+                ash::vk::RenderingAttachmentInfo::default()
+                    .image_layout(attachment.image_layout().into())
+                    .clear_value(attachment.clear_value().ash_clear())
+                    .image_view(attachment.image_view().ash_handle())
+                    .load_op(attachment.load_op().into())
+                    .store_op(attachment.store_op().into()),
+            );
+
+            self.used_resources
+                .insert(CommandBufferReferencedResource::ImageView(
+                    attachment.image_view().clone(),
+                ));
+        }
+
+        let render_area = ash::vk::Rect2D::default()
+            .offset(ash::vk::Offset2D::default().x(0).y(0))
+            .extent(
+                ash::vk::Extent2D::default()
+                    .width(render_extent.width())
+                    .height(render_extent.height()),
+            );
+
+        let mut render_info = ash::vk::RenderingInfo::default()
+            .color_attachments(ash_color_attachments.as_slice())
+            .layer_count(1)
+            .render_area(render_area);
+
+        let mut d_attachment = ash::vk::RenderingAttachmentInfo::default();
+        render_info = match depth_attachment {
+            Some(attachment) => {
+                d_attachment = d_attachment
+                    .image_layout(attachment.image_layout().into())
+                    .clear_value(attachment.clear_value().ash_clear())
+                    .image_view(attachment.image_view().ash_handle())
+                    .load_op(attachment.load_op().into())
+                    .store_op(attachment.store_op().into());
+                render_info.depth_attachment(&d_attachment)
+            }
+            None => render_info,
+        };
+
+        let mut s_attachment = ash::vk::RenderingAttachmentInfo::default();
+        render_info = match stencil_attachment {
+            Some(attachment) => {
+                s_attachment = s_attachment
+                    .image_layout(attachment.image_layout().into())
+                    .clear_value(attachment.clear_value().ash_clear())
+                    .image_view(attachment.image_view().ash_handle())
+                    .load_op(attachment.load_op().into())
+                    .store_op(attachment.store_op().into());
+                render_info.stencil_attachment(&s_attachment)
+            }
+            None => render_info,
+        };
+
         unsafe {
             self.device
                 .ash_handle()
-                .cmd_end_render_pass(self.command_buffer.ash_handle())
+                .cmd_begin_rendering(self.command_buffer.ash_handle(), &render_info)
         }
-    }
 
-    pub fn begin_renderpass_with_imageless_framebuffer(
-        &mut self,
-        framebuffer: Arc<ImagelessFramebuffer>,
-        imageviews: &[Arc<ImageView>],
-        clear_values: &[ClearValues],
-    ) {
-        let ash_clear_values: smallvec::SmallVec<[ash::vk::ClearValue; 32]> =
-            clear_values.iter().map(|cv| cv.ash_clear()).collect();
-
-        let ash_imageviews/*: smallvec::SmallVec<[ash::vk::ImageView; 32]>*/ = imageviews
-            .iter()
-            .map(|iv: &Arc<ImageView>| iv.ash_handle())
-            .collect::<Vec<ash::vk::ImageView>>();
-
-        let mut attachment_begin_info = ash::vk::RenderPassAttachmentBeginInfo::default()
-            .attachments(ash_imageviews.as_slice());
-
-        let render_pass_begin_info = ash::vk::RenderPassBeginInfo::default()
-            .push_next(&mut attachment_begin_info)
-            .clear_values(ash_clear_values.as_slice())
-            .framebuffer(ash::vk::Framebuffer::from_raw(framebuffer.native_handle()))
-            .render_pass(framebuffer.get_parent_renderpass().ash_handle())
-            .render_area(
-                ash::vk::Rect2D::default()
-                    .offset(ash::vk::Offset2D::default().x(0).y(0))
-                    .extent(
-                        ash::vk::Extent2D::default()
-                            .width(framebuffer.dimensions().width())
-                            .height(framebuffer.dimensions().height()),
-                    ),
-            );
-
-        self.used_resources
-            .insert(CommandBufferReferencedResource::Framebuffer(framebuffer));
+        let result = fun(self);
 
         unsafe {
-            self.device.ash_handle().cmd_begin_render_pass(
-                self.command_buffer.ash_handle(),
-                &render_pass_begin_info,
-                ash::vk::SubpassContents::INLINE,
-            )
+            self.device
+                .ash_handle()
+                .cmd_end_rendering(self.command_buffer.ash_handle())
         }
-    }
 
-    /**
-     * Corresponds to vkCmdBeginRenderpass, where the framebuffer is the provided one,
-     * the renderpass is the RenderPass that Framebuffer was created from and the render area
-     * is the whole area identified by the framebuffer
-     */
-    pub fn begin_renderpass(
-        &mut self,
-        framebuffer: Arc<Framebuffer>,
-        clear_values: &[ClearValues],
-    ) {
-        let ash_clear_values: smallvec::SmallVec<[ash::vk::ClearValue; 32]> =
-            clear_values.iter().map(|cv| cv.ash_clear()).collect();
-
-        let render_pass_begin_info = ash::vk::RenderPassBeginInfo::default()
-            .clear_values(ash_clear_values.as_slice())
-            .framebuffer(ash::vk::Framebuffer::from_raw(framebuffer.native_handle()))
-            .render_pass(framebuffer.get_parent_renderpass().ash_handle())
-            .render_area(
-                ash::vk::Rect2D::default()
-                    .offset(ash::vk::Offset2D::default().x(0).y(0))
-                    .extent(
-                        ash::vk::Extent2D::default()
-                            .width(framebuffer.dimensions().width())
-                            .height(framebuffer.dimensions().height()),
-                    ),
-            );
-
-        self.used_resources
-            .insert(CommandBufferReferencedResource::Framebuffer(framebuffer));
-
-        unsafe {
-            self.device.ash_handle().cmd_begin_render_pass(
-                self.command_buffer.ash_handle(),
-                &render_pass_begin_info,
-                ash::vk::SubpassContents::INLINE,
-            )
-        }
+        result
     }
 
     pub fn copy_buffer_to_image(
@@ -744,7 +744,7 @@ impl<'a> CommandBufferRecorder<'a> {
                 self.command_buffer.ash_handle(),
                 ash::vk::Buffer::from_raw(src.native_handle()),
                 ash::vk::Image::from_raw(dst.native_handle()),
-                dst_layout.ash_layout(),
+                dst_layout.into(),
                 &[regions],
             );
         }
@@ -782,23 +782,29 @@ impl<'a> CommandBufferRecorder<'a> {
             self.device.ash_handle().cmd_copy_image(
                 self.command_buffer.ash_handle(),
                 ash::vk::Image::from_raw(src.native_handle()),
-                src_layout.ash_layout(),
+                src_layout.into(),
                 ash::vk::Image::from_raw(dst.native_handle()),
-                dst_layout.ash_layout(),
+                dst_layout.into(),
                 &[regions],
             );
         }
     }
 
-    pub fn image_barrier(&mut self, image_mem_barrier: ImageMemoryBarrier) {
+    pub fn image_barriers(&mut self, image_mem_barriers: &[ImageMemoryBarrier]) {
         // TODO: check every resource is from the same device
 
-        self.used_resources
-            .insert(CommandBufferReferencedResource::Image(
-                image_mem_barrier.image(),
-            ));
+        for image_mem_barrier in image_mem_barriers {
+            self.used_resources
+                .insert(CommandBufferReferencedResource::Image(
+                    image_mem_barrier.image(),
+                ));
+        }
 
-        let image_memory_barriers: [ash::vk::ImageMemoryBarrier2; 1] = [image_mem_barrier.into()];
+        let image_memory_barriers: smallvec::SmallVec<[ash::vk::ImageMemoryBarrier2; 4]> =
+            image_mem_barriers
+                .iter()
+                .map(|image_mem_barrier| image_mem_barrier.into())
+                .collect();
 
         let dependency_info = ash::vk::DependencyInfo::default()
             .image_memory_barriers(image_memory_barriers.as_slice());

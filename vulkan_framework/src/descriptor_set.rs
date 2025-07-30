@@ -403,7 +403,7 @@ impl DescriptorSet {
                             ash::vk::DescriptorImageInfo::default()
                                 .image_view(image_view.ash_handle())
                                 .sampler(image_sampler.ash_handle())
-                                .image_layout(image_layout.ash_layout())
+                                .image_layout(image_layout.into())
                         })
                         .collect(),
                 )
@@ -423,7 +423,7 @@ impl DescriptorSet {
                         .map(|(image_layout, image_view)| {
                             ash::vk::DescriptorImageInfo::default()
                                 .image_view(image_view.ash_handle())
-                                .image_layout(image_layout.ash_layout())
+                                .image_layout(image_layout.into())
                         })
                         .collect(),
                 )
@@ -443,7 +443,7 @@ impl DescriptorSet {
                         .map(|(image_layout, image_view)| {
                             ash::vk::DescriptorImageInfo::default()
                                 .image_view(image_view.ash_handle())
-                                .image_layout(image_layout.ash_layout())
+                                .image_layout(image_layout.into())
                         })
                         .collect(),
                 )

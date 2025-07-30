@@ -3,18 +3,23 @@ use std::{sync::Arc, time::Duration};
 use inline_spirv::*;
 
 use vulkan_framework::{
-    command_buffer::{ClearValues, ColorClearValues, CommandBufferRecorder, PrimaryCommandBuffer},
+    command_buffer::{
+        ClearValues, ColorClearValues, CommandBufferRecorder, ImageMemoryBarrier, MemoryAccess,
+        MemoryAccessAs, PrimaryCommandBuffer,
+    },
     command_pool::CommandPool,
     device::*,
+    dynamic_rendering::{
+        AttachmentLoadOp, AttachmentStoreOp, DynamicRendering, DynamicRenderingAttachment,
+    },
     fence::Fence,
-    framebuffer::Framebuffer,
     graphics_pipeline::{
         CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline, PolygonMode,
         Rasterizer, Scissor, Viewport,
     },
     image::{
         CommonImageFormat, Image2DDimensions, ImageFormat, ImageLayout, ImageLayoutSwapchainKHR,
-        ImageMultisampling, ImageUsage, ImageUseAs,
+        ImageMultisampling, ImageSubresourceRange, ImageTrait, ImageUsage, ImageUseAs,
     },
     image_view::ImageView,
     instance::*,
@@ -22,10 +27,6 @@ use vulkan_framework::{
     pipeline_stage::{PipelineStage, PipelineStages},
     queue::*,
     queue_family::*,
-    renderpass::{
-        AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp, RenderPass,
-        RenderSubPassDescription,
-    },
     semaphore::Semaphore,
     shaders::{fragment_shader::FragmentShader, vertex_shader::VertexShader},
     swapchain::{
@@ -220,7 +221,7 @@ fn main() {
             })
             .collect::<Vec<Arc<Fence>>>();
 
-        let command_pool = CommandPool::new(queue_family, Some("My command pool")).unwrap();
+        let command_pool = CommandPool::new(queue_family.clone(), Some("My command pool")).unwrap();
 
         let present_command_buffers = (0..swapchain_images_count)
             .map(|idx| {
@@ -231,37 +232,6 @@ fn main() {
                 .unwrap()
             })
             .collect::<Vec<Arc<PrimaryCommandBuffer>>>();
-
-        let renderpass = RenderPass::new(
-            dev.clone(),
-            &[
-                AttachmentDescription::new(
-                    final_format,
-                    ImageMultisampling::SamplesPerPixel1,
-                    ImageLayout::Undefined,
-                    ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
-                    AttachmentLoadOp::Clear,
-                    AttachmentStoreOp::Store,
-                    AttachmentLoadOp::Clear,
-                    AttachmentStoreOp::Store,
-                ),
-                /*
-                // depth
-                AttachmentDescription::new(
-                    final_format,
-                    ImageMultisampling::SamplesPerPixel1,
-                    ImageLayout::Undefined,
-                    ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
-                    AttachmentLoadOp::Clear,
-                    AttachmentStoreOp::Store,
-                    AttachmentLoadOp::Clear,
-                    AttachmentStoreOp::Store,
-                )*/
-            ],
-            &[RenderSubPassDescription::new(&[], &[0], None)],
-        )
-        .unwrap();
-        println!("Renderpass created!");
 
         let pipeline_layout = PipelineLayout::new(
             dev.clone(),
@@ -285,8 +255,7 @@ fn main() {
 
         let graphics_pipeline = GraphicsPipeline::new(
             None,
-            renderpass.clone(),
-            0,
+            DynamicRendering::new([swapchain.images_format()].as_slice(), None, None),
             ImageMultisampling::SamplesPerPixel1,
             Some(DepthConfiguration::new(
                 true,
@@ -341,19 +310,6 @@ fn main() {
             );
         }
 
-        let swapchain_framebuffers = swapchain_image_views
-            .iter()
-            .map(|iv| {
-                Framebuffer::new(
-                    renderpass.clone(),
-                    &[iv.clone()],
-                    swapchain.images_extent(),
-                    1,
-                )
-                .unwrap()
-            })
-            .collect::<Vec<Arc<Framebuffer>>>();
-
         let mut current_frame: usize = 0;
 
         {
@@ -389,29 +345,79 @@ fn main() {
 
                 present_command_buffers[swapchain_index as usize]
                     .record_one_time_submit(|recorder: &mut CommandBufferRecorder| {
-                        recorder.begin_renderpass(
-                            swapchain_framebuffers[swapchain_index as usize].clone(),
-                            &[ClearValues::new(Some(ColorClearValues::Vec4(
-                                0.0, 0.0, 0.0, 1.0,
-                            )))],
+                        // Transition the final swapchain image into color attachment optimal layout,
+                        // so that the graphics pipeline has it in the best format, and the final barrier
+                        // can transition it from that layout to the one suitable for presentation on the
+                        // swapchain
+                        recorder.image_barriers(
+                            [ImageMemoryBarrier::new(
+                                PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
+                                MemoryAccess::from([].as_slice()),
+                                PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
+                                MemoryAccess::from(
+                                    [MemoryAccessAs::ColorAttachmentWrite].as_slice(),
+                                ),
+                                ImageSubresourceRange::from(
+                                    swapchain_images[swapchain_index as usize].clone()
+                                        as Arc<dyn ImageTrait>,
+                                ),
+                                ImageLayout::Undefined,
+                                ImageLayout::ColorAttachmentOptimal,
+                                queue_family.clone(),
+                                queue_family.clone(),
+                            )]
+                            .as_slice(),
                         );
 
-                        recorder.bind_graphics_pipeline(
-                            graphics_pipeline.clone(),
-                            Some(Viewport::new(
-                                0.0f32,
-                                0.0f32,
-                                WIDTH as f32,
-                                HEIGHT as f32,
-                                0.0f32,
-                                0.0f32,
-                            )),
-                            Some(Scissor::new(0, 0, Image2DDimensions::new(WIDTH, HEIGHT))),
+                        let rendering_color_attachments = [DynamicRenderingAttachment::new(
+                            swapchain_image_views[swapchain_index as usize].clone(),
+                            ImageLayout::ColorAttachmentOptimal,
+                            ClearValues::new(Some(ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0))),
+                            AttachmentLoadOp::Clear,
+                            AttachmentStoreOp::Store,
+                        )];
+                        recorder.graphics_rendering(
+                            swapchain.images_extent(),
+                            rendering_color_attachments.as_slice(),
+                            None,
+                            None,
+                            |recorder| {
+                                recorder.bind_graphics_pipeline(
+                                    graphics_pipeline.clone(),
+                                    Some(Viewport::new(
+                                        0.0f32,
+                                        0.0f32,
+                                        WIDTH as f32,
+                                        HEIGHT as f32,
+                                        0.0f32,
+                                        0.0f32,
+                                    )),
+                                    Some(Scissor::new(0, 0, Image2DDimensions::new(WIDTH, HEIGHT))),
+                                );
+
+                                recorder.draw(0, 3, 0, 1);
+                            }
                         );
 
-                        recorder.draw(0, 3, 0, 1);
-
-                        recorder.end_renderpass();
+                        // Wait for the graphics pipeline to complete the rendering so that we can then transition the image
+                        // in a layout that is suitable for presentation on the swapchain.
+                        recorder.image_barriers(
+                            [ImageMemoryBarrier::new(
+                                PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
+                                MemoryAccess::from([MemoryAccessAs::ShaderWrite].as_slice()),
+                                PipelineStages::from([PipelineStage::BottomOfPipe].as_slice()),
+                                MemoryAccess::from([].as_slice()),
+                                ImageSubresourceRange::from(
+                                    swapchain_images[swapchain_index as usize].clone()
+                                        as Arc<dyn ImageTrait>,
+                                ),
+                                ImageLayout::ColorAttachmentOptimal,
+                                ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
+                                queue_family.clone(),
+                                queue_family.clone(),
+                            )]
+                            .as_slice(),
+                        );
                     })
                     .unwrap();
 

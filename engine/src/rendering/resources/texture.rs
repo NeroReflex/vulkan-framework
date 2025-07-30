@@ -280,7 +280,7 @@ impl TextureManager {
             queue_family.clone(),
         );
 
-        recorder.image_barrier(before_transfer_barrier);
+        recorder.image_barriers([before_transfer_barrier].as_slice());
 
         recorder.copy_buffer_to_image(
             image_data,
@@ -302,7 +302,7 @@ impl TextureManager {
             queue_family.clone(),
         );
 
-        recorder.image_barrier(after_transfer_barrier);
+        recorder.image_barriers([after_transfer_barrier].as_slice());
 
         Ok(())
     }

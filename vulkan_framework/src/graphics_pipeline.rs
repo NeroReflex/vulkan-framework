@@ -3,9 +3,9 @@ use std::sync::Arc;
 
 use crate::device::{Device, DeviceOwned};
 
+use crate::dynamic_rendering::DynamicRendering;
 use crate::image::{Image1DTrait, Image2DDimensions, Image2DTrait, ImageMultisampling};
 use crate::instance::InstanceOwned;
-use crate::renderpass::RenderPass;
 use crate::shaders::{fragment_shader::FragmentShader, vertex_shader::VertexShader};
 
 use crate::pipeline_layout::{PipelineLayout, PipelineLayoutDependant};
@@ -387,10 +387,8 @@ impl Viewport {
 
 pub struct GraphicsPipeline {
     device: Arc<Device>,
-    renderpass: Arc<RenderPass>,
     depth_configuration: Option<DepthConfiguration>,
     rasterizer: Rasterizer,
-    subpass_index: u32,
     pipeline_layout: Arc<PipelineLayout>,
     pipeline: ash::vk::Pipeline,
     viewport: Option<Viewport>,
@@ -449,11 +447,6 @@ impl GraphicsPipeline {
     }
 
     #[inline]
-    pub fn renderpass(&self) -> Arc<RenderPass> {
-        self.renderpass.clone()
-    }
-
-    #[inline]
     pub fn depth_configuration(&self) -> Option<DepthConfiguration> {
         self.depth_configuration
     }
@@ -461,11 +454,6 @@ impl GraphicsPipeline {
     #[inline]
     pub fn rasterizer(&self) -> Rasterizer {
         self.rasterizer
-    }
-
-    #[inline]
-    pub fn subpass_index(&self) -> u32 {
-        self.subpass_index
     }
 
     #[inline]
@@ -480,8 +468,7 @@ impl GraphicsPipeline {
 
     pub fn new(
         base_pipeline: Option<Arc<GraphicsPipeline>>,
-        renderpass: Arc<RenderPass>,
-        subpass_index: u32,
+        dynamic_rendering: DynamicRendering,
         multisampling: ImageMultisampling,
         depth_configuration: Option<DepthConfiguration>,
         viewport: Option<Viewport>,
@@ -666,25 +653,17 @@ impl GraphicsPipeline {
             .topology(ash::vk::PrimitiveTopology::TRIANGLE_LIST)
             .primitive_restart_enable(false);
 
-        let mut color_blend_attachment_state: smallvec::SmallVec<
+        let color_blend_attachment_state: smallvec::SmallVec<
             [ash::vk::PipelineColorBlendAttachmentState; 16],
-        > = smallvec::smallvec![];
-        for _si in 0..renderpass
-            .get_subpass_description(subpass_index as usize)
-            .output_color_attachment_indeces_size()
-        {
-            color_blend_attachment_state.push(
-                ash::vk::PipelineColorBlendAttachmentState::default()
-                    .color_write_mask(ash::vk::ColorComponentFlags::RGBA)
-                    .blend_enable(false)
-                    .src_color_blend_factor(ash::vk::BlendFactor::ONE)
-                    .dst_color_blend_factor(ash::vk::BlendFactor::ZERO)
-                    .color_blend_op(ash::vk::BlendOp::ADD)
-                    .src_alpha_blend_factor(ash::vk::BlendFactor::ONE)
-                    .dst_alpha_blend_factor(ash::vk::BlendFactor::ONE)
-                    .alpha_blend_op(ash::vk::BlendOp::ADD),
-            );
-        }
+        > = smallvec::smallvec![ash::vk::PipelineColorBlendAttachmentState::default()
+            .color_write_mask(ash::vk::ColorComponentFlags::RGBA)
+            .blend_enable(false)
+            .src_color_blend_factor(ash::vk::BlendFactor::ONE)
+            .dst_color_blend_factor(ash::vk::BlendFactor::ZERO)
+            .color_blend_op(ash::vk::BlendOp::ADD)
+            .src_alpha_blend_factor(ash::vk::BlendFactor::ONE)
+            .dst_alpha_blend_factor(ash::vk::BlendFactor::ONE)
+            .alpha_blend_op(ash::vk::BlendOp::ADD)];
 
         let color_blend_state_create_info = ash::vk::PipelineColorBlendStateCreateInfo::default()
             .logic_op_enable(false)
@@ -716,10 +695,24 @@ impl GraphicsPipeline {
             Option::None => depth_stencil_state_create_info_builder.depth_test_enable(false),
         };
 
-        let create_info = ash::vk::GraphicsPipelineCreateInfo::default()
+        let mut dyn_rendering = ash::vk::PipelineRenderingCreateInfo::default();
+        let color_attachment_formats: smallvec::SmallVec<[ash::vk::Format; 8]> = dynamic_rendering
+            .color_attachments
+            .iter()
+            .map(|attachment| attachment.into())
+            .collect();
+        dyn_rendering = dyn_rendering.color_attachment_formats(color_attachment_formats.as_slice());
+        dyn_rendering = match dynamic_rendering.depth_attachment {
+            Some(depth_format) => dyn_rendering.depth_attachment_format(depth_format.into()),
+            None => dyn_rendering,
+        };
+        dyn_rendering = match dynamic_rendering.stencil_attachment {
+            Some(stencil_format) => dyn_rendering.stencil_attachment_format(stencil_format.into()),
+            None => dyn_rendering,
+        };
+
+        let mut create_info = ash::vk::GraphicsPipelineCreateInfo::default()
             .layout(pipeline_layout.ash_handle())
-            .render_pass(renderpass.ash_handle())
-            .subpass(subpass_index)
             .vertex_input_state(&vertex_input_state_create_info)
             .multisample_state(&multisampling_create_info)
             .viewport_state(&viewport_state_create_info)
@@ -733,6 +726,9 @@ impl GraphicsPipeline {
                 Some(old_pipeline) => old_pipeline.ash_handle(),
                 None => ash::vk::Pipeline::null(),
             });
+
+        create_info.p_next =
+            &dyn_rendering as *const ash::vk::PipelineRenderingCreateInfo as *const _;
 
         match unsafe {
             device.ash_handle().create_graphics_pipelines(
@@ -777,8 +773,6 @@ impl GraphicsPipeline {
 
                 Ok(Arc::new(Self {
                     device,
-                    renderpass,
-                    subpass_index,
                     depth_configuration,
                     pipeline,
                     pipeline_layout,

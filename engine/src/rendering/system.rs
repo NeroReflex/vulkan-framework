@@ -13,8 +13,10 @@ use vulkan_framework::{
     command_pool::CommandPool,
     device::{Device, DeviceOwned},
     fence::{Fence, FenceWaiter},
-    framebuffer::Framebuffer,
-    image::{Image2DDimensions, ImageUsage, ImageUseAs},
+    image::{
+        Image2DDimensions, ImageLayout, ImageLayoutSwapchainKHR, ImageSubresourceRange, ImageTrait,
+        ImageUsage, ImageUseAs,
+    },
     image_view::ImageView,
     instance::InstanceOwned,
     pipeline_stage::{PipelineStage, PipelineStages},
@@ -48,10 +50,9 @@ use crate::{
 type SwapchainImagesType =
     smallvec::SmallVec<[Arc<ImageSwapchainKHR>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
 type SwapchainImageViewsType = smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
-type FramebuffersType = smallvec::SmallVec<[Arc<Framebuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
 
 pub struct System {
-    swapchain: Option<(Arc<SwapchainKHR>, SwapchainImagesType, FramebuffersType)>,
+    swapchain: Option<(Arc<SwapchainKHR>, SwapchainImageViewsType)>,
 
     queue: Arc<vulkan_framework::queue::Queue>,
     rendering_fences: smallvec::SmallVec<[Arc<Fence>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
@@ -330,12 +331,11 @@ impl System {
 
         // create the new swapchain if none is present
         let swapchain = match self.swapchain.take() {
-            Some((mut swapchain, images, framebuffers)) => {
-                drop(framebuffers);
+            Some((mut swapchain, images)) => {
                 drop(images);
 
                 match Arc::get_mut(&mut swapchain) {
-                    Some(swapchain) => {
+                    Some(_swapchain) => {
                         // TODO: regenerate the swapchain with new dimensions
                     }
                     None => {
@@ -385,18 +385,7 @@ impl System {
             )?);
         }
 
-        let mut framebuffers: FramebuffersType = Default::default();
-        for index in 0..self.surface.images_count() {
-            let framebuffer = Framebuffer::new(
-                self.renderquad.renderpass(),
-                [image_views[index as usize].clone()].as_ref(),
-                swapchain.images_extent(),
-                swapchain.images_layers_count(),
-            )?;
-            framebuffers.push(framebuffer);
-        }
-
-        self.swapchain = Some((swapchain, images, framebuffers));
+        self.swapchain = Some((swapchain, image_views));
 
         Ok(())
     }
@@ -409,7 +398,7 @@ impl System {
         }
 
         // if there is still no swapchain then somethign has gone horribly wrong
-        let Some((swapchain, _, framebuffers)) = &self.swapchain else {
+        let Some((swapchain, swapchain_imageviews)) = &self.swapchain else {
             return Err(RenderingError::NotEnoughSwapchainImages);
         };
 
@@ -438,27 +427,33 @@ impl System {
                 final_rendering_output_image,
                 final_rendering_output_image_subresource_range,
                 final_rendering_output_image_layout,
-            ) = self
-                .final_rendering
-                .record_rendering_commands(current_frame, recorder);
+            ) = self.final_rendering.record_rendering_commands(
+                self.queue_family(),
+                current_frame,
+                recorder,
+            );
 
             // Insert a barrier to transition image layout from the final rendering output to renderquad input
             // while also ensuring the rendering operation of final rendering pipeline has completed before initiating
             // the final renderquad step.
-            recorder.image_barrier(ImageMemoryBarrier::new(
-                PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
-                MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
-                PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
-                MemoryAccess::from([MemoryAccessAs::ShaderRead].as_slice()),
-                final_rendering_output_image_subresource_range,
-                final_rendering_output_image_layout,
-                RenderQuad::image_input_layout(),
-                self.queue_family(),
-                self.queue_family(),
-            ));
+            recorder.image_barriers(
+                [ImageMemoryBarrier::new(
+                    PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
+                    MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
+                    PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
+                    MemoryAccess::from([MemoryAccessAs::ShaderRead].as_slice()),
+                    final_rendering_output_image_subresource_range,
+                    final_rendering_output_image_layout,
+                    RenderQuad::image_input_layout(),
+                    self.queue_family(),
+                    self.queue_family(),
+                )]
+                .as_slice(),
+            );
 
             let (hdr_output_image, hdr_output_image_subresource_range, hdr_output_image_layout) =
                 self.hdr.record_rendering_commands(
+                    self.queue_family(),
                     hdr,
                     final_rendering_output_image,
                     current_frame,
@@ -468,24 +463,69 @@ impl System {
             // Insert a barrier to transition image layout from the final rendering output to renderquad input
             // while also ensuring the rendering operation of final rendering pipeline has completed before initiating
             // the final renderquad step.
-            recorder.image_barrier(ImageMemoryBarrier::new(
-                PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
-                MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
-                PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
-                MemoryAccess::from([MemoryAccessAs::ShaderRead].as_slice()),
-                hdr_output_image_subresource_range,
-                hdr_output_image_layout,
-                RenderQuad::image_input_layout(),
-                self.queue_family(),
-                self.queue_family(),
-            ));
+            recorder.image_barriers(
+                [ImageMemoryBarrier::new(
+                    PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
+                    MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
+                    PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
+                    MemoryAccess::from([MemoryAccessAs::ShaderRead].as_slice()),
+                    hdr_output_image_subresource_range,
+                    hdr_output_image_layout,
+                    RenderQuad::image_input_layout(),
+                    self.queue_family(),
+                    self.queue_family(),
+                )]
+                .as_slice(),
+            );
+
+            // Transition the final swapchain image into color attachment optimal layout,
+            // so that the graphics pipeline has it in the best format, and the final barrier (*1)
+            // can transition it from that layout to the one suitable for presentation on the
+            // swapchain
+            recorder.image_barriers(
+                [ImageMemoryBarrier::new(
+                    PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
+                    MemoryAccess::from([].as_slice()),
+                    PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
+                    MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
+                    swapchain_imageviews[swapchain_index as usize]
+                        .image()
+                        .into(),
+                    ImageLayout::Undefined,
+                    ImageLayout::ColorAttachmentOptimal,
+                    self.queue_family(),
+                    self.queue_family(),
+                )]
+                .as_slice(),
+            );
 
             // record commands to finalize the rendering image
             self.renderquad.record_rendering_commands(
+                swapchain.images_extent(),
                 hdr_output_image,
-                framebuffers[swapchain_index as usize].clone(),
+                swapchain_imageviews[swapchain_index as usize].clone(),
                 current_frame,
                 recorder,
+            );
+
+            // Final barrier (*1) for presentation:
+            // wait for the renderquad to complete the rendering so that we can then transition
+            // the swapchain image in a layout that is suitable for presentation on the swapchain.
+            recorder.image_barriers(
+                [ImageMemoryBarrier::new(
+                    PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
+                    MemoryAccess::from([MemoryAccessAs::ShaderWrite].as_slice()),
+                    PipelineStages::from([PipelineStage::BottomOfPipe].as_slice()),
+                    MemoryAccess::from([].as_slice()),
+                    swapchain_imageviews[swapchain_index as usize]
+                        .image()
+                        .into(),
+                    ImageLayout::ColorAttachmentOptimal,
+                    ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
+                    self.queue_family(),
+                    self.queue_family(),
+                )]
+                .as_slice(),
             );
         })?;
 

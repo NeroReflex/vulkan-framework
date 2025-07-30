@@ -336,17 +336,20 @@ fn main() {
     }
 
     match command_buffer.record_one_time_submit(|recorder| {
-        recorder.image_barrier(ImageMemoryBarrier::new(
-            PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
-            MemoryAccess::from([MemoryAccessAs::MemoryRead].as_slice()),
-            PipelineStages::from([PipelineStage::ComputeShader].as_slice()),
-            MemoryAccess::from([MemoryAccessAs::ShaderWrite].as_slice()),
-            ImageSubresourceRange::from(image.clone() as Arc<dyn ImageTrait>),
-            ImageLayout::Undefined,
-            ImageLayout::General,
-            queue_family.clone(),
-            queue_family.clone(),
-        ));
+        recorder.image_barriers(
+            [ImageMemoryBarrier::new(
+                PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
+                MemoryAccess::from([MemoryAccessAs::MemoryRead].as_slice()),
+                PipelineStages::from([PipelineStage::ComputeShader].as_slice()),
+                MemoryAccess::from([MemoryAccessAs::ShaderWrite].as_slice()),
+                ImageSubresourceRange::from(image.clone() as Arc<dyn ImageTrait>),
+                ImageLayout::Undefined,
+                ImageLayout::General,
+                queue_family.clone(),
+                queue_family.clone(),
+            )]
+            .as_slice(),
+        );
 
         let descriptor_sets = vec![descriptor_set.clone()];
         recorder.bind_compute_pipeline(compute_pipeline.clone());

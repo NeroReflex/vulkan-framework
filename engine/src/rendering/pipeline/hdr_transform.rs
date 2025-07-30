@@ -3,7 +3,10 @@ use std::sync::Arc;
 use inline_spirv::*;
 
 use vulkan_framework::{
-    command_buffer::{ClearValues, ColorClearValues, CommandBufferRecorder},
+    command_buffer::{
+        ClearValues, ColorClearValues, CommandBufferRecorder, ImageMemoryBarrier, MemoryAccess,
+        MemoryAccessAs,
+    },
     descriptor_pool::{
         DescriptorPool, DescriptorPoolConcreteDescriptor,
         DescriptorPoolSizesAcceletarionStructureKHR, DescriptorPoolSizesConcreteDescriptor,
@@ -11,15 +14,17 @@ use vulkan_framework::{
     descriptor_set::DescriptorSet,
     descriptor_set_layout::DescriptorSetLayout,
     device::Device,
-    framebuffer::Framebuffer,
+    dynamic_rendering::{
+        AttachmentLoadOp, AttachmentStoreOp, DynamicRendering, DynamicRenderingAttachment,
+    },
     graphics_pipeline::{
         CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline, PolygonMode,
         Rasterizer, Scissor, Viewport,
     },
     image::{
-        AllocatedImage, CommonImageFormat, ConcreteImageDescriptor, Image, ImageDimensions,
+        AllocatedImage, CommonImageFormat, ConcreteImageDescriptor, Image, Image2DDimensions,
         ImageFlags, ImageFormat, ImageLayout, ImageMultisampling, ImageSubresourceRange,
-        ImageTiling, ImageTrait, ImageUsage, ImageUseAs,
+        ImageTiling, ImageTrait, ImageUseAs,
     },
     image_view::{ImageView, ImageViewType},
     memory_allocator::{DefaultAllocator, MemoryAllocator},
@@ -27,11 +32,9 @@ use vulkan_framework::{
     memory_pool::{MemoryPool, MemoryPoolFeatures},
     memory_requiring::MemoryRequiring,
     pipeline_layout::PipelineLayout,
+    pipeline_stage::{PipelineStage, PipelineStages},
     push_constant_range::PushConstanRange,
-    renderpass::{
-        AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp, RenderPass,
-        RenderSubPassDescription,
-    },
+    queue_family::QueueFamily,
     sampler::{Filtering, MipmapMode, Sampler},
     shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType},
     shader_stage_access::ShaderStagesAccess,
@@ -110,9 +113,9 @@ pub struct HDRTransform {
     descriptor_sets: smallvec::SmallVec<[Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
     pipeline_layout: Arc<PipelineLayout>,
     graphics_pipeline: Arc<GraphicsPipeline>,
+    image_dimensions: Image2DDimensions,
     images: smallvec::SmallVec<[Arc<AllocatedImage>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
     image_views: smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
-    framebuffers: smallvec::SmallVec<[Arc<Framebuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
     sampler: Arc<Sampler>,
 }
 
@@ -127,17 +130,12 @@ impl HDRTransform {
     }
 
     fn output_image_layout() -> ImageLayout {
-        ImageLayout::ShaderReadOnlyOptimal
+        ImageLayout::ColorAttachmentOptimal
     }
 
     #[inline]
     fn image_output_format() -> ImageFormat {
         CommonImageFormat::r32g32b32a32_sfloat.into()
-    }
-
-    #[inline]
-    pub fn renderpass(&self) -> Arc<RenderPass> {
-        self.graphics_pipeline.renderpass()
     }
 
     pub fn new(
@@ -213,25 +211,9 @@ impl HDRTransform {
             RENDERQUAD_FRAGMENT_SPV,
         )?;
 
-        let renderpass = RenderPass::new(
-            device.clone(),
-            &[AttachmentDescription::new(
-                Self::image_output_format(),
-                ImageMultisampling::SamplesPerPixel1,
-                ImageLayout::Undefined,
-                Self::output_image_layout(),
-                AttachmentLoadOp::Clear,
-                AttachmentStoreOp::Store,
-                AttachmentLoadOp::Clear,
-                AttachmentStoreOp::Store,
-            )],
-            &[RenderSubPassDescription::new(&[], &[0], None)],
-        )?;
-
         let graphics_pipeline = GraphicsPipeline::new(
             None,
-            renderpass.clone(),
-            0,
+            DynamicRendering::new([Self::image_output_format()].as_slice(), None, None),
             ImageMultisampling::SamplesPerPixel1,
             Some(DepthConfiguration::new(
                 true,
@@ -335,18 +317,6 @@ impl HDRTransform {
             image_views.push(image_view);
         }
 
-        let mut framebuffers = smallvec::smallvec![];
-        for iw in 0..image_views.len() {
-            let framebuffer = Framebuffer::new(
-                renderpass.clone(),
-                [image_views[iw].clone()].as_slice(),
-                image_dimensions,
-                1,
-            )?;
-
-            framebuffers.push(framebuffer);
-        }
-
         let sampler = Sampler::new(
             device.clone(),
             Filtering::Nearest,
@@ -363,9 +333,9 @@ impl HDRTransform {
             pipeline_layout,
             graphics_pipeline,
 
+            image_dimensions,
             images,
             image_views,
-            framebuffers,
 
             sampler,
         })
@@ -373,6 +343,7 @@ impl HDRTransform {
 
     pub fn record_rendering_commands(
         &self,
+        queue_family: Arc<QueueFamily>,
         hdr: &HDR,
         input_image_view: Arc<ImageView>,
         current_frame: usize,
@@ -393,29 +364,55 @@ impl HDRTransform {
             })
             .unwrap();
 
-        recorder.begin_renderpass(
-            self.framebuffers[current_frame].clone(),
-            &[ClearValues::new(Some(ColorClearValues::Vec4(
-                1.0, 1.0, 1.0, 1.0,
-            )))],
+        let image_view = self.image_views[current_frame].clone();
+
+        // Transition the framebuffer image into color attachment optimal layout,
+        // so that the graphics pipeline has it in the best format
+        recorder.image_barriers(
+            [ImageMemoryBarrier::new(
+                PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
+                MemoryAccess::from([].as_slice()),
+                PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
+                MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
+                image_view.image().into(),
+                ImageLayout::Undefined,
+                Self::output_image_layout(),
+                queue_family.clone(),
+                queue_family.clone(),
+            )]
+            .as_slice(),
         );
-        recorder.bind_graphics_pipeline(self.graphics_pipeline.clone(), None, None);
-        recorder.bind_descriptor_sets_for_graphics_pipeline(
-            self.pipeline_layout.clone(),
-            0,
-            &[self.descriptor_sets[current_frame].clone()],
+
+        let rendering_color_attachments = [DynamicRenderingAttachment::new(
+            self.image_views[current_frame].clone(),
+            Self::output_image_layout(),
+            ClearValues::new(Some(ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0))),
+            AttachmentLoadOp::Clear,
+            AttachmentStoreOp::Store,
+        )];
+        recorder.graphics_rendering(
+            self.image_dimensions.clone(),
+            rendering_color_attachments.as_slice(),
+            None,
+            None,
+            |recorder| {
+                recorder.bind_graphics_pipeline(self.graphics_pipeline.clone(), None, None);
+                recorder.bind_descriptor_sets_for_graphics_pipeline(
+                    self.pipeline_layout.clone(),
+                    0,
+                    &[self.descriptor_sets[current_frame].clone()],
+                );
+
+                recorder.push_constant_for_graphics_pipeline(self.pipeline_layout.clone(), 0, unsafe {
+                    ::core::slice::from_raw_parts(
+                        (hdr as *const HDR) as *const u8,
+                        ::core::mem::size_of::<HDR>(),
+                    )
+                });
+
+                recorder.draw(0, 6, 0, 1);
+            }
         );
-
-        recorder.push_constant_for_graphics_pipeline(self.pipeline_layout.clone(), 0, unsafe {
-            ::core::slice::from_raw_parts(
-                (hdr as *const HDR) as *const u8,
-                ::core::mem::size_of::<HDR>(),
-            )
-        });
-
-        recorder.draw(0, 6, 0, 1);
-
-        recorder.end_renderpass();
 
         (
             self.image_views[current_frame].clone(),

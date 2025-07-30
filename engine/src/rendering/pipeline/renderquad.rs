@@ -11,7 +11,9 @@ use vulkan_framework::{
     descriptor_set::DescriptorSet,
     descriptor_set_layout::DescriptorSetLayout,
     device::Device,
-    framebuffer::Framebuffer,
+    dynamic_rendering::{
+        AttachmentLoadOp, AttachmentStoreOp, DynamicRendering, DynamicRenderingAttachment,
+    },
     graphics_pipeline::{
         CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline, PolygonMode,
         Rasterizer, Scissor, Viewport,
@@ -21,10 +23,6 @@ use vulkan_framework::{
     },
     image_view::ImageView,
     pipeline_layout::PipelineLayout,
-    renderpass::{
-        AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp, RenderPass,
-        RenderSubPassDescription,
-    },
     sampler::{Filtering, MipmapMode, Sampler},
     shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType},
     shader_stage_access::ShaderStagesAccess,
@@ -104,11 +102,6 @@ impl RenderQuad {
         ImageLayout::ShaderReadOnlyOptimal
     }
 
-    #[inline]
-    pub fn renderpass(&self) -> Arc<RenderPass> {
-        self.graphics_pipeline.renderpass()
-    }
-
     pub fn new(
         device: Arc<Device>,
         frames_in_flight: u32,
@@ -178,25 +171,9 @@ impl RenderQuad {
             RENDERQUAD_FRAGMENT_SPV,
         )?;
 
-        let renderpass = RenderPass::new(
-            device.clone(),
-            &[AttachmentDescription::new(
-                final_format,
-                ImageMultisampling::SamplesPerPixel1,
-                ImageLayout::Undefined,
-                ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
-                AttachmentLoadOp::Clear,
-                AttachmentStoreOp::Store,
-                AttachmentLoadOp::Clear,
-                AttachmentStoreOp::Store,
-            )],
-            &[RenderSubPassDescription::new(&[], &[0], None)],
-        )?;
-
         let graphics_pipeline = GraphicsPipeline::new(
             None,
-            renderpass.clone(),
-            0,
+            DynamicRendering::new([final_format].as_slice(), None, None),
             ImageMultisampling::SamplesPerPixel1,
             Some(DepthConfiguration::new(
                 true,
@@ -244,8 +221,9 @@ impl RenderQuad {
 
     pub fn record_rendering_commands(
         &self,
+        draw_area: Image2DDimensions,
         input_image_view: Arc<ImageView>,
-        framebuffer: Arc<Framebuffer>,
+        output_image_view: Arc<ImageView>,
         current_frame: usize,
         recorder: &mut CommandBufferRecorder,
     ) {
@@ -264,20 +242,27 @@ impl RenderQuad {
             })
             .unwrap();
 
-        recorder.begin_renderpass(
-            framebuffer,
-            &[ClearValues::new(Some(ColorClearValues::Vec4(
-                1.0, 1.0, 1.0, 1.0,
-            )))],
+        let rendering_color_attachments = [DynamicRenderingAttachment::new(
+            output_image_view.clone(),
+            ImageLayout::ColorAttachmentOptimal,
+            ClearValues::new(Some(ColorClearValues::Vec4(1.0, 1.0, 1.0, 1.0))),
+            AttachmentLoadOp::Clear,
+            AttachmentStoreOp::Store,
+        )];
+        recorder.graphics_rendering(
+            draw_area,
+            rendering_color_attachments.as_slice(),
+            None,
+            None,
+            |recorder| {
+                recorder.bind_graphics_pipeline(self.graphics_pipeline.clone(), None, None);
+                recorder.bind_descriptor_sets_for_graphics_pipeline(
+                    self.pipeline_layout.clone(),
+                    0,
+                    &[self.descriptor_sets[current_frame].clone()],
+                );
+                recorder.draw(0, 6, 0, 1);
+            }
         );
-        recorder.bind_graphics_pipeline(self.graphics_pipeline.clone(), None, None);
-        recorder.bind_descriptor_sets_for_graphics_pipeline(
-            self.pipeline_layout.clone(),
-            0,
-            &[self.descriptor_sets[current_frame].clone()],
-        );
-        recorder.draw(0, 6, 0, 1);
-
-        recorder.end_renderpass();
     }
 }

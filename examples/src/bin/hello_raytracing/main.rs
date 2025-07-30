@@ -22,8 +22,10 @@ use vulkan_framework::{
     descriptor_pool::DescriptorPoolSizesAcceletarionStructureKHR,
     descriptor_set_layout::DescriptorSetLayout,
     device::*,
+    dynamic_rendering::{
+        AttachmentLoadOp, AttachmentStoreOp, DynamicRendering, DynamicRenderingAttachment,
+    },
     fence::Fence,
-    framebuffer::Framebuffer,
     graphics_pipeline::{
         AttributeType, CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline,
         PolygonMode, Rasterizer, Scissor, Viewport,
@@ -44,9 +46,6 @@ use vulkan_framework::{
     queue::*,
     queue_family::*,
     raytracing_pipeline::RaytracingPipeline,
-    renderpass::{
-        AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp, RenderSubPassDescription,
-    },
     semaphore::Semaphore,
     shader_layout_binding::{
         AccelerationStructureBindingType, BindingDescriptor, BindingType, NativeBindingType,
@@ -586,38 +585,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .unwrap();
 
-        let renderquad_renderpass = vulkan_framework::renderpass::RenderPass::new(
-            dev.clone(),
-            &[
-                AttachmentDescription::new(
-                    final_format,
-                    ImageMultisampling::SamplesPerPixel1,
-                    ImageLayout::Undefined,
-                    ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
-                    AttachmentLoadOp::Clear,
-                    AttachmentStoreOp::Store,
-                    AttachmentLoadOp::Clear,
-                    AttachmentStoreOp::Store,
-                ),
-                /*
-                // depth
-                AttachmentDescription::new(
-                    final_format,
-                    ImageMultisampling::SamplesPerPixel1,
-                    ImageLayout::Undefined,
-                    ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
-                    AttachmentLoadOp::Clear,
-                    AttachmentStoreOp::Store,
-                    AttachmentLoadOp::Clear,
-                    AttachmentStoreOp::Store,
-                )*/
-            ],
-            &[RenderSubPassDescription::new(&[], &[0], None)],
-        )
-        .unwrap();
-        println!("Renderpass created!");
-
-        let renderquad_image_input_format = ImageLayout::ShaderReadOnlyOptimal;
+        let renderquad_image_input_layout = ImageLayout::ShaderReadOnlyOptimal;
 
         let renderquad_texture_binding_descriptor = BindingDescriptor::new(
             ShaderStagesAccess::graphics(),
@@ -655,7 +623,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .bind_combined_images_samplers(
                                 0,
                                 &[(
-                                    renderquad_image_input_format,
+                                    renderquad_image_input_layout,
                                     rt_image_views[idx as usize].clone(),
                                     renderquad_sampler.clone(),
                                 )],
@@ -686,8 +654,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let renderquad_graphics_pipeline = GraphicsPipeline::new(
             None,
-            renderquad_renderpass.clone(),
-            0,
+            DynamicRendering::new([swapchain.images_format()].as_slice(), None, None),
             ImageMultisampling::SamplesPerPixel1,
             Some(DepthConfiguration::new(
                 true,
@@ -723,18 +690,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .unwrap();
         println!("Graphics pipeline created!");
-
-        let rendequad_framebuffers = (0..(swapchain_images_count))
-            .map(|idx| {
-                Framebuffer::new(
-                    renderquad_renderpass.clone(),
-                    &[swapchain_image_views[idx as usize].clone()],
-                    swapchain_extent,
-                    1,
-                )
-                .unwrap()
-            })
-            .collect::<Vec<_>>();
 
         let raygen_shader = RaygenShader::new(dev.clone(), RAYGEN_SPV).unwrap();
         //let intersection_shader = IntersectionShader::new(dev.clone(), INTERSECTION_SPV).unwrap();
@@ -955,24 +910,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 present_command_buffers[swapchain_index as usize]
                     .record_one_time_submit(|recorder: &mut CommandBufferRecorder| {
                         // TODO: HERE transition the image layout from UNDEFINED to GENERAL so that ray tracing pipeline can write to it
-                        recorder.image_barrier(ImageMemoryBarrier::new(
-                            PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
-                            MemoryAccess::from([].as_slice()),
-                            PipelineStages::from(
-                                [PipelineStage::RayTracingPipelineKHR(
-                                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                                )]
-                                .as_slice(),
-                            ),
-                            MemoryAccess::from([MemoryAccessAs::ShaderWrite].as_slice()),
-                            ImageSubresourceRange::from(
-                                rt_images[swapchain_index as usize].clone() as Arc<dyn ImageTrait>,
-                            ),
-                            ImageLayout::Undefined,
-                            rt_writer_img_layout,
-                            queue_family.clone(),
-                            queue_family.clone(),
-                        ));
+                        recorder.image_barriers(
+                            [ImageMemoryBarrier::new(
+                                PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
+                                MemoryAccess::from([].as_slice()),
+                                PipelineStages::from(
+                                    [PipelineStage::RayTracingPipelineKHR(
+                                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                                    )]
+                                    .as_slice(),
+                                ),
+                                MemoryAccess::from([MemoryAccessAs::ShaderWrite].as_slice()),
+                                ImageSubresourceRange::from(
+                                    rt_images[swapchain_index as usize].clone()
+                                        as Arc<dyn ImageTrait>,
+                                ),
+                                ImageLayout::Undefined,
+                                rt_writer_img_layout,
+                                queue_family.clone(),
+                                queue_family.clone(),
+                            )]
+                            .as_slice(),
+                        );
 
                         recorder.bind_ray_tracing_pipeline(pipeline.clone());
                         recorder.bind_descriptor_sets_for_ray_tracing_pipeline(
@@ -985,45 +944,102 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             Image3DDimensions::from(swapchain_extent),
                         );
 
-                        // HERE wait for the ray tracing pipeline to transition image layout from GENERAL to renderquad_texture_layout
-                        recorder.image_barrier(ImageMemoryBarrier::new(
-                            PipelineStages::from(
-                                [PipelineStage::RayTracingPipelineKHR(
-                                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                                )]
-                                .as_slice(),
-                            ),
-                            MemoryAccess::from([MemoryAccessAs::ShaderWrite].as_slice()),
-                            PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
-                            MemoryAccess::from([MemoryAccessAs::ShaderRead].as_slice()),
-                            ImageSubresourceRange::from(
-                                rt_images[swapchain_index as usize].clone() as Arc<dyn ImageTrait>,
-                            ),
-                            rt_writer_img_layout,
-                            renderquad_image_input_format,
-                            queue_family.clone(),
-                            queue_family.clone(),
-                        ));
-
-                        recorder.begin_renderpass(
-                            rendequad_framebuffers[swapchain_index as usize].clone(),
-                            &[ClearValues::new(Some(ColorClearValues::Vec4(
-                                1.0, 1.0, 1.0, 1.0,
-                            )))],
+                        // Wait for the ray tracing pipeline to transition the resulting image's layout
+                        // from rt_writer_img_layout to renderquad_image_input_layout, so that the image can be used in a descriptor set,
+                        // and sampled from there to write to the image in the swapchain (that is a different image)
+                        recorder.image_barriers(
+                            [ImageMemoryBarrier::new(
+                                PipelineStages::from(
+                                    [PipelineStage::RayTracingPipelineKHR(
+                                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                                    )]
+                                    .as_slice(),
+                                ),
+                                MemoryAccess::from([MemoryAccessAs::ShaderWrite].as_slice()),
+                                PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
+                                MemoryAccess::from([MemoryAccessAs::ShaderRead].as_slice()),
+                                ImageSubresourceRange::from(
+                                    rt_images[swapchain_index as usize].clone()
+                                        as Arc<dyn ImageTrait>,
+                                ),
+                                rt_writer_img_layout,
+                                renderquad_image_input_layout,
+                                queue_family.clone(),
+                                queue_family.clone(),
+                            )]
+                            .as_slice(),
                         );
-                        recorder.bind_graphics_pipeline(
-                            renderquad_graphics_pipeline.clone(),
+
+                        // Transition the final swapchain image into color attachment optimal layout,
+                        // so that the graphics pipeline has it in the best format, and the final barrier
+                        // can transition it from that layout to the one suitable for presentation on the
+                        // swapchain
+                        recorder.image_barriers(
+                            [ImageMemoryBarrier::new(
+                                PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
+                                MemoryAccess::from([].as_slice()),
+                                PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
+                                MemoryAccess::from(
+                                    [MemoryAccessAs::ColorAttachmentWrite].as_slice(),
+                                ),
+                                ImageSubresourceRange::from(
+                                    swapchain_images[swapchain_index as usize].clone()
+                                        as Arc<dyn ImageTrait>,
+                                ),
+                                ImageLayout::Undefined,
+                                ImageLayout::ColorAttachmentOptimal,
+                                queue_family.clone(),
+                                queue_family.clone(),
+                            )]
+                            .as_slice(),
+                        );
+
+                        let rendering_color_attachments = [DynamicRenderingAttachment::new(
+                            swapchain_image_views[swapchain_index as usize].clone(),
+                            ImageLayout::ColorAttachmentOptimal,
+                            ClearValues::new(Some(ColorClearValues::Vec4(1.0, 1.0, 1.0, 1.0))),
+                            AttachmentLoadOp::Clear,
+                            AttachmentStoreOp::Store,
+                        )];
+                        recorder.graphics_rendering(
+                            swapchain_extent,
+                            rendering_color_attachments.as_slice(),
                             None,
                             None,
+                            |recorder| {
+                                recorder.bind_graphics_pipeline(
+                                    renderquad_graphics_pipeline.clone(),
+                                    None,
+                                    None,
+                                );
+                                recorder.bind_descriptor_sets_for_graphics_pipeline(
+                                    renderquad_pipeline_layout.clone(),
+                                    0,
+                                    &[renderquad_descriptor_sets[swapchain_index as usize].clone()],
+                                );
+                                recorder.draw(0, 6, 0, 1);
+                            }
                         );
-                        recorder.bind_descriptor_sets_for_graphics_pipeline(
-                            renderquad_pipeline_layout.clone(),
-                            0,
-                            &[renderquad_descriptor_sets[swapchain_index as usize].clone()],
-                        );
-                        recorder.draw(0, 6, 0, 1);
 
-                        recorder.end_renderpass();
+                        // Wait for the renderquad to complete the rendering so that we can then transition the image
+                        // in a layout that is suitable for presentation on the swapchain.
+                        recorder.image_barriers(
+                            [ImageMemoryBarrier::new(
+                                PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
+                                MemoryAccess::from([MemoryAccessAs::ShaderWrite].as_slice()),
+                                PipelineStages::from([PipelineStage::BottomOfPipe].as_slice()),
+                                MemoryAccess::from([].as_slice()),
+                                ImageSubresourceRange::from(
+                                    swapchain_images[swapchain_index as usize].clone()
+                                        as Arc<dyn ImageTrait>,
+                                ),
+                                ImageLayout::ColorAttachmentOptimal,
+                                ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
+                                queue_family.clone(),
+                                queue_family.clone(),
+                            )]
+                            .as_slice(),
+                        );
                     })
                     .unwrap();
 
