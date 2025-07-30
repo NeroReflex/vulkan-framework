@@ -655,15 +655,21 @@ impl GraphicsPipeline {
 
         let color_blend_attachment_state: smallvec::SmallVec<
             [ash::vk::PipelineColorBlendAttachmentState; 16],
-        > = smallvec::smallvec![ash::vk::PipelineColorBlendAttachmentState::default()
-            .color_write_mask(ash::vk::ColorComponentFlags::RGBA)
-            .blend_enable(false)
-            .src_color_blend_factor(ash::vk::BlendFactor::ONE)
-            .dst_color_blend_factor(ash::vk::BlendFactor::ZERO)
-            .color_blend_op(ash::vk::BlendOp::ADD)
-            .src_alpha_blend_factor(ash::vk::BlendFactor::ONE)
-            .dst_alpha_blend_factor(ash::vk::BlendFactor::ONE)
-            .alpha_blend_op(ash::vk::BlendOp::ADD)];
+        > = dynamic_rendering
+            .color_attachments
+            .iter()
+            .map(|_| {
+                ash::vk::PipelineColorBlendAttachmentState::default()
+                    .color_write_mask(ash::vk::ColorComponentFlags::RGBA)
+                    .blend_enable(false)
+                    .src_color_blend_factor(ash::vk::BlendFactor::ONE)
+                    .dst_color_blend_factor(ash::vk::BlendFactor::ZERO)
+                    .color_blend_op(ash::vk::BlendOp::ADD)
+                    .src_alpha_blend_factor(ash::vk::BlendFactor::ONE)
+                    .dst_alpha_blend_factor(ash::vk::BlendFactor::ONE)
+                    .alpha_blend_op(ash::vk::BlendOp::ADD)
+            })
+            .collect();
 
         let color_blend_state_create_info = ash::vk::PipelineColorBlendStateCreateInfo::default()
             .logic_op_enable(false)
