@@ -394,15 +394,15 @@ pub enum ImageLayoutSwapchainKHR {
     PresentSrc = 1000001002u32,
 }
 
-impl Into<u32> for ImageLayoutSwapchainKHR {
-    fn into(self) -> u32 {
-        (&self).into()
+impl From<ImageLayoutSwapchainKHR> for u32 {
+    fn from(val: ImageLayoutSwapchainKHR) -> Self {
+        (&val).into()
     }
 }
 
-impl Into<u32> for &ImageLayoutSwapchainKHR {
-    fn into(self) -> u32 {
-        match &self {
+impl From<&ImageLayoutSwapchainKHR> for u32 {
+    fn from(val: &ImageLayoutSwapchainKHR) -> Self {
+        match &val {
             fmt => unsafe { std::mem::transmute_copy::<ImageLayoutSwapchainKHR, u32>(fmt) },
         }
     }
@@ -424,9 +424,9 @@ pub enum ImageLayout {
     Other(u32),
 }
 
-impl Into<ash::vk::ImageLayout> for &ImageLayout {
-    fn into(self) -> ash::vk::ImageLayout {
-        ash::vk::ImageLayout::from_raw(match self {
+impl From<&ImageLayout> for ash::vk::ImageLayout {
+    fn from(val: &ImageLayout) -> Self {
+        ash::vk::ImageLayout::from_raw(match val {
             ImageLayout::Other(fmt) => *fmt,
             ImageLayout::SwapchainKHR(swapchain_fmt) => swapchain_fmt.into(),
             fmt => unsafe { std::mem::transmute_copy::<ImageLayout, u32>(fmt) },
@@ -434,9 +434,9 @@ impl Into<ash::vk::ImageLayout> for &ImageLayout {
     }
 }
 
-impl Into<ash::vk::ImageLayout> for ImageLayout {
-    fn into(self) -> ash::vk::ImageLayout {
-        ash::vk::ImageLayout::from_raw(match &self {
+impl From<ImageLayout> for ash::vk::ImageLayout {
+    fn from(val: ImageLayout) -> Self {
+        ash::vk::ImageLayout::from_raw(match &val {
             ImageLayout::Other(fmt) => *fmt,
             ImageLayout::SwapchainKHR(swapchain_fmt) => swapchain_fmt.into(),
             fmt => unsafe { std::mem::transmute_copy::<ImageLayout, u32>(fmt) },

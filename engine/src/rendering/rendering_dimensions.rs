@@ -7,9 +7,9 @@ pub struct RenderingDimensions {
     height: u32,
 }
 
-impl Into<Image2DDimensions> for &RenderingDimensions {
-    fn into(self) -> Image2DDimensions {
-        Image2DDimensions::new(self.width.to_owned(), self.height.to_owned())
+impl From<&RenderingDimensions> for Image2DDimensions {
+    fn from(val: &RenderingDimensions) -> Self {
+        Image2DDimensions::new(val.width.to_owned(), val.height.to_owned())
     }
 }
 

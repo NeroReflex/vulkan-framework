@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use artrtic::{core::hdr::HDR, rendering::system::System};
+use artrtic::rendering::system::System;
 
 const DEFAULT_WINDOW_WIDTH: u32 = 1280;
 const DEFAULT_WINDOW_HEIGHT: u32 = 720;

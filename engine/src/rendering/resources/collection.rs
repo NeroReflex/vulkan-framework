@@ -42,15 +42,12 @@ impl<T> LoadableResourcesCollection<T>
 where
     T: Clone,
 {
-    pub fn foreach_loaded<F>(&self, function: F) -> ()
+    pub fn foreach_loaded<F>(&self, function: F)
     where
-        F: Fn(&T) -> (),
+        F: Fn(&T),
     {
         for obj in self.collection.iter() {
-            match obj {
-                LoadableResource::Loaded(loaded_obj) => function(loaded_obj),
-                _ => {}
-            }
+            if let LoadableResource::Loaded(loaded_obj) = obj { function(loaded_obj) }
         }
     }
 

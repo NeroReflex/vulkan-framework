@@ -13,9 +13,9 @@ pub enum AttachmentLoadOp {
     DontCare,
 }
 
-impl Into<crate::ash::vk::AttachmentLoadOp> for &AttachmentLoadOp {
-    fn into(self) -> ash::vk::AttachmentLoadOp {
-        match self {
+impl From<&AttachmentLoadOp> for crate::ash::vk::AttachmentLoadOp {
+    fn from(val: &AttachmentLoadOp) -> Self {
+        match val {
             AttachmentLoadOp::Load => ash::vk::AttachmentLoadOp::LOAD,
             AttachmentLoadOp::DontCare => ash::vk::AttachmentLoadOp::DONT_CARE,
             AttachmentLoadOp::Clear => ash::vk::AttachmentLoadOp::CLEAR,
@@ -23,9 +23,9 @@ impl Into<crate::ash::vk::AttachmentLoadOp> for &AttachmentLoadOp {
     }
 }
 
-impl Into<crate::ash::vk::AttachmentLoadOp> for AttachmentLoadOp {
-    fn into(self) -> ash::vk::AttachmentLoadOp {
-        (&self).into()
+impl From<AttachmentLoadOp> for crate::ash::vk::AttachmentLoadOp {
+    fn from(val: AttachmentLoadOp) -> Self {
+        (&val).into()
     }
 }
 
@@ -35,18 +35,18 @@ pub enum AttachmentStoreOp {
     DontCare,
 }
 
-impl Into<crate::ash::vk::AttachmentStoreOp> for &AttachmentStoreOp {
-    fn into(self) -> crate::ash::vk::AttachmentStoreOp {
-        match self {
+impl From<&AttachmentStoreOp> for crate::ash::vk::AttachmentStoreOp {
+    fn from(val: &AttachmentStoreOp) -> Self {
+        match val {
             AttachmentStoreOp::Store => ash::vk::AttachmentStoreOp::STORE,
             AttachmentStoreOp::DontCare => ash::vk::AttachmentStoreOp::DONT_CARE,
         }
     }
 }
 
-impl Into<crate::ash::vk::AttachmentStoreOp> for AttachmentStoreOp {
-    fn into(self) -> crate::ash::vk::AttachmentStoreOp {
-        (&self).into()
+impl From<AttachmentStoreOp> for crate::ash::vk::AttachmentStoreOp {
+    fn from(val: AttachmentStoreOp) -> Self {
+        (&val).into()
     }
 }
 

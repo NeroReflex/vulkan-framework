@@ -46,9 +46,9 @@ pub struct MeshManager {
 
 impl MeshManager {
     #[inline]
-    pub fn foreach_loaded<F>(&self, function: F) -> ()
+    pub fn foreach_loaded<F>(&self, function: F)
     where
-        F: Fn(&MeshType) -> (),
+        F: Fn(&MeshType),
     {
         self.meshes.foreach_loaded(function)
     }

@@ -391,7 +391,7 @@ impl HDRTransform {
             AttachmentStoreOp::Store,
         )];
         recorder.graphics_rendering(
-            self.image_dimensions.clone(),
+            self.image_dimensions,
             rendering_color_attachments.as_slice(),
             None,
             None,

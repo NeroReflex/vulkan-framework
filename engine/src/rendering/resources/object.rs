@@ -34,7 +34,6 @@ use vulkan_framework::{
     },
     memory_pool::{MemoryMap, MemoryPool, MemoryPoolBacked, MemoryPoolFeatures},
     memory_requiring::MemoryRequiring,
-    prelude::VulkanResult,
     queue_family::QueueFamily,
 };
 
@@ -148,7 +147,7 @@ impl Manager {
                 (SIZEOF_MATERIAL_DEFINITION as u64) * (MAX_MATERIALS as u64),
             ),
             None,
-            Some(format!("resource_management.current_materials_buffer").as_str()),
+            Some("resource_management.current_materials_buffer".to_string().as_str()),
         )?;
 
         let memory_heap = MemoryHeap::new(
@@ -481,71 +480,68 @@ impl Manager {
                             None => Default::default(),
                         };
 
-                        match splitted_path.get(2) {
-                            Some(property) => match *property {
-                                "diffuse_texture" => {
-                                    let Some(linkname) = file.link_name()? else {
-                                        return Err(RenderingError::ResourceError(
-                                            ResourceError::InvalidObjectFormat,
-                                        ));
-                                    };
+                        if let Some(property) = splitted_path.get(2) { match *property {
+                            "diffuse_texture" => {
+                                let Some(linkname) = file.link_name()? else {
+                                    return Err(RenderingError::ResourceError(
+                                        ResourceError::InvalidObjectFormat,
+                                    ));
+                                };
 
-                                    let mut name = String::new();
-                                    for n in linkname.to_string_lossy().split("/") {
-                                        name = String::from(n);
-                                    }
-
-                                    material_decl.diffuse_texture.replace(name);
+                                let mut name = String::new();
+                                for n in linkname.to_string_lossy().split("/") {
+                                    name = String::from(n);
                                 }
-                                "displacement_texture" => {
-                                    let Some(linkname) = file.link_name()? else {
-                                        return Err(RenderingError::ResourceError(
-                                            ResourceError::InvalidObjectFormat,
-                                        ));
-                                    };
 
-                                    let mut name = String::new();
-                                    for n in linkname.to_string_lossy().split("/") {
-                                        name = String::from(n);
-                                    }
+                                material_decl.diffuse_texture.replace(name);
+                            }
+                            "displacement_texture" => {
+                                let Some(linkname) = file.link_name()? else {
+                                    return Err(RenderingError::ResourceError(
+                                        ResourceError::InvalidObjectFormat,
+                                    ));
+                                };
 
-                                    material_decl.displacement_texture.replace(name);
+                                let mut name = String::new();
+                                for n in linkname.to_string_lossy().split("/") {
+                                    name = String::from(n);
                                 }
-                                "reflection_texture" => {
-                                    let Some(linkname) = file.link_name()? else {
-                                        return Err(RenderingError::ResourceError(
-                                            ResourceError::InvalidObjectFormat,
-                                        ));
-                                    };
 
-                                    let mut name = String::new();
-                                    for n in linkname.to_string_lossy().split("/") {
-                                        name = String::from(n);
-                                    }
+                                material_decl.displacement_texture.replace(name);
+                            }
+                            "reflection_texture" => {
+                                let Some(linkname) = file.link_name()? else {
+                                    return Err(RenderingError::ResourceError(
+                                        ResourceError::InvalidObjectFormat,
+                                    ));
+                                };
 
-                                    material_decl.reflection_texture.replace(name);
+                                let mut name = String::new();
+                                for n in linkname.to_string_lossy().split("/") {
+                                    name = String::from(n);
                                 }
-                                "normal_texture" => {
-                                    let Some(linkname) = file.link_name()? else {
-                                        return Err(RenderingError::ResourceError(
-                                            ResourceError::InvalidObjectFormat,
-                                        ));
-                                    };
 
-                                    let mut name = String::new();
-                                    for n in linkname.to_string_lossy().split("/") {
-                                        name = String::from(n);
-                                    }
+                                material_decl.reflection_texture.replace(name);
+                            }
+                            "normal_texture" => {
+                                let Some(linkname) = file.link_name()? else {
+                                    return Err(RenderingError::ResourceError(
+                                        ResourceError::InvalidObjectFormat,
+                                    ));
+                                };
 
-                                    material_decl.normal_texture.replace(name);
+                                let mut name = String::new();
+                                for n in linkname.to_string_lossy().split("/") {
+                                    name = String::from(n);
                                 }
-                                "" => continue,
-                                _ => println!(
-                                    "WARNING: unrecognised property for material {material_name}: {property}"
-                                ),
-                            },
-                            None => {}
-                        };
+
+                                material_decl.normal_texture.replace(name);
+                            }
+                            "" => continue,
+                            _ => println!(
+                                "WARNING: unrecognised property for material {material_name}: {property}"
+                            ),
+                        } };
 
                         materials.insert(material_name, material_decl);
                     }
@@ -810,7 +806,7 @@ impl Manager {
                 continue;
             };
 
-            let material = material.clone();
+            let material = *material;
             let material_index: u32 = material.material_index as u32;
 
             let mesh_index = self
@@ -851,9 +847,9 @@ impl Manager {
     }
 
     #[inline]
-    pub fn foreach_object<F>(&self, function: F) -> ()
+    pub fn foreach_object<F>(&self, function: F)
     where
-        F: Fn(&Arc<BottomLevelAccelerationStructure>) -> (),
+        F: Fn(&Arc<BottomLevelAccelerationStructure>),
     {
         self.mesh_manager
             .foreach_loaded(|loaded_obj| function(loaded_obj))

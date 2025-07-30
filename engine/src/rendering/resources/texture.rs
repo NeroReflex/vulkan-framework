@@ -20,7 +20,7 @@ use vulkan_framework::{
     memory_heap::{
         ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryHeapOwned, MemoryRequirements, MemoryType,
     },
-    memory_pool::{MemoryPool, MemoryPoolFeature, MemoryPoolFeatures},
+    memory_pool::{MemoryPool, MemoryPoolFeatures},
     pipeline_stage::{PipelineStage, PipelineStages},
     queue::Queue,
     queue_family::{QueueFamily, QueueFamilyOwned},
@@ -216,7 +216,7 @@ impl TextureManager {
         mip_levels: u32,
         debug_name: String,
     ) -> RenderingResult<Image> {
-        let texture_name = format!("debug_name.texture[...].imageview");
+        let texture_name = "debug_name.texture[...].imageview".to_string();
         let texture = Image::new(
             device.clone(),
             ConcreteImageDescriptor::new(

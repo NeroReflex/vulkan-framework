@@ -572,7 +572,7 @@ impl MeshRendering {
             AttachmentStoreOp::Store,
         );
         recorder.graphics_rendering(
-            self.image_dimensions.clone(),
+            self.image_dimensions,
             rendering_color_attachments.as_slice(),
             Some(&rendering_depth_attachment),
             None,

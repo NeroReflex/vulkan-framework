@@ -504,7 +504,7 @@ impl BottomLevelAccelerationStructure {
         geometries_decl
             .iter()
             .map(|(t, g)| {
-                let mut data = Self::ash_geometry_single(*g, *t);
+                let mut data = Self::ash_geometry_single(g, t);
 
                 data.geometry.triangles.vertex_data = DeviceOrHostAddressConstKHR {
                     device_address: vertex_buffer.buffer_device_addr(),

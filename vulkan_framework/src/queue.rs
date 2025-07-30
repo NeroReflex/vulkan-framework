@@ -1,5 +1,5 @@
 use ash::vk::Handle;
-use smallvec::{smallvec, SmallVec};
+use smallvec::SmallVec;
 
 use crate::{
     command_buffer::CommandBufferTrait,
