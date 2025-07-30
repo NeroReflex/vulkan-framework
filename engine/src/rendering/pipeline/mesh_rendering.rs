@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use inline_spirv::*;
 
@@ -477,13 +477,16 @@ impl MeshRendering {
         })
     }
 
-    pub fn record_rendering_commands(
+    pub fn record_rendering_commands<ManagerT>(
         &self,
         queue_family: Arc<QueueFamily>,
         current_frame: usize,
-        meshes: Arc<Mutex<Manager>>,
+        meshes: ManagerT,
         recorder: &mut CommandBufferRecorder,
-    ) -> [(Arc<ImageView>, ImageSubresourceRange, ImageLayout); 4] {
+    ) -> [(Arc<ImageView>, ImageSubresourceRange, ImageLayout); 4]
+    where
+        ManagerT: std::ops::Deref<Target = Manager>,
+    {
         let position_imageview = self.gbuffer_position_image_views[current_frame].clone();
         let normal_imageview = self.gbuffer_normal_image_views[current_frame].clone();
         let texture_imageview = self.gbuffer_texture_image_views[current_frame].clone();
@@ -496,7 +499,7 @@ impl MeshRendering {
                 ImageMemoryBarrier::new(
                     PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
                     MemoryAccess::from([].as_slice()),
-                    PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
+                    PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
                     MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
                     position_imageview.image().into(),
                     ImageLayout::Undefined,
@@ -507,7 +510,7 @@ impl MeshRendering {
                 ImageMemoryBarrier::new(
                     PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
                     MemoryAccess::from([].as_slice()),
-                    PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
+                    PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
                     MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
                     normal_imageview.image().into(),
                     ImageLayout::Undefined,
@@ -518,7 +521,7 @@ impl MeshRendering {
                 ImageMemoryBarrier::new(
                     PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
                     MemoryAccess::from([].as_slice()),
-                    PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
+                    PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
                     MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
                     texture_imageview.image().into(),
                     ImageLayout::Undefined,
@@ -529,11 +532,11 @@ impl MeshRendering {
                 ImageMemoryBarrier::new(
                     PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
                     MemoryAccess::from([].as_slice()),
-                    PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
-                    MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
+                    PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
+                    MemoryAccess::from([MemoryAccessAs::DepthStencilAttachmentWrite].as_slice()),
                     depth_stencil_imageview.image().into(),
                     ImageLayout::Undefined,
-                    Self::output_image_color_layout(),
+                    Self::output_image_depth_stencil_layout(),
                     queue_family.clone(),
                     queue_family.clone(),
                 ),
@@ -597,9 +600,7 @@ impl MeshRendering {
 
                 // TODO: vkCmdDrawIndexed
 
-                recorder.draw(0, 3, 0, 1);
-                let meshes_lck = meshes.lock().unwrap();
-                meshes_lck.foreach_object(|loaded_obj| {});
+                meshes.deref().foreach_object(|loaded_obj| {});
             },
         );
 

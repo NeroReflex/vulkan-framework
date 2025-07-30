@@ -113,6 +113,7 @@ pub struct HDRTransform {
 
     descriptor_sets: smallvec::SmallVec<[Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
 
+    push_constant_size: u32,
     push_constant_access: ShaderStagesAccess,
     pipeline_layout: Arc<PipelineLayout>,
     graphics_pipeline: Arc<GraphicsPipeline>,
@@ -191,12 +192,17 @@ impl HDRTransform {
             descriptor_sets.push(descriptor_set);
         }
 
+        let push_constant_size = 4u32 * 2u32;
         let push_constant_access = [ShaderStageAccessIn::Fragment].as_slice().into();
 
         let pipeline_layout = PipelineLayout::new(
             device.clone(),
             &[descriptor_set_layout.clone()],
-            &[PushConstanRange::new(0, 4u32 * 2u32, push_constant_access)],
+            &[PushConstanRange::new(
+                0,
+                push_constant_size.to_owned(),
+                push_constant_access,
+            )],
             Some("hdr_transform.pipeline_layout"),
         )?;
 
@@ -338,6 +344,7 @@ impl HDRTransform {
 
             descriptor_sets,
 
+            push_constant_size,
             push_constant_access,
             pipeline_layout,
             graphics_pipeline,
@@ -419,7 +426,7 @@ impl HDRTransform {
                     unsafe {
                         ::core::slice::from_raw_parts(
                             (hdr as *const HDR) as *const u8,
-                            ::core::mem::size_of::<HDR>(),
+                            self.push_constant_size as usize,
                         )
                     },
                 );
