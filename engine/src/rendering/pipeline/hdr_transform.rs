@@ -3,20 +3,46 @@ use std::sync::Arc;
 use inline_spirv::*;
 
 use vulkan_framework::{
-    command_buffer::{ClearValues, ColorClearValues, CommandBufferRecorder}, descriptor_pool::{
+    command_buffer::{ClearValues, ColorClearValues, CommandBufferRecorder},
+    descriptor_pool::{
         DescriptorPool, DescriptorPoolConcreteDescriptor,
         DescriptorPoolSizesAcceletarionStructureKHR, DescriptorPoolSizesConcreteDescriptor,
-    }, descriptor_set::DescriptorSet, descriptor_set_layout::DescriptorSetLayout, device::Device, framebuffer::Framebuffer, graphics_pipeline::{
+    },
+    descriptor_set::DescriptorSet,
+    descriptor_set_layout::DescriptorSetLayout,
+    device::Device,
+    framebuffer::Framebuffer,
+    graphics_pipeline::{
         CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline, PolygonMode,
         Rasterizer, Scissor, Viewport,
-    }, image::{AllocatedImage, CommonImageFormat, ConcreteImageDescriptor, Image, ImageDimensions, ImageFlags, ImageFormat, ImageLayout, ImageMultisampling, ImageSubresourceRange, ImageTiling, ImageTrait, ImageUsage, ImageUseAs}, image_view::{ImageView, ImageViewType}, memory_allocator::{DefaultAllocator, MemoryAllocator}, memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryRequirements, MemoryType}, memory_pool::{MemoryPool, MemoryPoolFeatures}, memory_requiring::MemoryRequiring, pipeline_layout::PipelineLayout, renderpass::{
+    },
+    image::{
+        AllocatedImage, CommonImageFormat, ConcreteImageDescriptor, Image, ImageDimensions,
+        ImageFlags, ImageFormat, ImageLayout, ImageMultisampling, ImageSubresourceRange,
+        ImageTiling, ImageTrait, ImageUsage, ImageUseAs,
+    },
+    image_view::{ImageView, ImageViewType},
+    memory_allocator::{DefaultAllocator, MemoryAllocator},
+    memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryRequirements, MemoryType},
+    memory_pool::{MemoryPool, MemoryPoolFeatures},
+    memory_requiring::MemoryRequiring,
+    pipeline_layout::PipelineLayout,
+    push_constant_range::PushConstanRange,
+    renderpass::{
         AttachmentDescription, AttachmentLoadOp, AttachmentStoreOp, RenderPass,
         RenderSubPassDescription,
-    }, sampler::{Filtering, MipmapMode, Sampler}, shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType}, shader_stage_access::ShaderStagesAccess, shaders::{fragment_shader::FragmentShader, vertex_shader::VertexShader}
+    },
+    sampler::{Filtering, MipmapMode, Sampler},
+    shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType},
+    shader_stage_access::ShaderStagesAccess,
+    shaders::{fragment_shader::FragmentShader, vertex_shader::VertexShader},
 };
 
-use crate::rendering::{
-    MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingResult, rendering_dimensions::RenderingDimensions,
+use crate::{
+    core::hdr::HDR,
+    rendering::{
+        MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingResult, rendering_dimensions::RenderingDimensions,
+    },
 };
 
 const RENDERQUAD_VERTEX_SPV: &[u32] = inline_spirv!(
@@ -64,8 +90,13 @@ layout(binding = 0, set = 0) uniform sampler2D src;
 
 layout(location = 0) out vec4 outColor;
 
+layout(push_constant) uniform HDR {
+    float gamma;
+    float exposure;
+} hdr;
+
 void main() {
-    outColor = texture(src, in_vTextureUV);
+    outColor = texture(src, in_vTextureUV) * (hdr.gamma + hdr.exposure);
 }
 "#,
     glsl,
@@ -173,7 +204,11 @@ impl HDRTransform {
 
         let fragment_shader = FragmentShader::new(
             device.clone(),
-            &[],
+            &[PushConstanRange::new(
+                0,
+                (std::mem::size_of::<u32>() as u32) * 2u32,
+                ShaderStagesAccess::graphics(),
+            )],
             binding_descriptors.as_slice(),
             RENDERQUAD_FRAGMENT_SPV,
         )?;
@@ -233,7 +268,9 @@ impl HDRTransform {
                 device.clone(),
                 ConcreteImageDescriptor::new(
                     image_dimensions.into(),
-                    [ImageUseAs::Sampled, ImageUseAs::ColorAttachment].as_slice().into(),
+                    [ImageUseAs::Sampled, ImageUseAs::ColorAttachment]
+                        .as_slice()
+                        .into(),
                     ImageMultisampling::SamplesPerPixel1,
                     1,
                     1,
@@ -336,6 +373,7 @@ impl HDRTransform {
 
     pub fn record_rendering_commands(
         &self,
+        hdr: &HDR,
         input_image_view: Arc<ImageView>,
         current_frame: usize,
         recorder: &mut CommandBufferRecorder,
@@ -367,6 +405,14 @@ impl HDRTransform {
             0,
             &[self.descriptor_sets[current_frame].clone()],
         );
+
+        recorder.push_constant_for_graphics_pipeline(self.pipeline_layout.clone(), 0, unsafe {
+            ::core::slice::from_raw_parts(
+                (hdr as *const HDR) as *const u8,
+                ::core::mem::size_of::<HDR>(),
+            )
+        });
+
         recorder.draw(0, 6, 0, 1);
 
         recorder.end_renderpass();

@@ -362,7 +362,7 @@ fn main() {
         }]
         .concat();
 
-        recorder.push_constant_for_compute_shader(
+        recorder.push_constant_for_compute_pipeline(
             compute_pipeline_layout.clone(),
             0,
             data.as_slice(),

@@ -31,15 +31,18 @@ use vulkan_framework::{
     swapchain_image::ImageSwapchainKHR,
 };
 
-use crate::rendering::{
-    MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingError, RenderingResult,
-    pipeline::{
-        final_rendering::FinalRendering, hdr_transform::HDRTransform,
-        mesh_rendering::MeshRendering, renderquad::RenderQuad,
+use crate::{
+    core::hdr::HDR,
+    rendering::{
+        MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingError, RenderingResult,
+        pipeline::{
+            final_rendering::FinalRendering, hdr_transform::HDRTransform,
+            mesh_rendering::MeshRendering, renderquad::RenderQuad,
+        },
+        rendering_dimensions::RenderingDimensions,
+        resources::object::Manager as ResourceManager,
+        surface::SurfaceHelper,
     },
-    rendering_dimensions::RenderingDimensions,
-    resources::object::Manager as ResourceManager,
-    surface::SurfaceHelper,
 };
 
 type SwapchainImagesType =
@@ -398,7 +401,7 @@ impl System {
         Ok(())
     }
 
-    pub fn render(&mut self) -> RenderingResult<()> {
+    pub fn render(&mut self, hdr: &HDR) -> RenderingResult<()> {
         // Ensure the swapchain is available and evey resource tied to is is usable
         // create the new swapchain if none is present
         if self.swapchain.is_none() {
@@ -431,7 +434,11 @@ impl System {
         // here register the command buffer: command buffer at index i is associated with rendering_fences[i],
         // that I just awaited above, so thecommand buffer is surely NOT currently in use
         self.present_command_buffers[current_frame].record_one_time_submit(|recorder| {
-            let (final_rendering_output_image, final_rendering_output_image_subresource_range, final_rendering_output_image_layout) = self
+            let (
+                final_rendering_output_image,
+                final_rendering_output_image_subresource_range,
+                final_rendering_output_image_layout,
+            ) = self
                 .final_rendering
                 .record_rendering_commands(current_frame, recorder);
 
@@ -450,11 +457,13 @@ impl System {
                 self.queue_family(),
             ));
 
-            let (hdr_output_image, hdr_output_image_subresource_range, hdr_output_image_layout) = self.hdr.record_rendering_commands(
-                final_rendering_output_image,
-                current_frame,
-                recorder,
-            );
+            let (hdr_output_image, hdr_output_image_subresource_range, hdr_output_image_layout) =
+                self.hdr.record_rendering_commands(
+                    hdr,
+                    final_rendering_output_image,
+                    current_frame,
+                    recorder,
+                );
 
             // Insert a barrier to transition image layout from the final rendering output to renderquad input
             // while also ensuring the rendering operation of final rendering pipeline has completed before initiating

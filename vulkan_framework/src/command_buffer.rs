@@ -857,7 +857,7 @@ impl<'a> CommandBufferRecorder<'a> {
             ));
     }
 
-    pub fn push_constant_for_compute_shader(
+    pub fn push_constant_for_compute_pipeline(
         &mut self,
         pipeline_layout: Arc<PipelineLayout>,
         offset: u32,
@@ -868,6 +868,28 @@ impl<'a> CommandBufferRecorder<'a> {
                 self.command_buffer.ash_handle(),
                 pipeline_layout.ash_handle(),
                 ash::vk::ShaderStageFlags::COMPUTE,
+                offset,
+                data,
+            )
+        }
+
+        self.used_resources
+            .insert(CommandBufferReferencedResource::PipelineLayout(
+                pipeline_layout,
+            ));
+    }
+
+    pub fn push_constant_for_graphics_pipeline(
+        &mut self,
+        pipeline_layout: Arc<PipelineLayout>,
+        offset: u32,
+        data: &[u8],
+    ) {
+        unsafe {
+            self.device.ash_handle().cmd_push_constants(
+                self.command_buffer.ash_handle(),
+                pipeline_layout.ash_handle(),
+                ash::vk::ShaderStageFlags::ALL_GRAPHICS,
                 offset,
                 data,
             )

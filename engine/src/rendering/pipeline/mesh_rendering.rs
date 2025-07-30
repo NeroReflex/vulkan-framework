@@ -90,11 +90,11 @@ pub struct MeshRendering {
 
 impl MeshRendering {
     fn output_image_color_layout() -> ImageLayout {
-        ImageLayout::DepthStencilReadOnlyOptimal
+        ImageLayout::ShaderReadOnlyOptimal
     }
 
     fn output_image_depth_stencil_layout() -> ImageLayout {
-        ImageLayout::ShaderReadOnlyOptimal
+        ImageLayout::DepthStencilReadOnlyOptimal
     }
 
     fn output_image_color_format() -> ImageFormat {
@@ -484,7 +484,7 @@ impl MeshRendering {
                     VertexInputRate::PerVertex,
                     0u32,
                     &[VertexInputAttribute::new(
-                        1,
+                        2,
                         (4u32 * 3u32) + (4u32 * 3u32),
                         AttributeType::Vec2,
                     )],
