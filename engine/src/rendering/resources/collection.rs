@@ -42,6 +42,18 @@ impl<T> LoadableResourcesCollection<T>
 where
     T: Clone,
 {
+    pub fn foreach_loaded<F>(&self, function: F) -> ()
+    where
+        F: Fn(&T) -> (),
+    {
+        for obj in self.collection.iter() {
+            match obj {
+                LoadableResource::Loaded(loaded_obj) => function(loaded_obj),
+                _ => {}
+            }
+        }
+    }
+
     #[inline]
     pub(crate) fn status(&self) -> u64 {
         self.status.to_owned()

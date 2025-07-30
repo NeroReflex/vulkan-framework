@@ -16,9 +16,7 @@ use vulkan_framework::{
         CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline, PolygonMode,
         Rasterizer, Scissor, Viewport,
     },
-    image::{
-        Image2DDimensions, ImageFormat, ImageLayout, ImageLayoutSwapchainKHR, ImageMultisampling,
-    },
+    image::{CommonImageFormat, ImageFormat, ImageLayout, ImageMultisampling},
     image_view::ImageView,
     pipeline_layout::PipelineLayout,
     renderpass::{
@@ -31,7 +29,9 @@ use vulkan_framework::{
     shaders::{fragment_shader::FragmentShader, vertex_shader::VertexShader},
 };
 
-use crate::rendering::{MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingResult};
+use crate::rendering::{
+    MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingResult, rendering_dimensions::RenderingDimensions,
+};
 
 const RENDERQUAD_VERTEX_SPV: &[u32] = inline_spirv!(
     r#"
@@ -88,20 +88,26 @@ void main() {
     entry = "main"
 );
 
-/// This is the very last stage of the drawing pipeline: the one that renders to the framebuffer
-/// that will be presented to the screen.
-pub struct RenderQuad {
+pub struct HDRTransform {
     descriptor_sets: smallvec::SmallVec<[Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
     pipeline_layout: Arc<PipelineLayout>,
     graphics_pipeline: Arc<GraphicsPipeline>,
     sampler: Arc<Sampler>,
 }
 
-impl RenderQuad {
+/// Represents the stage of the pipeline that preceeds the final rendering:
+/// the one that transform the raw result into something that can be sampled
+/// to generate the image to be presented: applies tone mapping and/or hdr.
+impl HDRTransform {
     /// Returns the layout of the input 2D image MUST be in where the rendering operation starts.
     #[inline]
     pub fn image_input_format() -> ImageLayout {
         ImageLayout::ShaderReadOnlyOptimal
+    }
+
+    #[inline]
+    pub fn image_output_format() -> ImageFormat {
+        CommonImageFormat::r32g32b32a32_sfloat.into()
     }
 
     #[inline]
@@ -112,10 +118,10 @@ impl RenderQuad {
     pub fn new(
         device: Arc<Device>,
         frames_in_flight: u32,
-        final_format: ImageFormat,
-        width: u32,
-        height: u32,
+        render_area: &RenderingDimensions,
     ) -> RenderingResult<Self> {
+        let image_dimensions = render_area.into();
+
         let descriptor_pool = DescriptorPool::new(
             device.clone(),
             DescriptorPoolConcreteDescriptor::new(
@@ -181,10 +187,10 @@ impl RenderQuad {
         let renderpass = RenderPass::new(
             device.clone(),
             &[AttachmentDescription::new(
-                final_format,
+                Self::image_output_format(),
                 ImageMultisampling::SamplesPerPixel1,
                 ImageLayout::Undefined,
-                ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
+                ImageLayout::ShaderReadOnlyOptimal,
                 AttachmentLoadOp::Clear,
                 AttachmentStoreOp::Store,
                 AttachmentLoadOp::Clear,
@@ -206,12 +212,12 @@ impl RenderQuad {
             Some(Viewport::new(
                 0.0f32,
                 0.0f32,
-                width as f32,
-                height as f32,
+                render_area.width() as f32,
+                render_area.height() as f32,
                 0.0f32,
                 0.0f32,
             )),
-            Some(Scissor::new(0, 0, Image2DDimensions::new(width, height))),
+            Some(Scissor::new(0, 0, image_dimensions)),
             pipeline_layout.clone(),
             &[],
             Rasterizer::new(

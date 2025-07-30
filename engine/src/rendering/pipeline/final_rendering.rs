@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use inline_spirv::*;
 
-use crate::rendering::{MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingResult};
+use crate::rendering::{
+    MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingResult, rendering_dimensions::RenderingDimensions,
+};
 
 use vulkan_framework::{
     command_buffer::{ClearValues, ColorClearValues, CommandBufferRecorder},
@@ -61,6 +63,8 @@ void main() {
     frag
 );
 
+/// This is the stage of the pipeline that assembles every other results into what will be fed
+/// to the HDR stage
 pub struct FinalRendering {
     _memory_pool: Arc<MemoryPool>,
     image_dimensions: Image2DDimensions,
@@ -81,11 +85,10 @@ impl FinalRendering {
 
     pub fn new(
         device: Arc<Device>,
-        width: u32,
-        height: u32,
+        render_area: &RenderingDimensions,
         frames_in_flight: u32,
     ) -> RenderingResult<Self> {
-        let image_dimensions = Image2DDimensions::new(width, height);
+        let image_dimensions = render_area.into();
 
         let mut image_handles: smallvec::SmallVec<[_; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]> =
             smallvec::smallvec![];

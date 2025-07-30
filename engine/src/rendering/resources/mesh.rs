@@ -29,6 +29,8 @@ use crate::rendering::{
     RenderingError, RenderingResult, resources::collection::LoadableResourcesCollection,
 };
 
+type MeshType = Arc<BottomLevelAccelerationStructure>;
+
 pub struct MeshManager {
     debug_name: String,
 
@@ -39,10 +41,18 @@ pub struct MeshManager {
     memory_pool: Arc<MemoryPool>,
 
     //descriptor_sets: smallvec::SmallVec<[Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
-    meshes: LoadableResourcesCollection<Arc<BottomLevelAccelerationStructure>>,
+    meshes: LoadableResourcesCollection<MeshType>,
 }
 
 impl MeshManager {
+    #[inline]
+    pub fn foreach_loaded<F>(&self, function: F) -> ()
+    where
+        F: Fn(&MeshType) -> (),
+    {
+        self.meshes.foreach_loaded(function)
+    }
+
     #[inline]
     fn meshes_memory_pool_size(max_meshes: u32, frames_in_flight: u32) -> u64 {
         1024u64
@@ -59,6 +69,11 @@ impl MeshManager {
     #[inline]
     pub(crate) fn wait_load_nonblock(&mut self) -> RenderingResult<usize> {
         self.meshes.wait_load_nonblock()
+    }
+
+    #[inline]
+    pub(crate) fn wait_load_blocking(&mut self) -> RenderingResult<usize> {
+        self.meshes.wait_load_blocking()
     }
 
     pub fn new(
@@ -94,7 +109,6 @@ impl MeshManager {
         let queue = Queue::new(queue_family.clone(), Some("mesh_manager.queue"))?;
 
         let rt_blocksize = 1024u64;
-        let rt_size_bytes = Self::meshes_memory_pool_size(max_meshes, frames_in_flight);
         let raytracing_allocator = Arc::new(DefaultAllocator::with_blocksize(
             rt_blocksize,
             Self::meshes_memory_pool_size(max_meshes, frames_in_flight) / rt_blocksize,

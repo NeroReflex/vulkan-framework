@@ -1,4 +1,5 @@
 pub mod pipeline;
+pub mod rendering_dimensions;
 pub mod resources;
 pub mod surface;
 pub mod system;

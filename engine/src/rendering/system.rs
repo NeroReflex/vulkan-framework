@@ -33,7 +33,11 @@ use vulkan_framework::{
 
 use crate::rendering::{
     MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingError, RenderingResult,
-    pipeline::{final_rendering::FinalRendering, renderquad::RenderQuad},
+    pipeline::{
+        final_rendering::FinalRendering, hdr_transform::HDRTransform,
+        mesh_rendering::MeshRendering, renderquad::RenderQuad,
+    },
+    rendering_dimensions::RenderingDimensions,
     resources::object::Manager as ResourceManager,
     surface::SurfaceHelper,
 };
@@ -61,8 +65,10 @@ pub struct System {
 
     surface: SurfaceHelper,
 
-    renderquad: Arc<RenderQuad>,
+    mesh_rendering: Arc<MeshRendering>,
     final_rendering: Arc<FinalRendering>,
+    hdr: Arc<HDRTransform>,
+    renderquad: Arc<RenderQuad>,
 
     resources_manager: Arc<Mutex<ResourceManager>>,
 
@@ -252,19 +258,32 @@ impl System {
 
         let surface = SurfaceHelper::new(swapchain_images_count, device_swapchain_info)?;
 
+        let render_area = RenderingDimensions::new(1920, 1080);
+
+        let mesh_rendering = Arc::new(MeshRendering::new(
+            device.clone(),
+            &render_area,
+            frames_in_flight,
+        )?);
+
+        let final_rendering = Arc::new(FinalRendering::new(
+            device.clone(),
+            &render_area,
+            frames_in_flight,
+        )?);
+
+        let hdr = Arc::new(HDRTransform::new(
+            device.clone(),
+            frames_in_flight,
+            &render_area,
+        )?);
+
         let renderquad = Arc::new(RenderQuad::new(
             device.clone(),
             frames_in_flight,
             surface.final_format(),
             initial_width,
             initial_height,
-        )?);
-
-        let final_rendering = Arc::new(FinalRendering::new(
-            device.clone(),
-            1920,
-            1080,
-            frames_in_flight,
         )?);
 
         let resources_manager = Arc::new(Mutex::new(ResourceManager::new(
@@ -292,8 +311,10 @@ impl System {
 
             surface,
 
-            renderquad,
+            mesh_rendering,
             final_rendering,
+            hdr,
+            renderquad,
 
             resources_manager,
         })
@@ -401,6 +422,11 @@ impl System {
             Some(self.image_available_semaphores[current_frame].clone()),
             None,
         )?;
+
+        {
+            let mut static_meshes_resources = self.resources_manager.lock().unwrap();
+            static_meshes_resources.wait_blocking()?;
+        }
 
         // here register the command buffer: command buffer at index i is associated with rendering_fences[i],
         // that I just awaited above, so thecommand buffer is surely NOT currently in use

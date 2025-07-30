@@ -66,6 +66,11 @@ impl TextureManager {
     }
 
     #[inline]
+    pub(crate) fn wait_load_blocking(&mut self) -> RenderingResult<usize> {
+        self.textures.wait_load_blocking()
+    }
+
+    #[inline]
     pub fn stub_texture_index(&self) -> u32 {
         self.stub_image.to_owned()
     }

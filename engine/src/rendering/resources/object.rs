@@ -16,7 +16,7 @@ use vulkan_framework::{
     acceleration_structure::{
         VertexIndexing,
         bottom_level::{
-            BottomLevelAccelerationStructureIndexBuffer,
+            BottomLevelAccelerationStructure, BottomLevelAccelerationStructureIndexBuffer,
             BottomLevelAccelerationStructureVertexBuffer, BottomLevelTrianglesGroupDecl,
             BottomLevelVerticesTopologyDecl,
         },
@@ -34,6 +34,7 @@ use vulkan_framework::{
     },
     memory_pool::{MemoryMap, MemoryPool, MemoryPoolBacked, MemoryPoolFeatures},
     memory_requiring::MemoryRequiring,
+    prelude::VulkanResult,
     queue_family::QueueFamily,
 };
 
@@ -628,7 +629,7 @@ impl Manager {
                 },
                 None => {
                     if obj_type == "vertex_buffer" {
-                        let vertex_stride = 7u64 * 4u64;
+                        let vertex_stride = 5u64 * 4u64;
                         let vertex_size = (3u64 * 4u64) + vertex_stride;
 
                         let size = file.header().size()?;
@@ -843,6 +844,25 @@ impl Manager {
         let blas_created = self.mesh_manager.wait_load_nonblock()?;
         println!("During loading resources GPU has already created {blas_created} BLAS");
 
+        // next frame will need to have resources re-bounded
+        self.current_status += 1;
+
+        Ok(())
+    }
+
+    #[inline]
+    pub fn foreach_object<F>(&self, function: F) -> ()
+    where
+        F: Fn(&Arc<BottomLevelAccelerationStructure>) -> (),
+    {
+        self.mesh_manager
+            .foreach_loaded(|loaded_obj| function(loaded_obj))
+    }
+
+    #[inline]
+    pub fn wait_blocking(&mut self) -> RenderingResult<()> {
+        self.texture_manager.wait_load_blocking()?;
+        self.mesh_manager.wait_load_blocking()?;
         Ok(())
     }
 }
