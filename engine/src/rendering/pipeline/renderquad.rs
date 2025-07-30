@@ -19,7 +19,7 @@ use vulkan_framework::{
         Rasterizer, Scissor, Viewport,
     },
     image::{
-        Image2DDimensions, ImageFormat, ImageLayout, ImageLayoutSwapchainKHR, ImageMultisampling,
+        Image2DDimensions, ImageFormat, ImageLayout, ImageMultisampling,
     },
     image_view::ImageView,
     pipeline_layout::PipelineLayout,
