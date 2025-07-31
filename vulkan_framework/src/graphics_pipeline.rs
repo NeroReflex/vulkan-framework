@@ -13,6 +13,27 @@ use crate::prelude::VulkanResult;
 use crate::shader_trait::PrivateShaderTrait;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum IndexType {
+    UInt16,
+    UInt32,
+}
+
+impl From<&IndexType> for crate::ash::vk::IndexType {
+    fn from(value: &IndexType) -> Self {
+        match value {
+            IndexType::UInt16 => crate::ash::vk::IndexType::UINT16,
+            IndexType::UInt32 => crate::ash::vk::IndexType::UINT32,
+        }
+    }
+}
+
+impl From<IndexType> for crate::ash::vk::IndexType {
+    fn from(value: IndexType) -> Self {
+        (&value).into()
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum AttributeType {
     Float,
     Vec1,

@@ -16,7 +16,7 @@ use vulkan_framework::{
     acceleration_structure::{
         VertexIndexing,
         bottom_level::{
-            BottomLevelAccelerationStructure, BottomLevelAccelerationStructureIndexBuffer,
+            BottomLevelAccelerationStructureIndexBuffer,
             BottomLevelAccelerationStructureVertexBuffer, BottomLevelTrianglesGroupDecl,
             BottomLevelVerticesTopologyDecl,
         },
@@ -24,8 +24,9 @@ use vulkan_framework::{
     buffer::{
         AllocatedBuffer, Buffer, BufferTrait, BufferUsage, BufferUseAs, ConcreteBufferDescriptor,
     },
+    command_buffer::CommandBufferRecorder,
     device::DeviceOwned,
-    graphics_pipeline::AttributeType,
+    graphics_pipeline::{AttributeType, IndexType},
     image::{CommonImageFormat, Image2DDimensions, ImageFormat},
     memory_allocator::{DefaultAllocator, MemoryAllocator},
     memory_heap::{
@@ -34,7 +35,9 @@ use vulkan_framework::{
     },
     memory_pool::{MemoryMap, MemoryPool, MemoryPoolBacked, MemoryPoolFeatures},
     memory_requiring::MemoryRequiring,
+    pipeline_layout::PipelineLayout,
     queue_family::QueueFamily,
+    shader_stage_access::ShaderStagesAccess,
 };
 
 #[derive(Debug, Default, Copy, Clone)]
@@ -64,7 +67,7 @@ struct LoadedMesh {
 }
 
 struct MeshDefinition {
-    vertex_buffer: LoadedVertexBuffer,
+    //vertex_buffer: LoadedVertexBuffer,
     meshes: Vec<LoadedMesh>,
 }
 
@@ -88,6 +91,8 @@ type MeshToMaterialFramesInFlightType =
     smallvec::SmallVec<[Arc<AllocatedBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
 
 type StatusFramesInFlightType = smallvec::SmallVec<[StateType; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
+
+type LoadedMeshesType = smallvec::SmallVec<[Option<MeshDefinition>; MAX_MESHES as usize]>;
 
 pub struct Manager {
     debug_name: String,
@@ -113,10 +118,22 @@ pub struct Manager {
     // this tracks the status of the frames_in_buffer
     frames_in_flight_status: StatusFramesInFlightType,
 
-    objects: HashMap<String, MeshDefinition>,
+    objects: LoadedMeshesType,
 }
 
 impl Manager {
+    pub fn vertex_buffer_position_stride() -> u32 {
+        (4u32 * 3u32) + (4u32 * 3u32)
+    }
+
+    pub fn vertex_buffer_normals_stride() -> u32 {
+        (4u32 * 3u32) + (4u32 * 3u32)
+    }
+
+    pub fn vertex_buffer_texture_uv_stride() -> u32 {
+        (4u32 * 3u32) + (4u32 * 3u32)
+    }
+
     fn memory_pool_size(frames_in_flight: u32) -> u64 {
         (1024u64 * 1024u64 * 128u64) + (frames_in_flight as u64 * 8192u64)
     }
@@ -287,7 +304,10 @@ impl Manager {
         let current_mesh_to_material_map =
             AllocatedBuffer::new(memory_pool.clone(), current_mesh_to_material_map)?;
 
-        let objects = HashMap::new();
+        let mut objects = LoadedMeshesType::with_capacity(MAX_MESHES as usize);
+        for _ in 0..objects.capacity() {
+            objects.push(None);
+        }
 
         Ok(Self {
             debug_name,
@@ -313,7 +333,7 @@ impl Manager {
         })
     }
 
-    pub fn load_object(&mut self, file: PathBuf) -> RenderingResult<()> {
+    pub fn load_object(&mut self, file: PathBuf) -> RenderingResult<usize> {
         let device = self.queue_family.get_parent_device();
 
         #[derive(Default, Clone)]
@@ -846,19 +866,112 @@ impl Manager {
         let blas_created = self.mesh_manager.wait_load_nonblock()?;
         println!("During loading resources GPU has already created {blas_created} BLAS");
 
-        // next frame will need to have resources re-bounded
-        self.current_status += 1;
+        let mesh = MeshDefinition {
+            meshes: loaded_models.iter().map(|mesh| mesh.1.clone()).collect(),
+        };
 
-        Ok(())
+        for allocation_index in 0..self.objects.len() {
+            if !self.objects[allocation_index].is_none() {
+                continue;
+            }
+
+            self.objects[allocation_index] = Some(mesh);
+
+            // next frame will need to have resources re-bounded
+            self.current_status += 1;
+
+            return Ok(allocation_index);
+        }
+
+        todo!()
     }
 
+    /// Performs a guided rendering.
+    /// When called inside a rendering recording function it will update a push constant
+    /// containing a single u32 to the specified offset and stage, bind the vertex buffer,
+    /// bind the index buffers and dispatch relevants draw calls.
+    ///
+    /// This function avoids rendering assets that are not completely loaded in GPU memory.
     #[inline]
-    pub fn foreach_object<F>(&self, function: F)
-    where
-        F: Fn(&Arc<BottomLevelAccelerationStructure>),
-    {
-        self.mesh_manager
-            .foreach_loaded(|loaded_obj| function(loaded_obj))
+    pub fn guided_rendering(
+        &self,
+        recorder: &mut CommandBufferRecorder,
+        pipeline_layout: Arc<PipelineLayout>,
+        push_constant_offset: u32,
+        push_constant_size: u32,
+        push_constant_stages: ShaderStagesAccess,
+    ) {
+        for obj_index in 0..self.objects.len() {
+            let Some(loaded_obj) = &self.objects[obj_index] else {
+                continue;
+            };
+
+            // just an optimization: avoid issuing lots of useless bind_vertex_buffers calls
+            let mut last_bound_vertex_buffer = MAX_MESHES as u64;
+
+            for mesh_index in 0..loaded_obj.meshes.len() {
+                let loaded_mesh: &LoadedMesh = &loaded_obj.meshes[mesh_index];
+
+                let Some(blas) = self
+                    .mesh_manager
+                    .fetch_loaded(loaded_mesh.mesh_index as usize)
+                else {
+                    panic!("A BLAS NOT LOADED?!?!?!");
+                    continue;
+                };
+
+                if !self
+                    .texture_manager
+                    .is_loaded(loaded_mesh.material.diffuse_texture.texture as usize)
+                {
+                    panic!("A diffuse texture not loaded?!?!?!");
+                    continue;
+                }
+
+                if !self
+                    .texture_manager
+                    .is_loaded(loaded_mesh.material.normal_texture.texture as usize)
+                {
+                    panic!("A diffuse texture not loaded?!?!?!");
+                    continue;
+                }
+
+                // This is the material ID to be given to mesh rendering so that it can find
+                // on the material buffer, and with that address textures
+                let material_id = loaded_mesh.material.material_index as u32;
+
+                recorder.push_constant(
+                    pipeline_layout.clone(),
+                    push_constant_stages,
+                    push_constant_offset,
+                    unsafe {
+                        ::core::slice::from_raw_parts(
+                            (&material_id as *const _) as *const u8,
+                            push_constant_size as usize,
+                        )
+                    },
+                );
+
+                let vertex_buffer = blas.vertex_buffer();
+                if vertex_buffer.buffer().native_handle() != last_bound_vertex_buffer {
+                    last_bound_vertex_buffer = vertex_buffer.buffer().native_handle();
+                    recorder.bind_vertex_buffers(
+                        0,
+                        [
+                            (0u64, vertex_buffer.buffer() as Arc<dyn BufferTrait>),
+                            (4u64 * 3u64, vertex_buffer.buffer() as Arc<dyn BufferTrait>),
+                            (4u64 * (3u64 + 3u64), vertex_buffer.buffer() as Arc<dyn BufferTrait>),
+                        ]
+                        .as_slice(),
+                    );
+                }
+
+                recorder.bind_index_buffer(0, blas.index_buffer().buffer(), IndexType::UInt32);
+
+                // TODO: for now drawing one instance, but in the future allows multiple instances to be rendered
+                recorder.draw_indexed(blas.max_primitives_count() * 3u32, 1, 0, 0, 0);
+            }
+        }
     }
 
     #[inline]

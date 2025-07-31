@@ -46,6 +46,11 @@ pub struct MeshManager {
 
 impl MeshManager {
     #[inline]
+    pub fn fetch_loaded(&self, index: usize) -> Option<&MeshType> {
+        self.meshes.fetch_loaded(index)
+    }
+
+    #[inline]
     pub fn foreach_loaded<F>(&self, function: F)
     where
         F: Fn(&MeshType),

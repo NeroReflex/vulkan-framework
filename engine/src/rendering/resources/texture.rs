@@ -61,6 +61,11 @@ impl TextureManager {
     }
 
     #[inline]
+    pub fn is_loaded(&self, index: usize) -> bool {
+        self.textures.fetch_loaded(index).is_some()
+    }
+
+    #[inline]
     pub(crate) fn wait_load_nonblock(&mut self) -> RenderingResult<usize> {
         self.textures.wait_load_nonblock()
     }

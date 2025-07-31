@@ -31,34 +31,41 @@ use vulkan_framework::{
     memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryRequirements, MemoryType},
     memory_pool::{MemoryPool, MemoryPoolFeatures},
     memory_requiring::MemoryRequiring,
-    pipeline_layout::PipelineLayout,
+    pipeline_layout::{PipelineLayout, PipelineLayoutDependant},
     pipeline_stage::{PipelineStage, PipelineStages},
+    push_constant_range::PushConstanRange,
     queue_family::QueueFamily,
+    shader_stage_access::{ShaderStageAccessIn, ShaderStagesAccess},
     shaders::{fragment_shader::FragmentShader, vertex_shader::VertexShader},
 };
 
-const FINAL_RENDERING_VERTEX_SPV: &[u32] = inline_spirv!(
+const MESH_RENDERING_VERTEX_SPV: &[u32] = inline_spirv!(
     r#"
 #version 450 core
 
-vec2 positions[3] = vec2[](
-    vec2(0.0, -0.5),
-    vec2(0.5, 0.5),
-    vec2(-0.5, 0.5)
-);
+layout (location = 0) in vec3 vertex_position_modelspace;
+layout (location = 1) in vec3 vertex_normal_modelspace;
+layout (location = 2) in vec2 vertex_texture;
+
+
+//layout (location = 3) in uint vMaterialIndex;
 
 void main() {
-    gl_Position = vec4(positions[gl_VertexIndex], 0.0, 1.0);
+    
 }
 "#,
     vert
 );
 
-const FINAL_RENDERING_FRAGMENT_SPV: &[u32] = inline_spirv!(
+const MESH_RENDERING_FRAGMENT_SPV: &[u32] = inline_spirv!(
     r#"
 #version 450 core
 
 layout(location = 0) out vec4 outColor;
+
+layout(push_constant) uniform HDR {
+    uint material_id;
+} hdr;
 
 void main() {
     outColor = vec4(1.0, 0.0, 0.0, 1.0);
@@ -71,6 +78,10 @@ void main() {
 pub struct MeshRendering {
     _memory_pool: Arc<MemoryPool>,
     image_dimensions: Image2DDimensions,
+
+    push_constants_access: ShaderStagesAccess,
+    graphics_pipeline: Arc<GraphicsPipeline>,
+
     gbuffer_depth_stencil_images:
         smallvec::SmallVec<[Arc<AllocatedImage>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
     gbuffer_depth_stencil_image_views:
@@ -87,7 +98,6 @@ pub struct MeshRendering {
         smallvec::SmallVec<[Arc<AllocatedImage>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
     gbuffer_texture_image_views:
         smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
-    graphics_pipeline: Arc<GraphicsPipeline>,
 }
 
 impl MeshRendering {
@@ -381,10 +391,12 @@ impl MeshRendering {
         }
 
         let vertex_shader =
-            VertexShader::new(device.clone(), &[], &[], FINAL_RENDERING_VERTEX_SPV).unwrap();
+            VertexShader::new(device.clone(), &[], &[], MESH_RENDERING_VERTEX_SPV).unwrap();
 
         let fragment_shader =
-            FragmentShader::new(device.clone(), &[], &[], FINAL_RENDERING_FRAGMENT_SPV).unwrap();
+            FragmentShader::new(device.clone(), &[], &[], MESH_RENDERING_FRAGMENT_SPV).unwrap();
+
+        let push_constants_access = [ShaderStageAccessIn::Fragment].as_slice().into();
 
         let pipeline_layout = PipelineLayout::new(
             device.clone(),
@@ -396,7 +408,7 @@ impl MeshRendering {
                             binding_count
                         )*/
                     ],
-            &[],
+            &[PushConstanRange::new(0, 4u32, push_constants_access)],
             Some("mesh_rendering.pipeline_layout"),
         )?;
 
@@ -425,28 +437,20 @@ impl MeshRendering {
                 // vertex position data
                 VertexInputBinding::new(
                     VertexInputRate::PerVertex,
-                    0u32,
+                    Manager::vertex_buffer_position_stride(),
                     &[VertexInputAttribute::new(0, 0, AttributeType::Vec3)],
                 ),
                 // vertex normal data
                 VertexInputBinding::new(
                     VertexInputRate::PerVertex,
-                    0u32,
-                    &[VertexInputAttribute::new(
-                        1,
-                        4u32 * 3u32,
-                        AttributeType::Vec3,
-                    )],
+                    Manager::vertex_buffer_normals_stride(),
+                    &[VertexInputAttribute::new(1, 0, AttributeType::Vec3)],
                 ),
-                // vertex (diffuse) text coords
+                // vertex text coords
                 VertexInputBinding::new(
                     VertexInputRate::PerVertex,
-                    0u32,
-                    &[VertexInputAttribute::new(
-                        2,
-                        (4u32 * 3u32) + (4u32 * 3u32),
-                        AttributeType::Vec2,
-                    )],
+                    Manager::vertex_buffer_texture_uv_stride(),
+                    &[VertexInputAttribute::new(2, 0, AttributeType::Vec2)],
                 ),
             ]
             .as_slice(),
@@ -464,6 +468,8 @@ impl MeshRendering {
         Ok(Self {
             image_dimensions,
             _memory_pool: memory_pool,
+
+            push_constants_access,
             graphics_pipeline,
 
             gbuffer_depth_stencil_images,
@@ -593,14 +599,14 @@ impl MeshRendering {
                     Some(Scissor::new(0, 0, self.image_dimensions)),
                 );
 
-                // bind vertex buffer + bind index buffer
-                // TODO: vkCmdBindVertexBuffers vkCmdBindIndexBuffer
-
-                // TODO: vkCmdPushConstants
-
-                // TODO: vkCmdDrawIndexed
-
-                meshes.deref().foreach_object(|loaded_obj| {});
+                // performs the actual rendering
+                meshes.deref().guided_rendering(
+                    recorder,
+                    self.graphics_pipeline.get_parent_pipeline_layout(),
+                    0,
+                    4u32,
+                    self.push_constants_access,
+                );
             },
         );
 

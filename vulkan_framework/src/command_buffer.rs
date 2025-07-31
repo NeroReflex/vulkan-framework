@@ -25,7 +25,7 @@ use crate::{
     command_pool::{CommandPool, CommandPoolOwned},
     device::DeviceOwned,
     dynamic_rendering::DynamicRenderingAttachment,
-    graphics_pipeline::{GraphicsPipeline, Scissor, Viewport},
+    graphics_pipeline::{GraphicsPipeline, IndexType, Scissor, Viewport},
     image::{
         Image1DTrait, Image2DDimensions, Image2DTrait, Image3DDimensions, Image3DTrait,
         ImageDimensions, ImageLayout, ImageSubresourceLayers, ImageSubresourceRange, ImageTrait,
@@ -523,6 +523,26 @@ impl<'a> CommandBufferRecorder<'a> {
         }
     }
 
+    pub fn draw_indexed(
+        &mut self,
+        index_count: u32,
+        instance_count: u32,
+        first_index: u32,
+        vertex_offset: i32,
+        first_instance: u32,
+    ) {
+        unsafe {
+            self.device.ash_handle().cmd_draw_indexed(
+                self.command_buffer.ash_handle(),
+                index_count,
+                instance_count,
+                first_index,
+                vertex_offset,
+                first_instance,
+            )
+        }
+    }
+
     pub fn bind_descriptor_sets_for_graphics_pipeline(
         &mut self,
         pipeline_layout: Arc<PipelineLayout>,
@@ -894,6 +914,53 @@ impl<'a> CommandBufferRecorder<'a> {
                 group_count_x,
                 group_count_y,
                 group_count_z,
+            )
+        }
+    }
+
+    pub fn bind_vertex_buffers(
+        &mut self,
+        first_binding: u32,
+        vertex_buffers: &[(u64, Arc<dyn BufferTrait>)],
+    ) {
+        let mut buffers: smallvec::SmallVec<[ash::vk::Buffer; 8]> = smallvec::smallvec![];
+        let mut offsets: smallvec::SmallVec<[ash::vk::DeviceSize; 8]> = smallvec::smallvec![];
+        for (offset, vb) in vertex_buffers.iter() {
+            self.used_resources
+                .insert(CommandBufferReferencedResource::Buffer(vb.clone()));
+
+            offsets.push(offset.to_owned() as ash::vk::DeviceSize);
+
+            buffers.push(ash::vk::Buffer::from_raw(vb.native_handle()));
+        }
+
+        unsafe {
+            self.device.ash_handle().cmd_bind_vertex_buffers(
+                self.command_buffer.ash_handle(),
+                first_binding,
+                buffers.as_slice(),
+                offsets.as_slice(),
+            )
+        }
+    }
+
+    pub fn bind_index_buffer(
+        &mut self,
+        offset: u64,
+        index_buffer: Arc<dyn BufferTrait>,
+        index_type: IndexType,
+    ) {
+        self.used_resources
+            .insert(CommandBufferReferencedResource::Buffer(
+                index_buffer.clone(),
+            ));
+
+        unsafe {
+            self.device.ash_handle().cmd_bind_index_buffer(
+                self.command_buffer.ash_handle(),
+                ash::vk::Buffer::from_raw(index_buffer.native_handle()),
+                offset,
+                index_type.into(),
             )
         }
     }

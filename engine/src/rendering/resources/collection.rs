@@ -42,6 +42,18 @@ impl<T> LoadableResourcesCollection<T>
 where
     T: Clone,
 {
+    pub fn fetch_loaded(&self, index: usize) -> Option<&T> {
+        let Some(value) = self.collection.get(index) else {
+            return None;
+        };
+
+        if let LoadableResource::Loaded(value) = value {
+            return Some(value);
+        }
+
+        None
+    }
+
     pub fn foreach_loaded<F>(&self, function: F)
     where
         F: Fn(&T),
