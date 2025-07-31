@@ -153,7 +153,7 @@ where
     ) -> RenderingResult<Option<u32>>
     where
         CreateFn: FnOnce() -> RenderingResult<T>,
-        LoadFn: FnOnce(&mut CommandBufferRecorder, T) -> RenderingResult<()>,
+        LoadFn: FnOnce(&mut CommandBufferRecorder, usize, T) -> RenderingResult<()>,
     {
         for index in 0..self.collection.len() {
             // ensure this is an available slot for the new texture
@@ -164,8 +164,9 @@ where
 
             let resource = creation_fun()?;
 
-            command_buffer
-                .record_one_time_submit(|recorder| loading_fun(recorder, resource.clone()))??;
+            command_buffer.record_one_time_submit(|recorder| {
+                loading_fun(recorder, index, resource.clone())
+            })??;
 
             let fence_waiter = queue.submit(&[command_buffer.clone()], &[], &[], fence.clone())?;
 

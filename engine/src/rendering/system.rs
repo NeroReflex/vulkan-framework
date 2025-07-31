@@ -13,9 +13,7 @@ use vulkan_framework::{
     command_pool::CommandPool,
     device::{Device, DeviceOwned},
     fence::{Fence, FenceWaiter},
-    image::{
-        Image2DDimensions, ImageLayout, ImageLayoutSwapchainKHR, ImageTrait, ImageUsage, ImageUseAs,
-    },
+    image::{Image2DDimensions, ImageLayout, ImageLayoutSwapchainKHR, ImageUsage, ImageUseAs},
     image_view::ImageView,
     instance::InstanceOwned,
     pipeline_stage::{PipelineStage, PipelineStages},
@@ -272,6 +270,7 @@ impl System {
         let mesh_rendering = Arc::new(MeshRendering::new(
             device.clone(),
             obj_manager.textures_descriptor_set_layout(),
+            obj_manager.materials_descriptor_set_layout(),
             &render_area,
             frames_in_flight,
         )?);
@@ -420,7 +419,7 @@ impl System {
 
         {
             let mut static_meshes_resources = self.resources_manager.lock().unwrap();
-            static_meshes_resources.wait_blocking()?;
+            static_meshes_resources.wait_nonblocking()?;
 
             // here register the command buffer: command buffer at index i is associated with rendering_fences[i],
             // that I just awaited above, so thecommand buffer is surely NOT currently in use

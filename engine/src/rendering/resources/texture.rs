@@ -45,8 +45,6 @@ pub struct TextureManager {
 
     queue: Arc<Queue>,
 
-    _descriptor_pool: Arc<DescriptorPool>,
-    binding_descriptor: Arc<BindingDescriptor>,
     descriptor_set_layout: Arc<DescriptorSetLayout>,
     descriptor_sets: DescriptorSetsType,
 
@@ -55,8 +53,6 @@ pub struct TextureManager {
     stub_image: u32,
     textures: LoadableResourcesCollection<Arc<ImageView>>,
     sampler: Arc<Sampler>,
-
-    current_status: u64,
 }
 
 impl TextureManager {
@@ -78,28 +74,12 @@ impl TextureManager {
 
     #[inline]
     pub(crate) fn wait_load_nonblock(&mut self) -> RenderingResult<usize> {
-        let result = self.textures.wait_load_nonblock();
-
-        if let Ok(newly_loaded) = result {
-            if newly_loaded > 0 {
-                self.current_status += 1;
-            }
-        }
-
-        result
+        self.textures.wait_load_nonblock()
     }
 
     #[inline]
     pub(crate) fn wait_load_blocking(&mut self) -> RenderingResult<usize> {
-        let result = self.textures.wait_load_blocking();
-
-        if let Ok(newly_loaded) = result {
-            if newly_loaded > 0 {
-                self.current_status += 1;
-            }
-        }
-
-        result
+        self.textures.wait_load_blocking()
     }
 
     #[inline]
@@ -107,10 +87,12 @@ impl TextureManager {
         let (descriptor_set_status, descriptor_set) =
             self.descriptor_sets.get(current_frame).unwrap();
 
+        let current_status = self.textures.status();
+
         // Check if the descriptor set needs to be updated:
         // new textures have been loaded in GPU memory since the last time it was used
-        let mix_status = descriptor_set_status.fetch_min(self.current_status, Ordering::SeqCst);
-        if mix_status != self.current_status {
+        let mix_status = descriptor_set_status.fetch_min(current_status, Ordering::SeqCst);
+        if mix_status != current_status {
             // Update the descriptor set with available resources
             let mut combined_images: smallvec::SmallVec<
                 [(ImageLayout, Arc<ImageView>, Arc<Sampler>); MAX_TEXTURES as usize],
@@ -146,13 +128,13 @@ impl TextureManager {
             descriptor_set_status
                 .compare_exchange(
                     mix_status,
-                    self.current_status,
+                    current_status,
                     Ordering::SeqCst,
                     Ordering::SeqCst,
                 )
                 .unwrap();
 
-            println!("Updated descriptor set {current_frame}");
+            println!("Updated textures descriptor set {current_frame}");
         }
 
         descriptor_set.clone()
@@ -166,7 +148,6 @@ impl TextureManager {
     pub fn new(
         queue_family: Arc<QueueFamily>,
         stub_image_data: Arc<dyn BufferTrait>,
-        max_textures: u32,
         frames_in_flight: u32,
         debug_name: String,
     ) -> RenderingResult<Self> {
@@ -179,9 +160,9 @@ impl TextureManager {
             DescriptorPoolConcreteDescriptor::new(
                 DescriptorPoolSizesConcreteDescriptor::new(
                     0,
-                    max_textures * frames_in_flight,
+                    MAX_TEXTURES * frames_in_flight,
                     0,
-                    max_textures * frames_in_flight,
+                    MAX_TEXTURES * frames_in_flight,
                     0,
                     0,
                     0,
@@ -194,15 +175,16 @@ impl TextureManager {
             Some("texture_manager_descriptor_pool"),
         )?;
 
-        let binding_descriptor = BindingDescriptor::new(
-            ShaderStagesAccess::graphics(),
-            BindingType::Native(NativeBindingType::CombinedImageSampler),
-            0,
-            max_textures,
-        );
-
-        let descriptor_set_layout =
-            DescriptorSetLayout::new(device.clone(), &[binding_descriptor.clone()])?;
+        let descriptor_set_layout = DescriptorSetLayout::new(
+            device.clone(),
+            [BindingDescriptor::new(
+                ShaderStagesAccess::graphics(),
+                BindingType::Native(NativeBindingType::CombinedImageSampler),
+                0,
+                MAX_TEXTURES,
+            )]
+            .as_slice(),
+        )?;
 
         let mut descriptor_sets: DescriptorSetsType = smallvec::smallvec![];
         for _ in 0..frames_in_flight as usize {
@@ -220,7 +202,7 @@ impl TextureManager {
             String::from("texture_empty_image"),
         )?;
 
-        let total_size = Self::texture_memory_pool_size(max_textures, frames_in_flight);
+        let total_size = Self::texture_memory_pool_size(MAX_TEXTURES, frames_in_flight);
 
         let memory_heap = MemoryHeap::new(
             device.clone(),
@@ -236,7 +218,7 @@ impl TextureManager {
 
         let mut textures = LoadableResourcesCollection::new(
             queue_family,
-            max_textures,
+            MAX_TEXTURES,
             String::from("texture_manager"),
         )?;
 
@@ -251,7 +233,7 @@ impl TextureManager {
         let Some(stub_image) = textures.load(
             queue.clone(),
             || Self::allocate_image(memory_pool.clone(), stub_image, debug_name.clone()),
-            |recorder, image_view| {
+            |recorder, _, image_view| {
                 Self::setup_load_image_operation(
                     recorder,
                     stub_image_data,
@@ -273,8 +255,6 @@ impl TextureManager {
 
             queue,
 
-            _descriptor_pool: descriptor_pool,
-            binding_descriptor,
             descriptor_set_layout,
             descriptor_sets,
 
@@ -283,8 +263,6 @@ impl TextureManager {
             stub_image,
             textures,
             sampler,
-
-            current_status,
         })
     }
 
@@ -308,7 +286,7 @@ impl TextureManager {
         mip_levels: u32,
         debug_name: String,
     ) -> RenderingResult<Image> {
-        let texture_name = "debug_name.texture[...].imageview".to_string();
+        let texture_name = format!("{debug_name}.texture[...].imageview");
         let texture = Image::new(
             device.clone(),
             ConcreteImageDescriptor::new(
@@ -359,6 +337,9 @@ impl TextureManager {
     ) -> RenderingResult<()> {
         let queue_family = queue.get_parent_queue_family();
         let image = image_view.image();
+
+        // TODO: wait for host to finish writing the buffer
+        todo!();
 
         let before_transfer_barrier = ImageMemoryBarrier::new(
             PipelineStages::from([PipelineStage::TopOfPipe].as_ref()),
@@ -415,11 +396,10 @@ impl TextureManager {
                     image_format,
                     image_dimenstions,
                     image_mip_levels,
-                    // TODO: change me
-                    String::from("texture_empty_image"),
+                    self.debug_name.clone(),
                 )
             },
-            |recorder, image_view| {
+            |recorder, _, image_view| {
                 Self::setup_load_image_operation(recorder, image_data, image_view, queue.clone())
             },
         )?

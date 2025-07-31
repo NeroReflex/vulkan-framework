@@ -5,8 +5,8 @@ use tar::Archive;
 use crate::{
     EmbeddedAssets,
     rendering::{
-        MAX_FRAMES_IN_FLIGHT_NO_MALLOC, MAX_MATERIALS, MAX_MESHES, MAX_TEXTURES, RenderingError,
-        RenderingResult, resources::ResourceError,
+        MAX_MATERIALS, MAX_MESHES, RenderingError, RenderingResult,
+        resources::{ResourceError, SIZEOF_MATERIAL_DEFINITION, materials::MaterialManager},
     },
 };
 
@@ -29,7 +29,7 @@ use vulkan_framework::{
     device::DeviceOwned,
     graphics_pipeline::{AttributeType, IndexType},
     image::{CommonImageFormat, Image2DDimensions, ImageFormat},
-    memory_allocator::{DefaultAllocator, MemoryAllocator},
+    memory_allocator::DefaultAllocator,
     memory_heap::{
         ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryHeapOwned, MemoryHostVisibility,
         MemoryRequirements, MemoryType,
@@ -49,15 +49,9 @@ struct LoadedTexture {
 #[derive(Debug, Default, Copy, Clone)]
 
 struct LoadedMaterial {
-    material_index: u8,
+    material_index: u32,
     diffuse_texture: LoadedTexture,
     normal_texture: LoadedTexture,
-}
-
-#[derive(Debug, Default, Copy, Clone)]
-
-struct LoadedVertexBuffer {
-    vertex_buffer: u32,
 }
 
 #[derive(Debug, Default, Copy, Clone)]
@@ -68,7 +62,6 @@ struct LoadedMesh {
 }
 
 struct MeshDefinition {
-    //vertex_buffer: LoadedVertexBuffer,
     meshes: Vec<LoadedMesh>,
 }
 
@@ -82,17 +75,6 @@ pub struct MaterialGPU {
                                        // No padding needed since all fields are u32
 }
 
-const SIZEOF_MATERIAL_DEFINITION: usize = std::mem::size_of::<MaterialGPU>();
-
-type StateType = u64;
-type MaterialsFrameInFlightType =
-    smallvec::SmallVec<[Arc<AllocatedBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
-
-type MeshToMaterialFramesInFlightType =
-    smallvec::SmallVec<[Arc<AllocatedBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
-
-type StatusFramesInFlightType = smallvec::SmallVec<[StateType; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
-
 type LoadedMeshesType = smallvec::SmallVec<[Option<MeshDefinition>; MAX_MESHES as usize]>;
 
 pub struct Manager {
@@ -104,20 +86,9 @@ pub struct Manager {
 
     mesh_manager: MeshManager,
     texture_manager: TextureManager,
+    material_manager: MaterialManager,
 
-    // I can load up to 128 materials
-    materials: u128,
-    materials_buffer: MaterialsFrameInFlightType,
-    current_materials_buffer: Arc<AllocatedBuffer>,
-
-    mesh_to_material_map: MeshToMaterialFramesInFlightType,
     current_mesh_to_material_map: Arc<AllocatedBuffer>,
-
-    // this keeps track of the current status (for new frames)
-    current_status: StateType,
-
-    // this tracks the status of the frames_in_buffer
-    frames_in_flight_status: StatusFramesInFlightType,
 
     objects: LoadedMeshesType,
 }
@@ -148,6 +119,11 @@ impl Manager {
         self.texture_manager.descriptor_set_layout()
     }
 
+    #[inline]
+    pub fn materials_descriptor_set_layout(&self) -> Arc<DescriptorSetLayout> {
+        self.material_manager.descriptor_set_layout()
+    }
+
     pub fn new(
         queue_family: Arc<QueueFamily>,
         frames_in_flight: u32,
@@ -167,20 +143,6 @@ impl Manager {
             Some("resource_management.stub_image_buffer"),
         )?;
 
-        let materials_buffer = Buffer::new(
-            device.clone(),
-            ConcreteBufferDescriptor::new(
-                BufferUsage::from([BufferUseAs::TransferSrc].as_slice()),
-                (SIZEOF_MATERIAL_DEFINITION as u64) * (MAX_MATERIALS as u64),
-            ),
-            None,
-            Some(
-                "resource_management.current_materials_buffer"
-                    .to_string()
-                    .as_str(),
-            ),
-        )?;
-
         let memory_heap = MemoryHeap::new(
             device.clone(),
             ConcreteMemoryHeapDescriptor::new(
@@ -189,13 +151,7 @@ impl Manager {
                 })),
                 total_size,
             ),
-            MemoryRequirements::try_from(
-                [
-                    &buffer as &dyn MemoryRequiring,
-                    &materials_buffer as &dyn MemoryRequiring,
-                ]
-                .as_slice(),
-            )?,
+            MemoryRequirements::try_from([&buffer as &dyn MemoryRequiring].as_slice())?,
         )?;
 
         let memory_pool = MemoryPool::new(
@@ -203,8 +159,6 @@ impl Manager {
             Arc::new(DefaultAllocator::new(total_size)),
             MemoryPoolFeatures::from([].as_slice()),
         )?;
-
-        let current_materials_buffer = AllocatedBuffer::new(memory_pool.clone(), materials_buffer)?;
 
         let buffer = AllocatedBuffer::new(memory_pool.clone(), buffer)?;
 
@@ -215,91 +169,20 @@ impl Manager {
 
         let mesh_manager = MeshManager::new(
             queue_family.clone(),
-            MAX_MESHES,
             frames_in_flight,
             format!("{debug_name}->mesh_manager"),
         )?;
         let texture_manager = TextureManager::new(
             queue_family.clone(),
             buffer.clone(),
-            MAX_TEXTURES,
             frames_in_flight,
             format!("{debug_name}->texture_manager"),
         )?;
-
-        let materials = 0;
-        let mut materials_unallocated_buffer: smallvec::SmallVec<
-            [Buffer; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
-        > = smallvec::smallvec![];
-        for index in 0..(frames_in_flight as usize) {
-            materials_unallocated_buffer.push(Buffer::new(
-                device.clone(),
-                ConcreteBufferDescriptor::new(
-                    BufferUsage::from(
-                        [BufferUseAs::TransferDst, BufferUseAs::UniformBuffer].as_slice(),
-                    ),
-                    (frames_in_flight as u64) * (MAX_MATERIALS as u64),
-                ),
-                None,
-                Some(format!("resource_management.materials_buffer[{index}]").as_str()),
-            )?);
-        }
-
-        let materials_size = (SIZEOF_MATERIAL_DEFINITION as u64)
-            * (MAX_MATERIALS as u64)
-            * (frames_in_flight as u64);
-        let block_size = 128u64;
-        let materials_allocator = DefaultAllocator::with_blocksize(
-            block_size,
-            ((materials_size / block_size) + 1u64) + (frames_in_flight as u64),
-        );
-
-        let materials_memory_heap = MemoryHeap::new(
-            device.clone(),
-            ConcreteMemoryHeapDescriptor::new(
-                MemoryType::DeviceLocal(None),
-                materials_allocator.total_size(),
-            ),
-            MemoryRequirements::try_from(materials_unallocated_buffer.as_slice())?,
+        let material_manager = MaterialManager::new(
+            queue_family.clone(),
+            frames_in_flight,
+            format!("{debug_name}->material_manager"),
         )?;
-
-        let materials_memory_pool = MemoryPool::new(
-            materials_memory_heap,
-            Arc::new(materials_allocator),
-            MemoryPoolFeatures::from([].as_slice()),
-        )?;
-
-        let current_status = 0;
-        let frames_in_flight_status: StatusFramesInFlightType = (0..(frames_in_flight as usize))
-            .map(|_| current_status)
-            .collect();
-
-        let mut materials_buffer: MaterialsFrameInFlightType = smallvec::smallvec![];
-        for buffer in materials_unallocated_buffer.into_iter() {
-            let material_buffer = AllocatedBuffer::new(materials_memory_pool.clone(), buffer)?;
-            materials_buffer.push(material_buffer);
-        }
-
-        let mut mesh_to_material_map: MeshToMaterialFramesInFlightType =
-            MeshToMaterialFramesInFlightType::with_capacity(frames_in_flight as usize);
-        for index in 0..frames_in_flight {
-            let mesh_material_buffer = Buffer::new(
-                device.clone(),
-                ConcreteBufferDescriptor::new(
-                    BufferUsage::from(
-                        [BufferUseAs::TransferDst, BufferUseAs::StorageBuffer].as_slice(),
-                    ),
-                    (MAX_MESHES as u64) * 4u64,
-                ),
-                None,
-                Some(format!("resource_management.mesh_to_material_map[{index}]").as_str()),
-            )?;
-
-            mesh_to_material_map.push(AllocatedBuffer::new(
-                memory_pool.clone(),
-                mesh_material_buffer,
-            )?);
-        }
 
         let current_mesh_to_material_map = Buffer::new(
             device.clone(),
@@ -308,7 +191,9 @@ impl Manager {
                 (MAX_MESHES as u64) * 4u64,
             ),
             None,
-            Some("resource_management.current_mesh_to_material_map"),
+            Some(
+                format!("{debug_name}->resource_management.current_mesh_to_material_map").as_str(),
+            ),
         )?;
 
         let current_mesh_to_material_map =
@@ -328,16 +213,9 @@ impl Manager {
 
             mesh_manager,
             texture_manager,
+            material_manager,
 
-            materials,
-            materials_buffer,
-            current_materials_buffer,
-
-            mesh_to_material_map,
             current_mesh_to_material_map,
-
-            current_status,
-            frames_in_flight_status,
 
             objects,
         })
@@ -772,37 +650,38 @@ impl Manager {
                 },
             };
 
-            let mut material_index = 0u8;
-            while material_index < (MAX_MATERIALS as u8) + 1u8 {
-                if material_index == (MAX_MATERIALS as u8) {
-                    // TODO: no more space available for materials :(
-                    todo!()
-                }
+            let material_def_size = std::mem::size_of::<MaterialGPU>();
+            assert_eq!(SIZEOF_MATERIAL_DEFINITION, material_def_size);
+            let material_buffer = Buffer::new(
+                device.clone(),
+                ConcreteBufferDescriptor::new(
+                    [BufferUseAs::TransferSrc].as_slice().into(),
+                    material_def_size as u64,
+                ),
+                None,
+                Some(""),
+            )?;
 
-                let bitshifted_index = 1u128 << material_index;
-                if (self.materials & bitshifted_index) == 0u128 {
-                    // write material to the buffer memory
-                    let mut mem_map =
-                        MemoryMap::new(self.current_materials_buffer.get_backing_memory_pool())?;
+            let material_buffer = AllocatedBuffer::new(self.memory_pool.clone(), material_buffer)?;
+            {
+                // write material to the buffer memory
+                let mut mem_map = MemoryMap::new(material_buffer.get_backing_memory_pool())?;
 
-                    let mapped_materials = mem_map.as_mut_slice::<MaterialGPU>(
-                        self.current_materials_buffer.clone() as Arc<dyn MemoryPoolBacked>,
-                    )?;
+                let mapped_materials = mem_map.as_mut_slice::<MaterialGPU>(
+                    material_buffer.clone() as Arc<dyn MemoryPoolBacked>,
+                )?;
 
-                    mapped_materials[material_index as usize] = MaterialGPU {
-                        diffuse_texture_index: diffuse_texture.texture,
-                        normal_texture_index: self.texture_manager.stub_texture_index(),
-                        reflection_texture_index: self.texture_manager.stub_texture_index(),
-                        di_texture_index: self.texture_manager.stub_texture_index(),
-                    };
-
-                    self.materials |= bitshifted_index;
-
-                    break;
-                }
-
-                material_index += 1;
+                mapped_materials[0] = MaterialGPU {
+                    diffuse_texture_index: diffuse_texture.texture,
+                    normal_texture_index: self.texture_manager.stub_texture_index(),
+                    reflection_texture_index: self.texture_manager.stub_texture_index(),
+                    di_texture_index: self.texture_manager.stub_texture_index(),
+                };
             }
+
+            let Ok(material_index) = self.material_manager.load(material_buffer) else {
+                panic!("MATERIAL NOT LOADED");
+            };
 
             loaded_materials.insert(
                 k,
@@ -814,7 +693,7 @@ impl Manager {
             );
         }
 
-        // TODO: load vertex buffer, indexes and allow for multiple instances.
+        // TODO: allow for multiple instances.
         let Some(vertex_buffer) = vertex_buffer.take() else {
             return Err(RenderingError::ResourceError(
                 ResourceError::MissingVertexBuffer,
@@ -887,9 +766,6 @@ impl Manager {
 
             self.objects[allocation_index] = Some(mesh);
 
-            // next frame will need to have resources re-bounded
-            self.current_status += 1;
-
             return Ok(allocation_index);
         }
 
@@ -909,16 +785,25 @@ impl Manager {
         current_frame: usize,
         pipeline_layout: Arc<PipelineLayout>,
         textures_descriptor_set_binding: u32,
+        materials_descriptor_set_binding: u32,
         push_constant_offset: u32,
         push_constant_size: u32,
         push_constant_stages: ShaderStagesAccess,
     ) {
+        // update materials descriptor sets (to make them relevants to this frame) and bind them
         recorder.bind_descriptor_sets_for_graphics_pipeline(
             pipeline_layout.clone(),
-            0,
+            textures_descriptor_set_binding,
             [self.texture_manager.texture_descriptor_set(current_frame)].as_slice(),
         );
 
+        recorder.bind_descriptor_sets_for_graphics_pipeline(
+            pipeline_layout.clone(),
+            materials_descriptor_set_binding,
+            [self.material_manager.material_descriptor_set(current_frame)].as_slice(),
+        );
+
+        // now try to render every object that has its resources completely loaded in GPU memory
         for obj_index in 0..self.objects.len() {
             let Some(loaded_obj) = &self.objects[obj_index] else {
                 continue;
@@ -934,7 +819,9 @@ impl Manager {
                     .mesh_manager
                     .fetch_loaded(loaded_mesh.mesh_index as usize)
                 else {
-                    panic!("A BLAS NOT LOADED?!?!?!");
+                    println!(
+                        "skipping drawing of a mesh due to a bound blas not being fully loaded"
+                    );
                     continue;
                 };
 
@@ -942,7 +829,9 @@ impl Manager {
                     .texture_manager
                     .is_loaded(loaded_mesh.material.diffuse_texture.texture as usize)
                 {
-                    panic!("A diffuse texture not loaded?!?!?!");
+                    println!(
+                        "skipping drawing of a mesh due to a bound texture not being fully loaded"
+                    );
                     continue;
                 }
 
@@ -950,13 +839,22 @@ impl Manager {
                     .texture_manager
                     .is_loaded(loaded_mesh.material.normal_texture.texture as usize)
                 {
-                    panic!("A diffuse texture not loaded?!?!?!");
+                    println!(
+                        "skipping drawing of a mesh due to a bound texture not being fully loaded"
+                    );
                     continue;
                 }
 
                 // This is the material ID to be given to mesh rendering so that it can find
                 // on the material buffer, and with that address textures
                 let material_id = loaded_mesh.material.material_index as u32;
+
+                if !self.material_manager.is_loaded(material_id as usize) {
+                    println!(
+                        "skipping drawing of a mesh due to a bound material not being fully loaded"
+                    );
+                    continue;
+                }
 
                 recorder.push_constant(
                     pipeline_layout.clone(),
@@ -999,6 +897,13 @@ impl Manager {
     pub fn wait_blocking(&mut self) -> RenderingResult<()> {
         self.texture_manager.wait_load_blocking()?;
         self.mesh_manager.wait_load_blocking()?;
+        Ok(())
+    }
+
+    #[inline]
+    pub fn wait_nonblocking(&mut self) -> RenderingResult<()> {
+        self.texture_manager.wait_load_nonblock()?;
+        self.mesh_manager.wait_load_nonblock()?;
         Ok(())
     }
 }

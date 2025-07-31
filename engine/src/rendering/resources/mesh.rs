@@ -26,7 +26,7 @@ use vulkan_framework::{
 };
 
 use crate::rendering::{
-    RenderingError, RenderingResult, resources::collection::LoadableResourcesCollection,
+    MAX_MESHES, RenderingError, RenderingResult, resources::collection::LoadableResourcesCollection,
 };
 
 type MeshType = Arc<BottomLevelAccelerationStructure>;
@@ -83,7 +83,6 @@ impl MeshManager {
 
     pub fn new(
         queue_family: Arc<QueueFamily>,
-        max_meshes: u32,
         frames_in_flight: u32,
         debug_name: String,
     ) -> RenderingResult<Self> {
@@ -108,15 +107,18 @@ impl MeshManager {
                 ),
                 frames_in_flight,
             ),
-            Some("mesh_manager.descriptor_pool"),
+            Some(format!("{debug_name}.mesh_manager.descriptor_pool").as_str()),
         )?;
 
-        let queue = Queue::new(queue_family.clone(), Some("mesh_manager.queue"))?;
+        let queue = Queue::new(
+            queue_family.clone(),
+            Some(format!("{debug_name}.mesh_manager.queue").as_str()),
+        )?;
 
         let rt_blocksize = 1024u64;
         let raytracing_allocator = Arc::new(DefaultAllocator::with_blocksize(
             rt_blocksize,
-            Self::meshes_memory_pool_size(max_meshes, frames_in_flight) / rt_blocksize,
+            Self::meshes_memory_pool_size(MAX_MESHES, frames_in_flight) / rt_blocksize,
         ));
 
         let raytracing_memory_heap = MemoryHeap::new(
@@ -136,8 +138,8 @@ impl MeshManager {
 
         let meshes = LoadableResourcesCollection::new(
             queue_family,
-            max_meshes,
-            String::from("mesh_manager"),
+            MAX_MESHES,
+            format!("{debug_name}.mesh_manager"),
         )?;
 
         Ok(Self {
@@ -233,10 +235,15 @@ impl MeshManager {
                     self.memory_pool.clone(),
                     vertex_buffer,
                     index_buffer,
-                    String::from("texture_empty_image"),
+                    self.debug_name.clone(),
                 )
             },
-            |recorder, blas| Self::setup_load_blas_operation(recorder, blas, queue.clone()),
+            |recorder, _, blas| {
+                // TODO: wait for the host to finsh transfer to vertex buffer and index buffer
+                todo!();
+
+                Self::setup_load_blas_operation(recorder, blas, queue.clone())
+            },
         )?
         else {
             return Err(RenderingError::ResourceError(

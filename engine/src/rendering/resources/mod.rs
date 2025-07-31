@@ -1,9 +1,12 @@
 pub mod collection;
+pub mod materials;
 pub mod mesh;
 pub mod object;
 pub mod texture;
 
 use thiserror::Error;
+
+use crate::rendering::resources::object::MaterialGPU;
 
 #[derive(Error, Debug)]
 pub enum ResourceError {
@@ -30,3 +33,5 @@ pub enum ResourceError {
 }
 
 pub type ResourceResult<T> = Result<T, ResourceError>;
+
+const SIZEOF_MATERIAL_DEFINITION: usize = std::mem::size_of::<MaterialGPU>();

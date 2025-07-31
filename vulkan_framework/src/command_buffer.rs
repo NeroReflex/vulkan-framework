@@ -738,6 +738,55 @@ impl<'a> CommandBufferRecorder<'a> {
         result
     }
 
+    pub fn copy_buffer(
+        &mut self,
+        src: Arc<dyn BufferTrait>,
+        dst: Arc<dyn BufferTrait>,
+        regions: &[(u64, u64, u64)],
+    ) {
+        self.used_resources
+            .insert(CommandBufferReferencedResource::Buffer(src.clone()));
+
+        self.used_resources
+            .insert(CommandBufferReferencedResource::Buffer(dst.clone()));
+
+        let regions: smallvec::SmallVec<[ash::vk::BufferCopy2; 4]> = regions
+            .iter()
+            .map(|(src_offset, dst_offset, size)| {
+                ash::vk::BufferCopy2::default()
+                    .src_offset(src_offset.to_owned())
+                    .dst_offset(dst_offset.to_owned())
+                    .size(size.to_owned())
+            })
+            .collect();
+
+        let copy_info = ash::vk::CopyBufferInfo2::default()
+            .src_buffer(ash::vk::Buffer::from_raw(src.native_handle()))
+            .dst_buffer(ash::vk::Buffer::from_raw(dst.native_handle()))
+            .regions(regions.as_slice());
+
+        unsafe {
+            self.device
+                .ash_handle()
+                .cmd_copy_buffer2(self.command_buffer.ash_handle(), &copy_info);
+        }
+    }
+
+    pub fn buffer_barriers(&mut self) {
+        // TODO: check every resource is from the same device
+
+        todo!()
+
+        let dependency_info = ash::vk::DependencyInfo::default()
+            .buffer_memory_barriers(buffer_memory_barriers.as_slice());
+
+        unsafe {
+            self.device
+                .ash_handle()
+                .cmd_pipeline_barrier2(self.command_buffer.ash_handle(), &dependency_info);
+        }
+    }
+
     pub fn copy_buffer_to_image(
         &mut self,
         src: Arc<dyn BufferTrait>,

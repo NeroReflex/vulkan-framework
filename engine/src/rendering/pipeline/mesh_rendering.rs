@@ -1,4 +1,4 @@
-use std::{sync::Arc, thread::current};
+use std::sync::Arc;
 
 use inline_spirv::*;
 
@@ -29,7 +29,7 @@ use vulkan_framework::{
     image::{
         AllocatedImage, CommonImageFormat, ConcreteImageDescriptor, Image, Image1DTrait,
         Image2DDimensions, Image2DTrait, ImageDimensions, ImageFlags, ImageFormat, ImageLayout,
-        ImageMultisampling, ImageSubresourceRange, ImageTiling, ImageUsage, ImageUseAs,
+        ImageMultisampling, ImageTiling, ImageUsage, ImageUseAs,
     },
     image_view::{ImageView, ImageViewType},
     memory_allocator::{DefaultAllocator, MemoryAllocator},
@@ -96,20 +96,12 @@ pub struct MeshRendering {
     push_constants_access: ShaderStagesAccess,
     graphics_pipeline: Arc<GraphicsPipeline>,
 
-    gbuffer_depth_stencil_images:
-        smallvec::SmallVec<[Arc<AllocatedImage>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
     gbuffer_depth_stencil_image_views:
         smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
-    gbuffer_position_images:
-        smallvec::SmallVec<[Arc<AllocatedImage>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
     gbuffer_position_image_views:
         smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
-    gbuffer_normal_images:
-        smallvec::SmallVec<[Arc<AllocatedImage>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
     gbuffer_normal_image_views:
         smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
-    gbuffer_texture_images:
-        smallvec::SmallVec<[Arc<AllocatedImage>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
     gbuffer_texture_image_views:
         smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
 }
@@ -139,6 +131,7 @@ impl MeshRendering {
     pub fn new(
         device: Arc<Device>,
         textures_descriptor_set_layout: Arc<DescriptorSetLayout>,
+        materials_descriptor_set_layout: Arc<DescriptorSetLayout>,
         render_area: &RenderingDimensions,
         frames_in_flight: u32,
     ) -> RenderingResult<Self> {
@@ -505,7 +498,11 @@ impl MeshRendering {
 
         let pipeline_layout = PipelineLayout::new(
             device.clone(),
-            [textures_descriptor_set_layout].as_slice(),
+            [
+                textures_descriptor_set_layout,
+                materials_descriptor_set_layout,
+            ]
+            .as_slice(),
             [PushConstanRange::new(0, 4u32, push_constants_access)].as_slice(),
             Some("mesh_rendering.pipeline_layout"),
         )?;
@@ -573,13 +570,9 @@ impl MeshRendering {
             push_constants_access,
             graphics_pipeline,
 
-            gbuffer_depth_stencil_images,
             gbuffer_depth_stencil_image_views,
-            gbuffer_position_images,
             gbuffer_position_image_views,
-            gbuffer_normal_images,
             gbuffer_normal_image_views,
-            gbuffer_texture_images,
             gbuffer_texture_image_views,
         })
     }
@@ -713,6 +706,7 @@ impl MeshRendering {
                     current_frame,
                     self.graphics_pipeline.get_parent_pipeline_layout(),
                     0,
+                    1,
                     0,
                     4u32,
                     self.push_constants_access,
