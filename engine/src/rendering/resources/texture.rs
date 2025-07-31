@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 
 use vulkan_framework::{
     buffer::BufferTrait,
@@ -30,11 +33,12 @@ use vulkan_framework::{
 };
 
 use crate::rendering::{
-    MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingError, RenderingResult,
+    MAX_FRAMES_IN_FLIGHT_NO_MALLOC, MAX_TEXTURES, RenderingError, RenderingResult,
     resources::{ResourceError, collection::LoadableResourcesCollection},
 };
 
-type DescriptorSetsType = smallvec::SmallVec<[Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
+type DescriptorSetsType =
+    smallvec::SmallVec<[(AtomicU64, Arc<DescriptorSet>); MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
 
 pub struct TextureManager {
     debug_name: String,
@@ -51,6 +55,8 @@ pub struct TextureManager {
     stub_image: u32,
     textures: LoadableResourcesCollection<Arc<ImageView>>,
     sampler: Arc<Sampler>,
+
+    current_status: u64,
 }
 
 impl TextureManager {
@@ -61,18 +67,95 @@ impl TextureManager {
     }
 
     #[inline]
+    pub fn descriptor_set_layout(&self) -> Arc<DescriptorSetLayout> {
+        self.descriptor_set_layout.clone()
+    }
+
+    #[inline]
     pub fn is_loaded(&self, index: usize) -> bool {
         self.textures.fetch_loaded(index).is_some()
     }
 
     #[inline]
     pub(crate) fn wait_load_nonblock(&mut self) -> RenderingResult<usize> {
-        self.textures.wait_load_nonblock()
+        let result = self.textures.wait_load_nonblock();
+
+        if let Ok(newly_loaded) = result {
+            if newly_loaded > 0 {
+                self.current_status += 1;
+            }
+        }
+
+        result
     }
 
     #[inline]
     pub(crate) fn wait_load_blocking(&mut self) -> RenderingResult<usize> {
-        self.textures.wait_load_blocking()
+        let result = self.textures.wait_load_blocking();
+
+        if let Ok(newly_loaded) = result {
+            if newly_loaded > 0 {
+                self.current_status += 1;
+            }
+        }
+
+        result
+    }
+
+    #[inline]
+    pub fn texture_descriptor_set(&self, current_frame: usize) -> Arc<DescriptorSet> {
+        let (descriptor_set_status, descriptor_set) =
+            self.descriptor_sets.get(current_frame).unwrap();
+
+        // Check if the descriptor set needs to be updated:
+        // new textures have been loaded in GPU memory since the last time it was used
+        let mix_status = descriptor_set_status.fetch_min(self.current_status, Ordering::SeqCst);
+        if mix_status != self.current_status {
+            // Update the descriptor set with available resources
+            let mut combined_images: smallvec::SmallVec<
+                [(ImageLayout, Arc<ImageView>, Arc<Sampler>); MAX_TEXTURES as usize],
+            > = smallvec::smallvec![];
+            for texture_index in 0..self.textures.size() {
+                let texture_mapping = match self.textures.fetch_loaded(texture_index) {
+                    Some(loaded_texture) => (
+                        ImageLayout::ShaderReadOnlyOptimal,
+                        loaded_texture.clone(),
+                        self.sampler.clone(),
+                    ),
+                    None => (
+                        ImageLayout::ShaderReadOnlyOptimal,
+                        self.textures
+                            .fetch_loaded(self.stub_texture_index() as usize)
+                            .unwrap()
+                            .clone(),
+                        self.sampler.clone(),
+                    ),
+                };
+
+                combined_images.push(texture_mapping);
+            }
+
+            descriptor_set
+                .bind_resources(|binder| {
+                    binder
+                        .bind_combined_images_samplers(0, combined_images.as_slice())
+                        .unwrap();
+                })
+                .unwrap();
+
+            descriptor_set_status
+                .compare_exchange(
+                    mix_status,
+                    self.current_status,
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                )
+                .unwrap();
+
+            println!("Updated descriptor set {current_frame}");
+        }
+
+        descriptor_set.clone()
     }
 
     #[inline]
@@ -126,7 +209,7 @@ impl TextureManager {
             let descriptor_set =
                 DescriptorSet::new(descriptor_pool.clone(), descriptor_set_layout.clone())?;
 
-            descriptor_sets.push(descriptor_set);
+            descriptor_sets.push((AtomicU64::new(0), descriptor_set));
         }
 
         let stub_image = Self::create_image(
@@ -183,6 +266,8 @@ impl TextureManager {
             ));
         };
 
+        let current_status = 1u64;
+
         Ok(Self {
             debug_name,
 
@@ -198,6 +283,8 @@ impl TextureManager {
             stub_image,
             textures,
             sampler,
+
+            current_status,
         })
     }
 

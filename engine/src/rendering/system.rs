@@ -259,18 +259,26 @@ impl System {
             })
             .collect();
 
+        let obj_manager = ResourceManager::new(
+            queue_family.clone(),
+            frames_in_flight,
+            String::from("resource_manager"),
+        )?;
+
         let surface = SurfaceHelper::new(swapchain_images_count, device_swapchain_info)?;
 
         let render_area = RenderingDimensions::new(1920, 1080);
 
         let mesh_rendering = Arc::new(MeshRendering::new(
             device.clone(),
+            obj_manager.textures_descriptor_set_layout(),
             &render_area,
             frames_in_flight,
         )?);
 
         let final_rendering = Arc::new(FinalRendering::new(
             device.clone(),
+            mesh_rendering.descriptor_set_layout(),
             &render_area,
             frames_in_flight,
         )?);
@@ -289,11 +297,7 @@ impl System {
             initial_height,
         )?);
 
-        let resources_manager = Arc::new(Mutex::new(ResourceManager::new(
-            queue_family.clone(),
-            frames_in_flight,
-            String::from("resource_manager"),
-        )?));
+        let resources_manager = Arc::new(Mutex::new(obj_manager));
 
         let frames_in_flight = (0..frames_in_flight).map(|_| Option::None).collect();
 
@@ -404,7 +408,7 @@ impl System {
         let current_frame = self.current_frame.fetch_add(1, Ordering::SeqCst);
         let current_frame = current_frame % self.frames_in_flight.len();
 
-        // this will ensure the previous frame in flight has completed execution
+        // this will ensure the previous frame in flight (relative to the same swapchain image) has completed its execution
         drop(self.frames_in_flight[current_frame].take());
 
         // swapchain_index is the index of the swapchain image relative to the specified swapchain
@@ -421,20 +425,27 @@ impl System {
             // here register the command buffer: command buffer at index i is associated with rendering_fences[i],
             // that I just awaited above, so thecommand buffer is surely NOT currently in use
             self.present_command_buffers[current_frame].record_one_time_submit(|recorder| {
-
-                let cazzo = self.mesh_rendering.record_rendering_commands(
+                // Record rendering commands to generate the gbuffer (position, normal and texture) for each
+                // pixel in the final image: this solves the visibility problem and provides data for later stager
+                // along the GPU pipeline
+                let gbuffer_descriptor_set = self.mesh_rendering.record_rendering_commands(
                     self.queue_family(),
+                    [PipelineStage::AllGraphics].as_slice().into(),
+                    [MemoryAccessAs::ShaderRead].as_slice().into(),
                     current_frame,
                     static_meshes_resources,
                     recorder
                 );
 
+                // Record rendering commands to assemble the gbuffer and other resources into a an image
+                // ready to be post-processed to add effects
                 let (
                     final_rendering_output_image,
                     final_rendering_output_image_subresource_range,
                     final_rendering_output_image_layout,
                 ) = self.final_rendering.record_rendering_commands(
                     self.queue_family(),
+                    gbuffer_descriptor_set,
                     current_frame,
                     recorder,
                 );

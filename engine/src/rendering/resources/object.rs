@@ -25,6 +25,7 @@ use vulkan_framework::{
         AllocatedBuffer, Buffer, BufferTrait, BufferUsage, BufferUseAs, ConcreteBufferDescriptor,
     },
     command_buffer::CommandBufferRecorder,
+    descriptor_set_layout::DescriptorSetLayout,
     device::DeviceOwned,
     graphics_pipeline::{AttributeType, IndexType},
     image::{CommonImageFormat, Image2DDimensions, ImageFormat},
@@ -122,20 +123,29 @@ pub struct Manager {
 }
 
 impl Manager {
+    #[inline]
     pub fn vertex_buffer_position_stride() -> u32 {
         (4u32 * 3u32) + (4u32 * 3u32)
     }
 
+    #[inline]
     pub fn vertex_buffer_normals_stride() -> u32 {
         (4u32 * 3u32) + (4u32 * 3u32)
     }
 
+    #[inline]
     pub fn vertex_buffer_texture_uv_stride() -> u32 {
         (4u32 * 3u32) + (4u32 * 3u32)
     }
 
+    #[inline]
     fn memory_pool_size(frames_in_flight: u32) -> u64 {
         (1024u64 * 1024u64 * 128u64) + (frames_in_flight as u64 * 8192u64)
+    }
+
+    #[inline]
+    pub fn textures_descriptor_set_layout(&self) -> Arc<DescriptorSetLayout> {
+        self.texture_manager.descriptor_set_layout()
     }
 
     pub fn new(
@@ -896,11 +906,19 @@ impl Manager {
     pub fn guided_rendering(
         &self,
         recorder: &mut CommandBufferRecorder,
+        current_frame: usize,
         pipeline_layout: Arc<PipelineLayout>,
+        textures_descriptor_set_binding: u32,
         push_constant_offset: u32,
         push_constant_size: u32,
         push_constant_stages: ShaderStagesAccess,
     ) {
+        recorder.bind_descriptor_sets_for_graphics_pipeline(
+            pipeline_layout.clone(),
+            0,
+            [self.texture_manager.texture_descriptor_set(current_frame)].as_slice(),
+        );
+
         for obj_index in 0..self.objects.len() {
             let Some(loaded_obj) = &self.objects[obj_index] else {
                 continue;
@@ -960,7 +978,10 @@ impl Manager {
                         [
                             (0u64, vertex_buffer.buffer() as Arc<dyn BufferTrait>),
                             (4u64 * 3u64, vertex_buffer.buffer() as Arc<dyn BufferTrait>),
-                            (4u64 * (3u64 + 3u64), vertex_buffer.buffer() as Arc<dyn BufferTrait>),
+                            (
+                                4u64 * (3u64 + 3u64),
+                                vertex_buffer.buffer() as Arc<dyn BufferTrait>,
+                            ),
                         ]
                         .as_slice(),
                     );

@@ -11,6 +11,8 @@ use vulkan_framework::{
         ClearValues, ColorClearValues, CommandBufferRecorder, ImageMemoryBarrier, MemoryAccess,
         MemoryAccessAs,
     },
+    descriptor_set::DescriptorSet,
+    descriptor_set_layout::DescriptorSetLayout,
     device::Device,
     dynamic_rendering::{
         AttachmentLoadOp, AttachmentStoreOp, DynamicRendering, DynamicRenderingAttachment,
@@ -58,6 +60,9 @@ const FINAL_RENDERING_FRAGMENT_SPV: &[u32] = inline_spirv!(
 
 layout(location = 0) out vec4 outColor;
 
+// gbuffer: 0 for position, 1 for normal, 2 for diffuse texture
+layout(set = 0, binding = 0) uniform sampler2D gbuffer[3];
+
 void main() {
     outColor = vec4(1.0, 0.0, 0.0, 1.0);
 }
@@ -90,6 +95,7 @@ impl FinalRendering {
 
     pub fn new(
         device: Arc<Device>,
+        gbuffer_descriptor_set_layout: Arc<DescriptorSetLayout>,
         render_area: &RenderingDimensions,
         frames_in_flight: u32,
     ) -> RenderingResult<Self> {
@@ -178,14 +184,7 @@ impl FinalRendering {
 
         let pipeline_layout = PipelineLayout::new(
             device.clone(),
-            &[
-                        /*BindingDescriptor::new(
-                            shader_access,
-                            binding_type,
-                            binding_point,
-                            binding_count
-                        )*/
-                    ],
+            &[gbuffer_descriptor_set_layout],
             &[],
             Some("final_rendering.pipeline_layout"),
         )?;
@@ -202,13 +201,7 @@ impl FinalRendering {
             None,
             None,
             pipeline_layout,
-            &[
-                        /*VertexInputBinding::new(
-                        VertexInputRate::PerVertex,
-                        0,
-                        &[VertexInputAttribute::new(0, 0, AttributeType::Vec4)],
-                        )*/
-                    ],
+            &[],
             Rasterizer::new(
                 PolygonMode::Fill,
                 FrontFace::CounterClockwise,
@@ -234,6 +227,7 @@ impl FinalRendering {
     pub fn record_rendering_commands(
         &self,
         queue_family: Arc<QueueFamily>,
+        gbuffer_descriptor_set: Arc<DescriptorSet>,
         current_frame: usize,
         recorder: &mut CommandBufferRecorder,
     ) -> (Arc<ImageView>, ImageSubresourceRange, ImageLayout) {

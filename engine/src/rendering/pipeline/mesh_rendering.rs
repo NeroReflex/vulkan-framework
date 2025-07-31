@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, thread::current};
 
 use inline_spirv::*;
 
@@ -12,6 +12,11 @@ use vulkan_framework::{
         ClearValues, ColorClearValues, CommandBufferRecorder, ImageMemoryBarrier, MemoryAccess,
         MemoryAccessAs,
     },
+    descriptor_pool::{
+        DescriptorPool, DescriptorPoolConcreteDescriptor, DescriptorPoolSizesConcreteDescriptor,
+    },
+    descriptor_set::DescriptorSet,
+    descriptor_set_layout::DescriptorSetLayout,
     device::Device,
     dynamic_rendering::{
         AttachmentLoadOp, AttachmentStoreOp, DynamicRendering, DynamicRenderingAttachment,
@@ -35,6 +40,8 @@ use vulkan_framework::{
     pipeline_stage::{PipelineStage, PipelineStages},
     push_constant_range::PushConstanRange,
     queue_family::QueueFamily,
+    sampler::{Filtering, MipmapMode, Sampler},
+    shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType},
     shader_stage_access::{ShaderStageAccessIn, ShaderStagesAccess},
     shaders::{fragment_shader::FragmentShader, vertex_shader::VertexShader},
 };
@@ -63,9 +70,12 @@ const MESH_RENDERING_FRAGMENT_SPV: &[u32] = inline_spirv!(
 
 layout(location = 0) out vec4 outColor;
 
-layout(push_constant) uniform HDR {
+layout(push_constant) uniform MaterialIDs {
     uint material_id;
 } hdr;
+
+// MUST match with MAX_TEXTURES on rust side
+layout(set = 0, binding = 0) uniform sampler2D textures[256];
 
 void main() {
     outColor = vec4(1.0, 0.0, 0.0, 1.0);
@@ -78,6 +88,10 @@ void main() {
 pub struct MeshRendering {
     _memory_pool: Arc<MemoryPool>,
     image_dimensions: Image2DDimensions,
+
+    gbuffer_descriptor_set_layout: Arc<DescriptorSetLayout>,
+    gbuffer_descriptor_sets:
+        smallvec::SmallVec<[Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
 
     push_constants_access: ShaderStagesAccess,
     graphics_pipeline: Arc<GraphicsPipeline>,
@@ -117,8 +131,14 @@ impl MeshRendering {
         ImageFormat::from(CommonImageFormat::d32_sfloat_s8_uint)
     }
 
+    /// Returns the descriptor set layout for the gbuffer
+    pub fn descriptor_set_layout(&self) -> Arc<DescriptorSetLayout> {
+        self.gbuffer_descriptor_set_layout.clone()
+    }
+
     pub fn new(
         device: Arc<Device>,
+        textures_descriptor_set_layout: Arc<DescriptorSetLayout>,
         render_area: &RenderingDimensions,
         frames_in_flight: u32,
     ) -> RenderingResult<Self> {
@@ -390,6 +410,91 @@ impl MeshRendering {
             )?);
         }
 
+        let gbuffer_descriptor_pool = DescriptorPool::new(
+            device.clone(),
+            DescriptorPoolConcreteDescriptor::new(
+                DescriptorPoolSizesConcreteDescriptor::new(
+                    0,
+                    3u32 * frames_in_flight,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    None,
+                ),
+                frames_in_flight,
+            ),
+            Some("mesh_rendering.gbuffer_descriptor_pool"),
+        )?;
+
+        let gbuffer_sampler = Sampler::new(
+            device.clone(),
+            Filtering::Linear,
+            Filtering::Linear,
+            MipmapMode::ModeLinear,
+            1.0,
+        )?;
+
+        let mut gbuffer_descriptor_sets =
+            smallvec::SmallVec::<_>::with_capacity(frames_in_flight as usize);
+        for frame_index in 0..(frames_in_flight as usize) {
+            let descriptor_set = DescriptorSet::new(
+                gbuffer_descriptor_pool.clone(),
+                DescriptorSetLayout::new(
+                    device.clone(),
+                    [BindingDescriptor::new(
+                        ShaderStagesAccess::graphics(),
+                        BindingType::Native(NativeBindingType::CombinedImageSampler),
+                        0,
+                        3u32,
+                    )]
+                    .as_slice(),
+                )?,
+            )?;
+
+            descriptor_set.bind_resources(|binder| {
+                binder
+                    .bind_combined_images_samplers(
+                        0,
+                        [
+                            (
+                                ImageLayout::ShaderReadOnlyOptimal,
+                                gbuffer_position_image_views[frame_index].clone(),
+                                gbuffer_sampler.clone(),
+                            ),
+                            (
+                                ImageLayout::ShaderReadOnlyOptimal,
+                                gbuffer_normal_image_views[frame_index].clone(),
+                                gbuffer_sampler.clone(),
+                            ),
+                            (
+                                ImageLayout::ShaderReadOnlyOptimal,
+                                gbuffer_texture_image_views[frame_index].clone(),
+                                gbuffer_sampler.clone(),
+                            ),
+                        ]
+                        .as_slice(),
+                    )
+                    .unwrap();
+            })?;
+
+            gbuffer_descriptor_sets.push(descriptor_set);
+        }
+
+        let gbuffer_descriptor_set_layout = DescriptorSetLayout::new(
+            device.clone(),
+            [BindingDescriptor::new(
+                ShaderStagesAccess::graphics(),
+                BindingType::Native(NativeBindingType::CombinedImageSampler),
+                0,
+                3,
+            )]
+            .as_slice(),
+        )?;
+
         let vertex_shader =
             VertexShader::new(device.clone(), &[], &[], MESH_RENDERING_VERTEX_SPV).unwrap();
 
@@ -400,15 +505,8 @@ impl MeshRendering {
 
         let pipeline_layout = PipelineLayout::new(
             device.clone(),
-            &[
-                        /*BindingDescriptor::new(
-                            shader_access,
-                            binding_type,
-                            binding_point,
-                            binding_count
-                        )*/
-                    ],
-            &[PushConstanRange::new(0, 4u32, push_constants_access)],
+            [textures_descriptor_set_layout].as_slice(),
+            [PushConstanRange::new(0, 4u32, push_constants_access)].as_slice(),
             Some("mesh_rendering.pipeline_layout"),
         )?;
 
@@ -469,6 +567,9 @@ impl MeshRendering {
             image_dimensions,
             _memory_pool: memory_pool,
 
+            gbuffer_descriptor_set_layout,
+            gbuffer_descriptor_sets,
+
             push_constants_access,
             graphics_pipeline,
 
@@ -483,13 +584,20 @@ impl MeshRendering {
         })
     }
 
+    /// Record commands used to rendering to the gbuffer, that will be returned
+    ///
+    /// gbuffer_stages and gbuffer_access are used to build an image barrier for
+    /// images on the gbuffer: the caller must tell this function how these images
+    /// will be used
     pub fn record_rendering_commands<ManagerT>(
         &self,
         queue_family: Arc<QueueFamily>,
+        gbuffer_stages: PipelineStages,
+        gbuffer_access: MemoryAccess,
         current_frame: usize,
         meshes: ManagerT,
         recorder: &mut CommandBufferRecorder,
-    ) -> [(Arc<ImageView>, ImageSubresourceRange, ImageLayout); 4]
+    ) -> Arc<DescriptorSet>
     where
         ManagerT: std::ops::Deref<Target = Manager>,
     {
@@ -602,7 +710,9 @@ impl MeshRendering {
                 // performs the actual rendering
                 meshes.deref().guided_rendering(
                     recorder,
+                    current_frame,
                     self.graphics_pipeline.get_parent_pipeline_layout(),
+                    0,
                     0,
                     4u32,
                     self.push_constants_access,
@@ -610,27 +720,47 @@ impl MeshRendering {
             },
         );
 
-        [
-            (
-                position_imageview.clone(),
-                position_imageview.image().into(),
-                Self::output_image_color_layout(),
-            ),
-            (
-                normal_imageview.clone(),
-                normal_imageview.image().into(),
-                Self::output_image_color_layout(),
-            ),
-            (
-                texture_imageview.clone(),
-                texture_imageview.image().into(),
-                Self::output_image_color_layout(),
-            ),
-            (
-                depth_stencil_imageview.clone(),
-                depth_stencil_imageview.image().into(),
-                Self::output_image_color_layout(),
-            ),
-        ]
+        // gbuffers are bound to a descriptor set and will be used along the pipeline that way:
+        // place image barriers to transition them to the right format
+        recorder.image_barriers(
+            [
+                ImageMemoryBarrier::new(
+                    PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
+                    MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
+                    gbuffer_stages.clone(),
+                    gbuffer_access.clone(),
+                    position_imageview.image().into(),
+                    Self::output_image_color_layout(),
+                    ImageLayout::ShaderReadOnlyOptimal,
+                    queue_family.clone(),
+                    queue_family.clone(),
+                ),
+                ImageMemoryBarrier::new(
+                    PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
+                    MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
+                    gbuffer_stages.clone(),
+                    gbuffer_access.clone(),
+                    normal_imageview.image().into(),
+                    Self::output_image_color_layout(),
+                    ImageLayout::ShaderReadOnlyOptimal,
+                    queue_family.clone(),
+                    queue_family.clone(),
+                ),
+                ImageMemoryBarrier::new(
+                    PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
+                    MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
+                    gbuffer_stages.clone(),
+                    gbuffer_access.clone(),
+                    texture_imageview.image().into(),
+                    Self::output_image_color_layout(),
+                    ImageLayout::ShaderReadOnlyOptimal,
+                    queue_family.clone(),
+                    queue_family.clone(),
+                ),
+            ]
+            .as_slice(),
+        );
+
+        self.gbuffer_descriptor_sets[current_frame].clone()
     }
 }

@@ -42,6 +42,11 @@ impl<T> LoadableResourcesCollection<T>
 where
     T: Clone,
 {
+    pub fn size(&self) -> usize {
+        self.collection.len()
+    }
+
+    #[inline]
     pub fn fetch_loaded(&self, index: usize) -> Option<&T> {
         let Some(value) = self.collection.get(index) else {
             return None;
@@ -54,6 +59,7 @@ where
         None
     }
 
+    #[inline]
     pub fn foreach_loaded<F>(&self, function: F)
     where
         F: Fn(&T),
