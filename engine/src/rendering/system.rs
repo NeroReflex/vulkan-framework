@@ -9,14 +9,27 @@ use std::{
 
 use sdl2::VideoSubsystem;
 use vulkan_framework::{
+    buffer::{AllocatedBuffer, Buffer, BufferTrait, BufferUseAs, ConcreteBufferDescriptor},
     command_buffer::PrimaryCommandBuffer,
     command_pool::CommandPool,
+    descriptor_pool::{
+        DescriptorPool, DescriptorPoolConcreteDescriptor, DescriptorPoolSizesConcreteDescriptor,
+    },
+    descriptor_set::{DescriptorSet, DescriptorSetWriter},
+    descriptor_set_layout::DescriptorSetLayout,
     device::{Device, DeviceOwned},
     fence::{Fence, FenceWaiter},
     image::{Image2DDimensions, ImageLayout, ImageLayoutSwapchainKHR, ImageUsage, ImageUseAs},
     image_view::ImageView,
     instance::InstanceOwned,
+    memory_allocator::{DefaultAllocator, MemoryAllocator},
     memory_barriers::{ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
+    memory_heap::{
+        ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryHostVisibility, MemoryRequirements,
+        MemoryType,
+    },
+    memory_pool::MemoryPool,
+    memory_requiring::MemoryRequiring,
     pipeline_stage::{PipelineStage, PipelineStages},
     queue::Queue,
     queue_family::{
@@ -24,6 +37,8 @@ use vulkan_framework::{
         QueueFamilySupportedOperationType,
     },
     semaphore::Semaphore,
+    shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType},
+    shader_stage_access::ShaderStagesAccess,
     swapchain::{
         CompositeAlphaSwapchainKHR, DeviceSurfaceInfo, PresentModeSwapchainKHR,
         SurfaceTransformSwapchainKHR, SwapchainKHR,
@@ -32,7 +47,7 @@ use vulkan_framework::{
 };
 
 use crate::{
-    core::hdr::HDR,
+    core::{camera::CameraTrait, hdr::HDR},
     rendering::{
         MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingError, RenderingResult,
         pipeline::{
@@ -66,6 +81,12 @@ pub struct System {
     present_ready: smallvec::SmallVec<[Arc<Semaphore>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
 
     surface: SurfaceHelper,
+
+    view_projection_descriptor_sets:
+        smallvec::SmallVec<[Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
+
+    view_projection_buffers:
+        smallvec::SmallVec<[Arc<AllocatedBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
 
     mesh_rendering: Arc<MeshRendering>,
     final_rendering: Arc<FinalRendering>,
@@ -268,10 +289,118 @@ impl System {
 
         let render_area = RenderingDimensions::new(1920, 1080);
 
+        let view_projection_descriptor_set_layout = DescriptorSetLayout::new(
+            device.clone(),
+            [BindingDescriptor::new(
+                ShaderStagesAccess::graphics(),
+                BindingType::Native(NativeBindingType::UniformBuffer),
+                0,
+                1,
+            )]
+            .as_slice(),
+        )?;
+
+        let view_projection_descriptors_pool = DescriptorPool::new(
+            device.clone(),
+            DescriptorPoolConcreteDescriptor::new(
+                DescriptorPoolSizesConcreteDescriptor::new(
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    1 * frames_in_flight,
+                    0,
+                    None,
+                ),
+                frames_in_flight,
+            ),
+            Some("view_projection_descriptors_pool"),
+        )?;
+
+        let mut view_projection_descriptor_sets = smallvec::SmallVec::<
+            [Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
+        >::with_capacity(
+            frames_in_flight as usize
+        );
+        for _ in 0..frames_in_flight {
+            view_projection_descriptor_sets.push(DescriptorSet::new(
+                view_projection_descriptors_pool.clone(),
+                view_projection_descriptor_set_layout.clone(),
+            )?);
+        }
+
+        let mut view_projection_unallocated_buffers = vec![];
+        for index in 0..frames_in_flight {
+            view_projection_unallocated_buffers.push(Buffer::new(
+                device.clone(),
+                ConcreteBufferDescriptor::new(
+                    [BufferUseAs::UniformBuffer].as_slice().into(),
+                    4u64 * 4u64 * 4u64 * 2u64,
+                ),
+                None,
+                Some(format!("view_projection_buffers[{index}]").as_str()),
+            )?);
+        }
+
+        let allocator = DefaultAllocator::with_blocksize(128, 512);
+        let memory_heap = MemoryHeap::new(
+            device.clone(),
+            ConcreteMemoryHeapDescriptor::new(
+                MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostVisibile {
+                    cached: false,
+                })),
+                allocator.total_size(),
+            ),
+            MemoryRequirements::try_from(
+                view_projection_unallocated_buffers
+                    .iter()
+                    .map(|r| r as &dyn MemoryRequiring)
+                    .collect::<Vec<_>>()
+                    .as_slice(),
+            )
+            .unwrap(),
+        )?;
+
+        let memory_pool = MemoryPool::new(memory_heap, Arc::new(allocator), [].as_slice().into())?;
+
+        let mut view_projection_buffers = smallvec::SmallVec::<
+            [Arc<AllocatedBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
+        >::with_capacity(frames_in_flight as usize);
+        for view_projection_buffer in view_projection_unallocated_buffers.into_iter() {
+            view_projection_buffers.push(AllocatedBuffer::new(
+                memory_pool.clone(),
+                view_projection_buffer,
+            )?);
+        }
+
+        for index in 0..(frames_in_flight as usize) {
+            view_projection_descriptor_sets[index].bind_resources(
+                |binder: &mut DescriptorSetWriter<'_>| {
+                    binder
+                        .bind_uniform_buffer(
+                            0,
+                            [(
+                                view_projection_buffers[index].clone() as Arc<dyn BufferTrait>,
+                                None,
+                                None,
+                            )]
+                            .as_slice(),
+                        )
+                        .unwrap();
+
+                    ()
+                },
+            )?;
+        }
+
         let mesh_rendering = Arc::new(MeshRendering::new(
             device.clone(),
             obj_manager.textures_descriptor_set_layout(),
             obj_manager.materials_descriptor_set_layout(),
+            view_projection_descriptor_set_layout,
             &render_area,
             frames_in_flight,
         )?);
@@ -317,6 +446,10 @@ impl System {
             present_ready,
 
             surface,
+
+            view_projection_descriptor_sets,
+
+            view_projection_buffers,
 
             mesh_rendering,
             final_rendering,
@@ -393,7 +526,7 @@ impl System {
         Ok(())
     }
 
-    pub fn render(&mut self, hdr: &HDR) -> RenderingResult<()> {
+    pub fn render(&mut self, camera: &dyn CameraTrait, hdr: &HDR) -> RenderingResult<()> {
         // Ensure the swapchain is available and evey resource tied to is is usable
         // create the new swapchain if none is present
         if self.swapchain.is_none() {
@@ -422,6 +555,9 @@ impl System {
             let mut static_meshes_resources = self.resources_manager.lock().unwrap();
             static_meshes_resources.wait_nonblocking()?;
 
+            // TODO: write two mat4 to the buffer and bind it to descriptor set
+            todo!();
+
             // here register the command buffer: command buffer at index i is associated with rendering_fences[i],
             // that I just awaited above, so thecommand buffer is surely NOT currently in use
             self.present_command_buffers[current_frame].record_one_time_submit(|recorder| {
@@ -429,6 +565,7 @@ impl System {
                 // pixel in the final image: this solves the visibility problem and provides data for later stager
                 // along the GPU pipeline
                 let gbuffer_descriptor_set = self.mesh_rendering.record_rendering_commands(
+                    self.view_projection_descriptor_sets[current_frame].clone(),
                     self.queue_family(),
                     [PipelineStage::AllGraphics].as_slice().into(),
                     [MemoryAccessAs::ShaderRead].as_slice().into(),

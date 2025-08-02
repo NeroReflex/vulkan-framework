@@ -418,7 +418,10 @@ impl HDRTransform {
                 );
 
                 let push_constant = [hdr.gamma(), hdr.exposure()];
-                assert_eq!(std::mem::size_of_val(&push_constant) as usize, self.push_constant_size as usize);
+                assert_eq!(
+                    std::mem::size_of_val(&push_constant) as usize,
+                    self.push_constant_size as usize
+                );
 
                 recorder.push_constant(
                     self.pipeline_layout.clone(),

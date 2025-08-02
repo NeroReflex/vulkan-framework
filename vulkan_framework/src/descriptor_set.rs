@@ -568,10 +568,7 @@ impl DescriptorSet {
         Ok(())
     }
 
-    pub fn bind_resources<F>(&self, f: F) -> VulkanResult<()>
-    where
-        F: FnOnce(&mut DescriptorSetWriter),
-    {
+    pub fn bind_resources(&self, f: impl FnOnce(&mut DescriptorSetWriter)) -> VulkanResult<()> {
         #[cfg(feature = "better_mutex")]
         let mut lck = self.bound_resources.lock();
 

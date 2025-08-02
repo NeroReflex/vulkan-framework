@@ -55,6 +55,11 @@ layout (location = 2) in vec2 vertex_texture;
 
 //layout (location = 3) in uint vMaterialIndex;
 
+layout(std140, set = 0, binding = 0) uniform camera_uniform {
+	mat4 viewMatrix;
+	mat4 projectionMatrix;
+} camera;
+
 void main() {
     
 }
@@ -84,7 +89,6 @@ void main() {
 
 /// Represents the stage of the pipeline responsible for drawing static meshes.
 pub struct MeshRendering {
-    _memory_pool: Arc<MemoryPool>,
     image_dimensions: Image2DDimensions,
 
     gbuffer_descriptor_set_layout: Arc<DescriptorSetLayout>,
@@ -130,6 +134,7 @@ impl MeshRendering {
         device: Arc<Device>,
         textures_descriptor_set_layout: Arc<DescriptorSetLayout>,
         materials_descriptor_set_layout: Arc<DescriptorSetLayout>,
+        view_projection_descriptor_set_layout: Arc<DescriptorSetLayout>,
         render_area: &RenderingDimensions,
         frames_in_flight: u32,
     ) -> RenderingResult<Self> {
@@ -255,7 +260,7 @@ impl MeshRendering {
             }))
             .sum();
 
-        let memory_pool = {
+        let framebuffer_memory_pool = {
             let image_handles: Vec<&dyn MemoryRequiring> = gbuffer_depth_stencil_image_handles
                 .iter()
                 .map(|obj| obj as &dyn MemoryRequiring)
@@ -307,7 +312,7 @@ impl MeshRendering {
             [Arc<AllocatedImage>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
         > = smallvec::smallvec![];
         for (index, image) in gbuffer_depth_stencil_image_handles.into_iter().enumerate() {
-            let allocated_image = AllocatedImage::new(memory_pool.clone(), image)?;
+            let allocated_image = AllocatedImage::new(framebuffer_memory_pool.clone(), image)?;
             gbuffer_depth_stencil_images.push(allocated_image.clone());
 
             let image_view_name =
@@ -333,7 +338,7 @@ impl MeshRendering {
             [Arc<AllocatedImage>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
         > = smallvec::smallvec![];
         for (index, image) in gbuffer_position_image_handles.into_iter().enumerate() {
-            let allocated_image = AllocatedImage::new(memory_pool.clone(), image)?;
+            let allocated_image = AllocatedImage::new(framebuffer_memory_pool.clone(), image)?;
             gbuffer_position_images.push(allocated_image.clone());
 
             let image_view_name = format!("mesh_rendering.gbuffer_position_image_views[{index}]");
@@ -358,7 +363,7 @@ impl MeshRendering {
             [Arc<AllocatedImage>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
         > = smallvec::smallvec![];
         for (index, image) in gbuffer_normal_image_handles.into_iter().enumerate() {
-            let allocated_image = AllocatedImage::new(memory_pool.clone(), image)?;
+            let allocated_image = AllocatedImage::new(framebuffer_memory_pool.clone(), image)?;
             gbuffer_normal_images.push(allocated_image.clone());
 
             let image_view_name = format!("mesh_rendering.gbuffer_normal_image_views[{index}]");
@@ -383,7 +388,7 @@ impl MeshRendering {
             [Arc<AllocatedImage>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
         > = smallvec::smallvec![];
         for (index, image) in gbuffer_texture_image_handles.into_iter().enumerate() {
-            let allocated_image = AllocatedImage::new(memory_pool.clone(), image)?;
+            let allocated_image = AllocatedImage::new(framebuffer_memory_pool.clone(), image)?;
             gbuffer_texture_images.push(allocated_image.clone());
 
             let image_view_name = format!("mesh_rendering.gbuffer_texture_image_views[{index}]");
@@ -499,6 +504,7 @@ impl MeshRendering {
             [
                 textures_descriptor_set_layout,
                 materials_descriptor_set_layout,
+                view_projection_descriptor_set_layout,
             ]
             .as_slice(),
             [PushConstanRange::new(0, 4u32, push_constants_access)].as_slice(),
@@ -560,7 +566,6 @@ impl MeshRendering {
 
         Ok(Self {
             image_dimensions,
-            _memory_pool: memory_pool,
 
             gbuffer_descriptor_set_layout,
             gbuffer_descriptor_sets,
@@ -582,6 +587,7 @@ impl MeshRendering {
     /// will be used
     pub fn record_rendering_commands<ManagerT>(
         &self,
+        view_projection_descriptor_set: Arc<DescriptorSet>,
         queue_family: Arc<QueueFamily>,
         gbuffer_stages: PipelineStages,
         gbuffer_access: MemoryAccess,
