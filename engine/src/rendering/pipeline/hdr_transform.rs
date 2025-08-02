@@ -417,13 +417,16 @@ impl HDRTransform {
                     &[self.descriptor_sets[current_frame].clone()],
                 );
 
+                let push_constant = [hdr.gamma(), hdr.exposure()];
+                assert_eq!(std::mem::size_of_val(&push_constant) as usize, self.push_constant_size as usize);
+
                 recorder.push_constant(
                     self.pipeline_layout.clone(),
                     self.push_constant_access,
                     0,
                     unsafe {
                         ::core::slice::from_raw_parts(
-                            (hdr as *const HDR) as *const u8,
+                            (&push_constant[0] as *const _) as *const u8,
                             self.push_constant_size as usize,
                         )
                     },
