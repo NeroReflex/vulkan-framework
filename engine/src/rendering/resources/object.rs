@@ -140,7 +140,7 @@ impl Manager {
                 1024u64 * 1024u64 * 24u64, // 24MiB
             ),
             None,
-            Some("resource_management.stub_image_buffer"),
+            Some(format!("{debug_name}->resource_management.stub_image_buffer").as_str()),
         )?;
 
         let memory_heap = MemoryHeap::new(

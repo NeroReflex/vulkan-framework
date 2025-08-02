@@ -212,9 +212,7 @@ impl MaterialManager {
                 (SIZEOF_MATERIAL_DEFINITION as u64) * (MAX_MATERIALS as u64),
             ),
             None,
-            Some(
-                format!("{debug_name}.current_materials_buffer").as_str()
-            ),
+            Some(format!("{debug_name}.current_materials_buffer").as_str()),
         )?;
 
         let materials_size = (SIZEOF_MATERIAL_DEFINITION as u64)
