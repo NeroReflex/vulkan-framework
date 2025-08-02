@@ -368,6 +368,9 @@ impl ImageSubresourceRange {
         base_array_layer: u32,
         array_layers_count: u32,
     ) -> Self {
+        assert!(base_mip_level + mip_levels_count <= image.mip_levels_count());
+        assert!(base_array_layer + array_layers_count <= image.layers_count());
+
         Self {
             image,
             image_aspects,

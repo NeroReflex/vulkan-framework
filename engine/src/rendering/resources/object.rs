@@ -5,7 +5,7 @@ use tar::Archive;
 use crate::{
     EmbeddedAssets,
     rendering::{
-        MAX_MATERIALS, MAX_MESHES, RenderingError, RenderingResult,
+        MAX_MESHES, RenderingError, RenderingResult,
         resources::{ResourceError, SIZEOF_MATERIAL_DEFINITION, materials::MaterialManager},
     },
 };
@@ -503,7 +503,7 @@ impl Manager {
                                 // Allocate the buffer that will be used to upload the index data to the vulkan device
                                 let index_buffer = self.mesh_manager.create_index_buffer(
                                     BufferUsage::from(
-                                        [BufferUseAs::IndexBuffer, BufferUseAs::StorageBuffer]
+                                        [BufferUseAs::IndexBuffer, BufferUseAs::UniformBuffer]
                                             .as_slice(),
                                     ),
                                     triangles_decl,
@@ -897,6 +897,7 @@ impl Manager {
     pub fn wait_blocking(&mut self) -> RenderingResult<()> {
         self.texture_manager.wait_load_blocking()?;
         self.mesh_manager.wait_load_blocking()?;
+        self.material_manager.wait_load_blocking()?;
         Ok(())
     }
 
@@ -904,6 +905,7 @@ impl Manager {
     pub fn wait_nonblocking(&mut self) -> RenderingResult<()> {
         self.texture_manager.wait_load_nonblock()?;
         self.mesh_manager.wait_load_nonblock()?;
+        self.material_manager.wait_load_nonblock()?;
         Ok(())
     }
 }

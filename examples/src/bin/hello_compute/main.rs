@@ -2,9 +2,6 @@ use std::io::Write;
 use std::sync::Arc;
 
 use inline_spirv::*;
-use vulkan_framework::command_buffer::ImageMemoryBarrier;
-use vulkan_framework::command_buffer::MemoryAccess;
-use vulkan_framework::command_buffer::MemoryAccessAs;
 use vulkan_framework::command_buffer::PrimaryCommandBuffer;
 use vulkan_framework::command_pool::CommandPool;
 use vulkan_framework::compute_pipeline::ComputePipeline;
@@ -34,6 +31,7 @@ use vulkan_framework::image_view::ImageView;
 use vulkan_framework::image_view::ImageViewType;
 use vulkan_framework::instance::*;
 use vulkan_framework::memory_allocator::StackAllocator;
+use vulkan_framework::memory_barriers::{ImageMemoryBarrier, MemoryAccess, MemoryAccessAs};
 use vulkan_framework::memory_heap::ConcreteMemoryHeapDescriptor;
 use vulkan_framework::memory_heap::MemoryHeap;
 use vulkan_framework::memory_heap::MemoryHostVisibility;

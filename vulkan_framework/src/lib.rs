@@ -15,6 +15,7 @@ pub mod image;
 pub mod image_view;
 pub mod instance;
 pub mod memory_allocator;
+pub mod memory_barriers;
 pub mod memory_heap;
 pub mod memory_pool;
 pub mod memory_requiring;

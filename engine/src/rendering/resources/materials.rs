@@ -5,7 +5,8 @@ use std::sync::{
 
 use vulkan_framework::{
     buffer::{
-        AllocatedBuffer, Buffer, BufferTrait, BufferUsage, BufferUseAs, ConcreteBufferDescriptor,
+        AllocatedBuffer, Buffer, BufferSubresourceRange, BufferTrait, BufferUsage, BufferUseAs,
+        ConcreteBufferDescriptor,
     },
     descriptor_pool::{
         DescriptorPool, DescriptorPoolConcreteDescriptor, DescriptorPoolSizesConcreteDescriptor,
@@ -14,9 +15,11 @@ use vulkan_framework::{
     descriptor_set_layout::DescriptorSetLayout,
     device::DeviceOwned,
     memory_allocator::{DefaultAllocator, MemoryAllocator},
+    memory_barriers::{BufferMemoryBarrier, MemoryAccessAs},
     memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryRequirements, MemoryType},
     memory_pool::{MemoryPool, MemoryPoolFeatures},
     memory_requiring::MemoryRequiring,
+    pipeline_stage::PipelineStage,
     queue::Queue,
     queue_family::{QueueFamily, QueueFamilyOwned},
     shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType},
@@ -143,19 +146,19 @@ impl MaterialManager {
             DescriptorPoolConcreteDescriptor::new(
                 DescriptorPoolSizesConcreteDescriptor::new(
                     0,
-                    MAX_MATERIALS * frames_in_flight,
-                    0,
-                    MAX_MATERIALS * frames_in_flight,
                     0,
                     0,
                     0,
                     0,
+                    0,
+                    0,
+                    2u32 * frames_in_flight,
                     0,
                     None,
                 ),
                 frames_in_flight,
             ),
-            Some("texture_manager_descriptor_pool"),
+            Some(format!("{debug_name}.descriptor_pool").as_str()),
         )?;
 
         let descriptor_set_layout = DescriptorSetLayout::new(
@@ -165,14 +168,14 @@ impl MaterialManager {
                     ShaderStagesAccess::graphics(),
                     BindingType::Native(NativeBindingType::UniformBuffer),
                     0,
-                    1,
+                    2,
                 ),
-                BindingDescriptor::new(
-                    ShaderStagesAccess::graphics(),
-                    BindingType::Native(NativeBindingType::UniformBuffer),
-                    0,
-                    1,
-                ),
+                //BindingDescriptor::new(
+                //    ShaderStagesAccess::graphics(),
+                //    BindingType::Native(NativeBindingType::UniformBuffer),
+                //    0,
+                //    1,
+                //),
             ]
             .as_slice(),
         )?;
@@ -198,21 +201,19 @@ impl MaterialManager {
                     (frames_in_flight as u64) * (MAX_MATERIALS as u64),
                 ),
                 None,
-                Some(format!("resource_management.materials_buffer[{index}]").as_str()),
+                Some(format!("{debug_name}.materials_buffer[{index}]").as_str()),
             )?);
         }
 
         let current_materials_buffer = Buffer::new(
             device.clone(),
             ConcreteBufferDescriptor::new(
-                BufferUsage::from([BufferUseAs::TransferSrc].as_slice()),
+                BufferUsage::from([BufferUseAs::TransferDst].as_slice()),
                 (SIZEOF_MATERIAL_DEFINITION as u64) * (MAX_MATERIALS as u64),
             ),
             None,
             Some(
-                "resource_management.current_materials_buffer"
-                    .to_string()
-                    .as_str(),
+                format!("{debug_name}.current_materials_buffer").as_str()
             ),
         )?;
 
@@ -273,12 +274,12 @@ impl MaterialManager {
                 device.clone(),
                 ConcreteBufferDescriptor::new(
                     BufferUsage::from(
-                        [BufferUseAs::TransferDst, BufferUseAs::StorageBuffer].as_slice(),
+                        [BufferUseAs::TransferDst, BufferUseAs::UniformBuffer].as_slice(),
                     ),
                     (MAX_MATERIALS as u64) * 4u64,
                 ),
                 None,
-                Some(format!("resource_management.mesh_to_material_map[{index}]").as_str()),
+                Some(format!("{debug_name}.mesh_to_material_map[{index}]").as_str()),
             )?;
 
             mesh_to_material_map.push(AllocatedBuffer::new(
@@ -308,25 +309,49 @@ impl MaterialManager {
         let Some(texture_index) = self.materials.load(
             queue.clone(),
             || Ok(0u32),
-            |recorder, index, image_view| {
+            |recorder, index, _| {
                 let queue_family = queue.get_parent_queue_family();
 
-                // TODO: memory barrier to await for host to finish writing the buffer
+                // Wait for host to finish writing the material into the buffer
+                let copy_size = SIZEOF_MATERIAL_DEFINITION as u64;
+                let copy_offset = (index as u64) * copy_size;
+                recorder.buffer_barriers(
+                    [BufferMemoryBarrier::new(
+                        [PipelineStage::Host].as_slice().into(),
+                        [MemoryAccessAs::MemoryWrite].as_slice().into(),
+                        [PipelineStage::Transfer].as_slice().into(),
+                        [MemoryAccessAs::MemoryRead].as_slice().into(),
+                        BufferSubresourceRange::new(material_data.clone(), 0u64, copy_size),
+                        queue_family.clone(),
+                        queue_family.clone(),
+                    )]
+                    .as_slice(),
+                );
 
                 // Copy the buffer in the correct slot
                 recorder.copy_buffer(
                     material_data,
                     self.current_materials_buffer.clone(),
-                    [(
-                        0u64,
-                        (index as u64) * (SIZEOF_MATERIAL_DEFINITION as u64),
-                        SIZEOF_MATERIAL_DEFINITION as u64,
+                    [(0u64, copy_offset, copy_size)].as_slice(),
+                );
+
+                // Place a memory barrier to wait for GPU to finish cloning the buffer
+                recorder.buffer_barriers(
+                    [BufferMemoryBarrier::new(
+                        [PipelineStage::Transfer].as_slice().into(),
+                        [MemoryAccessAs::MemoryWrite].as_slice().into(),
+                        [PipelineStage::AllCommands].as_slice().into(),
+                        [MemoryAccessAs::MemoryRead].as_slice().into(),
+                        BufferSubresourceRange::new(
+                            self.current_materials_buffer.clone(),
+                            copy_offset,
+                            copy_size,
+                        ),
+                        queue_family.clone(),
+                        queue_family.clone(),
                     )]
                     .as_slice(),
                 );
-
-                // TODO: memory barrier to wait for GPU to finish cloning the buffer
-                todo!();
 
                 Ok(())
             },

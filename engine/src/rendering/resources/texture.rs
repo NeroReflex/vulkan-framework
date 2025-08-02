@@ -4,8 +4,8 @@ use std::sync::{
 };
 
 use vulkan_framework::{
-    buffer::BufferTrait,
-    command_buffer::{CommandBufferRecorder, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
+    buffer::{BufferSubresourceRange, BufferTrait},
+    command_buffer::CommandBufferRecorder,
     descriptor_pool::{
         DescriptorPool, DescriptorPoolConcreteDescriptor, DescriptorPoolSizesConcreteDescriptor,
     },
@@ -20,6 +20,7 @@ use vulkan_framework::{
     },
     image_view::ImageView,
     memory_allocator::DefaultAllocator,
+    memory_barriers::{BufferMemoryBarrier, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
     memory_heap::{
         ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryHeapOwned, MemoryRequirements, MemoryType,
     },
@@ -338,8 +339,19 @@ impl TextureManager {
         let queue_family = queue.get_parent_queue_family();
         let image = image_view.image();
 
-        // TODO: wait for host to finish writing the buffer
-        todo!();
+        // Wait for host to finish writing the buffer
+        recorder.buffer_barriers(
+            [BufferMemoryBarrier::new(
+                [PipelineStage::Host].as_slice().into(),
+                [MemoryAccessAs::MemoryWrite].as_slice().into(),
+                [PipelineStage::Transfer].as_slice().into(),
+                [MemoryAccessAs::MemoryRead].as_slice().into(),
+                BufferSubresourceRange::new(image_data.clone(), 0u64, image_data.size()),
+                queue_family.clone(),
+                queue_family.clone(),
+            )]
+            .as_slice(),
+        );
 
         let before_transfer_barrier = ImageMemoryBarrier::new(
             PipelineStages::from([PipelineStage::TopOfPipe].as_ref()),

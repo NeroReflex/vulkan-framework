@@ -414,3 +414,37 @@ impl BufferTrait for AllocatedBuffer {
         ash::vk::Handle::as_raw(self.buffer.ash_handle())
     }
 }
+
+pub struct BufferSubresourceRange {
+    buffer: Arc<dyn BufferTrait>,
+    offset: u64,
+    size: u64,
+}
+
+impl BufferSubresourceRange {
+    #[inline]
+    pub fn buffer(&self) -> Arc<dyn BufferTrait> {
+        self.buffer.clone()
+    }
+
+    #[inline]
+    pub fn offset(&self) -> u64 {
+        self.offset.to_owned()
+    }
+
+    #[inline]
+    pub fn size(&self) -> u64 {
+        self.size.to_owned()
+    }
+
+    #[inline]
+    pub fn new(buffer: Arc<dyn BufferTrait>, offset: u64, size: u64) -> Self {
+        assert!(offset + size <= buffer.size());
+
+        Self {
+            buffer,
+            offset,
+            size,
+        }
+    }
+}

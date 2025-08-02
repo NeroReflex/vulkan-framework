@@ -7,10 +7,7 @@ use crate::rendering::{
 };
 
 use vulkan_framework::{
-    command_buffer::{
-        ClearValues, ColorClearValues, CommandBufferRecorder, ImageMemoryBarrier, MemoryAccess,
-        MemoryAccessAs,
-    },
+    command_buffer::{ClearValues, ColorClearValues, CommandBufferRecorder},
     descriptor_set::DescriptorSet,
     descriptor_set_layout::DescriptorSetLayout,
     device::Device,
@@ -28,6 +25,7 @@ use vulkan_framework::{
     },
     image_view::{ImageView, ImageViewType},
     memory_allocator::{DefaultAllocator, MemoryAllocator},
+    memory_barriers::{ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
     memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryRequirements, MemoryType},
     memory_pool::{MemoryPool, MemoryPoolFeatures},
     memory_requiring::MemoryRequiring,

@@ -3,10 +3,7 @@ use std::{sync::Arc, time::Duration};
 use inline_spirv::*;
 
 use vulkan_framework::{
-    command_buffer::{
-        ClearValues, ColorClearValues, CommandBufferRecorder, ImageMemoryBarrier, MemoryAccess,
-        MemoryAccessAs, PrimaryCommandBuffer,
-    },
+    command_buffer::{ClearValues, ColorClearValues, CommandBufferRecorder, PrimaryCommandBuffer},
     command_pool::CommandPool,
     device::*,
     dynamic_rendering::{
@@ -23,6 +20,7 @@ use vulkan_framework::{
     },
     image_view::ImageView,
     instance::*,
+    memory_barriers::{ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
     pipeline_layout::PipelineLayout,
     pipeline_stage::{PipelineStage, PipelineStages},
     queue::*,

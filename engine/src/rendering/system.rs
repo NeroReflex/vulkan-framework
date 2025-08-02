@@ -9,13 +9,14 @@ use std::{
 
 use sdl2::VideoSubsystem;
 use vulkan_framework::{
-    command_buffer::{ImageMemoryBarrier, MemoryAccess, MemoryAccessAs, PrimaryCommandBuffer},
+    command_buffer::PrimaryCommandBuffer,
     command_pool::CommandPool,
     device::{Device, DeviceOwned},
     fence::{Fence, FenceWaiter},
     image::{Image2DDimensions, ImageLayout, ImageLayoutSwapchainKHR, ImageUsage, ImageUseAs},
     image_view::ImageView,
     instance::InstanceOwned,
+    memory_barriers::{ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
     pipeline_stage::{PipelineStage, PipelineStages},
     queue::Queue,
     queue_family::{

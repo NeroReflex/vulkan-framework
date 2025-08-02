@@ -11,7 +11,7 @@ use vulkan_framework::{
         },
     },
     binding_tables::required_memory_type,
-    buffer::BufferUsage,
+    buffer::{BufferSubresourceRange, BufferUsage},
     command_buffer::CommandBufferRecorder,
     descriptor_pool::{
         DescriptorPool, DescriptorPoolConcreteDescriptor,
@@ -19,8 +19,10 @@ use vulkan_framework::{
     },
     device::DeviceOwned,
     memory_allocator::{DefaultAllocator, MemoryAllocator},
+    memory_barriers::{BufferMemoryBarrier, MemoryAccessAs},
     memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap},
     memory_pool::{MemoryPool, MemoryPoolFeature, MemoryPoolFeatures},
+    pipeline_stage::PipelineStage,
     queue::Queue,
     queue_family::{QueueFamily, QueueFamilyOwned},
 };
@@ -228,6 +230,13 @@ impl MeshManager {
     ) -> RenderingResult<u32> {
         let queue = self.queue.clone();
         let queue_family = queue.get_parent_queue_family();
+
+        let vertex_buffer_raw = vertex_buffer.buffer();
+        let vertex_buffer_size = vertex_buffer.size();
+
+        let index_buffer_raw = vertex_buffer.buffer();
+        let index_buffer_size = vertex_buffer.size();
+
         let Some(blas_index) = self.meshes.load(
             queue.clone(),
             || {
@@ -239,8 +248,34 @@ impl MeshManager {
                 )
             },
             |recorder, _, blas| {
-                // TODO: wait for the host to finsh transfer to vertex buffer and index buffer
-                todo!();
+                // Wait for the host to finsh transfer to vertex buffer and index buffer
+                recorder.buffer_barriers(
+                    [
+                        BufferMemoryBarrier::new(
+                            [PipelineStage::Host].as_slice().into(),
+                            [MemoryAccessAs::MemoryWrite].as_slice().into(),
+                            [PipelineStage::Transfer].as_slice().into(),
+                            [MemoryAccessAs::MemoryRead].as_slice().into(),
+                            BufferSubresourceRange::new(
+                                vertex_buffer_raw,
+                                0u64,
+                                vertex_buffer_size,
+                            ),
+                            queue_family.clone(),
+                            queue_family.clone(),
+                        ),
+                        BufferMemoryBarrier::new(
+                            [PipelineStage::Host].as_slice().into(),
+                            [MemoryAccessAs::MemoryWrite].as_slice().into(),
+                            [PipelineStage::Transfer].as_slice().into(),
+                            [MemoryAccessAs::MemoryRead].as_slice().into(),
+                            BufferSubresourceRange::new(index_buffer_raw, 0u64, index_buffer_size),
+                            queue_family.clone(),
+                            queue_family.clone(),
+                        ),
+                    ]
+                    .as_slice(),
+                );
 
                 Self::setup_load_blas_operation(recorder, blas, queue.clone())
             },

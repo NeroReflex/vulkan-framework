@@ -3,8 +3,7 @@ use std::time::Duration;
 
 use inline_spirv::*;
 use vulkan_framework::command_buffer::{
-    ClearValues, ColorClearValues, CommandBufferRecorder, ImageMemoryBarrier, MemoryAccess,
-    MemoryAccessAs, PrimaryCommandBuffer,
+    ClearValues, ColorClearValues, CommandBufferRecorder, PrimaryCommandBuffer,
 };
 use vulkan_framework::command_pool::CommandPool;
 use vulkan_framework::compute_pipeline::ComputePipeline;
@@ -29,30 +28,28 @@ use vulkan_framework::image::{
 };
 use vulkan_framework::image_view::{ImageView, ImageViewType};
 use vulkan_framework::instance::*;
-use vulkan_framework::memory_allocator::StackAllocator;
-use vulkan_framework::memory_heap::{ConcreteMemoryHeapDescriptor, MemoryRequirements};
-use vulkan_framework::memory_heap::{MemoryHeap, MemoryType};
-use vulkan_framework::memory_pool::{MemoryPool, MemoryPoolFeatures};
-use vulkan_framework::memory_requiring::MemoryRequiring;
-use vulkan_framework::pipeline_layout::PipelineLayout;
-use vulkan_framework::pipeline_stage::{PipelineStage, PipelineStages};
-use vulkan_framework::push_constant_range::PushConstanRange;
-use vulkan_framework::queue::Queue;
-use vulkan_framework::queue_family::*;
-use vulkan_framework::semaphore::Semaphore;
-use vulkan_framework::shader_layout_binding::BindingDescriptor;
-use vulkan_framework::shader_layout_binding::BindingType;
-use vulkan_framework::shader_layout_binding::NativeBindingType;
 use vulkan_framework::shader_stage_access::ShaderStagesAccess;
-use vulkan_framework::shaders::{
-    compute_shader::ComputeShader, fragment_shader::FragmentShader, vertex_shader::VertexShader,
+use vulkan_framework::{
+    memory_allocator::StackAllocator,
+    memory_barriers::{ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
+    memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryRequirements, MemoryType},
+    memory_pool::{MemoryPool, MemoryPoolFeatures},
+    memory_requiring::MemoryRequiring,
+    pipeline_layout::PipelineLayout,
+    pipeline_stage::{PipelineStage, PipelineStages},
+    push_constant_range::PushConstanRange,
+    queue::Queue,
+    queue_family::*,
+    semaphore::Semaphore,
+    shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType},
+    shaders::{
+        compute_shader::ComputeShader, fragment_shader::FragmentShader, vertex_shader::VertexShader,
+    },
+    swapchain::{
+        CompositeAlphaSwapchainKHR, DeviceSurfaceInfo, PresentModeSwapchainKHR,
+        SurfaceColorspaceSwapchainKHR, SurfaceTransformSwapchainKHR, SwapchainKHR,
+    },
 };
-use vulkan_framework::swapchain::CompositeAlphaSwapchainKHR;
-use vulkan_framework::swapchain::DeviceSurfaceInfo;
-use vulkan_framework::swapchain::PresentModeSwapchainKHR;
-use vulkan_framework::swapchain::SurfaceColorspaceSwapchainKHR;
-use vulkan_framework::swapchain::SurfaceTransformSwapchainKHR;
-use vulkan_framework::swapchain::SwapchainKHR;
 
 const COMPUTE_SPV: &[u32] = inline_spirv!(
     r#"
