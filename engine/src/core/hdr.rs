@@ -1,5 +1,3 @@
-use std::ptr::read_unaligned;
-
 #[repr(C, packed)]
 #[derive(Debug, Copy, Clone)]
 pub struct HDR {

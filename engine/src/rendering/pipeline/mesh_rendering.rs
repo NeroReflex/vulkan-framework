@@ -719,8 +719,8 @@ impl MeshRendering {
                 ImageMemoryBarrier::new(
                     PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
                     MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
-                    gbuffer_stages.clone(),
-                    gbuffer_access.clone(),
+                    gbuffer_stages,
+                    gbuffer_access,
                     position_imageview.image().into(),
                     Self::output_image_color_layout(),
                     ImageLayout::ShaderReadOnlyOptimal,
@@ -730,8 +730,8 @@ impl MeshRendering {
                 ImageMemoryBarrier::new(
                     PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
                     MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
-                    gbuffer_stages.clone(),
-                    gbuffer_access.clone(),
+                    gbuffer_stages,
+                    gbuffer_access,
                     normal_imageview.image().into(),
                     Self::output_image_color_layout(),
                     ImageLayout::ShaderReadOnlyOptimal,
@@ -741,8 +741,8 @@ impl MeshRendering {
                 ImageMemoryBarrier::new(
                     PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
                     MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
-                    gbuffer_stages.clone(),
-                    gbuffer_access.clone(),
+                    gbuffer_stages,
+                    gbuffer_access,
                     texture_imageview.image().into(),
                     Self::output_image_color_layout(),
                     ImageLayout::ShaderReadOnlyOptimal,

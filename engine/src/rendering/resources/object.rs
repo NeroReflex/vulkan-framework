@@ -722,7 +722,7 @@ impl Manager {
             };
 
             let material = *material;
-            let material_index: u32 = material.material_index as u32;
+            let material_index: u32 = material.material_index;
 
             let mesh_index = self
                 .mesh_manager
@@ -756,11 +756,11 @@ impl Manager {
         println!("During loading resources GPU has already created {blas_created} BLAS");
 
         let mesh = MeshDefinition {
-            meshes: loaded_models.iter().map(|mesh| mesh.1.clone()).collect(),
+            meshes: loaded_models.iter().map(|mesh| *mesh.1).collect(),
         };
 
         for allocation_index in 0..self.objects.len() {
-            if !self.objects[allocation_index].is_none() {
+            if self.objects[allocation_index].is_some() {
                 continue;
             }
 
@@ -847,7 +847,7 @@ impl Manager {
 
                 // This is the material ID to be given to mesh rendering so that it can find
                 // on the material buffer, and with that address textures
-                let material_id = loaded_mesh.material.material_index as u32;
+                let material_id = loaded_mesh.material.material_index;
 
                 if !self.material_manager.is_loaded(material_id as usize) {
                     println!(
