@@ -200,6 +200,8 @@ fn main() {
         instance,
         [ConcreteQueueFamilyDescriptor::new(
             vec![
+                // Graphics for the renderquad
+                QueueFamilySupportedOperationType::Graphics,
                 QueueFamilySupportedOperationType::Compute,
                 QueueFamilySupportedOperationType::Present(sfc.clone()),
                 QueueFamilySupportedOperationType::Transfer,
