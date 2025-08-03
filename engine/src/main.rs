@@ -1,5 +1,7 @@
 use std::time::{Duration, Instant};
 
+use renderdoc::{RenderDoc, V141};
+
 use artrtic::{
     core::camera::{HEAD_DOWN, spectator::SpectatorCamera},
     rendering::system::System,
@@ -25,6 +27,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // a test call
     renderer.test();
+
+    let mut rd: RenderDoc<V141> = RenderDoc::new().expect("Unable to connect");
+
+    let (major, minor, patch) = rd.get_api_version();
+    println!("RenderDoc API {major}.{minor}.{patch}");
 
     let mut start_time = Instant::now();
     let mut frame_count = 0;
@@ -77,6 +84,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         camera.apply_horizontal_rotation(orientation_change.x * mouse_sensitivity);
         camera.apply_vertical_rotation(orientation_change.y * mouse_sensitivity);
 
+        
         renderer.render(&camera, &hdr).unwrap();
         frame_count += 1;
 

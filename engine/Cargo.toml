@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 glm = "0.2.3"
 inline-spirv = "0.2.1"
+renderdoc = { git = "https://github.com/NeroReflex/renderdoc-rs.git", rev = "a8f044b903a3c3daf34c07cd7dd9c397a58b5a71" }
 rust-embed = "8.7.2"
 sdl2 = "^0"
 smallvec = "^1"

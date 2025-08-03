@@ -23,6 +23,7 @@ version = "0.1.0"
 dependencies = [
  "glm",
  "inline-spirv 0.2.1",
+ "renderdoc",
  "rust-embed",
  "sdl2",
  "smallvec",
@@ -174,6 +175,15 @@ dependencies = [
  "libc",
  "libredox",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "float-cmp"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "98de4bbd547a563b716d8dfa9aad1cb19bfab00f4fa09a6a4ed21dbcf44ce9c4"
+dependencies = [
+ "num-traits",
 ]
 
 [[package]]
@@ -434,6 +444,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "once_cell"
+version = "1.21.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
+
+[[package]]
 name = "ordered-float"
 version = "4.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -568,6 +584,25 @@ name = "regex-syntax"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9ec002c35e86791825ed294b50008eea9ddfc8def4420124fbc6b08db834957"
+
+[[package]]
+name = "renderdoc"
+version = "0.12.1"
+source = "git+https://github.com/NeroReflex/renderdoc-rs.git?rev=a8f044b903a3c3daf34c07cd7dd9c397a58b5a71#a8f044b903a3c3daf34c07cd7dd9c397a58b5a71"
+dependencies = [
+ "bitflags 2.9.1",
+ "float-cmp",
+ "libloading",
+ "once_cell",
+ "renderdoc-sys",
+ "winapi 0.3.9",
+ "wio",
+]
+
+[[package]]
+name = "renderdoc-sys"
+version = "1.1.0"
+source = "git+https://github.com/NeroReflex/renderdoc-rs.git?rev=a8f044b903a3c3daf34c07cd7dd9c397a58b5a71#a8f044b903a3c3daf34c07cd7dd9c397a58b5a71"
 
 [[package]]
 name = "roxmltree"
@@ -1095,6 +1130,15 @@ name = "windows_x86_64_msvc"
 version = "0.53.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "271414315aff87387382ec3d271b52d7ae78726f5d44ac98b4f4030c91880486"
+
+[[package]]
+name = "wio"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d129932f4644ac2396cb456385cbf9e63b5b30c6e8dc4820bdca4eb082037a5"
+dependencies = [
+ "winapi 0.3.9",
+]
 
 [[package]]
 name = "xattr"
