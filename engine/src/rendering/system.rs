@@ -9,7 +9,10 @@ use std::{
 
 use sdl2::VideoSubsystem;
 use vulkan_framework::{
-    buffer::{AllocatedBuffer, Buffer, BufferTrait, BufferUseAs, ConcreteBufferDescriptor},
+    buffer::{
+        AllocatedBuffer, Buffer, BufferSubresourceRange, BufferTrait, BufferUseAs,
+        ConcreteBufferDescriptor,
+    },
     command_buffer::PrimaryCommandBuffer,
     command_pool::CommandPool,
     descriptor_pool::{
@@ -23,12 +26,12 @@ use vulkan_framework::{
     image_view::ImageView,
     instance::InstanceOwned,
     memory_allocator::{DefaultAllocator, MemoryAllocator},
-    memory_barriers::{ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
+    memory_barriers::{BufferMemoryBarrier, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
     memory_heap::{
         ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryHostVisibility, MemoryRequirements,
         MemoryType,
     },
-    memory_pool::MemoryPool,
+    memory_pool::{MemoryMap, MemoryPool, MemoryPoolBacked},
     memory_requiring::MemoryRequiring,
     pipeline_stage::{PipelineStage, PipelineStages},
     queue::Queue,
@@ -555,12 +558,43 @@ impl System {
             let mut static_meshes_resources = self.resources_manager.lock().unwrap();
             static_meshes_resources.wait_nonblocking()?;
 
-            // TODO: write two mat4 to the buffer and bind it to descriptor set
-            todo!();
+            // Write two mat4 to the buffer and bind it to descriptor set
+            assert_eq!(std::mem::size_of::<glm::Mat4>(), 4 * 4 * 4);
+            assert_eq!(
+                std::mem::size_of::<glm::Mat4>() * 2,
+                self.view_projection_buffers[current_frame].size() as usize
+            );
+
+            {
+                let mut mem_map = MemoryMap::new(
+                    self.view_projection_buffers[current_frame].get_backing_memory_pool(),
+                )?;
+                let view_proj_mat = mem_map.as_mut_slice_with_size::<glm::Mat4>(
+                    self.view_projection_buffers[current_frame].clone()
+                        as Arc<dyn MemoryPoolBacked>,
+                    (std::mem::size_of::<glm::Mat4>() as u64) * 2u64,
+                )?;
+                assert_eq!(view_proj_mat.len(), 2 as usize);
+                view_proj_mat[0] = camera.view_matrix();
+            }
 
             // here register the command buffer: command buffer at index i is associated with rendering_fences[i],
             // that I just awaited above, so thecommand buffer is surely NOT currently in use
             self.present_command_buffers[current_frame].record_one_time_submit(|recorder| {
+                // Wait for view and projection matrices to be written to GPU memory before using them to render the scene.
+                recorder.buffer_barriers(
+                    [BufferMemoryBarrier::new(
+                        [PipelineStage::Host].as_slice().into(),
+                        [MemoryAccessAs::MemoryWrite].as_slice().into(),
+                        [PipelineStage::Transfer].as_slice().into(),
+                        [MemoryAccessAs::MemoryRead].as_slice().into(),
+                        BufferSubresourceRange::new(self.view_projection_buffers[current_frame].clone(), 0u64, self.view_projection_buffers[current_frame].size()),
+                        self.queue_family(),
+                        self.queue_family(),
+                    )]
+                    .as_slice(),
+                );
+
                 // Record rendering commands to generate the gbuffer (position, normal and texture) for each
                 // pixel in the final image: this solves the visibility problem and provides data for later stager
                 // along the GPU pipeline

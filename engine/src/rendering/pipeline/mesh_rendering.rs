@@ -55,13 +55,32 @@ layout (location = 2) in vec2 vertex_texture;
 
 //layout (location = 3) in uint vMaterialIndex;
 
-layout(std140, set = 0, binding = 0) uniform camera_uniform {
+layout (location = 0) out vec4 out_vPosition_worldspace_minus_eye_position;
+layout (location = 1) out vec4 out_vNormal_worldspace;
+layout (location = 2) out vec2 out_vTextureUV;
+
+layout(location = 4) out flat vec4 eyePosition_worldspace;
+
+layout(std140, set = 1, binding = 0) uniform camera_uniform {
 	mat4 viewMatrix;
 	mat4 projectionMatrix;
 } camera;
 
 void main() {
-    
+    const mat4 MVP = camera.projectionMatrix * camera.viewMatrix; // add * ModelMatrix here
+
+    // Get the eye position
+	const vec4 eye_position = vec4(camera.viewMatrix[3][0], camera.viewMatrix[3][1], camera.viewMatrix[3][2], 1.0);
+	eyePosition_worldspace = eye_position;
+
+	vec4 vPosition_worldspace = /* ModelMatrix * */ vec4(vertex_position_modelspace, 1.0);
+	vPosition_worldspace /= vPosition_worldspace.w;
+
+	out_vTextureUV = vec2(vertex_texture.x, 1-vertex_texture.y);
+	out_vPosition_worldspace_minus_eye_position = vec4((vPosition_worldspace - eyePosition_worldspace).xyz, 1.0);
+	out_vNormal_worldspace = vec4((/*ModelMatrix * */ vec4(vertex_normal_modelspace, 0.0)).xyz, 0.0);
+
+    gl_Position = MVP * vec4(vertex_position_modelspace, 1.0);
 }
 "#,
     vert
@@ -75,7 +94,7 @@ layout(location = 0) out vec4 outColor;
 
 layout(push_constant) uniform MaterialIDs {
     uint material_id;
-} hdr;
+} material;
 
 // MUST match with MAX_TEXTURES on rust side
 layout(set = 0, binding = 0) uniform sampler2D textures[256];

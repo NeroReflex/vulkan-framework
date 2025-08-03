@@ -30,7 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut frame_count = 0;
     let mut event_pump = sdl_context.event_pump().unwrap();
 
-    let mut hdr = artrtic::core::hdr::HDR::default();
+    let hdr = artrtic::core::hdr::HDR::default();
     let mut camera = SpectatorCamera::new(
         glm::vec3(152.0, 650.0, -8.5),
         HEAD_DOWN,
@@ -82,8 +82,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Check if one second has passed
         if start_time.elapsed() >= Duration::from_millis(1000) {
-            hdr = artrtic::core::hdr::HDR::new(0.1, 0.1);
-
             println!("FPS: {}", frame_count);
             frame_count = 0;
             start_time = Instant::now();
