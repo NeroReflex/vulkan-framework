@@ -90,7 +90,17 @@ const MESH_RENDERING_FRAGMENT_SPV: &[u32] = inline_spirv!(
     r#"
 #version 450 core
 
-layout(location = 0) out vec4 outColor;
+// ============================================ FRAGMENT OUTPUT ==================================================
+layout (location = 0) out vec4 out_vPosition;           // Search for GBUFFER_FB0
+layout (location = 1) out vec4 out_vNormal;             // Search for GBUFFER_FB1
+layout (location = 2) out vec4 out_vDiffuseAlbedo;      // Search for GBUFFER_FB2
+// ===============================================================================================================
+
+layout (location = 0) in vec4 in_vPosition_worldspace_minus_eye_position;
+layout (location = 1) in vec4 in_vNormal_worldspace;
+layout (location = 2) in vec2 in_vTextureUV;
+
+layout(location = 4) in flat vec4 in_eyePosition_worldspace;
 
 layout(push_constant) uniform MaterialIDs {
     uint material_id;
@@ -100,7 +110,21 @@ layout(push_constant) uniform MaterialIDs {
 layout(set = 0, binding = 0) uniform sampler2D textures[256];
 
 void main() {
-    outColor = vec4(1.0, 0.0, 0.0, 1.0);
+    // Calculate position of the current fragment
+    const vec4 vPosition_worldspace = vec4((in_vPosition_worldspace_minus_eye_position + in_eyePosition_worldspace).xyz, 1.0);
+
+    vec3 dFdxPos = dFdx( in_vPosition_worldspace_minus_eye_position.xyz );
+	vec3 dFdyPos = dFdy( in_vPosition_worldspace_minus_eye_position.xyz );
+	const vec3 facenormal = cross(dFdxPos, dFdyPos);
+
+    // The normal can either be calculated or provided from the mesh. Just pick the provided one if it is valid.
+    const vec3 bestNormal = normalize(length(in_vNormal_worldspace.xyz) < 0.000001f ? facenormal : in_vNormal_worldspace.xyz);
+
+    out_vPosition = vPosition_worldspace;
+    out_vNormal = vec4(bestNormal.xyz, 0.0);
+    //out_vDiffuseAlbedo = vec4(getDiffuseMaterialAlbedo(in_vMaterialIndex, in_vTextureUV)) / 255.0;
+
+    //outColor = vec4(1.0, 0.0, 0.0, 1.0);
 }
 "#,
     frag

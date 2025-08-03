@@ -29,7 +29,7 @@ use vulkan_framework::{
     memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryRequirements, MemoryType},
     memory_pool::{MemoryPool, MemoryPoolFeatures},
     memory_requiring::MemoryRequiring,
-    pipeline_layout::PipelineLayout,
+    pipeline_layout::{PipelineLayout, PipelineLayoutDependant},
     pipeline_stage::{PipelineStage, PipelineStages},
     queue_family::QueueFamily,
     shaders::{fragment_shader::FragmentShader, vertex_shader::VertexShader},
@@ -39,14 +39,29 @@ const FINAL_RENDERING_VERTEX_SPV: &[u32] = inline_spirv!(
     r#"
 #version 450 core
 
-vec2 positions[3] = vec2[](
-    vec2(0.0, -0.5),
-    vec2(0.5, 0.5),
-    vec2(-0.5, 0.5)
-);
+layout (location = 0) out vec2 out_vTextureUV;
+
+const vec2 vQuadPosition[6] = {
+	vec2(-1, -1),
+	vec2(+1, -1),
+	vec2(-1, +1),
+	vec2(-1, +1),
+	vec2(+1, +1),
+	vec2(+1, -1),
+};
+
+const vec2 vUVCoordinates[6] = {
+    vec2(0.0, 0.0),
+	vec2(1.0, 0.0),
+	vec2(0.0, 1.0),
+	vec2(0.0, 1.0),
+	vec2(1.0, 1.0),
+	vec2(1.0, 0.0),
+};
 
 void main() {
-    gl_Position = vec4(positions[gl_VertexIndex], 0.0, 1.0);
+    out_vTextureUV = vUVCoordinates[gl_VertexIndex];
+	gl_Position = vec4(vQuadPosition[gl_VertexIndex], 0.0, 1.0);
 }
 "#,
     vert
@@ -58,11 +73,17 @@ const FINAL_RENDERING_FRAGMENT_SPV: &[u32] = inline_spirv!(
 
 layout(location = 0) out vec4 outColor;
 
+layout (location = 0) in vec2 in_vTextureUV;
+
 // gbuffer: 0 for position, 1 for normal, 2 for diffuse texture
 layout(set = 0, binding = 0) uniform sampler2D gbuffer[3];
 
 void main() {
-    outColor = vec4(1.0, 0.0, 0.0, 1.0);
+    const vec3 in_vPosition_worldspace = texture(gbuffer[0], in_vTextureUV).xyz;
+    const vec3 in_vNormal_worldspace = texture(gbuffer[1], in_vTextureUV).xyz;
+    const vec4 in_vDiffuseAlbedo = texture(gbuffer[2], in_vTextureUV);
+
+    outColor = vec4(in_vPosition_worldspace.xyz, 1.0);
 }
 "#,
     frag
@@ -274,7 +295,13 @@ impl FinalRendering {
                     Some(Scissor::new(0, 0, self.image_dimensions)),
                 );
 
-                recorder.draw(0, 3, 0, 1);
+                recorder.bind_descriptor_sets_for_graphics_pipeline(
+                    self.graphics_pipeline.get_parent_pipeline_layout(),
+                    0,
+                    [gbuffer_descriptor_set].as_slice(),
+                );
+
+                recorder.draw(0, 6, 0, 1);
             },
         );
 
