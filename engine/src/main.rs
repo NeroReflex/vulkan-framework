@@ -84,7 +84,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         camera.apply_horizontal_rotation(orientation_change.x * mouse_sensitivity);
         camera.apply_vertical_rotation(orientation_change.y * mouse_sensitivity);
 
-        
         renderer.render(&camera, &hdr).unwrap();
         frame_count += 1;
 
