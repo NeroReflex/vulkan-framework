@@ -325,8 +325,10 @@ impl Manager {
                                 )?;
 
                                 //println!("allocating texture size: {texture_size}");
-                                let buffer =
-                                    AllocatedBuffer::new(self.memory_pool.clone(), buffer).unwrap();
+                                let buffer = AllocatedBuffer::new(self.memory_pool.clone(), buffer)
+                                    .inspect_err(|err| {
+                                        println!("Unable to allocate buffer: {err}")
+                                    })?;
 
                                 // Fill the buffer with actual data from the file
                                 {
@@ -556,13 +558,17 @@ impl Manager {
                         );
 
                         // Allocate the buffer that will be used to upload the vertex data to the vulkan device
-                        let buffer = self.mesh_manager.create_vertex_buffer(
-                            triangles_topology,
-                            BufferUsage::from(
-                                [BufferUseAs::VertexBuffer, BufferUseAs::StorageBuffer].as_slice(),
-                            ),
-                            None,
-                        )?;
+                        let buffer = self
+                            .mesh_manager
+                            .create_vertex_buffer(
+                                triangles_topology,
+                                BufferUsage::from(
+                                    [BufferUseAs::VertexBuffer, BufferUseAs::StorageBuffer]
+                                        .as_slice(),
+                                ),
+                                None,
+                            )
+                            .inspect_err(|err| println!("Unable to create vertex buffer: {err}"))?;
 
                         // Fill the buffer with actual data from the file
                         {
@@ -662,7 +668,10 @@ impl Manager {
                 Some(""),
             )?;
 
-            let material_buffer = AllocatedBuffer::new(self.memory_pool.clone(), material_buffer)?;
+            let material_buffer = AllocatedBuffer::new(self.memory_pool.clone(), material_buffer)
+                .inspect_err(|err| {
+                println!("Unable to allocate buffer for material definition: {err}")
+            })?;
             {
                 // write material to the buffer memory
                 let mut mem_map = MemoryMap::new(material_buffer.get_backing_memory_pool())?;
