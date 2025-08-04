@@ -3,6 +3,7 @@ pub mod rendering_dimensions;
 pub mod resources;
 pub mod surface;
 pub mod system;
+pub mod memory;
 
 use sdl2::video::WindowBuildError;
 use thiserror::Error;
