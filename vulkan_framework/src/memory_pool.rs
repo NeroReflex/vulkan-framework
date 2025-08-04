@@ -21,7 +21,7 @@ pub enum MemoryPoolFeature {
     DeviceAddressable,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub struct MemoryPoolFeatures {
     device_addressable: bool,
 }
@@ -33,6 +33,12 @@ impl MemoryPoolFeatures {
 
     pub fn new(device_addressable: bool) -> Self {
         Self { device_addressable }
+    }
+}
+
+impl AsRef<MemoryPoolFeatures> for MemoryPoolFeatures {
+    fn as_ref(&self) -> &MemoryPoolFeatures {
+        self
     }
 }
 
@@ -48,6 +54,12 @@ pub struct MemoryPool {
     memory: ash::vk::DeviceMemory,
     features: MemoryPoolFeatures,
     mapped: AtomicBool,
+}
+
+impl AsRef<MemoryPool> for MemoryPool {
+    fn as_ref(&self) -> &MemoryPool {
+        self
+    }
 }
 
 impl MemoryHeapOwned for MemoryPool {
@@ -150,6 +162,10 @@ impl MemoryPool {
         unsafe { device.ash_handle().unmap_memory(self.memory) }
 
         Ok(data)
+    }
+
+    pub fn support_features(&self, features: &MemoryPoolFeatures) -> bool {
+        self.features() == *features
     }
 
     pub fn new(

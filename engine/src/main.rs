@@ -14,7 +14,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app_name = String::from("ArtRTic");
 
     let sdl_context = sdl2::init().unwrap();
-    let sdl_mouse = sdl_context.mouse();
 
     let mut renderer = System::new(
         app_name,
@@ -28,10 +27,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // a test call
     renderer.test();
 
-    let mut rd: RenderDoc<V141> = RenderDoc::new().expect("Unable to connect");
+    #[cfg(debug_assertions)]
+    {
+        let rd: RenderDoc<V141> = RenderDoc::new().expect("Unable to connect");
 
-    let (major, minor, patch) = rd.get_api_version();
-    println!("RenderDoc API {major}.{minor}.{patch}");
+        let (major, minor, patch) = rd.get_api_version();
+        println!("RenderDoc API {major}.{minor}.{patch}");
+    }
 
     let mut start_time = Instant::now();
     let mut frame_count = 0;

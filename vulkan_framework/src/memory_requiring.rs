@@ -1,3 +1,5 @@
+use crate::{buffer::Buffer, image::Image};
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct MemoryRequirements {
     memory_type_bits: u32,
@@ -29,4 +31,21 @@ impl MemoryRequirements {
 
 pub trait MemoryRequiring {
     fn memory_requirements(&self) -> MemoryRequirements;
+}
+
+#[derive(Debug)]
+pub enum UnallocatedResource {
+    Buffer(Buffer),
+    Image(Image),
+}
+
+impl UnallocatedResource {
+    pub fn memory_requirements(&self) -> MemoryRequirements {
+        let memory_requiring = match self {
+            UnallocatedResource::Buffer(buffer) => buffer as &dyn MemoryRequiring,
+            UnallocatedResource::Image(image) => image as &dyn MemoryRequiring,
+        };
+
+        memory_requiring.memory_requirements()
+    }
 }

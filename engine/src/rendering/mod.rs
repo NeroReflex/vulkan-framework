@@ -1,9 +1,9 @@
+pub mod memory;
 pub mod pipeline;
 pub mod rendering_dimensions;
 pub mod resources;
 pub mod surface;
 pub mod system;
-pub mod memory;
 
 use sdl2::video::WindowBuildError;
 use thiserror::Error;
@@ -36,7 +36,7 @@ pub enum RenderingError {
 
 pub type RenderingResult<T> = Result<T, RenderingError>;
 
-pub(crate) const MAX_FRAMES_IN_FLIGHT_NO_MALLOC: usize = 8;
+pub(crate) const MAX_FRAMES_IN_FLIGHT_NO_MALLOC: usize = 4;
 pub(crate) const MAX_TEXTURES: u32 = 256;
 pub(crate) const MAX_MATERIALS: u32 = 128;
 pub(crate) const MAX_MESHES: u32 = 1024;

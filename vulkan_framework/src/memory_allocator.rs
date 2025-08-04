@@ -6,7 +6,7 @@ use parking_lot::{const_mutex, Mutex};
 #[cfg(not(feature = "better_mutex"))]
 use std::sync::Mutex;
 
-pub struct AllocationResult {
+pub struct SuccessfulAllocation {
     requested_size: u64,
     requested_alignment: u64,
     resulting_address: u64,
@@ -14,7 +14,7 @@ pub struct AllocationResult {
     allocation_end: u64,
 }
 
-impl AllocationResult {
+impl SuccessfulAllocation {
     pub fn offset_in_pool(&self) -> u64 {
         self.resulting_address
     }
@@ -59,7 +59,7 @@ pub trait MemoryAllocator: Sync + Send {
      * @param size the memory required size (in bytes) to allocate
      * @param alignment the memory required alignment (in bytes)
      */
-    fn alloc(&self, size: u64, alignment: u64) -> Option<AllocationResult>;
+    fn alloc(&self, size: u64, alignment: u64) -> Option<SuccessfulAllocation>;
 
     /**
      * Deallocates memory and tracks deallocation in the current memory allocator.
@@ -71,7 +71,7 @@ pub trait MemoryAllocator: Sync + Send {
      *
      * However that is not really possible: drop cannot move out its members.
      */
-    fn dealloc(&self, allocation: &mut AllocationResult);
+    fn dealloc(&self, allocation: &mut SuccessfulAllocation);
 }
 
 pub struct DefaultAllocator {
@@ -122,12 +122,12 @@ impl MemoryAllocator for DefaultAllocator {
         self.total_size
     }
 
-    fn alloc(&self, size: u64, alignment: u64) -> Option<AllocationResult> {
+    fn alloc(&self, size: u64, alignment: u64) -> Option<SuccessfulAllocation> {
         let required_number_of_blocks = 2 + (size / self.block_size);
         let total_number_of_blocks = self.total_size / self.block_size;
 
         if total_number_of_blocks < required_number_of_blocks {
-            panic!("Requested too much memory");
+            return None;
         }
 
         let last_useful_first_allocation_block = total_number_of_blocks - required_number_of_blocks;
@@ -197,7 +197,7 @@ impl MemoryAllocator for DefaultAllocator {
             let allocation_end =
                 (i * self.block_size) + (required_number_of_blocks * self.block_size);
 
-            return Some(AllocationResult::new(
+            return Some(SuccessfulAllocation::new(
                 size,
                 alignment,
                 next_aligned_start_addr,
@@ -206,32 +206,10 @@ impl MemoryAllocator for DefaultAllocator {
             ));
         }
 
-        #[cfg(debug_assertions)]
-        {
-            println!(
-                "out-of-memory: {} blocks were needed",
-                (size / self.block_size) + 2
-            );
-            let mut i = 0;
-            for a in lck.iter() {
-                if *a == 0 {
-                    print!(".");
-                } else {
-                    print!("-");
-                }
-
-                i += 1;
-
-                if i % 64 == 0 {
-                    println!();
-                }
-            }
-        }
-
         None
     }
 
-    fn dealloc(&self, allocation: &mut AllocationResult) {
+    fn dealloc(&self, allocation: &mut SuccessfulAllocation) {
         let first_block = allocation.allocation_start / self.block_size;
         let number_of_allocated_blocks =
             (allocation.allocation_end / self.block_size) - first_block;
@@ -282,7 +260,7 @@ impl MemoryAllocator for StackAllocator {
         self.total_size
     }
 
-    fn alloc(&self, size: u64, alignment: u64) -> Option<AllocationResult> {
+    fn alloc(&self, size: u64, alignment: u64) -> Option<SuccessfulAllocation> {
         let mut previous_allocation_end = 0;
 
         loop {
@@ -310,7 +288,7 @@ impl MemoryAllocator for StackAllocator {
                 Ordering::Acquire,
             ) {
                 Ok(_) => {
-                    return Some(AllocationResult::new(
+                    return Some(SuccessfulAllocation::new(
                         size,
                         alignment,
                         allocation_start + padding_to_respect_aligment,
@@ -323,7 +301,7 @@ impl MemoryAllocator for StackAllocator {
         }
     }
 
-    fn dealloc(&self, allocation_to_undo: &mut AllocationResult) {
+    fn dealloc(&self, allocation_to_undo: &mut SuccessfulAllocation) {
         loop {
             match self.allocated_size.compare_exchange(
                 allocation_to_undo.allocation_end,

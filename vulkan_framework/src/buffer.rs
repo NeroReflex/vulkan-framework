@@ -1,10 +1,12 @@
+use ash::vk::Handle;
+
 use crate::{
     device::{Device, DeviceOwned},
     instance::InstanceOwned,
-    memory_allocator::AllocationResult,
+    memory_allocator::SuccessfulAllocation,
     memory_heap::MemoryHeapOwned,
     memory_pool::{MemoryPool, MemoryPoolBacked},
-    memory_requiring::{MemoryRequirements, MemoryRequiring},
+    memory_requiring::{MemoryRequirements, MemoryRequiring, UnallocatedResource},
     prelude::{FrameworkError, VulkanError, VulkanResult},
     queue_family::QueueFamily,
 };
@@ -204,6 +206,12 @@ pub struct Buffer {
     buffer: ash::vk::Buffer,
 }
 
+impl Debug for Buffer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Buffer {}", ash::vk::Buffer::as_raw(self.buffer))
+    }
+}
+
 impl Drop for Buffer {
     fn drop(&mut self) {
         let device = self.get_parent_device();
@@ -325,7 +333,7 @@ impl MemoryRequiring for Buffer {
 
 pub struct AllocatedBuffer {
     memory_pool: Arc<MemoryPool>,
-    reserved_memory_from_pool: AllocationResult,
+    reserved_memory_from_pool: SuccessfulAllocation,
     buffer: Buffer,
 }
 
@@ -354,26 +362,33 @@ impl AllocatedBuffer {
             ));
         }
 
-        let reserved_memory_from_pool = memory_pool
+        match memory_pool
             .get_memory_allocator()
             .alloc(requirements.size(), requirements.alignment())
-            .ok_or(VulkanError::Framework(FrameworkError::MallocFail))?;
+        {
+            Some(reserved_memory_from_pool) => {
+                unsafe {
+                    device.ash_handle().bind_buffer_memory(
+                        buffer.ash_handle(),
+                        memory_pool.ash_handle(),
+                        reserved_memory_from_pool.offset_in_pool(),
+                    )
+                }.inspect_err(|err| {
+                    println!("ERROR: Error allocating memory: {err}, probably this is due to an incorrect implementation of the memory allocation algorithm");
+                })?;
 
-        unsafe {
-            device.ash_handle().bind_buffer_memory(
-                buffer.ash_handle(),
-                memory_pool.ash_handle(),
-                reserved_memory_from_pool.offset_in_pool(),
-            )
-        }.inspect_err(|err| {
-            println!("ERROR: Error allocating memory: {err}, probably this is due to an incorrect implementation of the memory allocation algorithm");
-        })?;
-
-        Ok(Arc::new(Self {
-            memory_pool,
-            reserved_memory_from_pool,
-            buffer,
-        }))
+                Ok(Arc::new(Self {
+                    memory_pool,
+                    reserved_memory_from_pool,
+                    buffer,
+                }))
+            }
+            None => {
+                return Err(VulkanError::Framework(FrameworkError::MallocFail(
+                    UnallocatedResource::Buffer(buffer),
+                )))
+            }
+        }
     }
 }
 

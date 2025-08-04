@@ -45,6 +45,12 @@ pub enum MemoryType {
     HostLocal(Option<MemoryHostCoherence>),
 }
 
+impl AsRef<MemoryType> for MemoryType {
+    fn as_ref(&self) -> &MemoryType {
+        self
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ConcreteMemoryHeapDescriptor {
     memory_type: MemoryType,
@@ -183,6 +189,10 @@ impl MemoryHeap {
 
     pub(crate) fn type_index(&self) -> u32 {
         self.heap_type_index
+    }
+
+    pub fn suitable_memory_type(&self, requirements: &MemoryRequirements) -> bool {
+        self.check_memory_type_bits_are_satified(requirements.memory_type_bits_requirement)
     }
 
     pub fn check_memory_type_bits_are_satified(&self, memory_type_bits_requirement: u32) -> bool {

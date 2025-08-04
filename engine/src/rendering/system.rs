@@ -25,14 +25,9 @@ use vulkan_framework::{
     image::{Image2DDimensions, ImageLayout, ImageLayoutSwapchainKHR, ImageUsage, ImageUseAs},
     image_view::ImageView,
     instance::InstanceOwned,
-    memory_allocator::{DefaultAllocator, MemoryAllocator},
     memory_barriers::{BufferMemoryBarrier, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
-    memory_heap::{
-        ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryHostVisibility, MemoryRequirements,
-        MemoryType,
-    },
-    memory_pool::{MemoryMap, MemoryPool, MemoryPoolBacked},
-    memory_requiring::MemoryRequiring,
+    memory_heap::{MemoryHostVisibility, MemoryType},
+    memory_pool::{MemoryMap, MemoryPoolBacked, MemoryPoolFeatures},
     pipeline_stage::{PipelineStage, PipelineStages},
     queue::Queue,
     queue_family::{
@@ -53,6 +48,7 @@ use crate::{
     core::{camera::CameraTrait, hdr::HDR},
     rendering::{
         MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingError, RenderingResult,
+        memory::MemoryManager,
         pipeline::{
             final_rendering::FinalRendering, hdr_transform::HDRTransform,
             mesh_rendering::MeshRendering, renderquad::RenderQuad,
@@ -170,7 +166,7 @@ impl System {
         // Enable vulkan debug utils on debug builds
         #[cfg(debug_assertions)]
         {
-            println!("Running with debugging features...");
+            println!("Running with debugging features enabled...");
             instance_extensions.push(String::from("VK_EXT_debug_utils"));
             instance_layers.push(String::from("VK_LAYER_KHRONOS_validation"));
         }
@@ -348,36 +344,14 @@ impl System {
             )?);
         }
 
-        let allocator = DefaultAllocator::with_blocksize(128, 512);
-        let memory_heap = MemoryHeap::new(
-            device.clone(),
-            ConcreteMemoryHeapDescriptor::new(
-                MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostVisibile {
-                    cached: false,
-                })),
-                allocator.total_size(),
-            ),
-            MemoryRequirements::try_from(
-                view_projection_unallocated_buffers
-                    .iter()
-                    .map(|r| r as &dyn MemoryRequiring)
-                    .collect::<Vec<_>>()
-                    .as_slice(),
-            )
-            .unwrap(),
+        let mut memory_manager = MemoryManager::new(device.clone());
+        let view_projection_buffers = memory_manager.allocate_buffers(
+            MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostVisibile {
+                cached: false,
+            })),
+            MemoryPoolFeatures::default(),
+            view_projection_unallocated_buffers.into_iter(),
         )?;
-
-        let memory_pool = MemoryPool::new(memory_heap, Arc::new(allocator), [].as_slice().into())?;
-
-        let mut view_projection_buffers = smallvec::SmallVec::<
-            [Arc<AllocatedBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
-        >::with_capacity(frames_in_flight as usize);
-        for view_projection_buffer in view_projection_unallocated_buffers.into_iter() {
-            view_projection_buffers.push(AllocatedBuffer::new(
-                memory_pool.clone(),
-                view_projection_buffer,
-            )?);
-        }
 
         for index in 0..(frames_in_flight as usize) {
             view_projection_descriptor_sets[index].bind_resources(

@@ -1,17 +1,20 @@
-use ash::vk::{Extent3D, ImageType};
+use ash::vk::{Extent3D, Handle, ImageType};
 
 use crate::{
     device::{Device, DeviceOwned},
     instance::InstanceOwned,
-    memory_allocator::AllocationResult,
+    memory_allocator::SuccessfulAllocation,
     memory_heap::MemoryHeapOwned,
     memory_pool::{MemoryPool, MemoryPoolBacked},
-    memory_requiring::{MemoryRequirements, MemoryRequiring},
+    memory_requiring::{MemoryRequirements, MemoryRequiring, UnallocatedResource},
     prelude::{FrameworkError, VulkanError, VulkanResult},
     queue_family::QueueFamily,
 };
 
-use std::{fmt::Display, sync::Arc};
+use std::{
+    fmt::{Debug, Display},
+    sync::Arc,
+};
 
 /// Represents commonly used image formats
 #[allow(non_camel_case_types)]
@@ -891,6 +894,12 @@ pub struct Image {
     descriptor: ConcreteImageDescriptor,
 }
 
+impl Debug for Image {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Image {}", ash::vk::Image::as_raw(self.image))
+    }
+}
+
 impl DeviceOwned for Image {
     fn get_parent_device(&self) -> Arc<Device> {
         self.device.clone()
@@ -1039,7 +1048,7 @@ impl Drop for Image {
 
 pub struct AllocatedImage {
     memory_pool: Arc<MemoryPool>,
-    reserved_memory_from_pool: AllocationResult,
+    reserved_memory_from_pool: SuccessfulAllocation,
     image: Image,
 }
 
@@ -1079,25 +1088,32 @@ impl AllocatedImage {
             ));
         }
 
-        let reserved_memory_from_pool = memory_pool
+        match memory_pool
             .get_memory_allocator()
             .alloc(requirments.size(), requirments.alignment())
-            .ok_or(VulkanError::Framework(FrameworkError::MallocFail))?;
+        {
+            Some(reserved_memory_from_pool) => {
+                unsafe {
+                    device.ash_handle().bind_image_memory(
+                        image.ash_native(),
+                        memory_pool.ash_handle(),
+                        reserved_memory_from_pool.offset_in_pool(),
+                    )
+                }.inspect_err(|&err| {
+                    println!("ERROR: Error allocating memory on the device: {}, probably this is due to an incorrect implementation of the memory allocation algorithm", err);})?;
 
-        unsafe {
-            device.ash_handle().bind_image_memory(
-                image.ash_native(),
-                memory_pool.ash_handle(),
-                reserved_memory_from_pool.offset_in_pool(),
-            )
-        }.inspect_err(|&err| {
-            println!("ERROR: Error allocating memory on the device: {}, probably this is due to an incorrect implementation of the memory allocation algorithm", err);})?;
-
-        Ok(Arc::new(Self {
-            memory_pool,
-            reserved_memory_from_pool,
-            image,
-        }))
+                Ok(Arc::new(Self {
+                    memory_pool,
+                    reserved_memory_from_pool,
+                    image,
+                }))
+            }
+            None => {
+                return Err(VulkanError::Framework(FrameworkError::MallocFail(
+                    UnallocatedResource::Image(image),
+                )))
+            }
+        }
     }
 }
 

@@ -1,9 +1,11 @@
 use thiserror::Error;
 
-#[derive(Debug, Error, Clone)]
+use crate::memory_requiring::UnallocatedResource;
+
+#[derive(Debug, Error)]
 pub enum FrameworkError {
     #[error("Memory allocation failed")]
-    MallocFail,
+    MallocFail(UnallocatedResource),
     #[error("Incompatible memory heap type")]
     IncompatibleMemoryHeapType,
     #[error("Error creating the descriptor set: bindings are not starting from zero")]
@@ -80,7 +82,7 @@ pub enum FrameworkError {
     CommandBufferInvalidState,
 }
 
-#[derive(Debug, Error, Clone)]
+#[derive(Debug, Error)]
 pub enum VulkanError {
     #[error("Framework error: {0}")]
     Framework(#[from] FrameworkError),
