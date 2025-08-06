@@ -744,7 +744,7 @@ impl MeshRendering {
 
                 recorder.bind_descriptor_sets_for_graphics_pipeline(
                     self.graphics_pipeline.get_parent_pipeline_layout(),
-                    1,
+                    2,
                     [view_projection_descriptor_set].as_slice(),
                 );
 
