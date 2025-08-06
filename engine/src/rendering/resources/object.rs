@@ -37,7 +37,7 @@ use vulkan_framework::{
     graphics_pipeline::{AttributeType, IndexType},
     image::{CommonImageFormat, Image2DDimensions, ImageFormat},
     memory_heap::{MemoryHostVisibility, MemoryType},
-    memory_management::{MemoryManagementTag, MemoryManagerTrait},
+    memory_management::{MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait},
     memory_pool::{MemoryMap, MemoryPoolBacked, MemoryPoolFeatures},
     pipeline_layout::PipelineLayout,
     queue_family::QueueFamily,
@@ -160,32 +160,30 @@ impl Manager {
         // allocate resources
         let mut memory_allocator = memory_manager.lock().unwrap();
         let alloc_result = memory_allocator
-            .allocate_buffers(
-                MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostVisibile {
+            .allocate_resources(
+                &MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostVisibile {
                     cached: false,
                 })),
-                MemoryPoolFeatures::default(),
-                [buffer].into_iter(),
-                [MemoryManagementTag::Size(Self::leftover_memory(
-                    frames_in_flight,
-                ))]
-                .as_slice(),
+                &MemoryPoolFeatures::default(),
+                vec![buffer.into()],
+                MemoryManagementTags::default()
+                    .with_name("temp".to_string())
+                    .with_size(MemoryManagementTagSize::MediumSmall),
             )
             .inspect_err(|err| println!("Unable to allocate buffer for the stub image: {err}"))?;
         assert_eq!(alloc_result.len(), 1_usize);
-        let stub_image_data = alloc_result.first().unwrap().clone();
+        let stub_image_data = alloc_result.first().unwrap().buffer();
 
         let alloc_result = memory_allocator
-            .allocate_buffers(
-                MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostVisibile {
+            .allocate_resources(
+                &MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostVisibile {
                     cached: false,
                 })),
-                MemoryPoolFeatures::default(),
-                [current_mesh_to_material_map].into_iter(),
-                [MemoryManagementTag::Size(Self::leftover_memory(
-                    frames_in_flight,
-                ))]
-                .as_slice(),
+                &MemoryPoolFeatures::default(),
+                vec![current_mesh_to_material_map.into()],
+                MemoryManagementTags::default()
+                    .with_name("temp".to_string())
+                    .with_size(MemoryManagementTagSize::MediumSmall),
             )
             .inspect_err(|err| {
                 println!(
@@ -193,7 +191,7 @@ impl Manager {
                 )
             })?;
         assert_eq!(alloc_result.len(), 1_usize);
-        let current_mesh_to_material_map = alloc_result.first().unwrap().clone();
+        let current_mesh_to_material_map = alloc_result.first().unwrap().buffer();
         drop(memory_allocator);
 
         {
@@ -346,19 +344,20 @@ impl Manager {
 
                                 let buffer = {
                                     let mut allocator = self.memory_manager.lock().unwrap();
-                                    let alloc_result = allocator.allocate_buffers(
-                                        MemoryType::DeviceLocal(Some(
+                                    let alloc_result = allocator.allocate_resources(
+                                        &MemoryType::DeviceLocal(Some(
                                             MemoryHostVisibility::MemoryHostVisibile {
                                                 cached: false,
                                             },
                                         )),
-                                        MemoryPoolFeatures::default(),
-                                        [buffer].into_iter(),
-                                        [MemoryManagementTag::Size(Self::leftover_memory(1))]
-                                            .as_slice(),
+                                        &MemoryPoolFeatures::default(),
+                                        vec![buffer.into()],
+                                        MemoryManagementTags::default()
+                                            .with_name("temp".to_string())
+                                            .with_size(MemoryManagementTagSize::MediumSmall),
                                     )?;
                                     assert_eq!(alloc_result.len(), 1_usize);
-                                    alloc_result[0].clone()
+                                    alloc_result[0].buffer()
                                 };
 
                                 // Fill the buffer with actual data from the file
@@ -710,19 +709,21 @@ impl Manager {
             let material_buffer = {
                 let mut allocator = self.memory_manager.lock().unwrap();
                 let alloc_result = allocator
-                    .allocate_buffers(
-                        MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostVisibile {
+                    .allocate_resources(
+                        &MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostVisibile {
                             cached: false,
                         })),
-                        MemoryPoolFeatures::default(),
-                        [material_buffer].into_iter(),
-                        [MemoryManagementTag::Size(Self::leftover_memory(1))].as_slice(),
+                        &MemoryPoolFeatures::default(),
+                        vec![material_buffer.into()],
+                        MemoryManagementTags::default()
+                            .with_name("temp".to_string())
+                            .with_size(MemoryManagementTagSize::MediumSmall),
                     )
                     .inspect_err(|err| {
                         println!("Unable to allocate buffer for material definition: {err}")
                     })?;
                 assert_eq!(alloc_result.len(), 1_usize);
-                alloc_result[0].clone()
+                alloc_result[0].buffer()
             };
 
             {

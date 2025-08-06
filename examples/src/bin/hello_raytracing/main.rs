@@ -42,7 +42,9 @@ use vulkan_framework::{
     memory_allocator::*,
     memory_barriers::{ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
     memory_heap::*,
-    memory_management::{DefaultMemoryManager, MemoryManagerTrait},
+    memory_management::{
+        DefaultMemoryManager, MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait,
+    },
     memory_pool::{MemoryPool, MemoryPoolBacked, MemoryPoolFeature, MemoryPoolFeatures},
     pipeline_layout::PipelineLayout,
     pipeline_stage::{PipelineStage, PipelineStageRayTracingPipelineKHR, PipelineStages},
@@ -411,7 +413,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &MemoryType::DeviceLocal(None),
                 &MemoryPoolFeatures::from([].as_slice()),
                 rt_image_handles,
-                &[],
+                MemoryManagementTags::default()
+                    .with_exclusivity(false)
+                    .with_name("non_raytracing".to_string())
+                    .with_size(MemoryManagementTagSize::Small),
             )?
             .into_iter()
             .map(|r| r.image())
@@ -757,7 +762,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 index_buffer_backing.into(),
                 transform_buffer_backing.into(),
             ],
-            &[],
+            MemoryManagementTags::default()
+                .with_exclusivity(false)
+                .with_name("raytracing".to_string())
+                .with_size(MemoryManagementTagSize::MediumSmall),
         )?;
         assert_eq!(allocated_buffers.len(), 3);
 
@@ -778,6 +786,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             vertex_buffer,
             index_buffer,
             transform_buffer,
+            MemoryManagementTags::default()
+                .with_exclusivity(false)
+                .with_name("raytracing".to_string())
+                .with_size(MemoryManagementTagSize::MediumSmall),
             None,
             Some("my_blas"),
         )
@@ -831,7 +843,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &required_memory_type(),
             &MemoryPoolFeatures::from([MemoryPoolFeature::DeviceAddressable].as_slice()),
             vec![instances_buffer_backing.into()],
-            &[],
+            MemoryManagementTags::default()
+                .with_exclusivity(false)
+                .with_name("non_raytracing".to_string())
+                .with_size(MemoryManagementTagSize::MediumSmall),
         )?;
         assert_eq!(allocated_buffers.len(), 1);
 
@@ -845,6 +860,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &mut mem_manager,
             AllowedBuildingDevice::DeviceOnly,
             instance_buffer,
+            MemoryManagementTags::default()
+                .with_exclusivity(false)
+                .with_name("raytracing".to_string())
+                .with_size(MemoryManagementTagSize::MediumSmall),
             None,
             Some("tlas"),
         )

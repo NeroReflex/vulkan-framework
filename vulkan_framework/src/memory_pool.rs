@@ -36,12 +36,6 @@ impl MemoryPoolFeatures {
     }
 }
 
-impl AsRef<MemoryPoolFeatures> for MemoryPoolFeatures {
-    fn as_ref(&self) -> &MemoryPoolFeatures {
-        self
-    }
-}
-
 impl From<&[MemoryPoolFeature]> for MemoryPoolFeatures {
     fn from(features: &[MemoryPoolFeature]) -> Self {
         Self::new(features.contains(&MemoryPoolFeature::DeviceAddressable))

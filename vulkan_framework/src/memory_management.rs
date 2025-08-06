@@ -63,18 +63,80 @@ impl UnallocatedResource {
     }
 }
 
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum MemoryManagementTagSize {
+    Small,
+    MediumSmall,
+    Medium,
+    MediumLarge,
+    Large,
+    VeryLarge,
+}
+
+impl Default for MemoryManagementTagSize {
+    fn default() -> Self {
+        MemoryManagementTagSize::Small
+    }
+}
+
 /// Represents hints to the memory manager:
 ///
 /// Name is used to group resources together
 /// Exclusive is used to create a pool large enough to hold resources and reserve it
 /// Size: give the preferred free size of the new pool in case a new one gets allocated
-#[derive(Clone, PartialEq, Eq)]
-pub enum MemoryManagementTag {
-    Name(String),
-    Exclusive,
-    Size(u64),
-    ImagesOnly,
-    BuffersOnly,
+#[derive(Default, Clone, PartialEq, Eq)]
+pub struct MemoryManagementTags {
+    name: Option<String>,
+    exlusive: bool,
+    size: MemoryManagementTagSize,
+}
+
+impl MemoryManagementTags {
+    pub fn with_name(&self, name: String) -> MemoryManagementTags {
+        let mut muted_tags = self.clone();
+        muted_tags.name = Some(name);
+        muted_tags
+    }
+
+    pub fn with_exclusivity(&self, exclusive: bool) -> MemoryManagementTags {
+        let mut muted_tags = self.clone();
+        muted_tags.exlusive = exclusive;
+        muted_tags
+    }
+
+    pub fn with_size(&self, size: MemoryManagementTagSize) -> MemoryManagementTags {
+        let mut muted_tags = self.clone();
+        muted_tags.size = size;
+        muted_tags
+    }
+
+    pub fn exlusive(&self) -> bool {
+        self.exlusive
+    }
+
+    pub fn name(&self) -> &Option<String> {
+        &self.name
+    }
+
+    pub fn size(&self) -> &MemoryManagementTagSize {
+        &self.size
+    }
+
+    pub fn same_name(&self, other: &Self) -> bool {
+        let Some(my_name) = &self.name else {
+            return false;
+        };
+
+        let Some(other_name) = &other.name else {
+            return false;
+        };
+
+        my_name.eq(other_name)
+    }
+
+    pub fn has_name(&self) -> bool {
+        self.name.is_some()
+    }
 }
 
 /// Define the interface for a memory pool manager, to be used
@@ -93,64 +155,8 @@ pub trait MemoryManagerTrait: DeviceOwned {
         memory_type: &MemoryType,
         features: &MemoryPoolFeatures,
         buffers: Vec<UnallocatedResource>,
-        tags: &[MemoryManagementTag],
+        tags: MemoryManagementTags,
     ) -> VulkanResult<Vec<AllocatedResource>>;
-}
-
-impl dyn MemoryManagerTrait {
-    pub fn allocate_buffers<I>(
-        &mut self,
-        memory_type: impl AsRef<MemoryType>,
-        features: impl AsRef<MemoryPoolFeatures>,
-        buffers: I,
-        tags: &[MemoryManagementTag],
-    ) -> VulkanResult<smallvec::SmallVec<[Arc<AllocatedBuffer>; 4]>>
-    where
-        I: IntoIterator<Item = Buffer>,
-    {
-        let unallocated: Vec<UnallocatedResource> = buffers
-            .into_iter()
-            .map(UnallocatedResource::Buffer)
-            .collect();
-
-        let requested_allocations = unallocated.len();
-        let allocations =
-            self.allocate_resources(memory_type.as_ref(), features.as_ref(), unallocated, tags)?;
-        assert_eq!(allocations.len(), requested_allocations);
-
-        let result = allocations.into_iter().map(|r| match r {
-            AllocatedResource::Buffer(allocated_buffer) => allocated_buffer,
-            AllocatedResource::Image(_) => panic!("You asked me to allocate a buffer and I came up with an image. Nobody knows why."),
-        }).collect();
-
-        Ok(result)
-    }
-
-    pub fn allocate_images<I>(
-        &mut self,
-        memory_type: impl AsRef<MemoryType>,
-        features: impl AsRef<MemoryPoolFeatures>,
-        images: I,
-        tags: &[MemoryManagementTag],
-    ) -> VulkanResult<smallvec::SmallVec<[Arc<AllocatedImage>; 4]>>
-    where
-        I: IntoIterator<Item = Image>,
-    {
-        let unallocated: Vec<UnallocatedResource> =
-            images.into_iter().map(UnallocatedResource::Image).collect();
-
-        let requested_allocations = unallocated.len();
-        let allocations =
-            self.allocate_resources(memory_type.as_ref(), features.as_ref(), unallocated, tags)?;
-        assert_eq!(allocations.len(), requested_allocations);
-
-        let result = allocations.into_iter().map(|r| match r {
-            AllocatedResource::Buffer(_) => panic!("You asked me to allocate an image and I came up with a buffer. Nobody knows why."),
-            AllocatedResource::Image(allocated_image) => allocated_image,
-        }).collect();
-
-        Ok(result)
-    }
 }
 
 const BLOCK_SIZE: u64 = 512u64;
@@ -163,7 +169,7 @@ enum ResourceAllocationResult {
 
 pub struct DefaultMemoryManager {
     device: Arc<Device>,
-    memory_pools: Vec<Arc<MemoryPool>>,
+    memory_pools: Vec<(MemoryManagementTags, Arc<MemoryPool>)>,
 }
 
 impl DeviceOwned for DefaultMemoryManager {
@@ -178,7 +184,7 @@ impl MemoryManagerTrait for DefaultMemoryManager {
         memory_type: &MemoryType,
         features: &MemoryPoolFeatures,
         unallocated: Vec<UnallocatedResource>,
-        tags: &[MemoryManagementTag],
+        tags: MemoryManagementTags,
     ) -> VulkanResult<Vec<AllocatedResource>> {
         let requirements = {
             let mem_requiring = unallocated
@@ -195,27 +201,56 @@ impl MemoryManagerTrait for DefaultMemoryManager {
         let mut unallocated = unallocated.into_iter().enumerate().collect::<Vec<_>>();
 
         // try allocating resources on available memory pools first
-        for memory_pool in self.memory_pools.iter() {
-            if !memory_pool.support_features(features.as_ref()) {
-                continue;
-            } else if !memory_pool
-                .get_parent_memory_heap()
-                .suitable_memory_type(&requirements)
-            {
-                continue;
-            } else if memory_pool.get_parent_memory_heap().memory_type() != *memory_type {
-                continue;
+        for attempt in 0..2 {
+            for (pool_tags, memory_pool) in self.memory_pools.iter() {
+                if pool_tags.exlusive() {
+                    continue;
+                } else if (attempt == 0) && (tags.has_name()) && (!tags.same_name(pool_tags)) {
+                    continue;
+                } else if !memory_pool.support_features(features) {
+                    continue;
+                } else if !memory_pool
+                    .get_parent_memory_heap()
+                    .suitable_memory_type(&requirements)
+                {
+                    continue;
+                } else if memory_pool.get_parent_memory_heap().memory_type() != *memory_type {
+                    continue;
+                }
+
+                for allocation in
+                    Self::allocate_resources_on_pool(memory_pool.clone(), &mut unallocated)?
+                        .into_iter()
+                {
+                    allocations.push(allocation);
+                }
             }
 
-            for allocation in
-                Self::allocate_resources_on_pool(memory_pool.clone(), &mut unallocated)?.into_iter()
-            {
-                allocations.push(allocation);
+            // do not retry if a preferred name was not specified
+            if !tags.has_name() {
+                break;
             }
         }
 
         // resouces could not have been fit into existing pools: allocate a new one
-        let leftover_memory = 512;
+        let leftover_memory = match tags.exlusive() {
+            true => 0,
+            false => match tags.size() {
+                // small is 4MiB
+                MemoryManagementTagSize::Small => 4 * 1024 * 1024,
+                // medium-small is 32MiB
+                MemoryManagementTagSize::MediumSmall => 32 * 1024 * 1024,
+                // medium is 64MiB
+                MemoryManagementTagSize::Medium => 64 * 1024 * 1024,
+                // medium-large is 128MiB
+                MemoryManagementTagSize::MediumLarge => 128 * 1024 * 1024,
+                // large is 256MiB
+                MemoryManagementTagSize::Large => 256 * 1024 * 1024,
+                // very large is 512MiB
+                MemoryManagementTagSize::VeryLarge => 512 * 1024 * 1024,
+            },
+        };
+
         if !unallocated.is_empty() {
             let memory_amount: u64 = (leftover_memory / BLOCK_SIZE)
                 + unallocated
@@ -231,15 +266,11 @@ impl MemoryManagerTrait for DefaultMemoryManager {
                     })
                     .sum::<u64>();
 
-            let memory_pool = self.take_new_pool(
-                memory_type.as_ref(),
-                memory_amount,
-                features.as_ref(),
-                &requirements,
-            )?;
+            let memory_pool =
+                self.take_new_pool(memory_type, memory_amount, features, &requirements)?;
 
             // register this memory pool as allocated
-            self.memory_pools.push(memory_pool.clone());
+            self.memory_pools.push((tags, memory_pool.clone()));
             for allocation in
                 Self::allocate_resources_on_pool(memory_pool.clone(), &mut unallocated)?.into_iter()
             {
@@ -250,9 +281,7 @@ impl MemoryManagerTrait for DefaultMemoryManager {
         assert!(unallocated.is_empty());
 
         allocations.sort_by_key(|&(index, _)| index);
-        let allocations = allocations.into_iter().map(|(_, value)| value).collect();
-
-        Ok(allocations)
+        Ok(allocations.into_iter().map(|(_, value)| value).collect())
     }
 }
 
@@ -373,7 +402,7 @@ impl DefaultMemoryManager {
         requirements: &MemoryRequirements,
         minimum_size: u64,
     ) -> Option<Arc<MemoryHeap>> {
-        for memory_pool in self.memory_pools.iter() {
+        for (_, memory_pool) in self.memory_pools.iter() {
             let memory_heap = memory_pool.get_parent_memory_heap();
             if !memory_heap.suitable_memory_type(requirements) {
                 continue;

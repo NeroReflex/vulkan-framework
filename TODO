@@ -1,3 +1,4 @@
 - Review all TODO(s) in the code
 - Write documentation
 - implement swapchain recreate
+- Remove from the user-facing code every MemoryHeap::new and MemoryPool::new and also change shaders for raytracing to accept an allocator

@@ -24,7 +24,7 @@ use vulkan_framework::{
     image_view::ImageView,
     memory_barriers::{BufferMemoryBarrier, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
     memory_heap::MemoryType,
-    memory_management::{MemoryManagementTag, MemoryManagerTrait},
+    memory_management::{MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait},
     memory_pool::MemoryPoolFeatures,
     pipeline_stage::{PipelineStage, PipelineStages},
     queue::Queue,
@@ -307,10 +307,9 @@ impl TextureManager {
                 &MemoryType::DeviceLocal(None),
                 &MemoryPoolFeatures::from([].as_slice()),
                 vec![texture.into()],
-                [MemoryManagementTag::Size(
-                    (1024u64 * 1024u64 * 128u64) + (1024u64 * 512u64 * (MAX_TEXTURES as u64)),
-                )]
-                .as_slice(),
+                MemoryManagementTags::default()
+                    .with_name("images".to_string())
+                    .with_size(MemoryManagementTagSize::MediumSmall),
             )?;
             assert_eq!(allocation_result.len(), 1);
             allocation_result[0].image()

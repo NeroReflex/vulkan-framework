@@ -27,7 +27,7 @@ use vulkan_framework::{
     instance::InstanceOwned,
     memory_barriers::{BufferMemoryBarrier, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
     memory_heap::{MemoryHostVisibility, MemoryType},
-    memory_management::{DefaultMemoryManager, MemoryManagerTrait},
+    memory_management::{DefaultMemoryManager, MemoryManagementTags, MemoryManagerTrait},
     memory_pool::{MemoryMap, MemoryPoolBacked, MemoryPoolFeatures},
     pipeline_stage::{PipelineStage, PipelineStages},
     queue::Queue,
@@ -304,7 +304,7 @@ impl System {
                 })),
                 &MemoryPoolFeatures::default(),
                 view_projection_unallocated_buffers,
-                &[],
+                MemoryManagementTags::default().with_exclusivity(true),
             )?
             .into_iter()
             .map(|r| r.buffer())

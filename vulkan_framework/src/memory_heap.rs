@@ -45,12 +45,6 @@ pub enum MemoryType {
     HostLocal(Option<MemoryHostCoherence>),
 }
 
-impl AsRef<MemoryType> for MemoryType {
-    fn as_ref(&self) -> &MemoryType {
-        self
-    }
-}
-
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ConcreteMemoryHeapDescriptor {
     memory_type: MemoryType,

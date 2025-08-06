@@ -37,6 +37,7 @@ use vulkan_framework::memory_heap::MemoryHeap;
 use vulkan_framework::memory_heap::MemoryHostVisibility;
 use vulkan_framework::memory_heap::MemoryRequirements;
 use vulkan_framework::memory_heap::MemoryType;
+use vulkan_framework::memory_management::DefaultMemoryManager;
 use vulkan_framework::memory_pool::MemoryPool;
 use vulkan_framework::memory_pool::MemoryPoolBacked;
 use vulkan_framework::memory_pool::MemoryPoolFeatures;

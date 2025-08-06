@@ -10,7 +10,7 @@ use crate::{
     buffer::{Buffer, BufferTrait, BufferUsage, ConcreteBufferDescriptor},
     device::{Device, DeviceOwned},
     memory_heap::{MemoryHostVisibility, MemoryType},
-    memory_management::MemoryManagerTrait,
+    memory_management::{MemoryManagementTags, MemoryManagerTrait},
     memory_pool::MemoryPoolFeatures,
     prelude::VulkanResult,
 };
@@ -46,7 +46,11 @@ impl DeviceScratchBuffer {
         }
     }
 
-    pub fn new(memory_manager: &mut dyn MemoryManagerTrait, size: u64) -> VulkanResult<Arc<Self>> {
+    pub fn new(
+        memory_manager: &mut dyn MemoryManagerTrait,
+        size: u64,
+        allocation_tags: MemoryManagementTags,
+    ) -> VulkanResult<Arc<Self>> {
         let backing_buffer = Buffer::new(
             memory_manager.get_parent_device(),
             ConcreteBufferDescriptor::new(
@@ -65,7 +69,7 @@ impl DeviceScratchBuffer {
             &MemoryType::DeviceLocal(Some(MemoryHostVisibility::visible(false))),
             &MemoryPoolFeatures::new(true),
             vec![backing_buffer.into()],
-            &[],
+            allocation_tags,
         )?[0]
             .buffer();
 

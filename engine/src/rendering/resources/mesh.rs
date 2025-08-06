@@ -24,7 +24,9 @@ use vulkan_framework::{
     memory_allocator::DefaultAllocator,
     memory_barriers::{BufferMemoryBarrier, MemoryAccessAs},
     memory_heap::{MemoryHostVisibility, MemoryType},
-    memory_management::{MemoryManagerTrait, UnallocatedResource},
+    memory_management::{
+        MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait, UnallocatedResource,
+    },
     memory_pool::{MemoryMap, MemoryPoolBacked, MemoryPoolFeatures},
     pipeline_stage::PipelineStage,
     queue::Queue,
@@ -167,10 +169,16 @@ impl MeshManager {
             &MemoryType::DeviceLocal(Some(MemoryHostVisibility::visible(false))),
             &MemoryPoolFeatures::new(true),
             vec![UnallocatedResource::Buffer(backing_buffer)],
-            &[],
+            Self::allocation_tags(),
         )?;
 
         Ok((vertices_topology, buffer[0].buffer()))
+    }
+
+    pub fn allocation_tags() -> MemoryManagementTags {
+        MemoryManagementTags::default()
+            .with_name("mesh".to_string())
+            .with_size(MemoryManagementTagSize::MediumLarge)
     }
 
     pub fn create_index_buffer(
@@ -193,7 +201,7 @@ impl MeshManager {
             &MemoryType::DeviceLocal(Some(MemoryHostVisibility::visible(false))),
             &MemoryPoolFeatures::new(true),
             vec![UnallocatedResource::Buffer(backing_buffer)],
-            &[],
+            Self::allocation_tags(),
         )?;
 
         Ok(BottomLevelAccelerationStructureIndexBuffer::new(
@@ -220,7 +228,7 @@ impl MeshManager {
             &MemoryType::DeviceLocal(Some(MemoryHostVisibility::visible(false))),
             &MemoryPoolFeatures::new(true),
             vec![UnallocatedResource::Buffer(backing_buffer)],
-            &[],
+            Self::allocation_tags(),
         )?;
 
         let transform_buffer =
@@ -250,6 +258,7 @@ impl MeshManager {
             vertex_buffer,
             index_buffer,
             transform_buffer,
+            Self::allocation_tags(),
             None,
             Some(debug_name.as_str()),
         )?;

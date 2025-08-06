@@ -8,7 +8,7 @@ use crate::{
     device::DeviceOwned,
     instance::InstanceOwned,
     memory_heap::{MemoryHostVisibility, MemoryType},
-    memory_management::MemoryManagerTrait,
+    memory_management::{MemoryManagementTags, MemoryManagerTrait},
     memory_pool::{MemoryPoolBacked, MemoryPoolFeatures},
     prelude::{VulkanError, VulkanResult},
     queue_family::QueueFamily,
@@ -347,6 +347,7 @@ impl TopLevelAccelerationStructure {
     fn create_tlas_buffer(
         memory_manager: &mut dyn MemoryManagerTrait,
         buffer_size: u64,
+        allocation_tags: MemoryManagementTags,
         sharing: Option<&[std::sync::Weak<QueueFamily>]>,
         debug_name: &Option<&str>,
     ) -> VulkanResult<(Arc<AllocatedBuffer>, u64)> {
@@ -375,7 +376,7 @@ impl TopLevelAccelerationStructure {
             &MemoryType::DeviceLocal(Some(MemoryHostVisibility::visible(false))),
             &MemoryPoolFeatures::new(true),
             vec![tlas_buffer.into()],
-            &[],
+            allocation_tags,
         )?[0]
             .buffer();
 
@@ -389,6 +390,7 @@ impl TopLevelAccelerationStructure {
         memory_manager: &mut dyn MemoryManagerTrait,
         allowed_building_devices: AllowedBuildingDevice,
         instance_buffer: TopLevelAccelerationStructureInstanceBuffer,
+        allocation_tags: MemoryManagementTags,
         sharing: Option<&[std::sync::Weak<QueueFamily>]>,
         debug_name: Option<&str>,
     ) -> VulkanResult<Arc<Self>> {
@@ -417,8 +419,13 @@ impl TopLevelAccelerationStructure {
             &instance_buffer,
         )?;
 
-        let (buffer, buffer_device_addr) =
-            Self::create_tlas_buffer(memory_manager, tlas_min_buffer_size, sharing, &debug_name)?;
+        let (buffer, buffer_device_addr) = Self::create_tlas_buffer(
+            memory_manager,
+            tlas_min_buffer_size,
+            allocation_tags.clone(),
+            sharing,
+            &debug_name,
+        )?;
 
         // If deviceAddress is not zero, createFlags must include VK_ACCELERATION_STRUCTURE_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT_KHR
         let create_info = ash::vk::AccelerationStructureCreateInfoKHR::default()
@@ -439,7 +446,7 @@ impl TopLevelAccelerationStructure {
         let blas_decl = smallvec::smallvec![*blas_decl];
 
         let device_build_scratch_buffer =
-            DeviceScratchBuffer::new(memory_manager, build_scratch_buffer_size)?;
+            DeviceScratchBuffer::new(memory_manager, build_scratch_buffer_size, allocation_tags)?;
 
         Ok(Arc::new(Self {
             blas_decl,

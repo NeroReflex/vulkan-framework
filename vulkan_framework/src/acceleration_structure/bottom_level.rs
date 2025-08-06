@@ -14,7 +14,7 @@ use crate::{
     graphics_pipeline::AttributeType,
     instance::InstanceOwned,
     memory_heap::{MemoryHostVisibility, MemoryType},
-    memory_management::MemoryManagerTrait,
+    memory_management::{MemoryManagementTags, MemoryManagerTrait},
     memory_pool::{MemoryPoolBacked, MemoryPoolFeatures},
     prelude::{VulkanError, VulkanResult},
     queue_family::QueueFamily,
@@ -663,6 +663,7 @@ impl BottomLevelAccelerationStructure {
     fn create_blas_buffer(
         memory_manager: &mut dyn MemoryManagerTrait,
         buffer_size: u64,
+        allocation_tags: MemoryManagementTags,
         sharing: Option<&[std::sync::Weak<QueueFamily>]>,
         debug_name: &Option<&str>,
     ) -> VulkanResult<(Arc<AllocatedBuffer>, u64)> {
@@ -691,7 +692,7 @@ impl BottomLevelAccelerationStructure {
             &MemoryType::DeviceLocal(Some(MemoryHostVisibility::visible(false))),
             &MemoryPoolFeatures::new(true),
             vec![blas_buffer.into()],
-            &[],
+            allocation_tags,
         )?[0]
             .buffer();
 
@@ -707,6 +708,7 @@ impl BottomLevelAccelerationStructure {
         vertex_buffer: BottomLevelAccelerationStructureVertexBuffer,
         index_buffer: BottomLevelAccelerationStructureIndexBuffer,
         transform_buffer: BottomLevelAccelerationStructureTransformBuffer,
+        allocation_tags: MemoryManagementTags,
         sharing: Option<&[std::sync::Weak<QueueFamily>]>,
         debug_name: Option<&str>,
     ) -> VulkanResult<Arc<Self>> {
@@ -738,11 +740,16 @@ impl BottomLevelAccelerationStructure {
             &transform_buffer,
         )?;
 
-        let (blas_buffer, _blas_buffer_device_addr) =
-            Self::create_blas_buffer(memory_manager, blas_buffer_size, sharing, &debug_name)?;
+        let (blas_buffer, _blas_buffer_device_addr) = Self::create_blas_buffer(
+            memory_manager,
+            blas_buffer_size,
+            allocation_tags.clone(),
+            sharing,
+            &debug_name,
+        )?;
 
         let device_build_scratch_buffer =
-            DeviceScratchBuffer::new(memory_manager, build_scratch_buffer_size)?;
+            DeviceScratchBuffer::new(memory_manager, build_scratch_buffer_size, allocation_tags)?;
 
         // If deviceAddress is not zero, createFlags must include VK_ACCELERATION_STRUCTURE_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT_KHR
         let create_info = ash::vk::AccelerationStructureCreateInfoKHR::default()
