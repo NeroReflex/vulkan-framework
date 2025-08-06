@@ -584,9 +584,9 @@ impl MeshRendering {
                     // vertex position data
                     VertexInputAttribute::new(0, 0, AttributeType::Vec3),
                     // vertex normal data
-                    VertexInputAttribute::new(1, 4*3, AttributeType::Vec3),
+                    VertexInputAttribute::new(1, 4 * 3, AttributeType::Vec3),
                     // vertex text coords
-                    VertexInputAttribute::new(2, 4*(3+3), AttributeType::Vec2),
+                    VertexInputAttribute::new(2, 4 * (3 + 3), AttributeType::Vec2),
                 ]
                 .as_slice(),
             )]
@@ -740,6 +740,12 @@ impl MeshRendering {
                         0.0f32,
                     )),
                     Some(Scissor::new(0, 0, self.image_dimensions)),
+                );
+
+                recorder.bind_descriptor_sets_for_graphics_pipeline(
+                    self.graphics_pipeline.get_parent_pipeline_layout(),
+                    1,
+                    [view_projection_descriptor_set].as_slice(),
                 );
 
                 // performs the actual rendering
