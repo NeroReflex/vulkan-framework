@@ -548,6 +548,7 @@ impl System {
                 self.view_projection_buffers[current_frame].size() as usize
             );
 
+            // This is the Host stage that performs the MemoryWrite mentioned in the barrier (#)
             {
                 let mut mem_map = MemoryMap::new(
                     self.view_projection_buffers[current_frame].get_backing_memory_pool(),
@@ -565,13 +566,13 @@ impl System {
             // here register the command buffer: command buffer at index i is associated with rendering_fences[i],
             // that I just awaited above, so thecommand buffer is surely NOT currently in use
             self.present_command_buffers[current_frame].record_one_time_submit(|recorder| {
-                // Wait for view and projection matrices to be written to GPU memory before using them to render the scene.
+                // (#) Wait for view and projection matrices to be written to GPU memory before using them to render the scene
                 recorder.buffer_barriers(
                     [BufferMemoryBarrier::new(
                         [PipelineStage::Host].as_slice().into(),
                         [MemoryAccessAs::MemoryWrite].as_slice().into(),
-                        [PipelineStage::Transfer].as_slice().into(),
-                        [MemoryAccessAs::MemoryRead].as_slice().into(),
+                        [PipelineStage::AllGraphics].as_slice().into(),
+                        [MemoryAccessAs::ShaderRead].as_slice().into(),
                         BufferSubresourceRange::new(self.view_projection_buffers[current_frame].clone(), 0u64, self.view_projection_buffers[current_frame].size()),
                         self.queue_family(),
                         self.queue_family(),
