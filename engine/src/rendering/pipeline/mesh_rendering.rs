@@ -579,7 +579,7 @@ impl MeshRendering {
             pipeline_layout,
             [VertexInputBinding::new(
                 VertexInputRate::PerVertex,
-                /*(4u32) + (3u32 + 3u32 + 2u32)*/ 0,
+                (4u32) * (3u32 + 3u32 + 2u32),
                 [
                     // vertex position data
                     VertexInputAttribute::new(0, 0, AttributeType::Vec3),
