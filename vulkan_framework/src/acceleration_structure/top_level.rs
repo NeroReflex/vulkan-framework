@@ -436,7 +436,7 @@ impl TopLevelAccelerationStructure {
             )
         }?;
 
-        let blas_decl = smallvec::smallvec![blas_decl.clone()];
+        let blas_decl = smallvec::smallvec![*blas_decl];
 
         let device_build_scratch_buffer =
             DeviceScratchBuffer::new(memory_manager, build_scratch_buffer_size)?;

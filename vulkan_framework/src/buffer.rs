@@ -388,11 +388,9 @@ impl AllocatedBuffer {
                     buffer,
                 }))
             }
-            None => {
-                return Err(VulkanError::Framework(FrameworkError::MallocFail(
-                    UnallocatedResource::Buffer(buffer),
-                )))
-            }
+            None => Err(VulkanError::Framework(FrameworkError::MallocFail(
+                UnallocatedResource::Buffer(buffer),
+            ))),
         }
     }
 }

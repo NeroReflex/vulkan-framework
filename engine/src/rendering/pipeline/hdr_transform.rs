@@ -421,7 +421,7 @@ impl HDRTransform {
 
                 let push_constant = [hdr.gamma(), hdr.exposure()];
                 assert_eq!(
-                    std::mem::size_of_val(&push_constant) as usize,
+                    { std::mem::size_of_val(&push_constant) },
                     self.push_constant_size as usize
                 );
 

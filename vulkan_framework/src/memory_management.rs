@@ -110,7 +110,7 @@ impl dyn MemoryManagerTrait {
     {
         let unallocated: Vec<UnallocatedResource> = buffers
             .into_iter()
-            .map(|resource| UnallocatedResource::Buffer(resource))
+            .map(UnallocatedResource::Buffer)
             .collect();
 
         let requested_allocations = unallocated.len();
@@ -136,10 +136,8 @@ impl dyn MemoryManagerTrait {
     where
         I: IntoIterator<Item = Image>,
     {
-        let unallocated: Vec<UnallocatedResource> = images
-            .into_iter()
-            .map(|resource| UnallocatedResource::Image(resource))
-            .collect();
+        let unallocated: Vec<UnallocatedResource> =
+            images.into_iter().map(UnallocatedResource::Image).collect();
 
         let requested_allocations = unallocated.len();
         let allocations =
@@ -194,11 +192,7 @@ impl MemoryManagerTrait for DefaultMemoryManager {
         };
 
         let mut allocations = Vec::with_capacity(unallocated.len());
-        let mut unallocated = unallocated
-            .into_iter()
-            .enumerate()
-            .map(|(index, res)| (index, res))
-            .collect::<Vec<_>>();
+        let mut unallocated = unallocated.into_iter().enumerate().collect::<Vec<_>>();
 
         // try allocating resources on available memory pools first
         for memory_pool in self.memory_pools.iter() {
@@ -209,8 +203,7 @@ impl MemoryManagerTrait for DefaultMemoryManager {
                 .suitable_memory_type(&requirements)
             {
                 continue;
-            } else if memory_pool.get_parent_memory_heap().memory_type() != *(memory_type.as_ref())
-            {
+            } else if memory_pool.get_parent_memory_heap().memory_type() != *memory_type {
                 continue;
             }
 
@@ -326,9 +319,9 @@ impl DefaultMemoryManager {
                             FrameworkError::MallocFail(failed_resource) => Ok(
                                 ResourceAllocationResult::Unallocated((index, failed_resource)),
                             ),
-                            fw_err => return Err(VulkanError::Framework(fw_err)),
+                            fw_err => Err(VulkanError::Framework(fw_err)),
                         },
-                        _ => return Err(err),
+                        _ => Err(err),
                     },
                 }
             }
@@ -343,9 +336,9 @@ impl DefaultMemoryManager {
                             FrameworkError::MallocFail(failed_resource) => Ok(
                                 ResourceAllocationResult::Unallocated((index, failed_resource)),
                             ),
-                            fw_err => return Err(VulkanError::Framework(fw_err)),
+                            fw_err => Err(VulkanError::Framework(fw_err)),
                         },
-                        _ => return Err(err),
+                        _ => Err(err),
                     },
                 }
             }
@@ -362,7 +355,7 @@ impl DefaultMemoryManager {
         let allocator = DefaultAllocator::with_blocksize(BLOCK_SIZE, number_of_blocks + 1u64);
 
         let memory_heap =
-            match self.find_suitable_heap(memory_type, &requirements, allocator.total_size()) {
+            match self.find_suitable_heap(memory_type, requirements, allocator.total_size()) {
                 Some(memory_heap) => memory_heap,
                 None => MemoryHeap::new(
                     self.device.clone(),
@@ -371,11 +364,7 @@ impl DefaultMemoryManager {
                 )?,
             };
 
-        Ok(MemoryPool::new(
-            memory_heap,
-            Arc::new(allocator),
-            *features,
-        )?)
+        MemoryPool::new(memory_heap, Arc::new(allocator), *features)
     }
 
     fn find_suitable_heap(
@@ -386,7 +375,7 @@ impl DefaultMemoryManager {
     ) -> Option<Arc<MemoryHeap>> {
         for memory_pool in self.memory_pools.iter() {
             let memory_heap = memory_pool.get_parent_memory_heap();
-            if !memory_heap.suitable_memory_type(&requirements) {
+            if !memory_heap.suitable_memory_type(requirements) {
                 continue;
             } else if memory_heap.memory_type() != *memory_type {
                 continue;

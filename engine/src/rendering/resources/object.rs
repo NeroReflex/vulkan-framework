@@ -20,9 +20,13 @@ use super::{mesh::MeshManager, texture::TextureManager};
 
 use vulkan_framework::{
     acceleration_structure::{
+        VertexIndexing,
         bottom_level::{
-            BottomLevelAccelerationStructureIndexBuffer, BottomLevelAccelerationStructureTransformBuffer, BottomLevelAccelerationStructureVertexBuffer, BottomLevelTrianglesGroupDecl, BottomLevelVerticesTopologyDecl
-        }, VertexIndexing
+            BottomLevelAccelerationStructureIndexBuffer,
+            BottomLevelAccelerationStructureTransformBuffer,
+            BottomLevelAccelerationStructureVertexBuffer, BottomLevelTrianglesGroupDecl,
+            BottomLevelVerticesTopologyDecl,
+        },
     },
     buffer::{
         AllocatedBuffer, Buffer, BufferTrait, BufferUsage, BufferUseAs, ConcreteBufferDescriptor,
@@ -168,8 +172,8 @@ impl Manager {
                 .as_slice(),
             )
             .inspect_err(|err| println!("Unable to allocate buffer for the stub image: {err}"))?;
-        assert_eq!(alloc_result.len(), 1 as usize);
-        let stub_image_data = alloc_result.get(0).unwrap().clone();
+        assert_eq!(alloc_result.len(), 1_usize);
+        let stub_image_data = alloc_result.first().unwrap().clone();
 
         let alloc_result = memory_allocator
             .allocate_buffers(
@@ -188,8 +192,8 @@ impl Manager {
                     "Unable to allocate buffer for instance to material associative map: {err}"
                 )
             })?;
-        assert_eq!(alloc_result.len(), 1 as usize);
-        let current_mesh_to_material_map = alloc_result.get(0).unwrap().clone();
+        assert_eq!(alloc_result.len(), 1_usize);
+        let current_mesh_to_material_map = alloc_result.first().unwrap().clone();
         drop(memory_allocator);
 
         {
@@ -353,7 +357,7 @@ impl Manager {
                                         [MemoryManagementTag::Size(Self::leftover_memory(1))]
                                             .as_slice(),
                                     )?;
-                                    assert_eq!(alloc_result.len(), 1 as usize);
+                                    assert_eq!(alloc_result.len(), 1_usize);
                                     alloc_result[0].clone()
                                 };
 
@@ -497,10 +501,7 @@ impl Manager {
                             continue;
                         };
 
-                        let mut model_decl = match models.remove(&model_name) {
-                            Some(decl) => decl,
-                            None => Default::default(),
-                        };
+                        let mut model_decl = models.remove(&model_name).unwrap_or_default();
 
                         match *property {
                             "material" => {
@@ -720,7 +721,7 @@ impl Manager {
                     .inspect_err(|err| {
                         println!("Unable to allocate buffer for material definition: {err}")
                     })?;
-                assert_eq!(alloc_result.len(), 1 as usize);
+                assert_eq!(alloc_result.len(), 1_usize);
                 alloc_result[0].clone()
             };
 
@@ -772,7 +773,11 @@ impl Manager {
                 let mut memory_manager = self.memory_manager.lock().unwrap();
                 match v.transform.take() {
                     Some(transform) => transform,
-                    None => self.mesh_manager.create_transform_buffer(memory_manager.deref_mut(), BufferUsage::default(), None)?,
+                    None => self.mesh_manager.create_transform_buffer(
+                        memory_manager.deref_mut(),
+                        BufferUsage::default(),
+                        None,
+                    )?,
                 }
             };
 

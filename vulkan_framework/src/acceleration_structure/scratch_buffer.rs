@@ -7,11 +7,11 @@ use parking_lot::{const_mutex, Mutex};
 use std::sync::Mutex;
 
 use crate::{
-    buffer::{AllocatedBuffer, Buffer, BufferTrait, BufferUsage, ConcreteBufferDescriptor},
+    buffer::{Buffer, BufferTrait, BufferUsage, ConcreteBufferDescriptor},
     device::{Device, DeviceOwned},
-    memory_heap::{MemoryHeapOwned, MemoryHostVisibility, MemoryType},
+    memory_heap::{MemoryHostVisibility, MemoryType},
     memory_management::MemoryManagerTrait,
-    memory_pool::{MemoryPool, MemoryPoolFeatures},
+    memory_pool::MemoryPoolFeatures,
     prelude::VulkanResult,
 };
 

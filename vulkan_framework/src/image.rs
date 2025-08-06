@@ -1109,11 +1109,9 @@ impl AllocatedImage {
                     image,
                 }))
             }
-            None => {
-                return Err(VulkanError::Framework(FrameworkError::MallocFail(
-                    UnallocatedResource::Image(image),
-                )))
-            }
+            None => Err(VulkanError::Framework(FrameworkError::MallocFail(
+                UnallocatedResource::Image(image),
+            ))),
         }
     }
 }

@@ -5,16 +5,30 @@ use std::{
 
 use vulkan_framework::{
     acceleration_structure::{
+        AllowedBuildingDevice,
         bottom_level::{
             BottomLevelAccelerationStructure, BottomLevelAccelerationStructureIndexBuffer,
             BottomLevelAccelerationStructureTransformBuffer,
             BottomLevelAccelerationStructureVertexBuffer, BottomLevelTrianglesGroupDecl,
             BottomLevelVerticesTopologyDecl, IDENTITY_MATRIX,
-        }, AllowedBuildingDevice
-    }, ash::vk::TransformMatrixKHR, binding_tables::required_memory_type, buffer::{AllocatedBuffer, Buffer, BufferSubresourceRange, BufferTrait, BufferUsage}, command_buffer::CommandBufferRecorder, descriptor_pool::{
+        },
+    },
+    ash::vk::TransformMatrixKHR,
+    buffer::{AllocatedBuffer, Buffer, BufferSubresourceRange, BufferTrait, BufferUsage},
+    command_buffer::CommandBufferRecorder,
+    descriptor_pool::{
         DescriptorPool, DescriptorPoolConcreteDescriptor,
         DescriptorPoolSizesAcceletarionStructureKHR, DescriptorPoolSizesConcreteDescriptor,
-    }, device::{Device, DeviceOwned}, memory_allocator::{DefaultAllocator, MemoryAllocator}, memory_barriers::{BufferMemoryBarrier, MemoryAccessAs}, memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryHostVisibility, MemoryType}, memory_management::{MemoryManagerTrait, UnallocatedResource}, memory_pool::{MemoryMap, MemoryPool, MemoryPoolBacked, MemoryPoolFeature, MemoryPoolFeatures}, pipeline_stage::PipelineStage, prelude::VulkanResult, queue::Queue, queue_family::{QueueFamily, QueueFamilyOwned}
+    },
+    device::DeviceOwned,
+    memory_allocator::DefaultAllocator,
+    memory_barriers::{BufferMemoryBarrier, MemoryAccessAs},
+    memory_heap::{MemoryHostVisibility, MemoryType},
+    memory_management::{MemoryManagerTrait, UnallocatedResource},
+    memory_pool::{MemoryMap, MemoryPoolBacked, MemoryPoolFeatures},
+    pipeline_stage::PipelineStage,
+    queue::Queue,
+    queue_family::{QueueFamily, QueueFamilyOwned},
 };
 
 use crate::rendering::{
@@ -146,7 +160,7 @@ impl MeshManager {
             memory_manager.get_parent_device(),
             descriptor,
             sharing,
-            Some(format!("{}", self.debug_name).as_str()),
+            Some(self.debug_name.to_string().as_str()),
         )?;
 
         let buffer = memory_manager.allocate_resources(
@@ -172,7 +186,7 @@ impl MeshManager {
             memory_manager.get_parent_device(),
             descriptor,
             sharing,
-            Some(format!("{}", self.debug_name).as_str()),
+            Some(self.debug_name.to_string().as_str()),
         )?;
 
         let buffer = memory_manager.allocate_resources(
@@ -199,7 +213,7 @@ impl MeshManager {
             memory_manager.get_parent_device(),
             descriptor,
             sharing,
-            Some(format!("{}", self.debug_name).as_str()),
+            Some(self.debug_name.to_string().as_str()),
         )?;
 
         let buffer = memory_manager.allocate_resources(
@@ -209,12 +223,14 @@ impl MeshManager {
             &[],
         )?;
 
-        let transform_buffer = BottomLevelAccelerationStructureTransformBuffer::new(
-            buffer[0].buffer(),
-        )?;
+        let transform_buffer =
+            BottomLevelAccelerationStructureTransformBuffer::new(buffer[0].buffer())?;
 
         let mut mem_map = MemoryMap::new(transform_buffer.buffer().get_backing_memory_pool())?;
-        let transform = mem_map.as_mut_slice_with_size::<TransformMatrixKHR>(transform_buffer.buffer().clone() as Arc<dyn MemoryPoolBacked>, transform_buffer.buffer().size())?;
+        let transform = mem_map.as_mut_slice_with_size::<TransformMatrixKHR>(
+            transform_buffer.buffer().clone() as Arc<dyn MemoryPoolBacked>,
+            transform_buffer.buffer().size(),
+        )?;
         assert_eq!(transform.len(), 1);
         transform[0] = IDENTITY_MATRIX;
 

@@ -343,7 +343,7 @@ impl System {
                     0,
                     0,
                     0,
-                    1 * frames_in_flight,
+                    frames_in_flight,
                     0,
                     None,
                 ),
@@ -378,8 +378,6 @@ impl System {
                             .as_slice(),
                         )
                         .unwrap();
-
-                    ()
                 },
             )?;
         }
@@ -559,7 +557,7 @@ impl System {
                         as Arc<dyn MemoryPoolBacked>,
                     (std::mem::size_of::<glm::Mat4>() as u64) * 2u64,
                 )?;
-                assert_eq!(view_proj_mat.len(), 2 as usize);
+                assert_eq!(view_proj_mat.len(), 2_usize);
                 view_proj_mat[0] = camera.view_matrix();
             }
 
