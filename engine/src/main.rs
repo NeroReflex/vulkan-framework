@@ -28,11 +28,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     renderer.test();
 
     #[cfg(debug_assertions)]
-    {
-        let rd: RenderDoc<V141> = RenderDoc::new().expect("Unable to connect");
+    let mut rd: Option<RenderDoc<V141>> = None;
 
-        let (major, minor, patch) = rd.get_api_version();
-        println!("RenderDoc API {major}.{minor}.{patch}");
+    #[cfg(debug_assertions)]
+    {
+        rd = match RenderDoc::<V141>::new() {
+            Ok(rd) => {
+                let (major, minor, patch) = rd.get_api_version();
+                println!("RenderDoc API {major}.{minor}.{patch}");
+                Some(rd)
+            }
+            Err(err) => {
+                eprintln!("Cound not open RenderDoc: {err}");
+                None
+            },
+        };
     }
 
     let mut start_time = Instant::now();
@@ -96,6 +106,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             start_time = Instant::now();
         }
     }
+
+    #[cfg(debug_assertions)]
+    drop(rd);
 
     Ok(())
 }
