@@ -303,7 +303,7 @@ impl System {
         > = memory_manager
             .allocate_resources(
                 &MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostVisibile {
-                    cached: false,
+                    cached: true,
                 })),
                 &MemoryPoolFeatures::default(),
                 view_projection_unallocated_buffers,
@@ -360,15 +360,13 @@ impl System {
         >::with_capacity(
             frames_in_flight as usize
         );
-        for _ in 0..frames_in_flight {
-            view_projection_descriptor_sets.push(DescriptorSet::new(
+        for index in 0..(frames_in_flight as usize) {
+            let view_proj_descriptor_set =  DescriptorSet::new(
                 view_projection_descriptors_pool.clone(),
                 view_projection_descriptor_set_layout.clone(),
-            )?);
-        }
+            )?;
 
-        for index in 0..(frames_in_flight as usize) {
-            view_projection_descriptor_sets[index].bind_resources(
+           view_proj_descriptor_set.bind_resources(
                 |binder: &mut DescriptorSetWriter<'_>| {
                     binder
                         .bind_uniform_buffer(
@@ -383,6 +381,8 @@ impl System {
                         .unwrap();
                 },
             )?;
+
+            view_projection_descriptor_sets.push(view_proj_descriptor_set);
         }
 
         let mesh_rendering = Arc::new(MeshRendering::new(

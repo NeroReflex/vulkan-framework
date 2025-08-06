@@ -955,8 +955,6 @@ impl Manager {
                         0,
                         [
                             (0u64, vertex_buffer.buffer() as Arc<dyn BufferTrait>),
-                            //(0u64, vertex_buffer.buffer() as Arc<dyn BufferTrait>),
-                            //(0u64, vertex_buffer.buffer() as Arc<dyn BufferTrait>),
                         ]
                         .as_slice(),
                     );

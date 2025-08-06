@@ -742,6 +742,7 @@ impl MeshRendering {
                     Some(Scissor::new(0, 0, self.image_dimensions)),
                 );
 
+                // bind the view-projection matrix
                 recorder.bind_descriptor_sets_for_graphics_pipeline(
                     self.graphics_pipeline.get_parent_pipeline_layout(),
                     2,

@@ -228,6 +228,8 @@ impl Drop for MemoryMap {
 
         assert!(old_val);
 
+        //if self.memory_pool.get_parent_memory_heap().type_index()
+
         unsafe { device.ash_handle().unmap_memory(self.memory_pool.memory) }
     }
 }
