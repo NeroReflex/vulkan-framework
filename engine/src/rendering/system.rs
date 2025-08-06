@@ -22,7 +22,10 @@ use vulkan_framework::{
     descriptor_set_layout::DescriptorSetLayout,
     device::{Device, DeviceOwned},
     fence::{Fence, FenceWaiter},
-    image::{Image1DTrait, Image2DDimensions, Image2DTrait, ImageLayout, ImageLayoutSwapchainKHR, ImageUsage, ImageUseAs},
+    image::{
+        Image1DTrait, Image2DDimensions, Image2DTrait, ImageLayout, ImageLayoutSwapchainKHR,
+        ImageUsage, ImageUseAs,
+    },
     image_view::ImageView,
     instance::InstanceOwned,
     memory_barriers::{BufferMemoryBarrier, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
@@ -560,7 +563,10 @@ impl System {
                 )?;
                 assert_eq!(view_proj_mat.len(), 2_usize);
                 view_proj_mat[0] = camera.view_matrix();
-                view_proj_mat[1] = camera.projection_matrix(swapchain.images_extent().width(), swapchain.images_extent().height());
+                view_proj_mat[1] = camera.projection_matrix(
+                    swapchain.images_extent().width(),
+                    swapchain.images_extent().height(),
+                );
             }
 
             // here register the command buffer: command buffer at index i is associated with rendering_fences[i],

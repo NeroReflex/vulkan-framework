@@ -41,7 +41,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Err(err) => {
                 eprintln!("Cound not open RenderDoc: {err}");
                 None
-            },
+            }
         };
     }
 

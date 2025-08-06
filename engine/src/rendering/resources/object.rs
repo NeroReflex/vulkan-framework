@@ -99,17 +99,17 @@ pub struct Manager {
 impl Manager {
     #[inline]
     pub fn vertex_buffer_position_stride() -> u32 {
-        (4u32 * 3u32) + (4u32 * 2u32)
+        (4u32 * 3u32) + (4u32 * 3u32) + (4u32 * 2u32)
     }
 
     #[inline]
     pub fn vertex_buffer_normals_stride() -> u32 {
-        (4u32 * 3u32) + (4u32 * 2u32)
+        (4u32 * 3u32) + (4u32 * 3u32) + (4u32 * 2u32)
     }
 
     #[inline]
     pub fn vertex_buffer_texture_uv_stride() -> u32 {
-        (4u32 * 3u32) + (4u32 * 2u32)
+        (4u32 * 3u32) + (4u32 * 3u32) + (4u32 * 2u32)
     }
 
     #[inline]
@@ -955,11 +955,8 @@ impl Manager {
                         0,
                         [
                             (0u64, vertex_buffer.buffer() as Arc<dyn BufferTrait>),
-                            (4u64 * 3u64, vertex_buffer.buffer() as Arc<dyn BufferTrait>),
-                            (
-                                4u64 * (3u64 + 3u64),
-                                vertex_buffer.buffer() as Arc<dyn BufferTrait>,
-                            ),
+                            (0u64, vertex_buffer.buffer() as Arc<dyn BufferTrait>),
+                            (0u64, vertex_buffer.buffer() as Arc<dyn BufferTrait>),
                         ]
                         .as_slice(),
                     );

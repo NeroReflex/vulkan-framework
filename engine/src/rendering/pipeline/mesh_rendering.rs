@@ -594,7 +594,11 @@ impl MeshRendering {
                 VertexInputBinding::new(
                     VertexInputRate::PerVertex,
                     Manager::vertex_buffer_texture_uv_stride(),
-                    &[VertexInputAttribute::new(2, (3 * 4) + (2 * 4), AttributeType::Vec2)],
+                    &[VertexInputAttribute::new(
+                        2,
+                        (3 * 4) + (2 * 4),
+                        AttributeType::Vec2,
+                    )],
                 ),
             ]
             .as_slice(),
