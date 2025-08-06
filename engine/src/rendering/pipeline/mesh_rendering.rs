@@ -579,14 +579,14 @@ impl MeshRendering {
             pipeline_layout,
             [VertexInputBinding::new(
                 VertexInputRate::PerVertex,
-                (4u32) + (3u32 + 3u32 + 2u32),
+                /*(4u32) + (3u32 + 3u32 + 2u32)*/ 0,
                 [
                     // vertex position data
                     VertexInputAttribute::new(0, 0, AttributeType::Vec3),
                     // vertex normal data
-                    VertexInputAttribute::new(1, 0, AttributeType::Vec3),
+                    VertexInputAttribute::new(1, 4*3, AttributeType::Vec3),
                     // vertex text coords
-                    VertexInputAttribute::new(2, 0, AttributeType::Vec2),
+                    VertexInputAttribute::new(2, 4*(3+3), AttributeType::Vec2),
                 ]
                 .as_slice(),
             )]
