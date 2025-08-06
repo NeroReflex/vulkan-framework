@@ -99,17 +99,17 @@ pub struct Manager {
 impl Manager {
     #[inline]
     pub fn vertex_buffer_position_stride() -> u32 {
-        (4u32 * 3u32) + (4u32 * 3u32)
+        (4u32 * 3u32) + (4u32 * 2u32)
     }
 
     #[inline]
     pub fn vertex_buffer_normals_stride() -> u32 {
-        (4u32 * 3u32) + (4u32 * 3u32)
+        (4u32 * 3u32) + (4u32 * 2u32)
     }
 
     #[inline]
     pub fn vertex_buffer_texture_uv_stride() -> u32 {
-        (4u32 * 3u32) + (4u32 * 3u32)
+        (4u32 * 3u32) + (4u32 * 2u32)
     }
 
     #[inline]
