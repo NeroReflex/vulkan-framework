@@ -7,9 +7,10 @@ use crate::{
     buffer::{AllocatedBuffer, Buffer, BufferTrait, BufferUsage, ConcreteBufferDescriptor},
     device::DeviceOwned,
     instance::InstanceOwned,
-    memory_heap::MemoryHeapOwned,
-    memory_pool::MemoryPool,
-    prelude::{FrameworkError, VulkanError, VulkanResult},
+    memory_heap::{MemoryHostVisibility, MemoryType},
+    memory_management::MemoryManagerTrait,
+    memory_pool::{MemoryPoolBacked, MemoryPoolFeatures},
+    prelude::{VulkanError, VulkanResult},
     queue_family::QueueFamily,
 };
 
@@ -49,57 +50,95 @@ impl TopLevelBLASGroupDecl {
 pub struct TopLevelAccelerationStructureInstanceBuffer {
     buffer: Arc<AllocatedBuffer>,
     buffer_device_addr: u64,
+
+    blas_decl: TopLevelBLASGroupDecl,
+    max_instances: u32,
 }
 
 impl TopLevelAccelerationStructureInstanceBuffer {
-    pub fn new(
-        memory_pool: Arc<MemoryPool>,
-        usage: BufferUsage,
-        max_instances: u32,
-        sharing: Option<&[std::sync::Weak<QueueFamily>]>,
-        debug_name: &Option<&str>,
-    ) -> VulkanResult<Arc<Self>> {
-        let device = memory_pool.get_parent_memory_heap().get_parent_device();
-
-        // TODO: change index buffer sizes
-        let instance_buffer_debug_name = debug_name.map(|name| format!("{name}_instance_buffer"));
-        let instance_buffer = Buffer::new(
-            device.clone(),
-            ConcreteBufferDescriptor::new(
-                BufferUsage::from(
-                    <BufferUsage as Into<ash::vk::BufferUsageFlags>>::into(usage).as_raw() |
-                    (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
-                        //| ash::vk::BufferUsageFlags::STORAGE_BUFFER
-                        | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
-                        .as_raw(),
-                ),
-                (core::mem::size_of::<ash::vk::AccelerationStructureInstanceKHR>() as u64)
-                    * (max_instances as u64),
-            ),
-            sharing,
-            match &instance_buffer_debug_name {
-                Some(name) => Some(name.as_str()),
-                None => None,
-            },
-        )?;
-
-        let buffer = AllocatedBuffer::new(memory_pool.clone(), instance_buffer)?;
-
-        let info = ash::vk::BufferDeviceAddressInfo::default().buffer(buffer.ash_handle());
-        let buffer_device_addr = unsafe { device.ash_handle().get_buffer_device_address(&info) };
-
-        Ok(Arc::new(Self {
-            buffer,
-            buffer_device_addr,
-        }))
+    #[inline(always)]
+    fn size_from_definition(blas_decl: &TopLevelBLASGroupDecl, max_instances: u32) -> u64 {
+        // TODO: if array_of_pointers act accordingly
+        (core::mem::size_of::<ash::vk::AccelerationStructureInstanceKHR>() as u64)
+            * (max_instances as u64)
     }
 
-    #[inline]
+    #[inline(always)]
+    pub fn template(
+        blas_decl: &TopLevelBLASGroupDecl,
+        max_instances: u32,
+        usage: BufferUsage,
+    ) -> ConcreteBufferDescriptor {
+        ConcreteBufferDescriptor::new(
+            BufferUsage::from(
+                <BufferUsage as Into<ash::vk::BufferUsageFlags>>::into(usage).as_raw()
+                    | (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
+                    //| ash::vk::BufferUsageFlags::STORAGE_BUFFER
+                    | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
+                        .as_raw(),
+            ),
+            Self::size_from_definition(blas_decl, max_instances),
+        )
+    }
+
+    pub fn new(
+        blas_decl: TopLevelBLASGroupDecl,
+        max_instances: u32,
+        buffer: Arc<AllocatedBuffer>,
+    ) -> VulkanResult<Self> {
+        // Check if the transform buffer is suitable to be used as such
+        {
+            let usage = buffer.buffer().descriptor().ash_usage();
+            if !buffer
+                .get_backing_memory_pool()
+                .features()
+                .device_addressable()
+            {
+                panic!("Buffer used as an acceleration structure instance buffer was created from a memory pool that is not device addressable");
+            } else if !usage.contains(
+                ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR,
+            ) {
+                panic!("Buffer used as an acceleration structure instance buffer was not created with ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR");
+            } else if !usage.contains(ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS) {
+                panic!("Buffer used as an acceleration structure instance buffer was not created with SHADER_DEVICE_ADDRESS");
+            } else if buffer.size() < Self::size_from_definition(&blas_decl, max_instances) {
+                panic!("Buffer used as an acceleration structure instance buffer is too small");
+            }
+        }
+
+        let info = ash::vk::BufferDeviceAddressInfo::default().buffer(buffer.ash_handle());
+        let buffer_device_addr = unsafe {
+            buffer
+                .get_parent_device()
+                .ash_handle()
+                .get_buffer_device_address(&info)
+        };
+
+        Ok(Self {
+            buffer,
+            buffer_device_addr,
+
+            blas_decl,
+            max_instances,
+        })
+    }
+
+    #[inline(always)]
+    pub fn max_instances(&self) -> u32 {
+        self.max_instances.to_owned()
+    }
+
+    #[inline(always)]
+    pub fn blas_decl(&self) -> &TopLevelBLASGroupDecl {
+        &self.blas_decl
+    }
+
+    #[inline(always)]
     pub fn buffer(&self) -> Arc<AllocatedBuffer> {
         self.buffer.clone()
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn buffer_device_addr(&self) -> u64 {
         self.buffer_device_addr.to_owned()
     }
@@ -115,7 +154,7 @@ pub struct TopLevelAccelerationStructure {
     buffer: Arc<dyn BufferTrait>,
     buffer_device_addr: u64,
 
-    instance_buffer: Arc<TopLevelAccelerationStructureInstanceBuffer>,
+    instance_buffer: TopLevelAccelerationStructureInstanceBuffer,
 
     allowed_building_devices: AllowedBuildingDevice,
 
@@ -144,7 +183,7 @@ impl Drop for TopLevelAccelerationStructure {
 impl TopLevelAccelerationStructure {
     pub(crate) fn static_ash_geometry<'a>(
         blas_decl: &[&'a TopLevelBLASGroupDecl],
-        instance_buffer: Arc<TopLevelAccelerationStructureInstanceBuffer>,
+        instance_buffer: &TopLevelAccelerationStructureInstanceBuffer,
     ) -> smallvec::SmallVec<[ash::vk::AccelerationStructureGeometryKHR<'a>; 1]> {
         blas_decl
             .iter()
@@ -186,7 +225,7 @@ impl TopLevelAccelerationStructure {
         allowed_building_devices: AllowedBuildingDevice,
         blas_decl: &[&TopLevelBLASGroupDecl],
         max_primitives: u32,
-        instance_buffer: Arc<TopLevelAccelerationStructureInstanceBuffer>,
+        instance_buffer: &TopLevelAccelerationStructureInstanceBuffer,
     ) -> VulkanResult<u64> {
         let device = instance_buffer.buffer().get_parent_device();
 
@@ -232,7 +271,7 @@ impl TopLevelAccelerationStructure {
         allowed_building_devices: AllowedBuildingDevice,
         blas_decl: &[&TopLevelBLASGroupDecl],
         max_primitives: u32,
-        instance_buffer: Arc<TopLevelAccelerationStructureInstanceBuffer>,
+        instance_buffer: &TopLevelAccelerationStructureInstanceBuffer,
     ) -> VulkanResult<u64> {
         let device = instance_buffer.buffer().get_parent_device();
 
@@ -301,20 +340,59 @@ impl TopLevelAccelerationStructure {
     }
 
     #[inline]
-    pub fn instance_buffer(&self) -> Arc<TopLevelAccelerationStructureInstanceBuffer> {
-        self.instance_buffer.clone()
+    pub fn instance_buffer(&self) -> &TopLevelAccelerationStructureInstanceBuffer {
+        &self.instance_buffer
+    }
+
+    fn create_tlas_buffer(
+        memory_manager: &mut dyn MemoryManagerTrait,
+        buffer_size: u64,
+        sharing: Option<&[std::sync::Weak<QueueFamily>]>,
+        debug_name: &Option<&str>,
+    ) -> VulkanResult<(Arc<AllocatedBuffer>, u64)> {
+        let device = memory_manager.get_parent_device();
+
+        // TODO: change index buffer sizes
+        let tlas_buffer_debug_name = debug_name.map(|name| format!("{name}_tlas_buffer"));
+        let tlas_buffer = Buffer::new(
+            device.clone(),
+            ConcreteBufferDescriptor::new(
+                BufferUsage::from(
+                    (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
+                        | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
+                        .as_raw(),
+                ),
+                buffer_size,
+            ),
+            sharing,
+            match &tlas_buffer_debug_name {
+                Some(name) => Some(name.as_str()),
+                None => None,
+            },
+        )?;
+
+        let buffer = memory_manager.allocate_resources(
+            &MemoryType::DeviceLocal(Some(MemoryHostVisibility::visible(false))),
+            &MemoryPoolFeatures::new(true),
+            vec![tlas_buffer.into()],
+            &[],
+        )?[0]
+            .buffer();
+
+        let info = ash::vk::BufferDeviceAddressInfo::default().buffer(buffer.ash_handle());
+        let buffer_device_addr = unsafe { device.ash_handle().get_buffer_device_address(&info) };
+
+        Ok((buffer, buffer_device_addr))
     }
 
     pub fn new(
-        memory_pool: Arc<MemoryPool>,
+        memory_manager: &mut dyn MemoryManagerTrait,
         allowed_building_devices: AllowedBuildingDevice,
-        blas_decl: TopLevelBLASGroupDecl,
-        max_instances: u32,
-        instance_buffer_usage: BufferUsage,
+        instance_buffer: TopLevelAccelerationStructureInstanceBuffer,
         sharing: Option<&[std::sync::Weak<QueueFamily>]>,
         debug_name: Option<&str>,
     ) -> VulkanResult<Arc<Self>> {
-        let device = memory_pool.get_parent_memory_heap().get_parent_device();
+        let device = memory_manager.get_parent_device();
 
         let Some(as_ext) = device.ash_ext_acceleration_structure_khr() else {
             return Err(VulkanError::MissingExtension(String::from(
@@ -322,58 +400,25 @@ impl TopLevelAccelerationStructure {
             )));
         };
 
-        if !memory_pool.features().device_addressable() {
-            return Err(VulkanError::Framework(
-                FrameworkError::MemoryPoolNotAddressable,
-            ));
-        }
+        let blas_decl = instance_buffer.blas_decl();
+        let max_instances = instance_buffer.max_instances();
 
-        let instance_buffer = TopLevelAccelerationStructureInstanceBuffer::new(
-            memory_pool.clone(),
-            instance_buffer_usage,
-            max_instances,
-            sharing,
-            &debug_name,
-        )?;
-
-        let tlas_mix_buffer_size = TopLevelAccelerationStructure::query_minimum_buffer_size(
+        let tlas_min_buffer_size = TopLevelAccelerationStructure::query_minimum_buffer_size(
             allowed_building_devices,
-            &[&blas_decl],
+            &[blas_decl],
             max_instances,
-            instance_buffer.clone(),
+            &instance_buffer,
         )?;
 
         let build_scratch_buffer_size = Self::query_minimum_build_scratch_buffer_size(
             allowed_building_devices,
-            &[&blas_decl],
+            &[blas_decl],
             max_instances,
-            instance_buffer.clone(),
+            &instance_buffer,
         )?;
 
-        let tlas_buffer_debug_name = debug_name.map(|name| format!("{name}_tlas_buffer"));
-        let buffer = AllocatedBuffer::new(
-            memory_pool.clone(),
-            Buffer::new(
-                device.clone(),
-                ConcreteBufferDescriptor::new(
-                    BufferUsage::from(
-                        (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
-                            | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
-                            .as_raw(),
-                    ),
-                    tlas_mix_buffer_size,
-                ),
-                None,
-                match &tlas_buffer_debug_name {
-                    Some(name) => Some(name.as_str()),
-                    None => None,
-                },
-            )?,
-        )?;
-
-        let info = ash::vk::BufferDeviceAddressInfo::default().buffer(buffer.ash_handle());
-
-        let buffer_device_addr = unsafe { device.ash_handle().get_buffer_device_address(&info) };
+        let (buffer, buffer_device_addr) =
+            Self::create_tlas_buffer(memory_manager, tlas_min_buffer_size, sharing, &debug_name)?;
 
         // If deviceAddress is not zero, createFlags must include VK_ACCELERATION_STRUCTURE_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT_KHR
         let create_info = ash::vk::AccelerationStructureCreateInfoKHR::default()
@@ -391,10 +436,10 @@ impl TopLevelAccelerationStructure {
             )
         }?;
 
-        let blas_decl = smallvec::smallvec![blas_decl];
+        let blas_decl = smallvec::smallvec![blas_decl.clone()];
 
         let device_build_scratch_buffer =
-            DeviceScratchBuffer::new(memory_pool, build_scratch_buffer_size)?;
+            DeviceScratchBuffer::new(memory_manager, build_scratch_buffer_size)?;
 
         Ok(Arc::new(Self {
             blas_decl,

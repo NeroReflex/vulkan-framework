@@ -5,15 +5,19 @@ use inline_spirv::*;
 use vulkan_framework::{
     acceleration_structure::{
         bottom_level::{
-            BottomLevelAccelerationStructure, BottomLevelIndexBufferSpecifier,
-            BottomLevelTrianglesGroupDecl, BottomLevelVertexBufferSpecifier,
+            BottomLevelAccelerationStructure, BottomLevelAccelerationStructureIndexBuffer,
+            BottomLevelAccelerationStructureTransformBuffer,
+            BottomLevelAccelerationStructureVertexBuffer, BottomLevelTrianglesGroupDecl,
             BottomLevelVerticesTopologyDecl,
         },
-        top_level::{TopLevelAccelerationStructure, TopLevelBLASGroupDecl},
+        top_level::{
+            TopLevelAccelerationStructure, TopLevelAccelerationStructureInstanceBuffer,
+            TopLevelBLASGroupDecl,
+        },
         AllowedBuildingDevice, VertexIndexing,
     },
     binding_tables::{required_memory_type, RaytracingBindingTables},
-    buffer::BufferUsage,
+    buffer::{Buffer, BufferUsage},
     command_buffer::{ClearValues, ColorClearValues, CommandBufferRecorder, PrimaryCommandBuffer},
     command_pool::CommandPool,
     descriptor_pool::DescriptorPoolSizesAcceletarionStructureKHR,
@@ -28,17 +32,18 @@ use vulkan_framework::{
         PolygonMode, Rasterizer, Scissor, Viewport,
     },
     image::{
-        CommonImageFormat, ConcreteImageDescriptor, Image2DDimensions, Image3DDimensions,
-        ImageDimensions, ImageFlags, ImageFormat, ImageLayout, ImageLayoutSwapchainKHR,
-        ImageMultisampling, ImageSubresourceRange, ImageTiling, ImageTrait, ImageUsage, ImageUseAs,
+        AllocatedImage, CommonImageFormat, ConcreteImageDescriptor, Image2DDimensions,
+        Image3DDimensions, ImageDimensions, ImageFlags, ImageFormat, ImageLayout,
+        ImageLayoutSwapchainKHR, ImageMultisampling, ImageSubresourceRange, ImageTiling,
+        ImageTrait, ImageUsage, ImageUseAs,
     },
     image_view::ImageView,
     instance::*,
     memory_allocator::*,
     memory_barriers::{ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
     memory_heap::*,
+    memory_management::{DefaultMemoryManager, MemoryManagerTrait},
     memory_pool::{MemoryPool, MemoryPoolBacked, MemoryPoolFeature, MemoryPoolFeatures},
-    memory_requiring::MemoryRequiring,
     pipeline_layout::PipelineLayout,
     pipeline_stage::{PipelineStage, PipelineStageRayTracingPipelineKHR, PipelineStages},
     queue::*,
@@ -360,6 +365,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap();
         println!("Swapchain created!");
 
+        let mut mem_manager = DefaultMemoryManager::new(dev.clone());
+
         let rt_image_handles = (0..swapchain_images_count)
             .map(|_idx| {
                 vulkan_framework::image::Image::new(
@@ -380,32 +387,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Some("Test Image"),
                 )
                 .unwrap()
+                .into()
             })
             .collect::<Vec<_>>();
-
-        let memory_required: u64 = rt_image_handles
-            .iter()
-            .map(|obj| {
-                obj.memory_requirements().size() + (2u64 * obj.memory_requirements().alignment())
-            })
-            .sum();
-
-        let memory_required = (4096 * 4) + memory_required;
-
-        let device_local_memory_heap = MemoryHeap::new(
-            dev.clone(),
-            ConcreteMemoryHeapDescriptor::new(MemoryType::DeviceLocal(None), memory_required),
-            MemoryRequirements::try_from(rt_image_handles.as_slice()).unwrap(),
-        )
-        .unwrap();
-        println!("Memory heap created! <3");
-
-        let device_local_default_allocator = MemoryPool::new(
-            device_local_memory_heap,
-            Arc::new(DefaultAllocator::new(memory_required)),
-            MemoryPoolFeatures::from([].as_slice()),
-        )
-        .unwrap();
 
         let raytracing_memory_heap = MemoryHeap::new(
             dev.clone(),
@@ -422,16 +406,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .unwrap();
 
-        let rt_images = rt_image_handles
+        let rt_images: Vec<Arc<AllocatedImage>> = mem_manager
+            .allocate_resources(
+                &MemoryType::DeviceLocal(None),
+                &MemoryPoolFeatures::from([].as_slice()),
+                rt_image_handles,
+                &[],
+            )?
             .into_iter()
-            .map(|rt_image_handle| {
-                vulkan_framework::image::AllocatedImage::new(
-                    device_local_default_allocator.clone(),
-                    rt_image_handle,
-                )
-                .unwrap()
-            })
-            .collect::<Vec<_>>();
+            .map(|r| r.image())
+            .collect();
 
         let rt_image_views = rt_images
             .iter()
@@ -728,25 +712,72 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let vertex_stride = 0u64;
         let vertex_count = 3u64;
+
+        let vertices_topology = BottomLevelVerticesTopologyDecl::new(
+            vertex_count as u32 * 3u32,
+            AttributeType::Vec3,
+            vertex_stride,
+        );
+
+        let triangles_decl = BottomLevelTrianglesGroupDecl::new(
+            VertexIndexing::UInt32,
+            (vertex_count / 3u64) as u32,
+        );
+
+        let vertex_buffer_backing = Buffer::new(
+            dev.clone(),
+            BottomLevelAccelerationStructureVertexBuffer::template(
+                &vertices_topology,
+                BufferUsage::default(),
+            ),
+            None,
+            Some("blas_vertex_buffer"),
+        )?;
+        let index_buffer_backing = Buffer::new(
+            dev.clone(),
+            BottomLevelAccelerationStructureIndexBuffer::template(
+                &triangles_decl,
+                BufferUsage::default(),
+            ),
+            None,
+            Some("blas_index_buffer"),
+        )?;
+        let transform_buffer_backing = Buffer::new(
+            dev.clone(),
+            BottomLevelAccelerationStructureTransformBuffer::template(BufferUsage::default()),
+            None,
+            Some("blas_transform_buffer"),
+        )?;
+
+        let allocated_buffers = mem_manager.allocate_resources(
+            &required_memory_type(),
+            &MemoryPoolFeatures::from([MemoryPoolFeature::DeviceAddressable].as_slice()),
+            vec![
+                vertex_buffer_backing.into(),
+                index_buffer_backing.into(),
+                transform_buffer_backing.into(),
+            ],
+            &[],
+        )?;
+        assert_eq!(allocated_buffers.len(), 3);
+
+        let vertex_buffer = BottomLevelAccelerationStructureVertexBuffer::new(
+            vertices_topology,
+            allocated_buffers[0].buffer(),
+        )?;
+        let index_buffer = BottomLevelAccelerationStructureIndexBuffer::new(
+            triangles_decl,
+            allocated_buffers[1].buffer(),
+        )?;
+        let transform_buffer =
+            BottomLevelAccelerationStructureTransformBuffer::new(allocated_buffers[2].buffer())?;
+
         let blas = BottomLevelAccelerationStructure::new(
-            raytracing_allocator.clone(),
+            &mut mem_manager,
             AllowedBuildingDevice::DeviceOnly,
-            BottomLevelVertexBufferSpecifier::Allocate(
-                BufferUsage::default(),
-                BottomLevelVerticesTopologyDecl::new(
-                    vertex_count as u32 * 3u32,
-                    AttributeType::Vec3,
-                    vertex_stride,
-                ),
-            ),
-            BottomLevelIndexBufferSpecifier::Allocate(
-                BufferUsage::default(),
-                BottomLevelTrianglesGroupDecl::new(
-                    VertexIndexing::UInt32,
-                    (vertex_count / 3u64) as u32,
-                ),
-            ),
-            BufferUsage::default(),
+            vertex_buffer,
+            index_buffer,
+            transform_buffer,
             None,
             Some("my_blas"),
         )
@@ -756,19 +787,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let transform_data = [vulkan_framework::ash::vk::TransformMatrixKHR {
                 matrix: TRANSFORM_DATA[0],
             }];
-            raytracing_allocator
+            blas.index_buffer()
+                .buffer()
+                .get_backing_memory_pool()
                 .write_raw_data(
                     blas.index_buffer().buffer().allocation_offset(),
                     VERTEX_INDEX[0].as_slice(),
                 )
                 .unwrap();
-            raytracing_allocator
+            blas.vertex_buffer()
+                .buffer()
+                .get_backing_memory_pool()
                 .write_raw_data(
                     blas.vertex_buffer().buffer().allocation_offset(),
                     VERTEX_DATA[0].as_slice(),
                 )
                 .unwrap();
-            raytracing_allocator
+            blas.transform_buffer()
+                .buffer()
+                .get_backing_memory_pool()
                 .write_raw_data(
                     blas.transform_buffer().buffer().allocation_offset(),
                     &[transform_data],
@@ -776,12 +813,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .unwrap();
         }
 
+        let blas_decl = TopLevelBLASGroupDecl::new();
+        let max_instances = 2;
+
+        let instances_buffer_backing = Buffer::new(
+            dev.clone(),
+            TopLevelAccelerationStructureInstanceBuffer::template(
+                &blas_decl,
+                max_instances,
+                BufferUsage::default(),
+            ),
+            None,
+            Some("tlas_instance_buffer"),
+        )?;
+
+        let allocated_buffers = mem_manager.allocate_resources(
+            &required_memory_type(),
+            &MemoryPoolFeatures::from([MemoryPoolFeature::DeviceAddressable].as_slice()),
+            vec![instances_buffer_backing.into()],
+            &[],
+        )?;
+        assert_eq!(allocated_buffers.len(), 1);
+
+        let instance_buffer = TopLevelAccelerationStructureInstanceBuffer::new(
+            blas_decl,
+            max_instances,
+            allocated_buffers[0].buffer(),
+        )?;
+
         let tlas = TopLevelAccelerationStructure::new(
-            raytracing_allocator.clone(),
+            &mut mem_manager,
             AllowedBuildingDevice::DeviceOnly,
-            TopLevelBLASGroupDecl::new(),
-            2,
-            BufferUsage::default(),
+            instance_buffer,
             None,
             Some("tlas"),
         )
@@ -820,7 +883,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         },
                 }
             ];
-            raytracing_allocator
+            tlas.instance_buffer()
+                .buffer()
+                .get_backing_memory_pool()
                 .write_raw_data(
                     tlas.instance_buffer().buffer().allocation_offset(),
                     accel_structure_instances.as_slice(),

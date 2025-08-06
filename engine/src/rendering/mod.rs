@@ -1,4 +1,3 @@
-pub mod memory;
 pub mod pipeline;
 pub mod rendering_dimensions;
 pub mod resources;

@@ -9,8 +9,9 @@ use std::sync::Mutex;
 use crate::{
     buffer::{AllocatedBuffer, Buffer, BufferTrait, BufferUsage, ConcreteBufferDescriptor},
     device::{Device, DeviceOwned},
-    memory_heap::MemoryHeapOwned,
-    memory_pool::MemoryPool,
+    memory_heap::{MemoryHeapOwned, MemoryHostVisibility, MemoryType},
+    memory_management::MemoryManagerTrait,
+    memory_pool::{MemoryPool, MemoryPoolFeatures},
     prelude::VulkanResult,
 };
 
@@ -45,31 +46,33 @@ impl DeviceScratchBuffer {
         }
     }
 
-    pub fn new(memory_pool: Arc<MemoryPool>, size: u64) -> VulkanResult<Arc<Self>> {
-        let buffer = AllocatedBuffer::new(
-            memory_pool.clone(),
-            Buffer::new(
-                memory_pool
-                    .get_parent_memory_heap()
-                    .get_parent_device()
-                    .clone(),
-                ConcreteBufferDescriptor::new(
-                    BufferUsage::from(
-                        (ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
-                            | ash::vk::BufferUsageFlags::STORAGE_BUFFER)
-                            .as_raw(),
-                    ),
-                    size,
+    pub fn new(memory_manager: &mut dyn MemoryManagerTrait, size: u64) -> VulkanResult<Arc<Self>> {
+        let backing_buffer = Buffer::new(
+            memory_manager.get_parent_device(),
+            ConcreteBufferDescriptor::new(
+                BufferUsage::from(
+                    (ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                        | ash::vk::BufferUsageFlags::STORAGE_BUFFER)
+                        .as_raw(),
                 ),
-                None,
-                None,
-            )?,
+                size,
+            ),
+            None,
+            None,
         )?;
+
+        let buffer = memory_manager.allocate_resources(
+            &MemoryType::DeviceLocal(Some(MemoryHostVisibility::visible(false))),
+            &MemoryPoolFeatures::new(true),
+            vec![backing_buffer.into()],
+            &[],
+        )?[0]
+            .buffer();
+
         let info = ash::vk::BufferDeviceAddressInfo::default().buffer(buffer.ash_handle());
 
         let buffer_device_addr = unsafe {
-            memory_pool
-                .get_parent_memory_heap()
+            memory_manager
                 .get_parent_device()
                 .ash_handle()
                 .get_buffer_device_address(&info)

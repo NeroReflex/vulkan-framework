@@ -1,6 +1,9 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicU64, Ordering},
+use std::{
+    ops::DerefMut,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
 use vulkan_framework::{
@@ -13,18 +16,16 @@ use vulkan_framework::{
     descriptor_set_layout::DescriptorSetLayout,
     device::{Device, DeviceOwned},
     image::{
-        AllocatedImage, CommonImageFormat, ConcreteImageDescriptor, Image, Image2DDimensions,
-        ImageAspect, ImageAspects, ImageFlags, ImageFormat, ImageLayout, ImageMultisampling,
+        CommonImageFormat, ConcreteImageDescriptor, Image, Image2DDimensions, ImageAspect,
+        ImageAspects, ImageFlags, ImageFormat, ImageLayout, ImageMultisampling,
         ImageSubresourceLayers, ImageSubresourceRange, ImageTiling, ImageTrait, ImageUsage,
         ImageUseAs,
     },
     image_view::ImageView,
-    memory_allocator::DefaultAllocator,
     memory_barriers::{BufferMemoryBarrier, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
-    memory_heap::{
-        ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryHeapOwned, MemoryRequirements, MemoryType,
-    },
-    memory_pool::{MemoryPool, MemoryPoolFeatures},
+    memory_heap::MemoryType,
+    memory_management::{MemoryManagementTag, MemoryManagerTrait},
+    memory_pool::MemoryPoolFeatures,
     pipeline_stage::{PipelineStage, PipelineStages},
     queue::Queue,
     queue_family::{QueueFamily, QueueFamilyOwned},
@@ -49,7 +50,7 @@ pub struct TextureManager {
     descriptor_set_layout: Arc<DescriptorSetLayout>,
     descriptor_sets: DescriptorSetsType,
 
-    memory_pool: Arc<MemoryPool>,
+    memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
 
     stub_image: u32,
     textures: LoadableResourcesCollection<Arc<ImageView>>,
@@ -57,12 +58,6 @@ pub struct TextureManager {
 }
 
 impl TextureManager {
-    #[inline]
-    fn texture_memory_pool_size(max_textures: u32, frames_in_flight: u32) -> u64 {
-        (1024u64 * 1024u64 * 128u64)
-            + ((1024u64 * 512u64 * (max_textures as u64)) * (frames_in_flight as u64))
-    }
-
     #[inline]
     pub fn descriptor_set_layout(&self) -> Arc<DescriptorSetLayout> {
         self.descriptor_set_layout.clone()
@@ -148,6 +143,7 @@ impl TextureManager {
 
     pub fn new(
         queue_family: Arc<QueueFamily>,
+        memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
         stub_image_data: Arc<dyn BufferTrait>,
         frames_in_flight: u32,
         debug_name: String,
@@ -201,20 +197,7 @@ impl TextureManager {
             Image2DDimensions::new(400, 400),
             1,
             String::from("texture_empty_image"),
-        )?;
-
-        let total_size = Self::texture_memory_pool_size(MAX_TEXTURES, frames_in_flight);
-
-        let memory_heap = MemoryHeap::new(
-            device.clone(),
-            ConcreteMemoryHeapDescriptor::new(MemoryType::DeviceLocal(None), total_size),
-            MemoryRequirements::from(&stub_image),
-        )?;
-
-        let memory_pool = MemoryPool::new(
-            memory_heap,
-            Arc::new(DefaultAllocator::new(total_size)),
-            MemoryPoolFeatures::from([].as_slice()),
+            0,
         )?;
 
         let mut textures = LoadableResourcesCollection::new(
@@ -231,9 +214,10 @@ impl TextureManager {
             1.0,
         )?;
 
+        let mut allocator = memory_manager.lock().unwrap();
         let Some(stub_image) = textures.load(
             queue.clone(),
-            || Self::allocate_image(memory_pool.clone(), stub_image, debug_name.clone()),
+            |_| Self::allocate_image(allocator.deref_mut(), stub_image, debug_name.clone()),
             |recorder, _, image_view| {
                 Self::setup_load_image_operation(
                     recorder,
@@ -248,8 +232,7 @@ impl TextureManager {
                 super::ResourceError::NoTextureSlotAvailable,
             ));
         };
-
-        let current_status = 1u64;
+        drop(allocator);
 
         Ok(Self {
             debug_name,
@@ -259,7 +242,7 @@ impl TextureManager {
             descriptor_set_layout,
             descriptor_sets,
 
-            memory_pool,
+            memory_manager,
 
             stub_image,
             textures,
@@ -268,16 +251,22 @@ impl TextureManager {
     }
 
     fn create_and_allocate_image(
-        memory_pool: Arc<MemoryPool>,
+        index: usize,
+        memory_manager: &mut dyn MemoryManagerTrait,
         format: ImageFormat,
         dimensions: Image2DDimensions,
         mip_levels: u32,
         debug_name: String,
     ) -> RenderingResult<Arc<ImageView>> {
-        let device = memory_pool.get_parent_memory_heap().get_parent_device();
-        let texture =
-            Self::create_image(device, format, dimensions, mip_levels, debug_name.clone())?;
-        Self::allocate_image(memory_pool, texture, debug_name)
+        let texture = Self::create_image(
+            memory_manager.get_parent_device(),
+            format,
+            dimensions,
+            mip_levels,
+            debug_name.clone(),
+            index,
+        )?;
+        Self::allocate_image(memory_manager, texture, debug_name)
     }
 
     fn create_image(
@@ -286,8 +275,9 @@ impl TextureManager {
         dimensions: Image2DDimensions,
         mip_levels: u32,
         debug_name: String,
+        index: usize,
     ) -> RenderingResult<Image> {
-        let texture_name = format!("{debug_name}.texture[...].imageview");
+        let texture_name = format!("{debug_name}.texture[{index}].imageview");
         let texture = Image::new(
             device.clone(),
             ConcreteImageDescriptor::new(
@@ -308,11 +298,24 @@ impl TextureManager {
     }
 
     fn allocate_image(
-        memory_pool: Arc<MemoryPool>,
+        allocator: &mut dyn MemoryManagerTrait,
         texture: Image,
         debug_name: String,
     ) -> RenderingResult<Arc<ImageView>> {
-        let texture = AllocatedImage::new(memory_pool, texture)?;
+        let texture = {
+            let allocation_result = allocator.allocate_resources(
+                &MemoryType::DeviceLocal(None),
+                &MemoryPoolFeatures::from([].as_slice()),
+                vec![texture.into()],
+                [MemoryManagementTag::Size(
+                    (1024u64 * 1024u64 * 128u64) + (1024u64 * 512u64 * (MAX_TEXTURES as u64)),
+                )]
+                .as_slice(),
+            )?;
+            assert_eq!(allocation_result.len(), 1);
+            allocation_result[0].image()
+        };
+
         let texture_imageview_name = format!("{debug_name}.texture[...].imageview");
         let texture_imageview = ImageView::new(
             texture.clone(),
@@ -400,11 +403,13 @@ impl TextureManager {
         image_data: Arc<dyn BufferTrait>,
     ) -> RenderingResult<u32> {
         let queue = self.queue.clone();
+        let mut allocator = self.memory_manager.lock().unwrap();
         let Some(texture_index) = self.textures.load(
             queue.clone(),
-            || {
+            |index| {
                 Self::create_and_allocate_image(
-                    self.memory_pool.clone(),
+                    index,
+                    allocator.deref_mut(),
                     image_format,
                     image_dimenstions,
                     image_mip_levels,

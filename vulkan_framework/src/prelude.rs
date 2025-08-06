@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::memory_requiring::UnallocatedResource;
+use crate::memory_management::UnallocatedResource;
 
 #[derive(Debug, Error)]
 pub enum FrameworkError {

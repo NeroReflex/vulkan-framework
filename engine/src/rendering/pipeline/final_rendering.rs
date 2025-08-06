@@ -28,7 +28,7 @@ use vulkan_framework::{
     memory_barriers::{ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
     memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryRequirements, MemoryType},
     memory_pool::{MemoryPool, MemoryPoolFeatures},
-    memory_requiring::MemoryRequiring,
+    memory_requiring::AllocationRequiring,
     pipeline_layout::{PipelineLayout, PipelineLayoutDependant},
     pipeline_stage::{PipelineStage, PipelineStages},
     queue_family::QueueFamily,
@@ -147,7 +147,9 @@ impl FinalRendering {
 
         let memory_required: u64 = image_handles
             .iter()
-            .map(|obj| obj.memory_requirements().size() + obj.memory_requirements().alignment())
+            .map(|obj| {
+                obj.allocation_requirements().size() + obj.allocation_requirements().alignment()
+            })
             .sum();
 
         let allocator = DefaultAllocator::with_blocksize(

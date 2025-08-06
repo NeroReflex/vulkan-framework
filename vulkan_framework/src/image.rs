@@ -5,8 +5,9 @@ use crate::{
     instance::InstanceOwned,
     memory_allocator::SuccessfulAllocation,
     memory_heap::MemoryHeapOwned,
+    memory_management::UnallocatedResource,
     memory_pool::{MemoryPool, MemoryPoolBacked},
-    memory_requiring::{MemoryRequirements, MemoryRequiring, UnallocatedResource},
+    memory_requiring::{AllocationRequirements, AllocationRequiring},
     prelude::{FrameworkError, VulkanError, VulkanResult},
     queue_family::QueueFamily,
 };
@@ -1012,8 +1013,8 @@ impl Image {
     }
 }
 
-impl MemoryRequiring for Image {
-    fn memory_requirements(&self) -> MemoryRequirements {
+impl AllocationRequiring for Image {
+    fn allocation_requirements(&self) -> AllocationRequirements {
         let requirements_info =
             ash::vk::ImageMemoryRequirementsInfo2::default().image(self.ash_native());
 
@@ -1025,7 +1026,7 @@ impl MemoryRequiring for Image {
                 .get_image_memory_requirements2(&requirements_info, &mut requirements);
         };
 
-        MemoryRequirements::new(
+        AllocationRequirements::new(
             requirements.memory_requirements.memory_type_bits,
             requirements.memory_requirements.size,
             requirements.memory_requirements.alignment,
@@ -1077,7 +1078,7 @@ impl AllocatedImage {
             ));
         }
 
-        let requirments = image.memory_requirements();
+        let requirments = image.allocation_requirements();
 
         if !memory_pool
             .get_parent_memory_heap()

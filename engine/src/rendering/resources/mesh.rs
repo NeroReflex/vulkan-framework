@@ -1,30 +1,20 @@
-use std::sync::Arc;
+use std::{
+    ops::DerefMut,
+    sync::{Arc, Mutex},
+};
 
 use vulkan_framework::{
     acceleration_structure::{
-        AllowedBuildingDevice,
         bottom_level::{
             BottomLevelAccelerationStructure, BottomLevelAccelerationStructureIndexBuffer,
-            BottomLevelAccelerationStructureVertexBuffer, BottomLevelIndexBufferSpecifier,
-            BottomLevelTrianglesGroupDecl, BottomLevelVertexBufferSpecifier,
-            BottomLevelVerticesTopologyDecl,
-        },
-    },
-    binding_tables::required_memory_type,
-    buffer::{BufferSubresourceRange, BufferUsage},
-    command_buffer::CommandBufferRecorder,
-    descriptor_pool::{
+            BottomLevelAccelerationStructureTransformBuffer,
+            BottomLevelAccelerationStructureVertexBuffer, BottomLevelTrianglesGroupDecl,
+            BottomLevelVerticesTopologyDecl, IDENTITY_MATRIX,
+        }, AllowedBuildingDevice
+    }, ash::vk::TransformMatrixKHR, binding_tables::required_memory_type, buffer::{AllocatedBuffer, Buffer, BufferSubresourceRange, BufferTrait, BufferUsage}, command_buffer::CommandBufferRecorder, descriptor_pool::{
         DescriptorPool, DescriptorPoolConcreteDescriptor,
         DescriptorPoolSizesAcceletarionStructureKHR, DescriptorPoolSizesConcreteDescriptor,
-    },
-    device::DeviceOwned,
-    memory_allocator::{DefaultAllocator, MemoryAllocator},
-    memory_barriers::{BufferMemoryBarrier, MemoryAccessAs},
-    memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap},
-    memory_pool::{MemoryPool, MemoryPoolFeature, MemoryPoolFeatures},
-    pipeline_stage::PipelineStage,
-    queue::Queue,
-    queue_family::{QueueFamily, QueueFamilyOwned},
+    }, device::{Device, DeviceOwned}, memory_allocator::{DefaultAllocator, MemoryAllocator}, memory_barriers::{BufferMemoryBarrier, MemoryAccessAs}, memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryHostVisibility, MemoryType}, memory_management::{MemoryManagerTrait, UnallocatedResource}, memory_pool::{MemoryMap, MemoryPool, MemoryPoolBacked, MemoryPoolFeature, MemoryPoolFeatures}, pipeline_stage::PipelineStage, prelude::VulkanResult, queue::Queue, queue_family::{QueueFamily, QueueFamilyOwned}
 };
 
 use crate::rendering::{
@@ -38,9 +28,9 @@ pub struct MeshManager {
 
     queue: Arc<Queue>,
 
-    _descriptor_pool: Arc<DescriptorPool>,
+    memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
 
-    memory_pool: Arc<MemoryPool>,
+    _descriptor_pool: Arc<DescriptorPool>,
 
     //descriptor_sets: smallvec::SmallVec<[Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
     meshes: LoadableResourcesCollection<MeshType>,
@@ -85,6 +75,7 @@ impl MeshManager {
 
     pub fn new(
         queue_family: Arc<QueueFamily>,
+        memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
         frames_in_flight: u32,
         debug_name: String,
     ) -> RenderingResult<Self> {
@@ -123,21 +114,6 @@ impl MeshManager {
             Self::meshes_memory_pool_size(MAX_MESHES, frames_in_flight) / rt_blocksize,
         ));
 
-        let raytracing_memory_heap = MemoryHeap::new(
-            device.clone(),
-            ConcreteMemoryHeapDescriptor::new(
-                required_memory_type(),
-                raytracing_allocator.total_size(),
-            ),
-            Default::default(),
-        )?;
-
-        let memory_pool = MemoryPool::new(
-            raytracing_memory_heap,
-            raytracing_allocator,
-            MemoryPoolFeatures::from([MemoryPoolFeature::DeviceAddressable].as_slice()),
-        )?;
-
         let meshes = LoadableResourcesCollection::new(
             queue_family,
             MAX_MESHES,
@@ -150,7 +126,7 @@ impl MeshManager {
             queue,
             _descriptor_pool: descriptor_pool,
 
-            memory_pool,
+            memory_manager,
 
             meshes,
         })
@@ -158,50 +134,106 @@ impl MeshManager {
 
     pub fn create_vertex_buffer(
         &self,
-        triangles_topology: BottomLevelVerticesTopologyDecl,
+        memory_manager: &mut dyn MemoryManagerTrait,
+        vertices_topology: BottomLevelVerticesTopologyDecl,
         usage: BufferUsage,
         sharing: Option<&[std::sync::Weak<QueueFamily>]>,
-    ) -> RenderingResult<Arc<BottomLevelAccelerationStructureVertexBuffer>> {
-        let vertex_buffer = BottomLevelAccelerationStructureVertexBuffer::new(
-            self.memory_pool.clone(),
-            triangles_topology,
-            usage,
+    ) -> RenderingResult<(BottomLevelVerticesTopologyDecl, Arc<AllocatedBuffer>)> {
+        let descriptor =
+            BottomLevelAccelerationStructureVertexBuffer::template(&vertices_topology, usage);
+
+        let backing_buffer = Buffer::new(
+            memory_manager.get_parent_device(),
+            descriptor,
             sharing,
-            &Option::None,
+            Some(format!("{}", self.debug_name).as_str()),
         )?;
 
-        Ok(vertex_buffer)
+        let buffer = memory_manager.allocate_resources(
+            &MemoryType::DeviceLocal(Some(MemoryHostVisibility::visible(false))),
+            &MemoryPoolFeatures::new(true),
+            vec![UnallocatedResource::Buffer(backing_buffer)],
+            &[],
+        )?;
+
+        Ok((vertices_topology, buffer[0].buffer()))
     }
 
     pub fn create_index_buffer(
         &self,
-        usage: BufferUsage,
+        memory_manager: &mut dyn MemoryManagerTrait,
         triangles_decl: BottomLevelTrianglesGroupDecl,
+        usage: BufferUsage,
         sharing: Option<&[std::sync::Weak<QueueFamily>]>,
-    ) -> RenderingResult<Arc<BottomLevelAccelerationStructureIndexBuffer>> {
-        let vertex_buffer = BottomLevelAccelerationStructureIndexBuffer::new(
-            self.memory_pool.clone(),
-            usage,
-            triangles_decl,
+    ) -> RenderingResult<BottomLevelAccelerationStructureIndexBuffer> {
+        let descriptor =
+            BottomLevelAccelerationStructureIndexBuffer::template(&triangles_decl, usage);
+        let backing_buffer = Buffer::new(
+            memory_manager.get_parent_device(),
+            descriptor,
             sharing,
-            &Option::None,
+            Some(format!("{}", self.debug_name).as_str()),
         )?;
 
-        Ok(vertex_buffer)
+        let buffer = memory_manager.allocate_resources(
+            &MemoryType::DeviceLocal(Some(MemoryHostVisibility::visible(false))),
+            &MemoryPoolFeatures::new(true),
+            vec![UnallocatedResource::Buffer(backing_buffer)],
+            &[],
+        )?;
+
+        Ok(BottomLevelAccelerationStructureIndexBuffer::new(
+            triangles_decl,
+            buffer[0].buffer(),
+        )?)
+    }
+
+    pub fn create_transform_buffer(
+        &self,
+        memory_manager: &mut dyn MemoryManagerTrait,
+        usage: BufferUsage,
+        sharing: Option<&[std::sync::Weak<QueueFamily>]>,
+    ) -> RenderingResult<BottomLevelAccelerationStructureTransformBuffer> {
+        let descriptor = BottomLevelAccelerationStructureTransformBuffer::template(usage);
+        let backing_buffer = Buffer::new(
+            memory_manager.get_parent_device(),
+            descriptor,
+            sharing,
+            Some(format!("{}", self.debug_name).as_str()),
+        )?;
+
+        let buffer = memory_manager.allocate_resources(
+            &MemoryType::DeviceLocal(Some(MemoryHostVisibility::visible(false))),
+            &MemoryPoolFeatures::new(true),
+            vec![UnallocatedResource::Buffer(backing_buffer)],
+            &[],
+        )?;
+
+        let transform_buffer = BottomLevelAccelerationStructureTransformBuffer::new(
+            buffer[0].buffer(),
+        )?;
+
+        let mut mem_map = MemoryMap::new(transform_buffer.buffer().get_backing_memory_pool())?;
+        let transform = mem_map.as_mut_slice_with_size::<TransformMatrixKHR>(transform_buffer.buffer().clone() as Arc<dyn MemoryPoolBacked>, transform_buffer.buffer().size())?;
+        assert_eq!(transform.len(), 1);
+        transform[0] = IDENTITY_MATRIX;
+
+        Ok(transform_buffer)
     }
 
     fn create_blas(
-        memory_pool: Arc<MemoryPool>,
-        vertex_buffer: Arc<BottomLevelAccelerationStructureVertexBuffer>,
-        index_buffer: Arc<BottomLevelAccelerationStructureIndexBuffer>,
+        memory_manager: &mut dyn MemoryManagerTrait,
+        vertex_buffer: BottomLevelAccelerationStructureVertexBuffer,
+        index_buffer: BottomLevelAccelerationStructureIndexBuffer,
+        transform_buffer: BottomLevelAccelerationStructureTransformBuffer,
         debug_name: String,
     ) -> RenderingResult<Arc<BottomLevelAccelerationStructure>> {
         let blas = BottomLevelAccelerationStructure::new(
-            memory_pool,
+            memory_manager,
             AllowedBuildingDevice::DeviceOnly,
-            BottomLevelVertexBufferSpecifier::Preallocated(vertex_buffer),
-            BottomLevelIndexBufferSpecifier::Preallocated(index_buffer),
-            BufferUsage::default(),
+            vertex_buffer,
+            index_buffer,
+            transform_buffer,
             None,
             Some(debug_name.as_str()),
         )?;
@@ -214,8 +246,6 @@ impl MeshManager {
         blas: Arc<BottomLevelAccelerationStructure>,
         queue: Arc<Queue>,
     ) -> RenderingResult<()> {
-        let queue_family = queue.get_parent_queue_family();
-
         // create the blas
         let max_primitives_count = blas.max_primitives_count();
         recorder.build_blas(blas, 0, max_primitives_count, 0, 0);
@@ -225,26 +255,32 @@ impl MeshManager {
 
     pub fn load(
         &mut self,
-        vertex_buffer: Arc<BottomLevelAccelerationStructureVertexBuffer>,
-        index_buffer: Arc<BottomLevelAccelerationStructureIndexBuffer>,
+        vertex_buffer: BottomLevelAccelerationStructureVertexBuffer,
+        index_buffer: BottomLevelAccelerationStructureIndexBuffer,
+        transform_buffer: BottomLevelAccelerationStructureTransformBuffer,
     ) -> RenderingResult<u32> {
         let queue = self.queue.clone();
         let queue_family = queue.get_parent_queue_family();
 
         let vertex_buffer_raw = vertex_buffer.buffer();
-        let vertex_buffer_size = vertex_buffer.size();
+        let vertex_buffer_size = vertex_buffer.buffer().size();
 
         let index_buffer_raw = vertex_buffer.buffer();
-        let index_buffer_size = vertex_buffer.size();
+        let index_buffer_size = vertex_buffer.buffer().size();
 
+        let mut allocator = self.memory_manager.lock().unwrap();
+
+        let debug_name = self.debug_name.clone();
         let Some(blas_index) = self.meshes.load(
             queue.clone(),
-            || {
+            move |index| {
+                let debug_name = format!("{debug_name}.blas[{index}]");
                 Self::create_blas(
-                    self.memory_pool.clone(),
+                    allocator.deref_mut(),
                     vertex_buffer,
                     index_buffer,
-                    self.debug_name.clone(),
+                    transform_buffer,
+                    debug_name,
                 )
             },
             |recorder, _, blas| {

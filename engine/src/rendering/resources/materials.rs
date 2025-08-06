@@ -18,7 +18,7 @@ use vulkan_framework::{
     memory_barriers::{BufferMemoryBarrier, MemoryAccessAs},
     memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryRequirements, MemoryType},
     memory_pool::{MemoryPool, MemoryPoolFeatures},
-    memory_requiring::MemoryRequiring,
+    memory_requiring::AllocationRequiring,
     pipeline_stage::PipelineStage,
     queue::Queue,
     queue_family::{QueueFamily, QueueFamilyOwned},
@@ -233,11 +233,11 @@ impl MaterialManager {
             MemoryRequirements::try_from(
                 materials_unallocated_buffer
                     .iter()
-                    .map(|m| m as &dyn MemoryRequiring)
+                    .map(|m| m as &dyn AllocationRequiring)
                     .chain(
                         [&current_materials_buffer]
                             .into_iter()
-                            .map(|m| m as &dyn MemoryRequiring),
+                            .map(|m| m as &dyn AllocationRequiring),
                     )
                     .collect::<smallvec::SmallVec<[_; 8]>>()
                     .as_slice(),
@@ -306,7 +306,7 @@ impl MaterialManager {
         let queue = self.queue.clone();
         let Some(texture_index) = self.materials.load(
             queue.clone(),
-            || Ok(0u32),
+            |_| Ok(0u32),
             |recorder, index, _| {
                 let queue_family = queue.get_parent_queue_family();
 

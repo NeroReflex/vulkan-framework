@@ -1,4 +1,10 @@
-use std::{collections::HashMap, io::Read, path::PathBuf, sync::Arc};
+use std::{
+    collections::HashMap,
+    io::Read,
+    ops::DerefMut,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 use tar::Archive;
 
@@ -14,12 +20,9 @@ use super::{mesh::MeshManager, texture::TextureManager};
 
 use vulkan_framework::{
     acceleration_structure::{
-        VertexIndexing,
         bottom_level::{
-            BottomLevelAccelerationStructureIndexBuffer,
-            BottomLevelAccelerationStructureVertexBuffer, BottomLevelTrianglesGroupDecl,
-            BottomLevelVerticesTopologyDecl,
-        },
+            BottomLevelAccelerationStructureIndexBuffer, BottomLevelAccelerationStructureTransformBuffer, BottomLevelAccelerationStructureVertexBuffer, BottomLevelTrianglesGroupDecl, BottomLevelVerticesTopologyDecl
+        }, VertexIndexing
     },
     buffer::{
         AllocatedBuffer, Buffer, BufferTrait, BufferUsage, BufferUseAs, ConcreteBufferDescriptor,
@@ -29,13 +32,9 @@ use vulkan_framework::{
     device::DeviceOwned,
     graphics_pipeline::{AttributeType, IndexType},
     image::{CommonImageFormat, Image2DDimensions, ImageFormat},
-    memory_allocator::DefaultAllocator,
-    memory_heap::{
-        ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryHeapOwned, MemoryHostVisibility,
-        MemoryRequirements, MemoryType,
-    },
-    memory_pool::{MemoryMap, MemoryPool, MemoryPoolBacked, MemoryPoolFeatures},
-    memory_requiring::MemoryRequiring,
+    memory_heap::{MemoryHostVisibility, MemoryType},
+    memory_management::{MemoryManagementTag, MemoryManagerTrait},
+    memory_pool::{MemoryMap, MemoryPoolBacked, MemoryPoolFeatures},
     pipeline_layout::PipelineLayout,
     queue_family::QueueFamily,
     shader_stage_access::ShaderStagesAccess,
@@ -82,7 +81,7 @@ pub struct Manager {
 
     queue_family: Arc<QueueFamily>,
 
-    memory_pool: Arc<MemoryPool>,
+    memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
 
     mesh_manager: MeshManager,
     texture_manager: TextureManager,
@@ -110,7 +109,7 @@ impl Manager {
     }
 
     #[inline]
-    fn memory_pool_size(frames_in_flight: u32) -> u64 {
+    fn leftover_memory(frames_in_flight: u32) -> u64 {
         (1024u64 * 1024u64 * 128u64) + (frames_in_flight as u64 * 8192u64)
     }
 
@@ -126,12 +125,11 @@ impl Manager {
 
     pub fn new(
         queue_family: Arc<QueueFamily>,
+        memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
         frames_in_flight: u32,
         debug_name: String,
     ) -> RenderingResult<Self> {
         let device = queue_family.get_parent_device();
-
-        let total_size = Self::memory_pool_size(frames_in_flight);
 
         let buffer = Buffer::new(
             device.clone(),
@@ -141,47 +139,6 @@ impl Manager {
             ),
             None,
             Some(format!("{debug_name}->resource_management.stub_image_buffer").as_str()),
-        )?;
-
-        let memory_heap = MemoryHeap::new(
-            device.clone(),
-            ConcreteMemoryHeapDescriptor::new(
-                MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostVisibile {
-                    cached: false,
-                })),
-                total_size,
-            ),
-            MemoryRequirements::try_from([&buffer as &dyn MemoryRequiring].as_slice())?,
-        )?;
-
-        let memory_pool = MemoryPool::new(
-            memory_heap,
-            Arc::new(DefaultAllocator::new(total_size)),
-            MemoryPoolFeatures::from([].as_slice()),
-        )?;
-
-        let buffer = AllocatedBuffer::new(memory_pool.clone(), buffer)?;
-
-        memory_pool.write_raw_data(
-            buffer.allocation_offset(),
-            EmbeddedAssets::get("stub.dds").unwrap().data.as_ref(),
-        )?;
-
-        let mesh_manager = MeshManager::new(
-            queue_family.clone(),
-            frames_in_flight,
-            format!("{debug_name}->mesh_manager"),
-        )?;
-        let texture_manager = TextureManager::new(
-            queue_family.clone(),
-            buffer.clone(),
-            frames_in_flight,
-            format!("{debug_name}->texture_manager"),
-        )?;
-        let material_manager = MaterialManager::new(
-            queue_family.clone(),
-            frames_in_flight,
-            format!("{debug_name}->material_manager"),
         )?;
 
         let current_mesh_to_material_map = Buffer::new(
@@ -196,8 +153,75 @@ impl Manager {
             ),
         )?;
 
-        let current_mesh_to_material_map =
-            AllocatedBuffer::new(memory_pool.clone(), current_mesh_to_material_map)?;
+        // allocate resources
+        let mut memory_allocator = memory_manager.lock().unwrap();
+        let alloc_result = memory_allocator
+            .allocate_buffers(
+                MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostVisibile {
+                    cached: false,
+                })),
+                MemoryPoolFeatures::default(),
+                [buffer].into_iter(),
+                [MemoryManagementTag::Size(Self::leftover_memory(
+                    frames_in_flight,
+                ))]
+                .as_slice(),
+            )
+            .inspect_err(|err| println!("Unable to allocate buffer for the stub image: {err}"))?;
+        assert_eq!(alloc_result.len(), 1 as usize);
+        let stub_image_data = alloc_result.get(0).unwrap().clone();
+
+        let alloc_result = memory_allocator
+            .allocate_buffers(
+                MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostVisibile {
+                    cached: false,
+                })),
+                MemoryPoolFeatures::default(),
+                [current_mesh_to_material_map].into_iter(),
+                [MemoryManagementTag::Size(Self::leftover_memory(
+                    frames_in_flight,
+                ))]
+                .as_slice(),
+            )
+            .inspect_err(|err| {
+                println!(
+                    "Unable to allocate buffer for instance to material associative map: {err}"
+                )
+            })?;
+        assert_eq!(alloc_result.len(), 1 as usize);
+        let current_mesh_to_material_map = alloc_result.get(0).unwrap().clone();
+        drop(memory_allocator);
+
+        {
+            let mut mem_map = MemoryMap::new(stub_image_data.get_backing_memory_pool())?;
+            let temp = EmbeddedAssets::get("stub.dds").unwrap();
+            let stub_emedded_data = temp.data.as_ref();
+            let size = stub_emedded_data.len();
+            let stub_data = mem_map.as_mut_slice_with_size::<u8>(
+                stub_image_data.clone() as Arc<dyn MemoryPoolBacked>,
+                size as u64,
+            )?;
+            stub_data.copy_from_slice(stub_emedded_data);
+        }
+
+        let mesh_manager = MeshManager::new(
+            queue_family.clone(),
+            memory_manager.clone(),
+            frames_in_flight,
+            format!("{debug_name}->mesh_manager"),
+        )?;
+        let texture_manager = TextureManager::new(
+            queue_family.clone(),
+            memory_manager.clone(),
+            stub_image_data.clone(),
+            frames_in_flight,
+            format!("{debug_name}->texture_manager"),
+        )?;
+        let material_manager = MaterialManager::new(
+            queue_family.clone(),
+            frames_in_flight,
+            format!("{debug_name}->material_manager"),
+        )?;
 
         let mut objects = LoadedMeshesType::with_capacity(MAX_MESHES as usize);
         for _ in 0..objects.capacity() {
@@ -209,7 +233,7 @@ impl Manager {
 
             queue_family,
 
-            memory_pool,
+            memory_manager,
 
             mesh_manager,
             texture_manager,
@@ -240,16 +264,17 @@ impl Manager {
             normal_texture: Option<String>,
         }
 
-        #[derive(Default, Clone)]
+        #[derive(Default)]
         struct ModelDecl {
             material_name: Option<String>,
-            indexes: Option<Arc<BottomLevelAccelerationStructureIndexBuffer>>,
+            indexes: Option<BottomLevelAccelerationStructureIndexBuffer>,
+            transform: Option<BottomLevelAccelerationStructureTransformBuffer>,
         }
 
         let mut textures: HashMap<String, TextureDecl> = HashMap::new();
         let mut materials: HashMap<String, MaterialDecl> = HashMap::new();
         let mut models: HashMap<String, ModelDecl> = HashMap::new();
-        let mut vertex_buffer: Option<Arc<BottomLevelAccelerationStructureVertexBuffer>> =
+        let mut vertex_buffer: Option<(BottomLevelVerticesTopologyDecl, Arc<AllocatedBuffer>)> =
             Option::None;
 
         if !file.exists() {
@@ -301,21 +326,12 @@ impl Manager {
 
                         match *property {
                             "data" => {
-                                let texture_size = file.header().size()?;
-                                if texture_size
-                                    >= self.memory_pool.get_parent_memory_heap().total_size()
-                                {
-                                    return Err(RenderingError::ResourceError(
-                                        ResourceError::ResourceTooLarge,
-                                    ));
-                                }
-
                                 // Allocate the buffer that will be used to upload the vertex data to the vulkan device
                                 let buffer = Buffer::new(
                                     device.clone(),
                                     ConcreteBufferDescriptor::new(
                                         BufferUsage::from([BufferUseAs::TransferSrc].as_slice()),
-                                        texture_size,
+                                        file.header().size()?,
                                     ),
                                     None,
                                     Some(
@@ -324,15 +340,27 @@ impl Manager {
                                     ),
                                 )?;
 
-                                //println!("allocating texture size: {texture_size}");
-                                let buffer = AllocatedBuffer::new(self.memory_pool.clone(), buffer)
-                                    .inspect_err(|err| {
-                                        println!("Unable to allocate buffer: {err}")
-                                    })?;
+                                let buffer = {
+                                    let mut allocator = self.memory_manager.lock().unwrap();
+                                    let alloc_result = allocator.allocate_buffers(
+                                        MemoryType::DeviceLocal(Some(
+                                            MemoryHostVisibility::MemoryHostVisibile {
+                                                cached: false,
+                                            },
+                                        )),
+                                        MemoryPoolFeatures::default(),
+                                        [buffer].into_iter(),
+                                        [MemoryManagementTag::Size(Self::leftover_memory(1))]
+                                            .as_slice(),
+                                    )?;
+                                    assert_eq!(alloc_result.len(), 1 as usize);
+                                    alloc_result[0].clone()
+                                };
 
                                 // Fill the buffer with actual data from the file
                                 {
-                                    let mut mem_map = MemoryMap::new(self.memory_pool.clone())?;
+                                    let mut mem_map =
+                                        MemoryMap::new(buffer.get_backing_memory_pool())?;
                                     let slice = mem_map.as_mut_slice::<u32>(
                                         buffer.clone() as Arc<dyn MemoryPoolBacked>
                                     )?;
@@ -469,8 +497,8 @@ impl Manager {
                             continue;
                         };
 
-                        let mut model_decl = match models.get(&model_name) {
-                            Some(decl) => decl.clone(),
+                        let mut model_decl = match models.remove(&model_name) {
+                            Some(decl) => decl,
                             None => Default::default(),
                         };
 
@@ -489,6 +517,7 @@ impl Manager {
 
                                 model_decl.material_name.replace(name);
                             }
+                            // TODO: "transform" => { /* for the initial model matrix */}
                             "indexes" => {
                                 let size = file.header().size()?;
                                 let indexes_size = size;
@@ -503,23 +532,27 @@ impl Manager {
                                 );
 
                                 // Allocate the buffer that will be used to upload the index data to the vulkan device
-                                let index_buffer = self.mesh_manager.create_index_buffer(
-                                    BufferUsage::from(
-                                        [BufferUseAs::IndexBuffer, BufferUseAs::UniformBuffer]
-                                            .as_slice(),
-                                    ),
-                                    triangles_decl,
-                                    None,
-                                )?;
+                                let index_buffer = {
+                                    let mut mem_manager_guard = self.memory_manager.lock().unwrap();
+                                    self.mesh_manager.create_index_buffer(
+                                        mem_manager_guard.deref_mut(),
+                                        triangles_decl,
+                                        BufferUsage::from(
+                                            [BufferUseAs::IndexBuffer, BufferUseAs::UniformBuffer]
+                                                .as_slice(),
+                                        ),
+                                        None,
+                                    )?
+                                };
 
                                 // Fill the buffer with actual data from the file
                                 {
                                     let mut mem_map = MemoryMap::new(
-                                        index_buffer.get_backing_memory_pool().clone(),
+                                        index_buffer.buffer().get_backing_memory_pool().clone(),
                                     )?;
                                     let slice = mem_map.as_mut_slice_with_size::<u8>(
-                                        index_buffer.clone() as Arc<dyn MemoryPoolBacked>,
-                                        index_buffer.size(),
+                                        index_buffer.buffer().clone() as Arc<dyn MemoryPoolBacked>,
+                                        index_buffer.buffer().size(),
                                     )?;
                                     assert_eq!(size as usize, slice.len());
                                     file.read_exact(slice).unwrap();
@@ -551,32 +584,37 @@ impl Manager {
                             panic!("AAAAAAAHHH");
                         }
 
-                        let triangles_topology = BottomLevelVerticesTopologyDecl::new(
+                        let vertices_topology = BottomLevelVerticesTopologyDecl::new(
                             vertex_count as u32,
                             AttributeType::Vec3,
                             vertex_stride,
                         );
 
                         // Allocate the buffer that will be used to upload the vertex data to the vulkan device
-                        let buffer = self
-                            .mesh_manager
-                            .create_vertex_buffer(
-                                triangles_topology,
-                                BufferUsage::from(
-                                    [BufferUseAs::VertexBuffer, BufferUseAs::StorageBuffer]
-                                        .as_slice(),
-                                ),
-                                None,
-                            )
-                            .inspect_err(|err| println!("Unable to create vertex buffer: {err}"))?;
+                        let buffer = {
+                            let mut mem_manager_guard = self.memory_manager.lock().unwrap();
+                            self.mesh_manager
+                                .create_vertex_buffer(
+                                    mem_manager_guard.deref_mut(),
+                                    vertices_topology,
+                                    BufferUsage::from(
+                                        [BufferUseAs::VertexBuffer, BufferUseAs::StorageBuffer]
+                                            .as_slice(),
+                                    ),
+                                    None,
+                                )
+                                .inspect_err(|err| {
+                                    println!("Unable to create vertex buffer: {err}")
+                                })?
+                        };
 
                         // Fill the buffer with actual data from the file
                         {
                             let mut mem_map =
-                                MemoryMap::new(buffer.get_backing_memory_pool().clone())?;
+                                MemoryMap::new(buffer.1.get_backing_memory_pool().clone())?;
                             let slice = mem_map.as_mut_slice_with_size::<u8>(
-                                buffer.clone() as Arc<dyn MemoryPoolBacked>,
-                                buffer.size(),
+                                buffer.1.clone() as Arc<dyn MemoryPoolBacked>,
+                                buffer.1.size(),
                             )?;
                             assert_eq!(size as usize, slice.len());
                             file.read_exact(slice).unwrap();
@@ -668,10 +706,24 @@ impl Manager {
                 Some(""),
             )?;
 
-            let material_buffer = AllocatedBuffer::new(self.memory_pool.clone(), material_buffer)
-                .inspect_err(|err| {
-                println!("Unable to allocate buffer for material definition: {err}")
-            })?;
+            let material_buffer = {
+                let mut allocator = self.memory_manager.lock().unwrap();
+                let alloc_result = allocator
+                    .allocate_buffers(
+                        MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostVisibile {
+                            cached: false,
+                        })),
+                        MemoryPoolFeatures::default(),
+                        [material_buffer].into_iter(),
+                        [MemoryManagementTag::Size(Self::leftover_memory(1))].as_slice(),
+                    )
+                    .inspect_err(|err| {
+                        println!("Unable to allocate buffer for material definition: {err}")
+                    })?;
+                assert_eq!(alloc_result.len(), 1 as usize);
+                alloc_result[0].clone()
+            };
+
             {
                 // write material to the buffer memory
                 let mut mem_map = MemoryMap::new(material_buffer.get_backing_memory_pool())?;
@@ -703,17 +755,25 @@ impl Manager {
         }
 
         // TODO: allow for multiple instances.
-        let Some(vertex_buffer) = vertex_buffer.take() else {
+        let Some((vertices_topology, vertex_buffer)) = vertex_buffer.take() else {
             return Err(RenderingError::ResourceError(
                 ResourceError::MissingVertexBuffer,
             ));
         };
 
         let mut loaded_models: HashMap<String, LoadedMesh> = HashMap::new();
-        for (k, v) in models.into_iter() {
-            let Some(index_buffer) = v.indexes else {
+        for (k, mut v) in models.into_iter() {
+            let Some(index_buffer) = v.indexes.take() else {
                 println!("WARNING: model {k} is missing its index buffer and will be skipped");
                 continue;
+            };
+
+            let transform_buffer = {
+                let mut memory_manager = self.memory_manager.lock().unwrap();
+                match v.transform.take() {
+                    Some(transform) => transform,
+                    None => self.mesh_manager.create_transform_buffer(memory_manager.deref_mut(), BufferUsage::default(), None)?,
+                }
             };
 
             let Some(material_name) = v.material_name else {
@@ -733,9 +793,14 @@ impl Manager {
             let material = *material;
             let material_index: u32 = material.material_index;
 
-            let mesh_index = self
-                .mesh_manager
-                .load(vertex_buffer.clone(), index_buffer)?;
+            let mesh_index = self.mesh_manager.load(
+                BottomLevelAccelerationStructureVertexBuffer::new(
+                    vertices_topology,
+                    vertex_buffer.clone(),
+                )?,
+                index_buffer,
+                transform_buffer,
+            )?;
 
             loaded_models.insert(
                 k,

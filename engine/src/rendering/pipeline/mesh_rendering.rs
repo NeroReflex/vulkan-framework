@@ -33,7 +33,7 @@ use vulkan_framework::{
     memory_barriers::{ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
     memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryRequirements, MemoryType},
     memory_pool::{MemoryPool, MemoryPoolFeatures},
-    memory_requiring::MemoryRequiring,
+    memory_requiring::AllocationRequiring,
     pipeline_layout::{PipelineLayout, PipelineLayoutDependant},
     pipeline_stage::{PipelineStage, PipelineStages},
     push_constant_range::PushConstanRange,
@@ -291,36 +291,38 @@ impl MeshRendering {
 
         let memory_required: u64 = gbuffer_depth_stencil_image_handles
             .iter()
-            .map(|obj| obj.memory_requirements().size() + obj.memory_requirements().alignment())
+            .map(|obj| {
+                obj.allocation_requirements().size() + obj.allocation_requirements().alignment()
+            })
             .chain(gbuffer_position_image_handles.iter().map(|obj| {
-                obj.memory_requirements().size() + obj.memory_requirements().alignment()
+                obj.allocation_requirements().size() + obj.allocation_requirements().alignment()
             }))
             .chain(gbuffer_normal_image_handles.iter().map(|obj| {
-                obj.memory_requirements().size() + obj.memory_requirements().alignment()
+                obj.allocation_requirements().size() + obj.allocation_requirements().alignment()
             }))
             .chain(gbuffer_texture_image_handles.iter().map(|obj| {
-                obj.memory_requirements().size() + obj.memory_requirements().alignment()
+                obj.allocation_requirements().size() + obj.allocation_requirements().alignment()
             }))
             .sum();
 
         let framebuffer_memory_pool = {
-            let image_handles: Vec<&dyn MemoryRequiring> = gbuffer_depth_stencil_image_handles
+            let image_handles: Vec<&dyn AllocationRequiring> = gbuffer_depth_stencil_image_handles
                 .iter()
-                .map(|obj| obj as &dyn MemoryRequiring)
+                .map(|obj| obj as &dyn AllocationRequiring)
                 .chain(
                     gbuffer_position_image_handles
                         .iter()
-                        .map(|obj| obj as &dyn MemoryRequiring),
+                        .map(|obj| obj as &dyn AllocationRequiring),
                 )
                 .chain(
                     gbuffer_normal_image_handles
                         .iter()
-                        .map(|obj| obj as &dyn MemoryRequiring),
+                        .map(|obj| obj as &dyn AllocationRequiring),
                 )
                 .chain(
                     gbuffer_texture_image_handles
                         .iter()
-                        .map(|obj| obj as &dyn MemoryRequiring),
+                        .map(|obj| obj as &dyn AllocationRequiring),
                 )
                 .collect();
 

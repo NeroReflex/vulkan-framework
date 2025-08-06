@@ -1,7 +1,7 @@
 use crate::{
     device::{Device, DeviceOwned},
     instance::InstanceOwned,
-    memory_requiring::MemoryRequiring,
+    memory_requiring::AllocationRequiring,
     prelude::{FrameworkError, VulkanError, VulkanResult},
 };
 
@@ -90,23 +90,23 @@ impl Default for MemoryRequirements {
 
 impl<T> From<&T> for MemoryRequirements
 where
-    T: MemoryRequiring,
+    T: AllocationRequiring,
 {
     fn from(resource: &T) -> Self {
-        let memory_type_bits_requirement = resource.memory_requirements().memory_type_bits();
+        let memory_type_bits_requirement = resource.allocation_requirements().memory_type_bits();
         Self {
             memory_type_bits_requirement,
         }
     }
 }
 
-impl TryFrom<&[&dyn MemoryRequiring]> for MemoryRequirements {
+impl TryFrom<&[&dyn AllocationRequiring]> for MemoryRequirements {
     type Error = VulkanError;
 
-    fn try_from(value: &[&dyn MemoryRequiring]) -> Result<Self, Self::Error> {
+    fn try_from(value: &[&dyn AllocationRequiring]) -> Result<Self, Self::Error> {
         let mut memory_type_bits_requirement: u32 = u32::MAX;
-        for requirement in value.as_ref().iter() {
-            memory_type_bits_requirement &= requirement.memory_requirements().memory_type_bits();
+        for resource in value.as_ref().iter() {
+            memory_type_bits_requirement &= resource.allocation_requirements().memory_type_bits();
         }
 
         if memory_type_bits_requirement == 0u32 {
@@ -123,14 +123,14 @@ impl TryFrom<&[&dyn MemoryRequiring]> for MemoryRequirements {
 
 impl<T> TryFrom<&[T]> for MemoryRequirements
 where
-    T: MemoryRequiring,
+    T: AllocationRequiring,
 {
     type Error = VulkanError;
 
     fn try_from(value: &[T]) -> Result<Self, Self::Error> {
         let mut memory_type_bits_requirement: u32 = u32::MAX;
-        for requirement in value.as_ref().iter() {
-            memory_type_bits_requirement &= requirement.memory_requirements().memory_type_bits();
+        for resource in value.as_ref().iter() {
+            memory_type_bits_requirement &= resource.allocation_requirements().memory_type_bits();
         }
 
         if memory_type_bits_requirement == 0u32 {

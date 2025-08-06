@@ -17,6 +17,7 @@ pub mod instance;
 pub mod memory_allocator;
 pub mod memory_barriers;
 pub mod memory_heap;
+pub mod memory_management;
 pub mod memory_pool;
 pub mod memory_requiring;
 pub mod pipeline_layout;

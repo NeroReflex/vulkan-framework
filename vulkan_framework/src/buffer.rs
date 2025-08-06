@@ -5,8 +5,9 @@ use crate::{
     instance::InstanceOwned,
     memory_allocator::SuccessfulAllocation,
     memory_heap::MemoryHeapOwned,
+    memory_management::UnallocatedResource,
     memory_pool::{MemoryPool, MemoryPoolBacked},
-    memory_requiring::{MemoryRequirements, MemoryRequiring, UnallocatedResource},
+    memory_requiring::{AllocationRequirements, AllocationRequiring},
     prelude::{FrameworkError, VulkanError, VulkanResult},
     queue_family::QueueFamily,
 };
@@ -310,8 +311,8 @@ impl Buffer {
     }
 }
 
-impl MemoryRequiring for Buffer {
-    fn memory_requirements(&self) -> MemoryRequirements {
+impl AllocationRequiring for Buffer {
+    fn allocation_requirements(&self) -> AllocationRequirements {
         let requirements_info =
             ash::vk::BufferMemoryRequirementsInfo2::default().buffer(self.ash_handle());
 
@@ -323,7 +324,7 @@ impl MemoryRequiring for Buffer {
                 .get_buffer_memory_requirements2(&requirements_info, &mut requirements);
         };
 
-        MemoryRequirements::new(
+        AllocationRequirements::new(
             requirements.memory_requirements.memory_type_bits,
             requirements.memory_requirements.size,
             requirements.memory_requirements.alignment,
@@ -342,6 +343,10 @@ impl AllocatedBuffer {
         self.buffer.ash_handle()
     }
 
+    pub(crate) fn buffer(&self) -> &Buffer {
+        &self.buffer
+    }
+
     pub fn new(memory_pool: Arc<MemoryPool>, buffer: Buffer) -> VulkanResult<Arc<Self>> {
         let device = memory_pool.get_parent_memory_heap().get_parent_device();
 
@@ -351,7 +356,7 @@ impl AllocatedBuffer {
             ));
         }
 
-        let requirements = buffer.memory_requirements();
+        let requirements = buffer.allocation_requirements();
 
         if !memory_pool
             .get_parent_memory_heap()

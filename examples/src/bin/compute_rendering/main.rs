@@ -34,7 +34,7 @@ use vulkan_framework::{
     memory_barriers::{ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
     memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryRequirements, MemoryType},
     memory_pool::{MemoryPool, MemoryPoolFeatures},
-    memory_requiring::MemoryRequiring,
+    memory_requiring::AllocationRequiring,
     pipeline_layout::PipelineLayout,
     pipeline_stage::{PipelineStage, PipelineStages},
     push_constant_range::PushConstanRange,
@@ -311,7 +311,7 @@ fn main() {
     let memory_heap = match MemoryHeap::new(
         device.clone(),
         ConcreteMemoryHeapDescriptor::new(MemoryType::DeviceLocal(None), 1024 * 1024 * 512),
-        MemoryRequirements::try_from([&image as &dyn MemoryRequiring].as_slice()).unwrap(),
+        MemoryRequirements::try_from([&image as &dyn AllocationRequiring].as_slice()).unwrap(),
     ) {
         Ok(memory_heap) => memory_heap,
         Err(err) => {

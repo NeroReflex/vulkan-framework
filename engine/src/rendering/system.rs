@@ -27,6 +27,7 @@ use vulkan_framework::{
     instance::InstanceOwned,
     memory_barriers::{BufferMemoryBarrier, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
     memory_heap::{MemoryHostVisibility, MemoryType},
+    memory_management::{DefaultMemoryManager, MemoryManagerTrait},
     memory_pool::{MemoryMap, MemoryPoolBacked, MemoryPoolFeatures},
     pipeline_stage::{PipelineStage, PipelineStages},
     queue::Queue,
@@ -48,7 +49,6 @@ use crate::{
     core::{camera::CameraTrait, hdr::HDR},
     rendering::{
         MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingError, RenderingResult,
-        memory::MemoryManager,
         pipeline::{
             final_rendering::FinalRendering, hdr_transform::HDRTransform,
             mesh_rendering::MeshRendering, renderquad::RenderQuad,
@@ -278,8 +278,41 @@ impl System {
             })
             .collect();
 
+        let mut view_projection_unallocated_buffers = vec![];
+        for index in 0..frames_in_flight {
+            view_projection_unallocated_buffers.push(
+                Buffer::new(
+                    device.clone(),
+                    ConcreteBufferDescriptor::new(
+                        [BufferUseAs::UniformBuffer].as_slice().into(),
+                        4u64 * 4u64 * 4u64 * 2u64,
+                    ),
+                    None,
+                    Some(format!("view_projection_buffers[{index}]").as_str()),
+                )?
+                .into(),
+            );
+        }
+
+        let mut memory_manager = DefaultMemoryManager::new(device.clone());
+        let view_projection_buffers: smallvec::SmallVec<
+            [Arc<AllocatedBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
+        > = memory_manager
+            .allocate_resources(
+                &MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostVisibile {
+                    cached: false,
+                })),
+                &MemoryPoolFeatures::default(),
+                view_projection_unallocated_buffers,
+                &[],
+            )?
+            .into_iter()
+            .map(|r| r.buffer())
+            .collect();
+
         let obj_manager = ResourceManager::new(
             queue_family.clone(),
+            Arc::new(Mutex::new(memory_manager)),
             frames_in_flight,
             String::from("resource_manager"),
         )?;
@@ -330,28 +363,6 @@ impl System {
                 view_projection_descriptor_set_layout.clone(),
             )?);
         }
-
-        let mut view_projection_unallocated_buffers = vec![];
-        for index in 0..frames_in_flight {
-            view_projection_unallocated_buffers.push(Buffer::new(
-                device.clone(),
-                ConcreteBufferDescriptor::new(
-                    [BufferUseAs::UniformBuffer].as_slice().into(),
-                    4u64 * 4u64 * 4u64 * 2u64,
-                ),
-                None,
-                Some(format!("view_projection_buffers[{index}]").as_str()),
-            )?);
-        }
-
-        let mut memory_manager = MemoryManager::new(device.clone());
-        let view_projection_buffers = memory_manager.allocate_buffers(
-            MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostVisibile {
-                cached: false,
-            })),
-            MemoryPoolFeatures::default(),
-            view_projection_unallocated_buffers.into_iter(),
-        )?;
 
         for index in 0..(frames_in_flight as usize) {
             view_projection_descriptor_sets[index].bind_resources(

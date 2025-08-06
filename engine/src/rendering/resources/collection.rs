@@ -152,7 +152,7 @@ where
         loading_fun: LoadFn,
     ) -> RenderingResult<Option<u32>>
     where
-        CreateFn: FnOnce() -> RenderingResult<T>,
+        CreateFn: FnOnce(usize) -> RenderingResult<T>,
         LoadFn: FnOnce(&mut CommandBufferRecorder, usize, T) -> RenderingResult<()>,
     {
         for index in 0..self.collection.len() {
@@ -162,7 +162,7 @@ where
                 _ => continue,
             };
 
-            let resource = creation_fun()?;
+            let resource = creation_fun(index)?;
 
             command_buffer.record_one_time_submit(|recorder| {
                 loading_fun(recorder, index, resource.clone())
