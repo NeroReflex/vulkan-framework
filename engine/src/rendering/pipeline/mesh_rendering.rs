@@ -577,26 +577,19 @@ impl MeshRendering {
             None,
             None,
             pipeline_layout,
-            [
-                // vertex position data
-                VertexInputBinding::new(
-                    VertexInputRate::PerVertex,
-                    Manager::vertex_buffer_position_stride(),
-                    &[VertexInputAttribute::new(0, 0, AttributeType::Vec3)],
-                ),
-                // vertex normal data
-                VertexInputBinding::new(
-                    VertexInputRate::PerVertex,
-                    Manager::vertex_buffer_normals_stride(),
-                    &[VertexInputAttribute::new(1, 0, AttributeType::Vec3)],
-                ),
-                // vertex text coords
-                VertexInputBinding::new(
-                    VertexInputRate::PerVertex,
-                    Manager::vertex_buffer_texture_uv_stride(),
-                    &[VertexInputAttribute::new(2, 0, AttributeType::Vec2)],
-                ),
-            ]
+            [VertexInputBinding::new(
+                VertexInputRate::PerVertex,
+                (4u32) + (3u32 + 3u32 + 2u32),
+                [
+                    // vertex position data
+                    VertexInputAttribute::new(0, 0, AttributeType::Vec3),
+                    // vertex normal data
+                    VertexInputAttribute::new(1, 0, AttributeType::Vec3),
+                    // vertex text coords
+                    VertexInputAttribute::new(2, 0, AttributeType::Vec2),
+                ]
+                .as_slice(),
+            )]
             .as_slice(),
             Rasterizer::new(
                 PolygonMode::Fill,
