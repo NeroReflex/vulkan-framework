@@ -15,7 +15,6 @@ use vulkan_framework::{
     },
     ash::vk::TransformMatrixKHR,
     buffer::{AllocatedBuffer, Buffer, BufferSubresourceRange, BufferTrait, BufferUsage},
-    command_buffer::CommandBufferRecorder,
     descriptor_pool::{
         DescriptorPool, DescriptorPoolConcreteDescriptor,
         DescriptorPoolSizesAcceletarionStructureKHR, DescriptorPoolSizesConcreteDescriptor,
@@ -63,19 +62,6 @@ impl MeshManager {
         F: Fn(&MeshType),
     {
         self.meshes.foreach_loaded(function)
-    }
-
-    #[inline]
-    fn meshes_memory_pool_size(max_meshes: u32, frames_in_flight: u32) -> u64 {
-        1024u64
-            * (
-                // 1KiB for good measure
-                1024u64 +
-            // 128KiB for each bottom level AS
-            (128u64 * (frames_in_flight as u64)) +
-            // 32KiB for each mesh
-            (64u64 * (max_meshes as u64))
-            )
     }
 
     #[inline]
@@ -259,18 +245,6 @@ impl MeshManager {
         Ok(blas)
     }
 
-    fn setup_load_blas_operation(
-        recorder: &mut CommandBufferRecorder,
-        blas: Arc<BottomLevelAccelerationStructure>,
-        queue: Arc<Queue>,
-    ) -> RenderingResult<()> {
-        // create the blas
-        let max_primitives_count = blas.max_primitives_count();
-        recorder.build_blas(blas, 0, max_primitives_count, 0, 0);
-
-        Ok(())
-    }
-
     pub fn load(
         &mut self,
         vertex_buffer: BottomLevelAccelerationStructureVertexBuffer,
@@ -331,7 +305,10 @@ impl MeshManager {
                     .as_slice(),
                 );
 
-                Self::setup_load_blas_operation(recorder, blas, queue.clone())
+                let primitives_count = blas.max_primitives_count();
+                recorder.build_blas(blas, 0, primitives_count, 0, 0);
+
+                Ok(())
             },
         )?
         else {

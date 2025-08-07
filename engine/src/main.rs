@@ -61,7 +61,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     //sdl_mouse.capture(true);
-    let move_units_per_second = 275.0;
+    //let move_units_per_second = 275.0;
     let mouse_sensitivity = 0.015;
 
     let mouse_state = event_pump.mouse_state();
@@ -82,8 +82,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 _ => {}
             }
         }
-
-        let delta_time = (start_time.elapsed().as_micros() as f32) * 1000000.0;
 
         let new_mouse_state = event_pump.mouse_state();
         let new_mouse_pos = glm::vec2(new_mouse_state.x() as f32, new_mouse_state.y() as f32);

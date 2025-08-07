@@ -37,7 +37,6 @@ use vulkan_framework::memory_heap::MemoryHeap;
 use vulkan_framework::memory_heap::MemoryHostVisibility;
 use vulkan_framework::memory_heap::MemoryRequirements;
 use vulkan_framework::memory_heap::MemoryType;
-use vulkan_framework::memory_management::DefaultMemoryManager;
 use vulkan_framework::memory_pool::MemoryMap;
 use vulkan_framework::memory_pool::MemoryPool;
 use vulkan_framework::memory_pool::MemoryPoolBacked;
@@ -414,7 +413,7 @@ fn main() {
     let rgb_data = {
         let mem_map =
             MemoryMap::new(image.get_backing_memory_pool()).expect("Unable to map memory");
-        let mut range = mem_map
+        let range = mem_map
             .range::<[f32; 4]>(image.clone() as Arc<dyn MemoryPoolBacked>)
             .expect("Unable to get memory range of resulting image");
         let image_raw_data = range.as_slice();

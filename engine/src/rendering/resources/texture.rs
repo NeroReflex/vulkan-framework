@@ -217,7 +217,7 @@ impl TextureManager {
         let mut allocator = memory_manager.lock().unwrap();
         let Some(stub_image) = textures.load(
             queue.clone(),
-            |_| Self::allocate_image(allocator.deref_mut(), stub_image, debug_name.clone()),
+            |_| Self::allocate_image(allocator.deref_mut(), 0, stub_image, debug_name.clone()),
             |recorder, _, image_view| {
                 Self::setup_load_image_operation(
                     recorder,
@@ -266,7 +266,7 @@ impl TextureManager {
             debug_name.clone(),
             index,
         )?;
-        Self::allocate_image(memory_manager, texture, debug_name)
+        Self::allocate_image(memory_manager, index, texture, debug_name)
     }
 
     fn create_image(
@@ -299,6 +299,7 @@ impl TextureManager {
 
     fn allocate_image(
         allocator: &mut dyn MemoryManagerTrait,
+        index: usize,
         texture: Image,
         debug_name: String,
     ) -> RenderingResult<Arc<ImageView>> {
@@ -315,7 +316,7 @@ impl TextureManager {
             allocation_result[0].image()
         };
 
-        let texture_imageview_name = format!("{debug_name}.texture[...].imageview");
+        let texture_imageview_name = format!("{debug_name}.texture[{index}].imageview");
         let texture_imageview = ImageView::new(
             texture.clone(),
             None,

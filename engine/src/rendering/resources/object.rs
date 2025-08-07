@@ -177,7 +177,7 @@ impl Manager {
         drop(memory_allocator);
 
         {
-            let mut mem_map = MemoryMap::new(stub_image_data.get_backing_memory_pool())?;
+            let mem_map = MemoryMap::new(stub_image_data.get_backing_memory_pool())?;
             let mut range =
                 mem_map.range::<u8>(stub_image_data.clone() as Arc<dyn MemoryPoolBacked>)?;
             let stub_data = range.as_mut_slice();
@@ -315,7 +315,7 @@ impl Manager {
                                     ),
                                     None,
                                     Some(
-                                        format!("resource_management.texture[{texture_name}]")
+                                        format!("{}->resource_management.texture[{texture_name}]", self.debug_name)
                                             .as_str(),
                                     ),
                                 )?;
@@ -340,7 +340,7 @@ impl Manager {
 
                                 // Fill the buffer with actual data from the file
                                 {
-                                    let mut mem_map =
+                                    let mem_map =
                                         MemoryMap::new(buffer.get_backing_memory_pool())?;
                                     let mut range = mem_map
                                         .range::<u8>(buffer.clone() as Arc<dyn MemoryPoolBacked>)?;
@@ -521,7 +521,7 @@ impl Manager {
 
                                 // Fill the buffer with actual data from the file
                                 {
-                                    let mut mem_map = MemoryMap::new(
+                                    let mem_map = MemoryMap::new(
                                         index_buffer.buffer().get_backing_memory_pool().clone(),
                                     )?;
                                     let mut range = mem_map
@@ -584,7 +584,7 @@ impl Manager {
 
                         // Fill the buffer with actual data from the file
                         {
-                            let mut mem_map =
+                            let mem_map =
                                 MemoryMap::new(buffer.1.get_backing_memory_pool().clone())?;
                             let mut range = mem_map
                                 .range::<u8>(buffer.1.clone() as Arc<dyn MemoryPoolBacked>)?;
@@ -701,7 +701,7 @@ impl Manager {
 
             {
                 // write material to the buffer memory
-                let mut mem_map = MemoryMap::new(material_buffer.get_backing_memory_pool())?;
+                let mem_map = MemoryMap::new(material_buffer.get_backing_memory_pool())?;
                 let mut range = mem_map
                     .range::<MaterialGPU>(material_buffer.clone() as Arc<dyn MemoryPoolBacked>)?;
                 let mapped_materials = range.as_mut_slice();
@@ -789,7 +789,7 @@ impl Manager {
 
             // register into the GPU the mesh->material association
             {
-                let mut mem_map = MemoryMap::new(
+                let mem_map = MemoryMap::new(
                     self.current_mesh_to_material_map
                         .get_backing_memory_pool()
                         .clone(),
@@ -797,7 +797,7 @@ impl Manager {
                 let mut mem_range = mem_map.range::<u32>(
                     self.current_mesh_to_material_map.clone() as Arc<dyn MemoryPoolBacked>,
                 )?;
-                let mut slice = mem_range.as_mut_slice();
+                let slice = mem_range.as_mut_slice();
                 assert_eq!(MAX_MESHES as usize, slice.len());
                 slice[mesh_index as usize] = material_index;
             }

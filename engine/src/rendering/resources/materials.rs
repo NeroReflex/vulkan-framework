@@ -41,8 +41,6 @@ type MaterialsFrameInFlightType =
     smallvec::SmallVec<[Arc<AllocatedBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
 
 pub struct MaterialManager {
-    debug_name: String,
-
     queue: Arc<Queue>,
 
     descriptor_set_layout: Arc<DescriptorSetLayout>,
@@ -287,8 +285,6 @@ impl MaterialManager {
         }
 
         Ok(Self {
-            debug_name,
-
             queue,
 
             descriptor_set_layout,

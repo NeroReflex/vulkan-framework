@@ -12,7 +12,7 @@ use crate::{
 };
 
 pub struct RaytracingBindingTableCallableBuffer {
-    callable_buffer: Arc<dyn BufferTrait>,
+    _callable_buffer: Arc<dyn BufferTrait>,
     callable_buffer_addr: u64,
 }
 
@@ -20,13 +20,13 @@ pub struct RaytracingBindingTables {
     handle_size: u32,
     handle_size_aligned: u32,
     group_count: u32,
-    shader_handle_storage: Vec<u8>,
+    _shader_handle_storage: Vec<u8>,
     raytracing_pipeline: Arc<RaytracingPipeline>,
-    raygen_buffer: Arc<dyn BufferTrait>,
+    _raygen_buffer: Arc<dyn BufferTrait>,
     raygen_buffer_addr: u64,
-    miss_buffer: Arc<dyn BufferTrait>,
+    _miss_buffer: Arc<dyn BufferTrait>,
     miss_buffer_addr: u64,
-    closesthit_buffer: Arc<dyn BufferTrait>,
+    _closesthit_buffer: Arc<dyn BufferTrait>,
     closesthit_buffer_addr: u64,
     callable: Option<RaytracingBindingTableCallableBuffer>,
 }
@@ -241,7 +241,7 @@ impl RaytracingBindingTables {
             };
 
             RaytracingBindingTableCallableBuffer {
-                callable_buffer,
+                _callable_buffer: callable_buffer,
                 callable_buffer_addr,
             }
         });
@@ -251,12 +251,12 @@ impl RaytracingBindingTables {
             handle_size,
             handle_size_aligned,
             group_count,
-            shader_handle_storage,
-            raygen_buffer,
+            _shader_handle_storage: shader_handle_storage,
+            _raygen_buffer: raygen_buffer,
             raygen_buffer_addr,
-            miss_buffer,
+            _miss_buffer: miss_buffer,
             miss_buffer_addr,
-            closesthit_buffer,
+            _closesthit_buffer: closesthit_buffer,
             closesthit_buffer_addr,
             callable,
         }))
