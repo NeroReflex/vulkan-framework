@@ -98,26 +98,6 @@ pub struct Manager {
 
 impl Manager {
     #[inline]
-    pub fn vertex_buffer_position_stride() -> u32 {
-        (4u32 * 3u32) + (4u32 * 3u32) + (4u32 * 2u32)
-    }
-
-    #[inline]
-    pub fn vertex_buffer_normals_stride() -> u32 {
-        (4u32 * 3u32) + (4u32 * 3u32) + (4u32 * 2u32)
-    }
-
-    #[inline]
-    pub fn vertex_buffer_texture_uv_stride() -> u32 {
-        (4u32 * 3u32) + (4u32 * 3u32) + (4u32 * 2u32)
-    }
-
-    #[inline]
-    fn leftover_memory(frames_in_flight: u32) -> u64 {
-        (1024u64 * 1024u64 * 128u64) + (frames_in_flight as u64 * 8192u64)
-    }
-
-    #[inline]
     pub fn textures_descriptor_set_layout(&self) -> Arc<DescriptorSetLayout> {
         self.texture_manager.descriptor_set_layout()
     }
