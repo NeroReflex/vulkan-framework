@@ -52,6 +52,9 @@ layout (location = 0) in vec3 vertex_position_modelspace;
 layout (location = 1) in vec3 vertex_normal_modelspace;
 layout (location = 2) in vec2 vertex_texture;
 
+layout (location = 3) in vec4 ModelMatrix_first_row;
+layout (location = 4) in vec4 ModelMatrix_second_row;
+layout (location = 5) in vec4 ModelMatrix_third_row;
 
 //layout (location = 3) in uint vMaterialIndex;
 
@@ -67,7 +70,9 @@ layout(std140, set = 2, binding = 0) uniform camera_uniform {
 } camera;
 
 void main() {
-    const mat4 MVP = camera.projectionMatrix * camera.viewMatrix; // add * ModelMatrix here
+    const mat4 ModelMatrix = mat4(ModelMatrix_first_row, ModelMatrix_second_row, ModelMatrix_third_row, vec4(0.0, 0.0, 0.0, 1.0));
+
+    const mat4 MVP = camera.projectionMatrix * camera.viewMatrix * ModelMatrix; 
 
     // Get the eye position
 	const vec4 eye_position = vec4(camera.viewMatrix[3][0], camera.viewMatrix[3][1], camera.viewMatrix[3][2], 1.0);
@@ -577,19 +582,35 @@ impl MeshRendering {
             None,
             None,
             pipeline_layout,
-            [VertexInputBinding::new(
-                VertexInputRate::PerVertex,
-                (4u32) * (3u32 + 3u32 + 2u32),
-                [
-                    // vertex position data
-                    VertexInputAttribute::new(0, 0, AttributeType::Vec3),
-                    // vertex normal data
-                    VertexInputAttribute::new(1, 4 * 3, AttributeType::Vec3),
-                    // vertex text coords
-                    VertexInputAttribute::new(2, 4 * (3 + 3), AttributeType::Vec2),
-                ]
-                .as_slice(),
-            )]
+            [
+                VertexInputBinding::new(
+                    VertexInputRate::PerVertex,
+                    (4u32) * (3u32 + 3u32 + 2u32),
+                    [
+                        // vertex position data
+                        VertexInputAttribute::new(0, 0, AttributeType::Vec3),
+                        // vertex normal data
+                        VertexInputAttribute::new(1, 4 * 3, AttributeType::Vec3),
+                        // vertex text coords
+                        VertexInputAttribute::new(2, 4 * (3 + 3), AttributeType::Vec2),
+                    ]
+                    .as_slice(),
+                ),
+                VertexInputBinding::new(
+                    VertexInputRate::PerInstance,
+                    // mat 4x3
+                    4u32 * 12u32,
+                    [
+                        // model matrix first row
+                        VertexInputAttribute::new(3, 0, AttributeType::Vec4),
+                        // model matrix second row
+                        VertexInputAttribute::new(4, 4 * 4, AttributeType::Vec4),
+                        // model matrix third row
+                        VertexInputAttribute::new(5, 4 * 8, AttributeType::Vec4),
+                    ]
+                    .as_slice(),
+                ),
+            ]
             .as_slice(),
             Rasterizer::new(
                 PolygonMode::Fill,

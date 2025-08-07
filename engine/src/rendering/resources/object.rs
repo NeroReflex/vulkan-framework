@@ -25,7 +25,7 @@ use vulkan_framework::{
             BottomLevelAccelerationStructureIndexBuffer,
             BottomLevelAccelerationStructureTransformBuffer,
             BottomLevelAccelerationStructureVertexBuffer, BottomLevelTrianglesGroupDecl,
-            BottomLevelVerticesTopologyDecl,
+            BottomLevelVerticesTopologyDecl, IDENTITY_MATRIX,
         },
     },
     buffer::{
@@ -315,8 +315,11 @@ impl Manager {
                                     ),
                                     None,
                                     Some(
-                                        format!("{}->resource_management.texture[{texture_name}]", self.debug_name)
-                                            .as_str(),
+                                        format!(
+                                            "{}->resource_management.texture[{texture_name}]",
+                                            self.debug_name
+                                        )
+                                        .as_str(),
                                     ),
                                 )?;
 
@@ -340,8 +343,7 @@ impl Manager {
 
                                 // Fill the buffer with actual data from the file
                                 {
-                                    let mem_map =
-                                        MemoryMap::new(buffer.get_backing_memory_pool())?;
+                                    let mem_map = MemoryMap::new(buffer.get_backing_memory_pool())?;
                                     let mut range = mem_map
                                         .range::<u8>(buffer.clone() as Arc<dyn MemoryPoolBacked>)?;
                                     let slice = range.as_mut_slice();
@@ -745,11 +747,16 @@ impl Manager {
                 let mut memory_manager = self.memory_manager.lock().unwrap();
                 match v.transform.take() {
                     Some(transform) => transform,
-                    None => self.mesh_manager.create_transform_buffer(
-                        memory_manager.deref_mut(),
-                        BufferUsage::default(),
-                        None,
-                    )?,
+                    None => {
+                        // create the transform buffer and preload it with the identity matrix
+                        let transform_buffer = self.mesh_manager.create_transform_buffer(
+                            memory_manager.deref_mut(),
+                            [BufferUseAs::VertexBuffer].as_slice().into(),
+                            None,
+                        )?;
+
+                        transform_buffer
+                    }
                 }
             };
 
@@ -920,11 +927,16 @@ impl Manager {
                 );
 
                 let vertex_buffer = blas.vertex_buffer();
+                let transform_buffer = blas.transform_buffer();
                 if vertex_buffer.buffer().native_handle() != last_bound_vertex_buffer {
                     last_bound_vertex_buffer = vertex_buffer.buffer().native_handle();
                     recorder.bind_vertex_buffers(
                         0,
                         [(0u64, vertex_buffer.buffer() as Arc<dyn BufferTrait>)].as_slice(),
+                    );
+                    recorder.bind_vertex_buffers(
+                        1,
+                        [(0u64, transform_buffer.buffer() as Arc<dyn BufferTrait>)].as_slice(),
                     );
                 }
 

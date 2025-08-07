@@ -5,13 +5,12 @@ use std::{
 
 use vulkan_framework::{
     acceleration_structure::{
-        AllowedBuildingDevice,
         bottom_level::{
             BottomLevelAccelerationStructure, BottomLevelAccelerationStructureIndexBuffer,
             BottomLevelAccelerationStructureTransformBuffer,
             BottomLevelAccelerationStructureVertexBuffer, BottomLevelTrianglesGroupDecl,
             BottomLevelVerticesTopologyDecl, IDENTITY_MATRIX,
-        },
+        }, AllowedBuildingDevice
     },
     ash::vk::TransformMatrixKHR,
     buffer::{AllocatedBuffer, Buffer, BufferSubresourceRange, BufferTrait, BufferUsage},
@@ -21,7 +20,7 @@ use vulkan_framework::{
     },
     device::DeviceOwned,
     memory_barriers::{BufferMemoryBarrier, MemoryAccessAs},
-    memory_heap::{MemoryHostVisibility, MemoryType},
+    memory_heap::{MemoryHeapOwned, MemoryHostVisibility, MemoryType},
     memory_management::{
         MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait, UnallocatedResource,
     },
@@ -213,13 +212,16 @@ impl MeshManager {
         let transform_buffer =
             BottomLevelAccelerationStructureTransformBuffer::new(buffer[0].buffer())?;
 
-        let mem_map = MemoryMap::new(transform_buffer.buffer().get_backing_memory_pool())?;
-        let mut range = mem_map.range::<TransformMatrixKHR>(
-            transform_buffer.buffer().clone() as Arc<dyn MemoryPoolBacked>
-        )?;
-        let transform = range.as_mut_slice();
-        assert_eq!(transform.len(), 1);
-        transform[0] = IDENTITY_MATRIX;
+        // if host is memory mappable load the identity matrix
+        if transform_buffer.buffer().get_backing_memory_pool().get_parent_memory_heap().is_host_mappable() {
+            let mem_map = MemoryMap::new(transform_buffer.buffer().get_backing_memory_pool())?;
+            let mut range = mem_map.range::<TransformMatrixKHR>(
+                transform_buffer.buffer().clone() as Arc<dyn MemoryPoolBacked>
+            )?;
+            let transform = range.as_mut_slice();
+            assert_eq!(transform.len(), 1);
+            transform[0] = IDENTITY_MATRIX;
+        }
 
         Ok(transform_buffer)
     }

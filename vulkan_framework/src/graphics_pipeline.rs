@@ -134,7 +134,7 @@ impl VertexInputRate {
 
 pub struct VertexInputBinding {
     input_rate: VertexInputRate,
-    stride: u32,
+    total_size: u32,
     attributes: smallvec::SmallVec<[VertexInputAttribute; 16]>,
 }
 
@@ -144,7 +144,7 @@ impl VertexInputBinding {
     }
 
     pub fn stride(&self) -> u32 {
-        self.stride
+        self.total_size
     }
 
     pub fn attributes(&self) -> impl Iterator<Item = &'_ VertexInputAttribute> {
@@ -153,12 +153,12 @@ impl VertexInputBinding {
 
     pub fn new(
         input_rate: VertexInputRate,
-        stride: u32,
+        total_size: u32,
         attributes: &[VertexInputAttribute],
     ) -> Self {
         Self {
             input_rate,
-            stride,
+            total_size,
             attributes: attributes.iter().copied().collect(),
         }
     }
