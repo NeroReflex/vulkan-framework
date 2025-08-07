@@ -284,7 +284,7 @@ impl<'a> DescriptorSetWriter<'a> {
             }
         }
 
-        self.uniform_buffers.push((
+        self.storage_buffers.push((
             first_layout_id,
             buffers
                 .iter()
