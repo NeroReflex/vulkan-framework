@@ -5,12 +5,13 @@ use std::{
 
 use vulkan_framework::{
     acceleration_structure::{
+        AllowedBuildingDevice,
         bottom_level::{
             BottomLevelAccelerationStructure, BottomLevelAccelerationStructureIndexBuffer,
             BottomLevelAccelerationStructureTransformBuffer,
             BottomLevelAccelerationStructureVertexBuffer, BottomLevelTrianglesGroupDecl,
             BottomLevelVerticesTopologyDecl, IDENTITY_MATRIX,
-        }, AllowedBuildingDevice
+        },
     },
     ash::vk::TransformMatrixKHR,
     buffer::{AllocatedBuffer, Buffer, BufferSubresourceRange, BufferTrait, BufferUsage},
@@ -213,10 +214,15 @@ impl MeshManager {
             BottomLevelAccelerationStructureTransformBuffer::new(buffer[0].buffer())?;
 
         // if host is memory mappable load the identity matrix
-        if transform_buffer.buffer().get_backing_memory_pool().get_parent_memory_heap().is_host_mappable() {
+        if transform_buffer
+            .buffer()
+            .get_backing_memory_pool()
+            .get_parent_memory_heap()
+            .is_host_mappable()
+        {
             let mem_map = MemoryMap::new(transform_buffer.buffer().get_backing_memory_pool())?;
             let mut range = mem_map.range::<TransformMatrixKHR>(
-                transform_buffer.buffer().clone() as Arc<dyn MemoryPoolBacked>
+                transform_buffer.buffer().clone() as Arc<dyn MemoryPoolBacked>,
             )?;
             let transform = range.as_mut_slice();
             assert_eq!(transform.len(), 1);

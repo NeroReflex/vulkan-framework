@@ -1,5 +1,5 @@
 use std::sync::{
-    Arc,
+    Arc, Mutex,
     atomic::{AtomicU64, Ordering},
 };
 
@@ -8,6 +8,7 @@ use vulkan_framework::{
         AllocatedBuffer, Buffer, BufferSubresourceRange, BufferTrait, BufferUsage, BufferUseAs,
         ConcreteBufferDescriptor,
     },
+    command_buffer::CommandBufferRecorder,
     descriptor_pool::{
         DescriptorPool, DescriptorPoolConcreteDescriptor, DescriptorPoolSizesConcreteDescriptor,
     },
@@ -16,7 +17,13 @@ use vulkan_framework::{
     device::DeviceOwned,
     memory_allocator::{DefaultAllocator, MemoryAllocator},
     memory_barriers::{BufferMemoryBarrier, MemoryAccessAs},
-    memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryRequirements, MemoryType},
+    memory_heap::{
+        ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryHostVisibility, MemoryRequirements,
+        MemoryType,
+    },
+    memory_management::{
+        MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait, UnallocatedResource,
+    },
     memory_pool::{MemoryPool, MemoryPoolFeatures},
     memory_requiring::AllocationRequiring,
     pipeline_stage::PipelineStage,
@@ -41,6 +48,8 @@ type MaterialsFrameInFlightType =
     smallvec::SmallVec<[Arc<AllocatedBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
 
 pub struct MaterialManager {
+    memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
+
     queue: Arc<Queue>,
 
     descriptor_set_layout: Arc<DescriptorSetLayout>,
@@ -78,7 +87,6 @@ impl MaterialManager {
         self.materials.wait_load_blocking()
     }
 
-    #[inline]
     pub fn material_descriptor_set(&self, current_frame: usize) -> Arc<DescriptorSet> {
         let (descriptor_set_status, descriptor_set) =
             self.descriptor_sets.get(current_frame).unwrap();
@@ -132,6 +140,7 @@ impl MaterialManager {
 
     pub fn new(
         queue_family: Arc<QueueFamily>,
+        memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
         frames_in_flight: u32,
         debug_name: String,
     ) -> RenderingResult<Self> {
@@ -186,87 +195,24 @@ impl MaterialManager {
             descriptor_sets.push((AtomicU64::new(0), descriptor_set));
         }
 
-        let mut materials_unallocated_buffer: smallvec::SmallVec<
-            [Buffer; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
-        > = smallvec::smallvec![];
+        let mut materials_unallocated_buffer = vec![];
         for index in 0..(frames_in_flight as usize) {
-            materials_unallocated_buffer.push(Buffer::new(
+            materials_unallocated_buffer.push(UnallocatedResource::Buffer(Buffer::new(
                 device.clone(),
                 ConcreteBufferDescriptor::new(
                     BufferUsage::from(
                         [BufferUseAs::TransferDst, BufferUseAs::UniformBuffer].as_slice(),
                     ),
-                    (frames_in_flight as u64) * (MAX_MATERIALS as u64),
+                    (SIZEOF_MATERIAL_DEFINITION as u64) * (MAX_MATERIALS as u64),
                 ),
                 None,
                 Some(format!("{debug_name}.materials_buffer[{index}]").as_str()),
-            )?);
+            )?));
         }
 
-        let current_materials_buffer = Buffer::new(
-            device.clone(),
-            ConcreteBufferDescriptor::new(
-                BufferUsage::from([BufferUseAs::TransferDst].as_slice()),
-                (SIZEOF_MATERIAL_DEFINITION as u64) * (MAX_MATERIALS as u64),
-            ),
-            None,
-            Some(format!("{debug_name}.current_materials_buffer").as_str()),
-        )?;
-
-        let materials_size = (SIZEOF_MATERIAL_DEFINITION as u64)
-            * (MAX_MATERIALS as u64)
-            * (frames_in_flight as u64);
-        let block_size = 128u64;
-        let materials_allocator = DefaultAllocator::with_blocksize(
-            block_size,
-            ((materials_size / block_size) + 1u64) + (frames_in_flight as u64),
-        );
-
-        let memory_heap = MemoryHeap::new(
-            device.clone(),
-            ConcreteMemoryHeapDescriptor::new(
-                MemoryType::DeviceLocal(None),
-                materials_allocator.total_size(),
-            ),
-            MemoryRequirements::try_from(
-                materials_unallocated_buffer
-                    .iter()
-                    .map(|m| m as &dyn AllocationRequiring)
-                    .chain(
-                        [&current_materials_buffer]
-                            .into_iter()
-                            .map(|m| m as &dyn AllocationRequiring),
-                    )
-                    .collect::<smallvec::SmallVec<[_; 8]>>()
-                    .as_slice(),
-            )?,
-        )?;
-
-        let memory_pool = MemoryPool::new(
-            memory_heap,
-            Arc::new(materials_allocator),
-            MemoryPoolFeatures::from([].as_slice()),
-        )?;
-
-        let current_materials_buffer =
-            AllocatedBuffer::new(memory_pool.clone(), current_materials_buffer)?;
-
-        let materials = LoadableResourcesCollection::new(
-            queue_family,
-            MAX_TEXTURES,
-            String::from("materials_manager"),
-        )?;
-
-        let mut material_buffers: MaterialsFrameInFlightType = smallvec::smallvec![];
-        for buffer in materials_unallocated_buffer.into_iter() {
-            let material_buffer = AllocatedBuffer::new(memory_pool.clone(), buffer)?;
-            material_buffers.push(material_buffer);
-        }
-
-        let mut mesh_to_material_map: MeshToMaterialFramesInFlightType =
-            MeshToMaterialFramesInFlightType::with_capacity(frames_in_flight as usize);
-        for index in 0..frames_in_flight {
-            let mesh_material_buffer = Buffer::new(
+        let mut mesh_material_unallocated_buffers = vec![];
+        for index in 0..(frames_in_flight as usize) {
+            mesh_material_unallocated_buffers.push(UnallocatedResource::Buffer(Buffer::new(
                 device.clone(),
                 ConcreteBufferDescriptor::new(
                     BufferUsage::from(
@@ -276,15 +222,71 @@ impl MaterialManager {
                 ),
                 None,
                 Some(format!("{debug_name}.mesh_to_material_map[{index}]").as_str()),
-            )?;
-
-            mesh_to_material_map.push(AllocatedBuffer::new(
-                memory_pool.clone(),
-                mesh_material_buffer,
-            )?);
+            )?));
         }
 
+        let current_materials_unallocated_buffer = Buffer::new(
+            device.clone(),
+            ConcreteBufferDescriptor::new(
+                BufferUsage::from([BufferUseAs::TransferDst, BufferUseAs::TransferSrc].as_slice()),
+                (SIZEOF_MATERIAL_DEFINITION as u64) * (MAX_MATERIALS as u64),
+            ),
+            None,
+            Some(format!("{debug_name}.current_materials_buffer").as_str()),
+        )?;
+
+        let mut mem_manager = memory_manager.lock().unwrap();
+
+        let current_materials_allocated_buffer = mem_manager.allocate_resources(
+            &MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostHidden)),
+            &MemoryPoolFeatures::new(false),
+            vec![current_materials_unallocated_buffer.into()],
+            MemoryManagementTags::default()
+                .with_name("material_buffers".to_string())
+                .with_size(MemoryManagementTagSize::MediumSmall),
+        )?;
+
+        let materials_allocated_buffers = mem_manager.allocate_resources(
+            &MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostHidden)),
+            &MemoryPoolFeatures::new(false),
+            materials_unallocated_buffer,
+            MemoryManagementTags::default()
+                .with_name("material_buffers".to_string())
+                .with_size(MemoryManagementTagSize::MediumSmall),
+        )?;
+
+        let mesh_material_allocated_buffers = mem_manager.allocate_resources(
+            &MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostHidden)),
+            &MemoryPoolFeatures::new(false),
+            mesh_material_unallocated_buffers,
+            MemoryManagementTags::default()
+                .with_name("material_buffers".to_string())
+                .with_size(MemoryManagementTagSize::MediumSmall),
+        )?;
+
+        let material_buffers = materials_allocated_buffers
+            .into_iter()
+            .map(|allocated| allocated.buffer())
+            .collect::<MaterialsFrameInFlightType>();
+
+        let mesh_to_material_map = mesh_material_allocated_buffers
+            .into_iter()
+            .map(|allocated| allocated.buffer())
+            .collect::<MeshToMaterialFramesInFlightType>();
+
+        let current_materials_buffer = current_materials_allocated_buffer[0].buffer();
+
+        drop(mem_manager);
+
+        let materials = LoadableResourcesCollection::new(
+            queue_family,
+            MAX_TEXTURES,
+            String::from("materials_manager"),
+        )?;
+
         Ok(Self {
+            memory_manager,
+
             queue,
 
             descriptor_set_layout,
@@ -362,5 +364,41 @@ impl MaterialManager {
     #[inline]
     pub fn remove(&mut self, index: u32) -> RenderingResult<()> {
         self.materials.remove(index)
+    }
+
+    /// Update buffers, that are already bound to the materials descriptor set for rendering
+    pub fn update_buffers(
+        &self,
+        recorder: &mut CommandBufferRecorder,
+        current_frame: usize,
+        queue_family: Arc<QueueFamily>,
+    ) {
+        assert_eq!(
+            self.current_materials_buffer.size(),
+            self.material_buffers[current_frame].size()
+        );
+
+        recorder.copy_buffer(
+            self.current_materials_buffer.clone(),
+            self.material_buffers[current_frame].clone(),
+            [(0u64, 0u64, self.current_materials_buffer.size())].as_slice(),
+        );
+
+        recorder.buffer_barriers(
+            [BufferMemoryBarrier::new(
+                [PipelineStage::Transfer].as_slice().into(),
+                [MemoryAccessAs::TransferWrite].as_slice().into(),
+                [PipelineStage::AllCommands].as_slice().into(),
+                [MemoryAccessAs::MemoryRead].as_slice().into(),
+                BufferSubresourceRange::new(
+                    self.material_buffers[current_frame].clone(),
+                    0u64,
+                    self.material_buffers[current_frame].size(),
+                ),
+                queue_family.clone(),
+                queue_family.clone(),
+            )]
+            .as_slice(),
+        );
     }
 }

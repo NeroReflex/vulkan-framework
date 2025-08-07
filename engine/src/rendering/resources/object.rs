@@ -25,7 +25,7 @@ use vulkan_framework::{
             BottomLevelAccelerationStructureIndexBuffer,
             BottomLevelAccelerationStructureTransformBuffer,
             BottomLevelAccelerationStructureVertexBuffer, BottomLevelTrianglesGroupDecl,
-            BottomLevelVerticesTopologyDecl, IDENTITY_MATRIX,
+            BottomLevelVerticesTopologyDecl,
         },
     },
     buffer::{
@@ -199,6 +199,7 @@ impl Manager {
         )?;
         let material_manager = MaterialManager::new(
             queue_family.clone(),
+            memory_manager.clone(),
             frames_in_flight,
             format!("{debug_name}->material_manager"),
         )?;
@@ -669,7 +670,7 @@ impl Manager {
                 },
             };
 
-            let material_def_size = std::mem::size_of::<MaterialGPU>();
+            let material_def_size = SIZEOF_MATERIAL_DEFINITION;
             assert_eq!(SIZEOF_MATERIAL_DEFINITION, material_def_size);
             let material_buffer = Buffer::new(
                 device.clone(),
@@ -830,13 +831,22 @@ impl Manager {
         todo!()
     }
 
+    pub fn update_buffers(
+        &self,
+        recorder: &mut CommandBufferRecorder,
+        current_frame: usize,
+        queue_family: Arc<QueueFamily>,
+    ) {
+        self.material_manager
+            .update_buffers(recorder, current_frame, queue_family);
+    }
+
     /// Performs a guided rendering.
     /// When called inside a rendering recording function it will update a push constant
     /// containing a single u32 to the specified offset and stage, bind the vertex buffer,
     /// bind the index buffers and dispatch relevants draw calls.
     ///
     /// This function avoids rendering assets that are not completely loaded in GPU memory.
-    #[inline]
     pub fn guided_rendering(
         &self,
         recorder: &mut CommandBufferRecorder,
@@ -848,7 +858,9 @@ impl Manager {
         push_constant_size: u32,
         push_constant_stages: ShaderStagesAccess,
     ) {
-        // update materials descriptor sets (to make them relevants to this frame) and bind them
+        // bind the updated materials descriptor sets (update happens by calling update_buffers):
+        // WARNING: the update MUST have been happened before this method,
+        // and proper barriers MUST have been placed already
         recorder.bind_descriptor_sets_for_graphics_pipeline(
             pipeline_layout.clone(),
             textures_descriptor_set_binding,

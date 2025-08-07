@@ -662,6 +662,9 @@ impl MeshRendering {
         let texture_imageview = self.gbuffer_texture_image_views[current_frame].clone();
         let depth_stencil_imageview = self.gbuffer_depth_stencil_image_views[current_frame].clone();
 
+        // update materials descriptor sets (to make them relevants to this frame)
+        meshes.update_buffers(recorder, current_frame, queue_family.clone());
+
         // Transition the framebuffer images into depth/color attachment optimal layout,
         // so that the graphics pipeline has it in the best format
         recorder.image_barriers(
