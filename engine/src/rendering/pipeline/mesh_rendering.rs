@@ -98,7 +98,7 @@ const MESH_RENDERING_FRAGMENT_SPV: &[u32] = inline_spirv!(
 // ============================================ FRAGMENT OUTPUT ==================================================
 layout (location = 0) out vec4 out_vPosition;           // Search for GBUFFER_FB0
 layout (location = 1) out vec4 out_vNormal;             // Search for GBUFFER_FB1
-layout (location = 2) out vec4 out_vDiffuseAlbedo;      // Search for GBUFFER_FB2
+layout (location = 2) out vec4 out_vDiffuse;            // Search for GBUFFER_FB2
 // ===============================================================================================================
 
 layout (location = 0) in vec4 in_vPosition_worldspace_minus_eye_position;
@@ -114,6 +114,27 @@ layout(push_constant) uniform MaterialIDs {
 // MUST match with MAX_TEXTURES on rust side
 layout(set = 0, binding = 0) uniform sampler2D textures[256];
 
+struct material_t {
+    uint diffuse_texture_index;
+    uint normal_texture_index;
+    uint reflection_texture_index;
+    uint displacement_texture_index;
+};
+
+struct mesh_to_material_t {
+    uint material_index;
+};
+
+layout(std430, set = 1, binding = 0) readonly buffer material
+{
+    material_t info[];
+};
+
+layout(std430, set = 1, binding = 0) readonly buffer meshes
+{
+    mesh_to_material_t map[];
+};
+
 void main() {
     // Calculate position of the current fragment
     const vec4 vPosition_worldspace = vec4((in_vPosition_worldspace_minus_eye_position + in_eyePosition_worldspace).xyz, 1.0);
@@ -125,8 +146,12 @@ void main() {
     // The normal can either be calculated or provided from the mesh. Just pick the provided one if it is valid.
     const vec3 bestNormal = normalize(length(in_vNormal_worldspace.xyz) < 0.000001f ? facenormal : in_vNormal_worldspace.xyz);
 
+    const uint diffuse_texture_index = info[material.material_id].diffuse_texture_index;
+
     out_vPosition = vPosition_worldspace;
     out_vNormal = vec4(bestNormal.xyz, 0.0);
+    out_vDiffuse = texture(textures[diffuse_texture_index], in_vTextureUV);
+
     //out_vDiffuseAlbedo = vec4(getDiffuseMaterialAlbedo(in_vMaterialIndex, in_vTextureUV)) / 255.0;
 
     //outColor = vec4(1.0, 0.0, 0.0, 1.0);

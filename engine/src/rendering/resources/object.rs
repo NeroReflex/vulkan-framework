@@ -71,11 +71,10 @@ struct MeshDefinition {
 #[repr(C, packed)]
 #[derive(Debug, Copy, Clone)]
 pub struct MaterialGPU {
-    pub diffuse_texture_index: u32,    // 4 bytes
-    pub normal_texture_index: u32,     // 4 bytes
-    pub reflection_texture_index: u32, // 4 bytes
-    pub di_texture_index: u32,         // 4 bytes
-                                       // No padding needed since all fields are u32
+    pub diffuse_texture_index: u32,
+    pub normal_texture_index: u32,
+    pub reflection_texture_index: u32,
+    pub displacement_texture_index: u32,
 }
 
 type LoadedMeshesType = smallvec::SmallVec<[Option<MeshDefinition>; MAX_MESHES as usize]>;
@@ -712,7 +711,7 @@ impl Manager {
                     diffuse_texture_index: diffuse_texture.texture,
                     normal_texture_index: self.texture_manager.stub_texture_index(),
                     reflection_texture_index: self.texture_manager.stub_texture_index(),
-                    di_texture_index: self.texture_manager.stub_texture_index(),
+                    displacement_texture_index: self.texture_manager.stub_texture_index(),
                 };
             }
 

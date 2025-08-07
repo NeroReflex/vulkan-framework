@@ -101,7 +101,7 @@ impl MaterialManager {
             descriptor_set
                 .bind_resources(|binder| {
                     binder
-                        .bind_uniform_buffer(
+                        .bind_storage_buffers(
                             0,
                             [
                                 (
@@ -170,20 +170,12 @@ impl MaterialManager {
 
         let descriptor_set_layout = DescriptorSetLayout::new(
             device.clone(),
-            [
-                BindingDescriptor::new(
-                    ShaderStagesAccess::graphics(),
-                    BindingType::Native(NativeBindingType::UniformBuffer),
-                    0,
-                    2,
-                ),
-                //BindingDescriptor::new(
-                //    ShaderStagesAccess::graphics(),
-                //    BindingType::Native(NativeBindingType::UniformBuffer),
-                //    0,
-                //    1,
-                //),
-            ]
+            [BindingDescriptor::new(
+                ShaderStagesAccess::graphics(),
+                BindingType::Native(NativeBindingType::StorageBuffer),
+                0,
+                2,
+            )]
             .as_slice(),
         )?;
 
@@ -201,7 +193,7 @@ impl MaterialManager {
                 device.clone(),
                 ConcreteBufferDescriptor::new(
                     BufferUsage::from(
-                        [BufferUseAs::TransferDst, BufferUseAs::UniformBuffer].as_slice(),
+                        [BufferUseAs::TransferDst, BufferUseAs::StorageBuffer].as_slice(),
                     ),
                     (SIZEOF_MATERIAL_DEFINITION as u64) * (MAX_MATERIALS as u64),
                 ),
@@ -216,7 +208,7 @@ impl MaterialManager {
                 device.clone(),
                 ConcreteBufferDescriptor::new(
                     BufferUsage::from(
-                        [BufferUseAs::TransferDst, BufferUseAs::UniformBuffer].as_slice(),
+                        [BufferUseAs::TransferDst, BufferUseAs::StorageBuffer].as_slice(),
                     ),
                     (MAX_MATERIALS as u64) * 4u64,
                 ),
