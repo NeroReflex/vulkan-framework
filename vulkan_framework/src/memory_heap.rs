@@ -144,7 +144,7 @@ pub struct MemoryHeap {
     descriptor: ConcreteMemoryHeapDescriptor,
     heap_index: u32,
     heap_type_index: u32,
-    heap_property_flags: u32,
+    heap_property_flags: ash::vk::MemoryPropertyFlags,
 }
 
 pub trait MemoryHeapOwned {
@@ -165,8 +165,13 @@ impl Drop for MemoryHeap {
 
 impl MemoryHeap {
     pub fn is_host_mappable(&self) -> bool {
-        ash::vk::MemoryPropertyFlags::from_raw(self.heap_property_flags)
+        self.heap_property_flags
             .contains(ash::vk::MemoryPropertyFlags::HOST_VISIBLE)
+    }
+
+    pub fn is_coherent(&self) -> bool {
+        self.heap_property_flags
+            .contains(ash::vk::MemoryPropertyFlags::HOST_COHERENT)
     }
 
     pub fn heap_index(&self) -> u32 {
@@ -212,7 +217,7 @@ impl MemoryHeap {
         device_memory_properties: &ash::vk::PhysicalDeviceMemoryProperties,
         current_requested_memory_heap_descriptor: &ConcreteMemoryHeapDescriptor,
         memory_type_bits_requirement: u32,
-    ) -> Option<(u32, u32, u32)> {
+    ) -> Option<(u32, u32, ash::vk::MemoryPropertyFlags)> {
         let requested_size = current_requested_memory_heap_descriptor.memory_minimum_size();
 
         'suitable_heap_search: for memory_index in 0..device_memory_properties.memory_type_count {
@@ -296,7 +301,7 @@ impl MemoryHeap {
                 return Some((
                     heap_descriptor.heap_index,
                     memory_index,
-                    heap_descriptor.property_flags.as_raw(),
+                    heap_descriptor.property_flags,
                 ));
             }
         }

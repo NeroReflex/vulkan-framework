@@ -16,7 +16,8 @@ use vulkan_framework::{
         },
         AllowedBuildingDevice, VertexIndexing,
     },
-    binding_tables::{required_memory_type, RaytracingBindingTables},
+    ash::vk::{AccelerationStructureInstanceKHR, TransformMatrixKHR},
+    binding_tables::RaytracingBindingTables,
     buffer::{Buffer, BufferUsage},
     command_buffer::{ClearValues, ColorClearValues, CommandBufferRecorder, PrimaryCommandBuffer},
     command_pool::CommandPool,
@@ -39,13 +40,12 @@ use vulkan_framework::{
     },
     image_view::ImageView,
     instance::*,
-    memory_allocator::*,
     memory_barriers::{ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
     memory_heap::*,
     memory_management::{
         DefaultMemoryManager, MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait,
     },
-    memory_pool::{MemoryPool, MemoryPoolBacked, MemoryPoolFeature, MemoryPoolFeatures},
+    memory_pool::{MemoryMap, MemoryPoolBacked, MemoryPoolFeature, MemoryPoolFeatures},
     pipeline_layout::PipelineLayout,
     pipeline_stage::{PipelineStage, PipelineStageRayTracingPipelineKHR, PipelineStages},
     queue::*,
@@ -393,21 +393,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             })
             .collect::<Vec<_>>();
 
-        let raytracing_memory_heap = MemoryHeap::new(
-            dev.clone(),
-            ConcreteMemoryHeapDescriptor::new(required_memory_type(), 1024 * 1024 * 128),
-            Default::default(),
-        )
-        .unwrap();
-        println!("Memory heap created! <3");
-
-        let raytracing_allocator = MemoryPool::new(
-            raytracing_memory_heap,
-            Arc::new(DefaultAllocator::new(1024 * 1024 * 128)),
-            MemoryPoolFeatures::from([MemoryPoolFeature::DeviceAddressable].as_slice()),
-        )
-        .unwrap();
-
         let rt_images: Vec<Arc<AllocatedImage>> = mem_manager
             .allocate_resources(
                 &MemoryType::DeviceLocal(None),
@@ -708,10 +693,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .unwrap();
 
+        let raytracing_allocation_tags = MemoryManagementTags::default()
+            .with_exclusivity(false)
+            .with_name("raytracing".to_string())
+            .with_size(MemoryManagementTagSize::MediumSmall);
+
         let shader_binding_tables = (0..swapchain_images_count)
             .map(|_| {
-                RaytracingBindingTables::new(pipeline.clone(), raytracing_allocator.clone())
-                    .unwrap()
+                RaytracingBindingTables::new(
+                    pipeline.clone(),
+                    &mut mem_manager,
+                    raytracing_allocation_tags.clone(),
+                )
+                .unwrap()
             })
             .collect::<Vec<_>>();
 
@@ -754,18 +748,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some("blas_transform_buffer"),
         )?;
 
+        let memory_type = MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostVisibile {
+            cached: false,
+        }));
+
         let allocated_buffers = mem_manager.allocate_resources(
-            &required_memory_type(),
+            &memory_type,
             &MemoryPoolFeatures::from([MemoryPoolFeature::DeviceAddressable].as_slice()),
             vec![
                 vertex_buffer_backing.into(),
                 index_buffer_backing.into(),
                 transform_buffer_backing.into(),
             ],
-            MemoryManagementTags::default()
-                .with_exclusivity(false)
-                .with_name("raytracing".to_string())
-                .with_size(MemoryManagementTagSize::MediumSmall),
+            raytracing_allocation_tags.clone(),
         )?;
         assert_eq!(allocated_buffers.len(), 3);
 
@@ -786,43 +781,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             vertex_buffer,
             index_buffer,
             transform_buffer,
-            MemoryManagementTags::default()
-                .with_exclusivity(false)
-                .with_name("raytracing".to_string())
-                .with_size(MemoryManagementTagSize::MediumSmall),
+            raytracing_allocation_tags.clone(),
             None,
             Some("my_blas"),
         )
         .unwrap();
 
+        // fill buffers with data
         {
-            let transform_data = [vulkan_framework::ash::vk::TransformMatrixKHR {
-                matrix: TRANSFORM_DATA[0],
-            }];
-            blas.index_buffer()
-                .buffer()
-                .get_backing_memory_pool()
-                .write_raw_data(
-                    blas.index_buffer().buffer().allocation_offset(),
-                    VERTEX_INDEX[0].as_slice(),
-                )
-                .unwrap();
-            blas.vertex_buffer()
-                .buffer()
-                .get_backing_memory_pool()
-                .write_raw_data(
-                    blas.vertex_buffer().buffer().allocation_offset(),
-                    VERTEX_DATA[0].as_slice(),
-                )
-                .unwrap();
-            blas.transform_buffer()
-                .buffer()
-                .get_backing_memory_pool()
-                .write_raw_data(
-                    blas.transform_buffer().buffer().allocation_offset(),
-                    &[transform_data],
-                )
-                .unwrap();
+            {
+                let buffer = blas.index_buffer().buffer();
+                let mem_map = MemoryMap::new(buffer.get_backing_memory_pool())?;
+                let mut range =
+                    mem_map.range::<[u32; 3]>(buffer.clone() as Arc<dyn MemoryPoolBacked>)?;
+                *range = VERTEX_INDEX[0];
+            }
+
+            {
+                let buffer = blas.vertex_buffer().buffer();
+                let mem_map = MemoryMap::new(buffer.get_backing_memory_pool())?;
+                let mut range =
+                    mem_map.range::<[f32; 9]>(buffer.clone() as Arc<dyn MemoryPoolBacked>)?;
+                *range = VERTEX_DATA[0];
+            }
+
+            {
+                let buffer = blas.transform_buffer().buffer();
+                let mem_map = MemoryMap::new(buffer.get_backing_memory_pool())?;
+                let mut range = mem_map
+                    .range::<TransformMatrixKHR>(buffer.clone() as Arc<dyn MemoryPoolBacked>)?;
+                *range = vulkan_framework::ash::vk::TransformMatrixKHR {
+                    matrix: TRANSFORM_DATA[0],
+                };
+            }
         }
 
         let blas_decl = TopLevelBLASGroupDecl::new();
@@ -840,7 +831,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?;
 
         let allocated_buffers = mem_manager.allocate_resources(
-            &required_memory_type(),
+            &memory_type,
             &MemoryPoolFeatures::from([MemoryPoolFeature::DeviceAddressable].as_slice()),
             vec![instances_buffer_backing.into()],
             MemoryManagementTags::default()
@@ -860,10 +851,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &mut mem_manager,
             AllowedBuildingDevice::DeviceOnly,
             instance_buffer,
-            MemoryManagementTags::default()
-                .with_exclusivity(false)
-                .with_name("raytracing".to_string())
-                .with_size(MemoryManagementTagSize::MediumSmall),
+            raytracing_allocation_tags.clone(),
             None,
             Some("tlas"),
         )
@@ -902,14 +890,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         },
                 }
             ];
-            tlas.instance_buffer()
-                .buffer()
-                .get_backing_memory_pool()
-                .write_raw_data(
-                    tlas.instance_buffer().buffer().allocation_offset(),
-                    accel_structure_instances.as_slice(),
-                )
-                .unwrap();
+
+            {
+                let buffer = tlas.instance_buffer().buffer();
+                let mem_map = MemoryMap::new(buffer.get_backing_memory_pool())?;
+                let mut range = mem_map.range::<AccelerationStructureInstanceKHR>(
+                    buffer.clone() as Arc<dyn MemoryPoolBacked>,
+                )?;
+                let instances = range.as_mut_slice();
+                instances.copy_from_slice(accel_structure_instances.as_slice());
+            }
         }
 
         let blas_building =

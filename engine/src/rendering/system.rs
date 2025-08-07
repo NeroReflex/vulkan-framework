@@ -303,7 +303,7 @@ impl System {
         > = memory_manager
             .allocate_resources(
                 &MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostVisibile {
-                    cached: true,
+                    cached: false,
                 })),
                 &MemoryPoolFeatures::default(),
                 view_projection_unallocated_buffers,
@@ -361,26 +361,24 @@ impl System {
             frames_in_flight as usize
         );
         for index in 0..(frames_in_flight as usize) {
-            let view_proj_descriptor_set =  DescriptorSet::new(
+            let view_proj_descriptor_set = DescriptorSet::new(
                 view_projection_descriptors_pool.clone(),
                 view_projection_descriptor_set_layout.clone(),
             )?;
 
-           view_proj_descriptor_set.bind_resources(
-                |binder: &mut DescriptorSetWriter<'_>| {
-                    binder
-                        .bind_uniform_buffer(
-                            0,
-                            [(
-                                view_projection_buffers[index].clone() as Arc<dyn BufferTrait>,
-                                None,
-                                None,
-                            )]
-                            .as_slice(),
-                        )
-                        .unwrap();
-                },
-            )?;
+            view_proj_descriptor_set.bind_resources(|binder: &mut DescriptorSetWriter<'_>| {
+                binder
+                    .bind_uniform_buffer(
+                        0,
+                        [(
+                            view_projection_buffers[index].clone() as Arc<dyn BufferTrait>,
+                            None,
+                            None,
+                        )]
+                        .as_slice(),
+                    )
+                    .unwrap();
+            })?;
 
             view_projection_descriptor_sets.push(view_proj_descriptor_set);
         }
@@ -553,14 +551,13 @@ impl System {
 
             // This is the Host stage that performs the MemoryWrite mentioned in the barrier (#)
             {
-                let mut mem_map = MemoryMap::new(
+                let mem_map = MemoryMap::new(
                     self.view_projection_buffers[current_frame].get_backing_memory_pool(),
                 )?;
-                let view_proj_mat = mem_map.as_mut_slice_with_size::<glm::Mat4>(
-                    self.view_projection_buffers[current_frame].clone()
-                        as Arc<dyn MemoryPoolBacked>,
-                    (std::mem::size_of::<glm::Mat4>() as u64) * 2u64,
-                )?;
+                let mut mapped_range = mem_map
+                    .range::<glm::Mat4>(self.view_projection_buffers[current_frame].clone()
+                        as Arc<dyn MemoryPoolBacked>)?;
+                let view_proj_mat = mapped_range.as_mut_slice();
                 assert_eq!(view_proj_mat.len(), 2_usize);
                 view_proj_mat[0] = camera.view_matrix();
                 view_proj_mat[1] = camera.projection_matrix(

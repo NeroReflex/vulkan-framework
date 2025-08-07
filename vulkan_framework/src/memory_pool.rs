@@ -10,6 +10,7 @@ use crate::{
 
 use std::{
     mem::size_of,
+    ops::{Deref, DerefMut},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -62,11 +63,15 @@ impl MemoryHeapOwned for MemoryPool {
     }
 }
 
+/// Represents a resource that has been successfully allocated on a `MemoryPool`
 pub trait MemoryPoolBacked {
+    /// Get the memory pool that is backing the allocation
     fn get_backing_memory_pool(&self) -> Arc<MemoryPool>;
 
+    /// Get the allocation offset
     fn allocation_offset(&self) -> u64;
 
+    /// Get the allocation size
     fn allocation_size(&self) -> u64;
 }
 
@@ -98,64 +103,6 @@ impl MemoryPool {
 
     pub(crate) fn ash_handle(&self) -> ash::vk::DeviceMemory {
         self.memory
-    }
-
-    pub fn write_raw_data<T>(&self, offset: u64, src: &[T]) -> VulkanResult<()>
-    where
-        T: Copy + Sized,
-    {
-        let device = self.get_parent_memory_heap().get_parent_device();
-
-        if !self.get_parent_memory_heap().is_host_mappable() {
-            return Err(VulkanError::Framework(
-                crate::prelude::FrameworkError::MapMemoryError,
-            ));
-        }
-
-        let ptr = unsafe {
-            device.ash_handle().map_memory(
-                self.memory,
-                offset,
-                (src.len() + size_of::<T>()) as u64,
-                vk::MemoryMapFlags::empty(),
-            )
-        }?;
-
-        // copy raw from data to ptr
-        let mapped_typed_ptr = unsafe { std::slice::from_raw_parts_mut(ptr as *mut T, src.len()) };
-        mapped_typed_ptr.copy_from_slice(src);
-
-        unsafe { device.ash_handle().unmap_memory(self.memory) }
-
-        Ok(())
-    }
-
-    pub fn read_raw_data<T>(&self, offset: u64, size: u64) -> VulkanResult<Vec<T>>
-    where
-        T: Copy,
-    {
-        let device = self.get_parent_memory_heap().get_parent_device();
-
-        if !self.get_parent_memory_heap().is_host_mappable() {
-            return Err(VulkanError::Framework(
-                crate::prelude::FrameworkError::MapMemoryError,
-            ));
-        }
-
-        let ptr = unsafe {
-            device
-                .ash_handle()
-                .map_memory(self.memory, offset, size, vk::MemoryMapFlags::empty())
-        }?;
-
-        let slice =
-            std::ptr::slice_from_raw_parts(ptr as *const T, (size as usize) / size_of::<T>());
-
-        let data = unsafe { (*slice).to_vec() };
-
-        unsafe { device.ash_handle().unmap_memory(self.memory) }
-
-        Ok(data)
     }
 
     pub fn support_features(&self, features: &MemoryPoolFeatures) -> bool {
@@ -228,8 +175,6 @@ impl Drop for MemoryMap {
 
         assert!(old_val);
 
-        //if self.memory_pool.get_parent_memory_heap().type_index()
-
         unsafe { device.ash_handle().unmap_memory(self.memory_pool.memory) }
     }
 }
@@ -241,7 +186,7 @@ impl MemoryMap {
 
         if !memory_heap.is_host_mappable() {
             return Err(VulkanError::Framework(
-                crate::prelude::FrameworkError::MapMemoryError,
+                crate::prelude::FrameworkError::MemoryNotMappableError,
             ));
         }
 
@@ -264,62 +209,110 @@ impl MemoryMap {
         Ok(Self { memory_pool, ptr })
     }
 
-    pub fn as_slice<T>(&self, resource: impl AsRef<dyn MemoryPoolBacked>) -> VulkanResult<&[T]>
-    where
-        T: Sized,
-    {
-        let res = resource.as_ref();
-
-        let slice = unsafe {
-            std::slice::from_raw_parts(
-                self.ptr.add(res.allocation_offset() as usize) as *const T,
-                (res.allocation_size() as usize) / size_of::<T>(),
-            )
-        };
-
-        Ok(slice)
-    }
-
-    pub fn as_mut_slice<T>(
-        &mut self,
+    pub fn range<'s, T>(
+        &'s self,
         resource: impl AsRef<dyn MemoryPoolBacked>,
-    ) -> VulkanResult<&mut [T]>
+    ) -> VulkanResult<MemoryMappedRange<'s, T>>
     where
         T: Sized,
     {
         let res = resource.as_ref();
 
-        let slice = unsafe {
-            std::slice::from_raw_parts_mut(
-                self.ptr.add(res.allocation_offset() as usize) as *mut T,
-                (res.allocation_size() as usize) / size_of::<T>(),
-            )
-        };
-
-        Ok(slice)
-    }
-
-    pub fn as_mut_slice_with_size<T>(
-        &mut self,
-        resource: impl AsRef<dyn MemoryPoolBacked>,
-        size: u64,
-    ) -> VulkanResult<&mut [T]>
-    where
-        T: Sized,
-    {
-        let res = resource.as_ref();
-
-        if size > res.allocation_size() {
-            todo!()
+        // check the resource is from the very same memory pool
+        if Arc::as_ptr(&res.get_backing_memory_pool()) != Arc::as_ptr(&self.memory_pool) {
+            return Err(VulkanError::Framework(FrameworkError::WrongMemoryPool));
         }
 
-        let slice = unsafe {
-            std::slice::from_raw_parts_mut(
-                self.ptr.add(res.allocation_offset() as usize) as *mut T,
-                (size as usize) / size_of::<T>(),
-            )
-        };
+        // check that at least one element exists, otherwise from_raw_parts will panic
+        // and deref will access more data than what it is available
+        if (res.allocation_size() as u128) < (std::mem::size_of::<T>() as u128) {
+            return Err(VulkanError::Framework(FrameworkError::ResourceTooSmall));
+        }
 
-        Ok(slice)
+        Ok(MemoryMappedRange {
+            content: unsafe { self.ptr.add(res.allocation_offset() as usize) } as *mut T,
+            written: false,
+            memory_map: self,
+            offset: res.allocation_offset(),
+            size: res.allocation_size(),
+        })
+    }
+}
+
+pub struct MemoryMappedRange<'map, T>
+where
+    T: Sized,
+{
+    content: *mut T,
+    written: bool,
+    memory_map: &'map MemoryMap,
+    offset: ash::vk::DeviceSize,
+    size: ash::vk::DeviceSize,
+}
+
+impl<'mem, T> Deref for MemoryMappedRange<'mem, T>
+where
+    T: Sized,
+{
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.content }
+    }
+}
+
+impl<'mem, T> DerefMut for MemoryMappedRange<'mem, T>
+where
+    T: Sized,
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.written = true;
+        unsafe { &mut *self.content }
+    }
+}
+
+impl<'mem, T> Drop for MemoryMappedRange<'mem, T>
+where
+    T: Sized,
+{
+    fn drop(&mut self) {
+        if self.written
+            && !self
+                .memory_map
+                .memory_pool
+                .get_parent_memory_heap()
+                .is_coherent()
+        {
+            let mapped_mem_range = ash::vk::MappedMemoryRange::default()
+                .memory(self.memory_map.memory_pool.memory)
+                .offset(self.offset)
+                .size(self.size);
+
+            unsafe {
+                self.memory_map
+                    .memory_pool
+                    .get_parent_memory_heap()
+                    .get_parent_device()
+                    .ash_handle()
+                    .flush_mapped_memory_ranges([mapped_mem_range].as_slice())
+                    .unwrap()
+            };
+        }
+    }
+}
+
+impl<'mem, T> MemoryMappedRange<'mem, T>
+where
+    T: Sized,
+{
+    pub fn as_slice(&self) -> &'mem [T] {
+        unsafe { std::slice::from_raw_parts(self.content, (self.size as usize) / size_of::<T>()) }
+    }
+
+    pub fn as_mut_slice(&mut self) -> &'mem mut [T] {
+        self.written = true;
+        unsafe {
+            std::slice::from_raw_parts_mut(self.content, (self.size as usize) / size_of::<T>())
+        }
     }
 }

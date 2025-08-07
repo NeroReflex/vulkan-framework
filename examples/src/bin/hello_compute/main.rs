@@ -38,6 +38,7 @@ use vulkan_framework::memory_heap::MemoryHostVisibility;
 use vulkan_framework::memory_heap::MemoryRequirements;
 use vulkan_framework::memory_heap::MemoryType;
 use vulkan_framework::memory_management::DefaultMemoryManager;
+use vulkan_framework::memory_pool::MemoryMap;
 use vulkan_framework::memory_pool::MemoryPool;
 use vulkan_framework::memory_pool::MemoryPoolBacked;
 use vulkan_framework::memory_pool::MemoryPoolFeatures;
@@ -402,18 +403,6 @@ fn main() {
     // this will make fence_waiter wait for the completion
     drop(fence_waiter);
 
-    let Ok(image_raw_data) = stack_allocator
-        .read_raw_data::<[f32; 4]>(image.allocation_offset(), image.allocation_size())
-    else {
-        panic!("Error copying data from the GPU memory :(");
-    };
-
-    println!(
-        "Image in GPU memory is {} bytes long, {} pixels in rgba32f were retrieved!",
-        image.allocation_size(),
-        image_raw_data.len()
-    );
-
     let path = std::path::Path::new("image.pfm");
     let display = path.display();
 
@@ -422,10 +411,25 @@ fn main() {
         Err(why) => panic!("couldn't open {}: {}", display, why),
     };
 
-    let rgb_data = image_raw_data
-        .iter()
-        .map(|f| [f[0], f[1], f[2]])
-        .collect::<Vec<[f32; 3]>>();
+    let rgb_data = {
+        let mem_map =
+            MemoryMap::new(image.get_backing_memory_pool()).expect("Unable to map memory");
+        let mut range = mem_map
+            .range::<[f32; 4]>(image.clone() as Arc<dyn MemoryPoolBacked>)
+            .expect("Unable to get memory range of resulting image");
+        let image_raw_data = range.as_slice();
+
+        println!(
+            "Image in GPU memory is {} bytes long, {} pixels in rgba32f were retrieved!",
+            image.allocation_size(),
+            image_raw_data.len()
+        );
+
+        image_raw_data
+            .iter()
+            .map(|f| [f[0], f[1], f[2]])
+            .collect::<Vec<[f32; 3]>>()
+    };
 
     if let Err(err) = write!(file, "PF\n1024 1024\n-1.0\n") {
         panic!("Unexpected error while writing the resulting image header: {err}");

@@ -21,7 +21,6 @@ use vulkan_framework::{
         DescriptorPoolSizesAcceletarionStructureKHR, DescriptorPoolSizesConcreteDescriptor,
     },
     device::DeviceOwned,
-    memory_allocator::DefaultAllocator,
     memory_barriers::{BufferMemoryBarrier, MemoryAccessAs},
     memory_heap::{MemoryHostVisibility, MemoryType},
     memory_management::{
@@ -123,12 +122,6 @@ impl MeshManager {
             queue_family.clone(),
             Some(format!("{debug_name}.mesh_manager.queue").as_str()),
         )?;
-
-        let rt_blocksize = 1024u64;
-        let raytracing_allocator = Arc::new(DefaultAllocator::with_blocksize(
-            rt_blocksize,
-            Self::meshes_memory_pool_size(MAX_MESHES, frames_in_flight) / rt_blocksize,
-        ));
 
         let meshes = LoadableResourcesCollection::new(
             queue_family,
@@ -234,11 +227,11 @@ impl MeshManager {
         let transform_buffer =
             BottomLevelAccelerationStructureTransformBuffer::new(buffer[0].buffer())?;
 
-        let mut mem_map = MemoryMap::new(transform_buffer.buffer().get_backing_memory_pool())?;
-        let transform = mem_map.as_mut_slice_with_size::<TransformMatrixKHR>(
-            transform_buffer.buffer().clone() as Arc<dyn MemoryPoolBacked>,
-            transform_buffer.buffer().size(),
+        let mem_map = MemoryMap::new(transform_buffer.buffer().get_backing_memory_pool())?;
+        let mut range = mem_map.range::<TransformMatrixKHR>(
+            transform_buffer.buffer().clone() as Arc<dyn MemoryPoolBacked>
         )?;
+        let transform = range.as_mut_slice();
         assert_eq!(transform.len(), 1);
         transform[0] = IDENTITY_MATRIX;
 

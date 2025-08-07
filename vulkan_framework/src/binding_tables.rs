@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
 use crate::{
-    buffer::{AllocatedBuffer, Buffer, BufferTrait, BufferUsage, ConcreteBufferDescriptor},
+    buffer::{Buffer, BufferTrait, BufferUsage, ConcreteBufferDescriptor},
     device::DeviceOwned,
-    memory_heap::{MemoryHeapOwned, MemoryHostVisibility, MemoryType},
-    memory_pool::{MemoryPool, MemoryPoolBacked},
-    prelude::{FrameworkError, VulkanError, VulkanResult},
+    memory_heap::{MemoryHostVisibility, MemoryType},
+    memory_management::{MemoryManagementTags, MemoryManagerTrait},
+    memory_pool::{MemoryMap, MemoryPoolBacked, MemoryPoolFeatures},
+    prelude::{VulkanError, VulkanResult},
     raytracing_pipeline::RaytracingPipeline,
     utils,
 };
@@ -19,7 +20,6 @@ pub struct RaytracingBindingTables {
     handle_size: u32,
     handle_size_aligned: u32,
     group_count: u32,
-    sbt_size: u32,
     shader_handle_storage: Vec<u8>,
     raytracing_pipeline: Arc<RaytracingPipeline>,
     raygen_buffer: Arc<dyn BufferTrait>,
@@ -29,10 +29,6 @@ pub struct RaytracingBindingTables {
     closesthit_buffer: Arc<dyn BufferTrait>,
     closesthit_buffer_addr: u64,
     callable: Option<RaytracingBindingTableCallableBuffer>,
-}
-
-pub fn required_memory_type() -> MemoryType {
-    MemoryType::DeviceLocal(Some(MemoryHostVisibility::visible(false)))
 }
 
 impl RaytracingBindingTables {
@@ -85,18 +81,14 @@ impl RaytracingBindingTables {
      */
     pub fn new(
         raytracing_pipeline: Arc<RaytracingPipeline>,
-        memory_pool: Arc<MemoryPool>,
+        memory_manager: &mut dyn MemoryManagerTrait,
+        allocation_tags: MemoryManagementTags,
     ) -> VulkanResult<Arc<Self>> {
-        let required_memory_type = required_memory_type();
-        let mem_type = memory_pool.get_parent_memory_heap().memory_type();
-        assert!(mem_type == required_memory_type);
+        // memory type should be DeviceLocal for performance reasons, but also be host visible so that I can write to it
+        let memory_type = MemoryType::DeviceLocal(Some(MemoryHostVisibility::visible(false)));
 
-        // this feature is required for raytracing to work at all
-        if !memory_pool.features().device_addressable() {
-            return Err(VulkanError::Framework(
-                FrameworkError::MemoryPoolNotAddressable,
-            ));
-        }
+        // memory pool features MUST include device addressable
+        let memory_pool_features = MemoryPoolFeatures::new(true);
 
         let device = raytracing_pipeline.get_parent_device();
 
@@ -117,8 +109,6 @@ impl RaytracingBindingTables {
             utils::aligned_size(handle_size, rt_info.shader_group_handle_alignment());
         let group_count: u32 = raytracing_pipeline.shader_group_size();
 
-        let sbt_size = group_count * handle_size_aligned;
-
         let buffer_descriptor = ConcreteBufferDescriptor::new(
             BufferUsage::from(
                 (ash::vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR
@@ -133,21 +123,80 @@ impl RaytracingBindingTables {
                 raytracing_pipeline.ash_handle(),
                 0,
                 group_count,
-                sbt_size as usize,
+                (group_count * handle_size_aligned) as usize,
             )
         }?;
 
-        let raygen_buffer = AllocatedBuffer::new(
-            memory_pool.clone(),
-            Buffer::new(device.clone(), buffer_descriptor, None, None)?,
+        let raygen_unallocated_buffer = Buffer::new(device.clone(), buffer_descriptor, None, None)?;
+        let miss_unallocated_buffer = Buffer::new(device.clone(), buffer_descriptor, None, None)?;
+        let closesthit_unallocated_buffer =
+            Buffer::new(device.clone(), buffer_descriptor, None, None)?;
+        let callable_unallocated_buffer =
+            Buffer::new(device.clone(), buffer_descriptor, None, None)?;
+
+        let allocation_result = memory_manager.allocate_resources(
+            &memory_type,
+            &memory_pool_features,
+            vec![
+                raygen_unallocated_buffer.into(),
+                miss_unallocated_buffer.into(),
+                closesthit_unallocated_buffer.into(),
+                callable_unallocated_buffer.into(),
+            ],
+            allocation_tags,
         )?;
-        memory_pool
-            .write_raw_data(
-                raygen_buffer.allocation_offset(),
-                &shader_handle_storage[((handle_size_aligned * 0) as usize)
-                    ..(((handle_size_aligned * 0) + handle_size) as usize)],
-            )
-            .unwrap();
+
+        assert_eq!(allocation_result.len(), 4_usize);
+
+        let raygen_buffer = allocation_result[0].buffer();
+        let miss_buffer = allocation_result[1].buffer();
+        let closesthit_buffer = allocation_result[2].buffer();
+        let callable_buffer = allocation_result[3].buffer();
+
+        {
+            let mem_map = MemoryMap::new(raygen_buffer.get_backing_memory_pool())?;
+            let mut range =
+                mem_map.range::<u8>(raygen_buffer.clone() as Arc<dyn MemoryPoolBacked>)?;
+            let gpu_data = range.as_mut_slice();
+            let raygen_data = &shader_handle_storage[((handle_size_aligned * 0) as usize)
+                ..(((handle_size_aligned * 0) + handle_size) as usize)];
+            assert_eq!(raygen_data.len(), gpu_data.len());
+            gpu_data.copy_from_slice(raygen_data);
+        }
+
+        {
+            let mem_map = MemoryMap::new(miss_buffer.get_backing_memory_pool())?;
+            let mut range = mem_map.range::<u8>(miss_buffer.clone() as Arc<dyn MemoryPoolBacked>)?;
+            let gpu_data = range.as_mut_slice();
+            let miss_data = &shader_handle_storage
+                [(handle_size_aligned as usize)..((handle_size_aligned + handle_size) as usize)];
+            assert_eq!(miss_data.len(), gpu_data.len());
+
+            gpu_data.copy_from_slice(miss_data);
+        }
+
+        {
+            let mem_map = MemoryMap::new(closesthit_buffer.get_backing_memory_pool())?;
+            let mut range =
+                mem_map.range::<u8>(closesthit_buffer.clone() as Arc<dyn MemoryPoolBacked>)?;
+            let gpu_data = range.as_mut_slice();
+            let closesthit_data = &shader_handle_storage[((handle_size_aligned * 2) as usize)
+                ..(((handle_size_aligned * 2) + handle_size) as usize)];
+            assert_eq!(closesthit_data.len(), gpu_data.len());
+            gpu_data.copy_from_slice(closesthit_data);
+        }
+
+        if raytracing_pipeline.callable_shader_present() {
+            let mem_map = MemoryMap::new(callable_buffer.get_backing_memory_pool())?;
+            let mut range =
+                mem_map.range::<u8>(callable_buffer.clone() as Arc<dyn MemoryPoolBacked>)?;
+            let gpu_data = range.as_mut_slice();
+            let callable_buffer_data = &shader_handle_storage[((handle_size_aligned * 3) as usize)
+                ..(((handle_size_aligned * 3) + handle_size) as usize)];
+            assert_eq!(callable_buffer_data.len(), gpu_data.len());
+            gpu_data.copy_from_slice(callable_buffer_data);
+        }
+
         let raygen_buffer_addr = unsafe {
             let info =
                 ash::vk::BufferDeviceAddressInfo::default().buffer(raygen_buffer.ash_handle());
@@ -159,17 +208,6 @@ impl RaytracingBindingTables {
             device_addr
         };
 
-        let miss_buffer = AllocatedBuffer::new(
-            memory_pool.clone(),
-            Buffer::new(device.clone(), buffer_descriptor, None, None)?,
-        )?;
-        memory_pool
-            .write_raw_data(
-                miss_buffer.allocation_offset(),
-                &shader_handle_storage[(handle_size_aligned as usize)
-                    ..((handle_size_aligned + handle_size) as usize)],
-            )
-            .unwrap();
         let miss_buffer_addr = unsafe {
             let info = ash::vk::BufferDeviceAddressInfo::default().buffer(miss_buffer.ash_handle());
 
@@ -180,17 +218,6 @@ impl RaytracingBindingTables {
             device_addr
         };
 
-        let closesthit_buffer = AllocatedBuffer::new(
-            memory_pool.clone(),
-            Buffer::new(device.clone(), buffer_descriptor, None, None)?,
-        )?;
-        memory_pool
-            .write_raw_data(
-                closesthit_buffer.allocation_offset(),
-                &shader_handle_storage[((handle_size_aligned * 2) as usize)
-                    ..(((handle_size_aligned * 2) + handle_size) as usize)],
-            )
-            .unwrap();
         let closesthit_buffer_addr = unsafe {
             let info =
                 ash::vk::BufferDeviceAddressInfo::default().buffer(closesthit_buffer.ash_handle());
@@ -203,18 +230,6 @@ impl RaytracingBindingTables {
         };
 
         let callable = Some({
-            let callable_buffer = AllocatedBuffer::new(
-                memory_pool.clone(),
-                Buffer::new(device.clone(), buffer_descriptor, None, None)?,
-            )?;
-
-            memory_pool
-                .write_raw_data(
-                    callable_buffer.allocation_offset(),
-                    &shader_handle_storage[0..1],
-                )
-                .unwrap();
-
             let info =
                 ash::vk::BufferDeviceAddressInfo::default().buffer(callable_buffer.ash_handle());
 
@@ -236,7 +251,6 @@ impl RaytracingBindingTables {
             handle_size,
             handle_size_aligned,
             group_count,
-            sbt_size,
             shader_handle_storage,
             raygen_buffer,
             raygen_buffer_addr,

@@ -154,7 +154,7 @@ pub trait MemoryManagerTrait: DeviceOwned {
         &mut self,
         memory_type: &MemoryType,
         features: &MemoryPoolFeatures,
-        buffers: Vec<UnallocatedResource>,
+        resources: Vec<UnallocatedResource>,
         tags: MemoryManagementTags,
     ) -> VulkanResult<Vec<AllocatedResource>>;
 }
@@ -202,6 +202,12 @@ impl MemoryManagerTrait for DefaultMemoryManager {
 
         // try allocating resources on available memory pools first
         for attempt in 0..2 {
+            // if resources have been marked as pool-exlusive do not try to allocate them in other pools:
+            // keep them together by skipping this for loop: the following if will create a new pool reserved for them
+            if tags.exlusive() {
+                break;
+            }
+
             for (pool_tags, memory_pool) in self.memory_pools.iter() {
                 if pool_tags.exlusive() {
                     continue;

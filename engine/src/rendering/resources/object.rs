@@ -135,11 +135,13 @@ impl Manager {
     ) -> RenderingResult<Self> {
         let device = queue_family.get_parent_device();
 
-        let buffer = Buffer::new(
+        let temp = EmbeddedAssets::get("stub.dds").unwrap();
+        let stub_emedded_data = temp.data.as_ref();
+        let stub_data_buffer = Buffer::new(
             device.clone(),
             ConcreteBufferDescriptor::new(
                 BufferUsage::from([BufferUseAs::TransferSrc].as_slice()),
-                1024u64 * 1024u64 * 24u64, // 24MiB
+                stub_emedded_data.len() as u64, // 24MiB
             ),
             None,
             Some(format!("{debug_name}->resource_management.stub_image_buffer").as_str()),
@@ -165,7 +167,7 @@ impl Manager {
                     cached: false,
                 })),
                 &MemoryPoolFeatures::default(),
-                vec![buffer.into()],
+                vec![stub_data_buffer.into()],
                 MemoryManagementTags::default()
                     .with_name("temp".to_string())
                     .with_size(MemoryManagementTagSize::MediumSmall),
@@ -196,13 +198,9 @@ impl Manager {
 
         {
             let mut mem_map = MemoryMap::new(stub_image_data.get_backing_memory_pool())?;
-            let temp = EmbeddedAssets::get("stub.dds").unwrap();
-            let stub_emedded_data = temp.data.as_ref();
-            let size = stub_emedded_data.len();
-            let stub_data = mem_map.as_mut_slice_with_size::<u8>(
-                stub_image_data.clone() as Arc<dyn MemoryPoolBacked>,
-                size as u64,
-            )?;
+            let mut range =
+                mem_map.range::<u8>(stub_image_data.clone() as Arc<dyn MemoryPoolBacked>)?;
+            let stub_data = range.as_mut_slice();
             stub_data.copy_from_slice(stub_emedded_data);
         }
 
@@ -364,14 +362,10 @@ impl Manager {
                                 {
                                     let mut mem_map =
                                         MemoryMap::new(buffer.get_backing_memory_pool())?;
-                                    let slice = mem_map.as_mut_slice::<u32>(
-                                        buffer.clone() as Arc<dyn MemoryPoolBacked>
-                                    )?;
-                                    let len = std::mem::size_of_val(slice);
-                                    let ptr = slice.as_mut_ptr() as *mut u8;
-                                    let slice_u8 =
-                                        unsafe { std::slice::from_raw_parts_mut(ptr, len) };
-                                    file.read_exact(slice_u8).unwrap();
+                                    let mut range = mem_map
+                                        .range::<u8>(buffer.clone() as Arc<dyn MemoryPoolBacked>)?;
+                                    let slice = range.as_mut_slice();
+                                    file.read_exact(slice).unwrap();
                                 }
 
                                 texture_decl.data.replace(buffer);
@@ -550,10 +544,10 @@ impl Manager {
                                     let mut mem_map = MemoryMap::new(
                                         index_buffer.buffer().get_backing_memory_pool().clone(),
                                     )?;
-                                    let slice = mem_map.as_mut_slice_with_size::<u8>(
-                                        index_buffer.buffer().clone() as Arc<dyn MemoryPoolBacked>,
-                                        index_buffer.buffer().size(),
-                                    )?;
+                                    let mut range = mem_map
+                                        .range::<u8>(index_buffer.buffer().clone()
+                                            as Arc<dyn MemoryPoolBacked>)?;
+                                    let slice = range.as_mut_slice();
                                     assert_eq!(size as usize, slice.len());
                                     file.read_exact(slice).unwrap();
                                 }
@@ -612,10 +606,9 @@ impl Manager {
                         {
                             let mut mem_map =
                                 MemoryMap::new(buffer.1.get_backing_memory_pool().clone())?;
-                            let slice = mem_map.as_mut_slice_with_size::<u8>(
-                                buffer.1.clone() as Arc<dyn MemoryPoolBacked>,
-                                buffer.1.size(),
-                            )?;
+                            let mut range = mem_map
+                                .range::<u8>(buffer.1.clone() as Arc<dyn MemoryPoolBacked>)?;
+                            let slice = range.as_mut_slice();
                             assert_eq!(size as usize, slice.len());
                             file.read_exact(slice).unwrap();
                         }
@@ -729,11 +722,9 @@ impl Manager {
             {
                 // write material to the buffer memory
                 let mut mem_map = MemoryMap::new(material_buffer.get_backing_memory_pool())?;
-
-                let mapped_materials = mem_map.as_mut_slice::<MaterialGPU>(
-                    material_buffer.clone() as Arc<dyn MemoryPoolBacked>,
-                )?;
-
+                let mut range = mem_map
+                    .range::<MaterialGPU>(material_buffer.clone() as Arc<dyn MemoryPoolBacked>)?;
+                let mapped_materials = range.as_mut_slice();
                 mapped_materials[0] = MaterialGPU {
                     diffuse_texture_index: diffuse_texture.texture,
                     normal_texture_index: self.texture_manager.stub_texture_index(),
@@ -823,10 +814,10 @@ impl Manager {
                         .get_backing_memory_pool()
                         .clone(),
                 )?;
-                let slice = mem_map.as_mut_slice_with_size::<u32>(
+                let mut mem_range = mem_map.range::<u32>(
                     self.current_mesh_to_material_map.clone() as Arc<dyn MemoryPoolBacked>,
-                    self.current_mesh_to_material_map.size(),
                 )?;
+                let mut slice = mem_range.as_mut_slice();
                 assert_eq!(MAX_MESHES as usize, slice.len());
                 slice[mesh_index as usize] = material_index;
             }
@@ -953,10 +944,7 @@ impl Manager {
                     last_bound_vertex_buffer = vertex_buffer.buffer().native_handle();
                     recorder.bind_vertex_buffers(
                         0,
-                        [
-                            (0u64, vertex_buffer.buffer() as Arc<dyn BufferTrait>),
-                        ]
-                        .as_slice(),
+                        [(0u64, vertex_buffer.buffer() as Arc<dyn BufferTrait>)].as_slice(),
                     );
                 }
 

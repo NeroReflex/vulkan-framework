@@ -193,7 +193,7 @@ impl MemoryAllocator for DefaultAllocator {
             // early drop the mutex lock when not needed anymore
             drop(lck);
 
-            let allocation_start = next_aligned_start_addr;
+            let allocation_start = i * self.block_size;
             let allocation_end =
                 (i * self.block_size) + (required_number_of_blocks * self.block_size);
 

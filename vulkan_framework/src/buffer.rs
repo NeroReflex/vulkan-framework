@@ -413,7 +413,7 @@ impl MemoryPoolBacked for AllocatedBuffer {
     }
 
     fn allocation_size(&self) -> u64 {
-        self.reserved_memory_from_pool.size()
+        self.buffer.descriptor().size
     }
 }
 

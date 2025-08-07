@@ -40,8 +40,10 @@ pub enum FrameworkError {
     CannotLoadVulkan,
     #[error("Error creating the vulkan instance")]
     CannotCreateVulkanInstance,
-    #[error("Error mapping memory")]
-    MapMemoryError,
+    #[error("Resource is not large enough to contain a single element of the provided type")]
+    ResourceTooSmall,
+    #[error("Memory is not host mappable")]
+    MemoryNotMappableError,
     #[error("Descriptor set binding is out of range")]
     DescriptorSetBindingOutOfRange,
     #[error("Descriptor set binding is being used twice in the same write")]
@@ -52,8 +54,8 @@ pub enum FrameworkError {
     MemoryHeapAndResourceNotFromTheSameDevice,
     #[error("Resources have no memory type requirements in common and are therefore incompatible")]
     IncompatibleResources,
-    #[error("Missing feature on MemoryPool: device_addressable need to be set")]
-    MemoryPoolNotAddressable,
+    #[error("The resource does not belong to the mapped memory pool")]
+    WrongMemoryPool,
     #[error("The memory pool is already mapped in host memory")]
     MemoryPoolAlreadyMapped,
     #[error("Error creating the descriptor set layout: no binding descriptors specified")]
