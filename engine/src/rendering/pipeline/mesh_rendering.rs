@@ -61,7 +61,7 @@ layout (location = 2) out vec2 out_vTextureUV;
 
 layout(location = 4) out flat vec4 eyePosition_worldspace;
 
-layout(std140, set = 1, binding = 0) uniform camera_uniform {
+layout(std140, set = 2, binding = 0) uniform camera_uniform {
 	mat4 viewMatrix;
 	mat4 projectionMatrix;
 } camera;
