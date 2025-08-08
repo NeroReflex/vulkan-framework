@@ -717,6 +717,12 @@ impl From<i32> for ImageFormat {
     }
 }
 
+impl From<&crate::ash::vk::Format> for ImageFormat {
+    fn from(value: &crate::ash::vk::Format) -> Self {
+        Self(*value)
+    }
+}
+
 impl From<crate::ash::vk::Format> for ImageFormat {
     fn from(value: crate::ash::vk::Format) -> Self {
         Self(value)

@@ -236,6 +236,7 @@ impl Manager {
             height: Option<u32>,
             miplevel: Option<u32>,
             data: Option<Arc<AllocatedBuffer>>,
+            format: Option<vulkan_framework::ash::vk::Format>,
         }
 
         #[derive(Default, Clone)]
@@ -363,6 +364,7 @@ impl Manager {
                                     let surface_header =
                                         DirectDrawSurface::new(dds_header, dds_dxt10_header);
 
+                                    texture_decl.format = Some(surface_header.vulkan_format());
                                     texture_decl.height = Some(surface_header.height());
                                     texture_decl.width = Some(surface_header.width());
                                     texture_decl.miplevel = Some(surface_header.mip_map_count());
@@ -667,10 +669,10 @@ impl Manager {
 
         let mut loaded_textures: HashMap<String, LoadedTexture> = HashMap::new();
         for (k, v) in textures.into_iter() {
-            let texture_id = match (&v.width, &v.height, &v.miplevel, &v.data) {
-                (Some(width), Some(height), Some(miplevel), Some(data)) => {
+            let texture_id = match (&v.width, &v.height, &v.miplevel, &v.format, &v.data) {
+                (Some(width), Some(height), Some(miplevel), Some(format), Some(data)) => {
                     let texture_id = self.texture_manager.load(
-                        ImageFormat::from(CommonImageFormat::bc7_srgb_block),
+                        format.into(),
                         Image2DDimensions::new(*width, *height),
                         *miplevel,
                         data.clone(),

@@ -128,18 +128,18 @@ impl DirectDrawSurface {
                 32 => todo!(),
                 24 => todo!(),
                 16 => todo!(),
-                _ => panic!("Invalid DDS data"),
+                _ => vulkan_framework::ash::vk::Format::UNDEFINED,
             }
         } else if (self.header.ddspf.flags & DDS_PIXELFORMAT_FLAG_DDS_LUMINANCE) != 0 {
             // TODO: missing bits here
             match self.header.ddspf.rgb_bit_count {
                 8 => vulkan_framework::ash::vk::Format::R8_UNORM,
-                _ => panic!("Invalid DDS data"),
+                _ => vulkan_framework::ash::vk::Format::UNDEFINED,
             }
         } else if (self.header.ddspf.flags & DDS_PIXELFORMAT_FLAG_DDS_ALPHA) != 0 {
             match self.header.ddspf.rgb_bit_count {
                 8 => vulkan_framework::ash::vk::Format::A8_UNORM_KHR,
-                _ => panic!("Invalid DDS data"),
+                _ => vulkan_framework::ash::vk::Format::UNDEFINED,
             }
         } else if (self.header.ddspf.flags & DDS_PIXELFORMAT_FLAG_FOURCC) != 0 {
             match self.header.ddspf.four_cc {
@@ -155,7 +155,19 @@ impl DirectDrawSurface {
                 DDS_FOURCC_BC5U => vulkan_framework::ash::vk::Format::BC5_UNORM_BLOCK,
                 DDS_FOURCC_BC5S => vulkan_framework::ash::vk::Format::BC5_SNORM_BLOCK,
                 DDS_FOURCC_RGBG => todo!(),
-                DDS_FOURCC_DX10 => todo!(),
+                DDS_FOURCC_DX10 => match &self.dxt10_header {
+                    Some(dx10_header) => match dx10_header.format {
+                        DXGIFormat::Unknown => vulkan_framework::ash::vk::Format::UNDEFINED,
+                        DXGIFormat::BC7Typeless => {
+                            vulkan_framework::ash::vk::Format::BC7_SRGB_BLOCK
+                        }
+                        DXGIFormat::BC7Unorm => vulkan_framework::ash::vk::Format::BC7_UNORM_BLOCK,
+                        DXGIFormat::BC7UnormSrgb => {
+                            vulkan_framework::ash::vk::Format::BC7_SRGB_BLOCK
+                        }
+                    },
+                    None => panic!("Missing DDS DX10 header"),
+                },
                 36 => vulkan_framework::ash::vk::Format::R16G16B16A16_UNORM,
                 110 => vulkan_framework::ash::vk::Format::R16G16B16A16_SNORM,
                 111 => vulkan_framework::ash::vk::Format::R16_SFLOAT,
@@ -164,10 +176,10 @@ impl DirectDrawSurface {
                 114 => vulkan_framework::ash::vk::Format::R32_SFLOAT,
                 115 => vulkan_framework::ash::vk::Format::R32G32_SFLOAT,
                 116 => vulkan_framework::ash::vk::Format::R32G32B32A32_SFLOAT,
-                _ => panic!("Unable to understand format"),
+                _ => vulkan_framework::ash::vk::Format::UNDEFINED,
             }
         } else {
-            panic!("Unrecognised format")
+            vulkan_framework::ash::vk::Format::UNDEFINED
         }
     }
 }
