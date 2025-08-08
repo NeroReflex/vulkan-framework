@@ -590,8 +590,8 @@ impl System {
                 let gbuffer_descriptor_set = self.mesh_rendering.record_rendering_commands(
                     self.view_projection_descriptor_sets[current_frame].clone(),
                     self.queue_family(),
-                    [PipelineStage::AllGraphics].as_slice().into(),
-                    [MemoryAccessAs::ShaderRead].as_slice().into(),
+                    [PipelineStage::AllCommands].as_slice().into(),
+                    [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead].as_slice().into(),
                     current_frame,
                     static_meshes_resources,
                     recorder

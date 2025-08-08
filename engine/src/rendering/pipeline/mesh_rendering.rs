@@ -697,7 +697,7 @@ impl MeshRendering {
                 ImageMemoryBarrier::new(
                     PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
                     MemoryAccess::from([].as_slice()),
-                    PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
+                    PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
                     MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
                     position_imageview.image().into(),
                     ImageLayout::Undefined,
@@ -708,7 +708,7 @@ impl MeshRendering {
                 ImageMemoryBarrier::new(
                     PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
                     MemoryAccess::from([].as_slice()),
-                    PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
+                    PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
                     MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
                     normal_imageview.image().into(),
                     ImageLayout::Undefined,
@@ -719,7 +719,7 @@ impl MeshRendering {
                 ImageMemoryBarrier::new(
                     PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
                     MemoryAccess::from([].as_slice()),
-                    PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
+                    PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
                     MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
                     texture_imageview.image().into(),
                     ImageLayout::Undefined,
@@ -730,7 +730,7 @@ impl MeshRendering {
                 ImageMemoryBarrier::new(
                     PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
                     MemoryAccess::from([].as_slice()),
-                    PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
+                    PipelineStages::from([PipelineStage::EarlyFragmentTests].as_slice()),
                     MemoryAccess::from([MemoryAccessAs::DepthStencilAttachmentWrite].as_slice()),
                     depth_stencil_imageview.image().into(),
                     ImageLayout::Undefined,
@@ -817,7 +817,7 @@ impl MeshRendering {
         recorder.image_barriers(
             [
                 ImageMemoryBarrier::new(
-                    PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
+                    PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
                     MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
                     gbuffer_stages,
                     gbuffer_access,
@@ -828,7 +828,7 @@ impl MeshRendering {
                     queue_family.clone(),
                 ),
                 ImageMemoryBarrier::new(
-                    PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
+                    PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
                     MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
                     gbuffer_stages,
                     gbuffer_access,
@@ -839,7 +839,7 @@ impl MeshRendering {
                     queue_family.clone(),
                 ),
                 ImageMemoryBarrier::new(
-                    PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
+                    PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
                     MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
                     gbuffer_stages,
                     gbuffer_access,
