@@ -308,9 +308,11 @@ impl Manager {
 
                         match *property {
                             "data" => {
+                                let total_size = file.header().size()?;
+
                                 // a DDS fine begins with 0x44 0x44 0x53 0x20
                                 let mut header = [0x00u8, 0x00u8, 0x00u8, 0x00u8];
-                                let mut read_size = 0_usize;
+                                let mut read_size = 0u64;
                                 file.read_exact(&mut header).unwrap();
                                 read_size += 4;
 
@@ -330,20 +332,16 @@ impl Manager {
                                         )
                                     };
                                     file.read_exact(dds_header_slice).unwrap();
-                                    read_size += std::mem::size_of::<DDSHeader>();
+                                    read_size += std::mem::size_of::<DDSHeader>() as u64;
                                     let dds_header =
                                         unsafe { dds_uninitialized_header.assume_init() };
-
-                                    texture_decl.height = Some(dds_header.height());
-                                    texture_decl.width = Some(dds_header.width());
-                                    texture_decl.miplevel = Some(dds_header.mip_map_count());
 
                                     let dds_dxt10_header = if dds_header
                                         .is_followed_by_dxt10_header()
                                     {
                                         let mut dxt10_uninitialized_header =
                                             MaybeUninit::<DDSHeaderDXT10>::uninit();
-                                        let slice = unsafe {
+                                        let dx10_header_slice = unsafe {
                                             std::slice::from_raw_parts_mut(
                                                 dxt10_uninitialized_header.as_mut_ptr()
                                                     as *mut std::ffi::c_void
@@ -353,10 +351,10 @@ impl Manager {
                                         };
                                         assert_eq!(
                                             std::mem::size_of::<DDSHeaderDXT10>(),
-                                            slice.len()
+                                            dx10_header_slice.len()
                                         );
-                                        file.read_exact(dds_header_slice).unwrap();
-                                        read_size += std::mem::size_of::<DDSHeaderDXT10>();
+                                        file.read_exact(dx10_header_slice).unwrap();
+                                        read_size += std::mem::size_of::<DDSHeaderDXT10>() as u64;
                                         Some(unsafe { dxt10_uninitialized_header.assume_init() })
                                     } else {
                                         None
@@ -364,6 +362,10 @@ impl Manager {
 
                                     let surface_header =
                                         DirectDrawSurface::new(dds_header, dds_dxt10_header);
+
+                                    texture_decl.height = Some(surface_header.height());
+                                    texture_decl.width = Some(surface_header.width());
+                                    texture_decl.miplevel = Some(surface_header.mip_map_count());
                                 } else {
                                     panic!("Only DDS is supported for now");
                                 }
@@ -373,7 +375,7 @@ impl Manager {
                                     device.clone(),
                                     ConcreteBufferDescriptor::new(
                                         BufferUsage::from([BufferUseAs::TransferSrc].as_slice()),
-                                        file.header().size()? - read_size as u64,
+                                        total_size - read_size,
                                     ),
                                     None,
                                     Some(

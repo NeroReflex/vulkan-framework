@@ -1,5 +1,3 @@
-use core::ffi;
-
 pub const DDS_PIXELFORMAT_FLAG_FOURCC: u32 = 0x00000004;
 pub const DDS_PIXELFORMAT_FLAG_DDS_RGB: u32 = 0x00000040;
 pub const DDS_PIXELFORMAT_FLAG_DDS_RGBA: u32 = 0x00000041;
@@ -7,6 +5,20 @@ pub const DDS_PIXELFORMAT_FLAG_DDS_LUMINANCE: u32 = 0x00020000;
 pub const DDS_PIXELFORMAT_FLAG_DDS_LUMINANCEA: u32 = 0x00020001;
 pub const DDS_PIXELFORMAT_FLAG_DDS_ALPHA: u32 = 0x00000002;
 pub const DDS_PIXELFORMAT_FLAG_DDS_PAL8: u32 = 0x00000020;
+
+pub const DDS_FOURCC_DX10: u32 = 0x30315844;
+pub const DDS_FOURCC_DXT1: u32 = 0x31347844;
+pub const DDS_FOURCC_DXT2: u32 = 0x32347844;
+pub const DDS_FOURCC_DXT3: u32 = 0x33347844;
+pub const DDS_FOURCC_DXT4: u32 = 0x34347844;
+pub const DDS_FOURCC_DXT5: u32 = 0x35347844;
+pub const DDS_FOURCC_ATI1: u32 = 0x31394941;
+pub const DDS_FOURCC_ATI2: u32 = 0x32394941;
+pub const DDS_FOURCC_BC4U: u32 = 0x55344342;
+pub const DDS_FOURCC_BC4S: u32 = 0x53344342;
+pub const DDS_FOURCC_BC5U: u32 = 0x55354342;
+pub const DDS_FOURCC_BC5S: u32 = 0x53354342;
+pub const DDS_FOURCC_RGBG: u32 = 0x47424752;
 
 #[repr(C)]
 pub struct DDSPixelFormat {
@@ -78,7 +90,8 @@ impl DDSHeader {
     }
 
     pub fn is_followed_by_dxt10_header(&self) -> bool {
-        ((self.ddspf.flags & DDS_PIXELFORMAT_FLAG_FOURCC) != 0u32) && (self.ddspf.four_cc == 0x30315844u32)
+        ((self.ddspf.flags & DDS_PIXELFORMAT_FLAG_FOURCC) != 0u32)
+            && (self.ddspf.four_cc == DDS_FOURCC_DX10)
     }
 }
 
@@ -109,10 +122,6 @@ impl DirectDrawSurface {
         self.header.mip_map_count()
     }
 
-    fn make_fourcc(ch0: std::ffi::c_char, ch1: std::ffi::c_char, ch2: std::ffi::c_char, ch3: std::ffi::c_char) -> u32 {
-        (ch0 as u32) | ((ch1 as u32) << 8u32) | ((ch2 as u32) << 16) | ((ch3 as u32) << 24)
-    }
-
     pub fn vulkan_format(&self) -> vulkan_framework::ash::vk::Format {
         if (self.header.ddspf.flags & DDS_PIXELFORMAT_FLAG_DDS_RGB) != 0 {
             match self.header.ddspf.rgb_bit_count {
@@ -133,12 +142,29 @@ impl DirectDrawSurface {
                 _ => panic!("Invalid DDS data"),
             }
         } else if (self.header.ddspf.flags & DDS_PIXELFORMAT_FLAG_FOURCC) != 0 {
-            if self.header.ddspf.four_cc == Self::make_fourcc('D' as i8, 'X' as i8, 'T' as i8, '1' as i8) {
-                vulkan_framework::ash::vk::Format::BC1_RGBA_UNORM_BLOCK
-            } else if self.header.ddspf.four_cc == Self::make_fourcc('D' as i8, 'X' as i8, '1' as i8, '0' as i8) {
-                todo!()
-            } else {
-                panic!("Unable to understand format")
+            match self.header.ddspf.four_cc {
+                DDS_FOURCC_DXT1 => vulkan_framework::ash::vk::Format::BC1_RGBA_UNORM_BLOCK,
+                DDS_FOURCC_DXT2 => vulkan_framework::ash::vk::Format::BC1_RGBA_UNORM_BLOCK,
+                DDS_FOURCC_DXT3 => vulkan_framework::ash::vk::Format::BC1_RGBA_UNORM_BLOCK,
+                DDS_FOURCC_DXT4 => vulkan_framework::ash::vk::Format::BC1_RGBA_UNORM_BLOCK,
+                DDS_FOURCC_DXT5 => vulkan_framework::ash::vk::Format::BC3_UNORM_BLOCK,
+                DDS_FOURCC_ATI1 => vulkan_framework::ash::vk::Format::BC4_UNORM_BLOCK,
+                DDS_FOURCC_ATI2 => vulkan_framework::ash::vk::Format::BC5_UNORM_BLOCK,
+                DDS_FOURCC_BC4U => vulkan_framework::ash::vk::Format::BC4_UNORM_BLOCK,
+                DDS_FOURCC_BC4S => vulkan_framework::ash::vk::Format::BC4_SNORM_BLOCK,
+                DDS_FOURCC_BC5U => vulkan_framework::ash::vk::Format::BC5_UNORM_BLOCK,
+                DDS_FOURCC_BC5S => vulkan_framework::ash::vk::Format::BC5_SNORM_BLOCK,
+                DDS_FOURCC_RGBG => todo!(),
+                DDS_FOURCC_DX10 => todo!(),
+                36 => vulkan_framework::ash::vk::Format::R16G16B16A16_UNORM,
+                110 => vulkan_framework::ash::vk::Format::R16G16B16A16_SNORM,
+                111 => vulkan_framework::ash::vk::Format::R16_SFLOAT,
+                112 => vulkan_framework::ash::vk::Format::R16G16_SFLOAT,
+                113 => vulkan_framework::ash::vk::Format::R16G16B16_SFLOAT,
+                114 => vulkan_framework::ash::vk::Format::R32_SFLOAT,
+                115 => vulkan_framework::ash::vk::Format::R32G32_SFLOAT,
+                116 => vulkan_framework::ash::vk::Format::R32G32B32A32_SFLOAT,
+                _ => panic!("Unable to understand format"),
             }
         } else {
             panic!("Unrecognised format")
