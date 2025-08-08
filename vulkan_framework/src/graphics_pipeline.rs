@@ -172,7 +172,7 @@ pub enum CullMode {
     FrontAndBack,
 }
 
-impl Into<crate::ash::vk::CullModeFlags> for &CullMode {    
+impl Into<crate::ash::vk::CullModeFlags> for &CullMode {
     fn into(self) -> crate::ash::vk::CullModeFlags {
         match self {
             CullMode::None => ash::vk::CullModeFlags::NONE,
@@ -183,7 +183,7 @@ impl Into<crate::ash::vk::CullModeFlags> for &CullMode {
     }
 }
 
-impl Into<crate::ash::vk::CullModeFlags> for CullMode {    
+impl Into<crate::ash::vk::CullModeFlags> for CullMode {
     fn into(self) -> crate::ash::vk::CullModeFlags {
         (&self).into()
     }
@@ -337,6 +337,33 @@ pub struct DepthConfiguration {
     write_enable: bool,
     depth_compare: DepthCompareOp,
     bounds: Option<(f32, f32)>,
+}
+
+impl<'a> Into<crate::ash::vk::PipelineDepthStencilStateCreateInfo<'a>> for &DepthConfiguration {
+    fn into(self) -> crate::ash::vk::PipelineDepthStencilStateCreateInfo<'a> {
+        let depth_stencil_state_create_info_builder =
+            ash::vk::PipelineDepthStencilStateCreateInfo::default()
+                .stencil_test_enable(false)
+                .depth_test_enable(true)
+                .depth_write_enable(self.write_enable())
+                .depth_compare_op(self.depth_compare().ash_flags());
+
+        match self.bounds() {
+            Option::Some((min_depth_bounds, max_depth_bounds)) => {
+                depth_stencil_state_create_info_builder
+                    .depth_bounds_test_enable(true)
+                    .max_depth_bounds(max_depth_bounds)
+                    .min_depth_bounds(min_depth_bounds)
+            }
+            Option::None => depth_stencil_state_create_info_builder,
+        }
+    }
+}
+
+impl<'a> Into<crate::ash::vk::PipelineDepthStencilStateCreateInfo<'a>> for DepthConfiguration {
+    fn into(self) -> crate::ash::vk::PipelineDepthStencilStateCreateInfo<'a> {
+        (&self).into()
+    }
 }
 
 impl DepthConfiguration {
@@ -727,29 +754,11 @@ impl GraphicsPipeline {
             .attachments(color_blend_attachment_state.as_slice())
             .blend_constants([0.0, 0.0, 0.0, 0.0]);
 
-        let mut depth_stencil_state_create_info_builder =
-            ash::vk::PipelineDepthStencilStateCreateInfo::default().stencil_test_enable(false);
-
         let depth_stencil_state_create_info = match depth_configuration {
-            Option::Some(depth_cfg) => {
-                depth_stencil_state_create_info_builder = depth_stencil_state_create_info_builder
-                    .depth_test_enable(true)
-                    .depth_write_enable(depth_cfg.write_enable())
-                    .depth_compare_op(depth_cfg.depth_compare().ash_flags());
-
-                match depth_cfg.bounds() {
-                    Option::Some((min_depth_bounds, max_depth_bounds)) => {
-                        depth_stencil_state_create_info_builder
-                            .depth_bounds_test_enable(true)
-                            .max_depth_bounds(max_depth_bounds)
-                            .min_depth_bounds(min_depth_bounds)
-                    }
-                    Option::None => {
-                        depth_stencil_state_create_info_builder.depth_bounds_test_enable(false)
-                    }
-                }
+            Option::Some(depth_cfg) => depth_cfg.into(),
+            Option::None => {
+                ash::vk::PipelineDepthStencilStateCreateInfo::default().depth_test_enable(false)
             }
-            Option::None => depth_stencil_state_create_info_builder.depth_test_enable(false),
         };
 
         let mut dyn_rendering = ash::vk::PipelineRenderingCreateInfo::default();
@@ -787,58 +796,54 @@ impl GraphicsPipeline {
         create_info.p_next =
             &dyn_rendering as *const ash::vk::PipelineRenderingCreateInfo as *const _;
 
-        match unsafe {
+        let pipelines = unsafe {
             device.ash_handle().create_graphics_pipelines(
                 ash::vk::PipelineCache::null(),
                 &[create_info],
                 device.get_parent_instance().get_alloc_callbacks(),
             )
-        } {
-            Ok(pipelines) => {
-                drop(base_pipeline);
+        }
+        .map_err(|(_, err)| err)?;
 
-                assert_eq!(pipelines.len(), 1);
+        drop(base_pipeline);
 
-                let pipeline = pipelines[0];
+        assert_eq!(pipelines.len(), 1);
 
-                let mut obj_name_bytes = vec![];
-                if let Some(ext) = device.ash_ext_debug_utils_ext() {
-                    if let Some(name) = debug_name {
-                        for name_ch in name.as_bytes().iter() {
-                            obj_name_bytes.push(*name_ch);
-                        }
-                        obj_name_bytes.push(0x00);
+        let pipeline = pipelines[0];
+        let mut obj_name_bytes = vec![];
+        if let Some(ext) = device.ash_ext_debug_utils_ext() {
+            if let Some(name) = debug_name {
+                for name_ch in name.as_bytes().iter() {
+                    obj_name_bytes.push(*name_ch);
+                }
+                obj_name_bytes.push(0x00);
 
-                        unsafe {
-                            let object_name = std::ffi::CStr::from_bytes_with_nul_unchecked(
-                                obj_name_bytes.as_slice(),
-                            );
-                            // set device name for debugging
-                            let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::default()
-                                .object_handle(pipeline)
-                                .object_name(object_name);
+                unsafe {
+                    let object_name =
+                        std::ffi::CStr::from_bytes_with_nul_unchecked(obj_name_bytes.as_slice());
+                    // set device name for debugging
+                    let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::default()
+                        .object_handle(pipeline)
+                        .object_name(object_name);
 
-                            if let Err(err) = ext.set_debug_utils_object_name(&dbg_info) {
-                                #[cfg(debug_assertions)]
-                                {
-                                    println!("Error setting the Debug name for the newly created Pipeline, will use handle. Error: {}", err)
-                                }
-                            }
+                    if let Err(err) = ext.set_debug_utils_object_name(&dbg_info) {
+                        #[cfg(debug_assertions)]
+                        {
+                            println!("Error setting the Debug name for the newly created Pipeline, will use handle. Error: {}", err)
                         }
                     }
                 }
-
-                Ok(Arc::new(Self {
-                    device,
-                    depth_configuration,
-                    pipeline,
-                    pipeline_layout,
-                    rasterizer,
-                    viewport,
-                    scissor,
-                }))
             }
-            Err((_, err)) => Err(err.into()),
         }
+
+        Ok(Arc::new(Self {
+            device,
+            depth_configuration,
+            pipeline,
+            pipeline_layout,
+            rasterizer,
+            viewport,
+            scissor,
+        }))
     }
 }
