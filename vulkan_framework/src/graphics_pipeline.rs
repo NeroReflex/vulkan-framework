@@ -172,8 +172,8 @@ pub enum CullMode {
     FrontAndBack,
 }
 
-impl CullMode {
-    pub(crate) fn ash_flags(&self) -> ash::vk::CullModeFlags {
+impl Into<crate::ash::vk::CullModeFlags> for &CullMode {    
+    fn into(self) -> crate::ash::vk::CullModeFlags {
         match self {
             CullMode::None => ash::vk::CullModeFlags::NONE,
             CullMode::Front => ash::vk::CullModeFlags::FRONT,
@@ -183,18 +183,30 @@ impl CullMode {
     }
 }
 
+impl Into<crate::ash::vk::CullModeFlags> for CullMode {    
+    fn into(self) -> crate::ash::vk::CullModeFlags {
+        (&self).into()
+    }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum FrontFace {
     Clockwise,
     CounterClockwise,
 }
 
-impl FrontFace {
-    pub(crate) fn ash_flags(&self) -> ash::vk::FrontFace {
+impl Into<crate::ash::vk::FrontFace> for &FrontFace {
+    fn into(self) -> crate::ash::vk::FrontFace {
         match self {
             FrontFace::Clockwise => ash::vk::FrontFace::CLOCKWISE,
             FrontFace::CounterClockwise => ash::vk::FrontFace::COUNTER_CLOCKWISE,
         }
+    }
+}
+
+impl Into<crate::ash::vk::FrontFace> for FrontFace {
+    fn into(self) -> crate::ash::vk::FrontFace {
+        (&self).into()
     }
 }
 
@@ -203,11 +215,17 @@ pub enum PolygonMode {
     Fill,
 }
 
-impl PolygonMode {
-    pub(crate) fn ash_flags(&self) -> ash::vk::PolygonMode {
+impl Into<crate::ash::vk::PolygonMode> for &PolygonMode {
+    fn into(self) -> crate::ash::vk::PolygonMode {
         match self {
             PolygonMode::Fill => ash::vk::PolygonMode::FILL,
         }
+    }
+}
+
+impl Into<crate::ash::vk::PolygonMode> for PolygonMode {
+    fn into(self) -> crate::ash::vk::PolygonMode {
+        (&self).into()
     }
 }
 
@@ -217,6 +235,39 @@ pub struct Rasterizer {
     polygon_mode: PolygonMode,
     front_face: FrontFace,
     depth_bias: Option<(f32, f32, f32)>,
+}
+
+impl<'a> Into<crate::ash::vk::PipelineRasterizationStateCreateInfo<'a>> for &Rasterizer {
+    fn into(self) -> crate::ash::vk::PipelineRasterizationStateCreateInfo<'a> {
+        let rasterization_state_create_info =
+            ash::vk::PipelineRasterizationStateCreateInfo::default()
+                .cull_mode(self.cull_mode().into())
+                .front_face(self.front_face().into())
+                .polygon_mode(self.polygon_mode().into())
+                // Setting rasterizer_discard_enable to true the geometry never passes through the rasterizer stage, disabling every output!
+                .rasterizer_discard_enable(false)
+                .depth_bias_enable(false)
+                .depth_clamp_enable(false)
+                .line_width(1.0f32);
+
+        match self.depth_bias() {
+            Some((depth_bias_constant_factor, depth_bias_clamp, depth_bias_slope_factor)) => {
+                rasterization_state_create_info
+                    .depth_bias_clamp(depth_bias_clamp)
+                    .depth_bias_constant_factor(depth_bias_constant_factor)
+                    .depth_bias_slope_factor(depth_bias_slope_factor)
+                    .depth_bias_enable(true)
+                    .depth_clamp_enable(true)
+            }
+            None => rasterization_state_create_info,
+        }
+    }
+}
+
+impl<'a> Into<crate::ash::vk::PipelineRasterizationStateCreateInfo<'a>> for Rasterizer {
+    fn into(self) -> crate::ash::vk::PipelineRasterizationStateCreateInfo<'a> {
+        (&self).into()
+    }
 }
 
 impl Rasterizer {
@@ -647,28 +698,7 @@ impl GraphicsPipeline {
             viewport_state_create_info.scissor_count = 1;
         }
 
-        let rasterization_state_create_info_builder =
-            ash::vk::PipelineRasterizationStateCreateInfo::default()
-                .cull_mode(rasterizer.cull_mode().ash_flags())
-                .front_face(rasterizer.front_face().ash_flags())
-                .front_face(rasterizer.front_face().ash_flags())
-                .polygon_mode(rasterizer.polygon_mode().ash_flags())
-                .rasterizer_discard_enable(false)
-                .depth_bias_enable(false)
-                .depth_clamp_enable(false)
-                .line_width(1.0f32);
-
-        let rasterization_state_create_info = match rasterizer.depth_bias() {
-            Some((depth_bias_constant_factor, depth_bias_clamp, depth_bias_slope_factor)) => {
-                rasterization_state_create_info_builder
-                    .depth_bias_clamp(depth_bias_clamp)
-                    .depth_bias_constant_factor(depth_bias_constant_factor)
-                    .depth_bias_slope_factor(depth_bias_slope_factor)
-                    .depth_bias_enable(true)
-                    .depth_clamp_enable(true)
-            }
-            None => rasterization_state_create_info_builder,
-        };
+        let rasterization_state_create_info = rasterizer.into();
 
         let input_assembly_create_info = ash::vk::PipelineInputAssemblyStateCreateInfo::default()
             .topology(ash::vk::PrimitiveTopology::TRIANGLE_LIST)

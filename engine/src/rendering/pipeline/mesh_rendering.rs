@@ -601,7 +601,7 @@ impl MeshRendering {
             ImageMultisampling::SamplesPerPixel1,
             Some(DepthConfiguration::new(
                 true,
-                DepthCompareOp::Always,
+                DepthCompareOp::Less,
                 Some((0.0, 1.0)),
             )),
             None,
@@ -639,8 +639,8 @@ impl MeshRendering {
             .as_slice(),
             Rasterizer::new(
                 PolygonMode::Fill,
-                FrontFace::CounterClockwise,
-                CullMode::None,
+                FrontFace::Clockwise,
+                CullMode::Back,
                 None,
             ),
             (vertex_shader, None),
@@ -768,7 +768,7 @@ impl MeshRendering {
         let rendering_depth_attachment = DynamicRenderingAttachment::new(
             depth_stencil_imageview.clone(),
             Self::output_image_depth_stencil_layout(),
-            ClearValues::new(Some(ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0))),
+            ClearValues::new(Some(ColorClearValues::Vec4(1.0, 1.0, 1.0, 1.0))),
             AttachmentLoadOp::Clear,
             AttachmentStoreOp::Store,
         );
