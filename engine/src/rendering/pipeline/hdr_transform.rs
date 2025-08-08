@@ -97,7 +97,7 @@ layout(push_constant) uniform HDR {
 } hdr;
 
 void main() {
-    outColor = texture(src, in_vTextureUV) * (hdr.gamma + hdr.exposure);
+    outColor = texture(src, in_vTextureUV) /* * (hdr.gamma + hdr.exposure) */;
 }
 "#,
     glsl,

@@ -159,9 +159,9 @@ impl DirectDrawSurface {
                     Some(dx10_header) => match dx10_header.format {
                         DXGIFormat::Unknown => vulkan_framework::ash::vk::Format::UNDEFINED,
                         DXGIFormat::BC7Typeless => {
-                            vulkan_framework::ash::vk::Format::BC7_SRGB_BLOCK
+                            vulkan_framework::ash::vk::Format::BC7_UNORM_BLOCK
                         }
-                        DXGIFormat::BC7Unorm => vulkan_framework::ash::vk::Format::BC7_UNORM_BLOCK,
+                        DXGIFormat::BC7Unorm => vulkan_framework::ash::vk::Format::BC7_SRGB_BLOCK,
                         DXGIFormat::BC7UnormSrgb => {
                             vulkan_framework::ash::vk::Format::BC7_SRGB_BLOCK
                         }
