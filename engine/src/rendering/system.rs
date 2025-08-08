@@ -172,6 +172,7 @@ impl System {
             println!("Running with debugging features enabled...");
             instance_extensions.push(String::from("VK_EXT_debug_utils"));
             instance_layers.push(String::from("VK_LAYER_KHRONOS_validation"));
+            //instance_layers.push(String::from("VK_LAYER_RENDERDOC_Capture"));
         }
 
         let engine_name = String::from("ArtRTic");

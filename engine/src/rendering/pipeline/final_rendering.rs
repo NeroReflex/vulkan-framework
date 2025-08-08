@@ -83,7 +83,7 @@ void main() {
     const vec3 in_vNormal_worldspace = texture(gbuffer[1], in_vTextureUV).xyz;
     const vec4 in_vDiffuseAlbedo = texture(gbuffer[2], in_vTextureUV);
 
-    outColor = vec4(in_vPosition_worldspace.xyz, 1.0);
+    outColor = vec4(in_vDiffuseAlbedo.xyz, 1.0);
 }
 "#,
     frag
