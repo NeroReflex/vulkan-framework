@@ -37,7 +37,7 @@ use vulkan_framework::{
     descriptor_set_layout::DescriptorSetLayout,
     device::DeviceOwned,
     graphics_pipeline::{AttributeType, IndexType},
-    image::{CommonImageFormat, Image2DDimensions, ImageFormat},
+    image::Image2DDimensions,
     memory_heap::{MemoryHostVisibility, MemoryType},
     memory_management::{MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait},
     memory_pool::{MemoryMap, MemoryPoolBacked, MemoryPoolFeatures},
