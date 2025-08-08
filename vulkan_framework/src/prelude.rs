@@ -36,10 +36,6 @@ pub enum FrameworkError {
     NoSuitableMemoryHeapFound,
     #[error("Resources are from an incompatible device")]
     ResourceFromIncompatibleDevice,
-    #[error("Error loading vulkan")]
-    CannotLoadVulkan,
-    #[error("Error creating the vulkan instance")]
-    CannotCreateVulkanInstance,
     #[error("Resource is not large enough to contain a single element of the provided type")]
     ResourceTooSmall,
     #[error("Memory is not host mappable")]
@@ -88,6 +84,9 @@ pub enum FrameworkError {
 pub enum VulkanError {
     #[error("Framework error: {0}")]
     Framework(#[from] FrameworkError),
+
+    #[error("Error loading vulkan: {0}")]
+    LoadingError(#[from] crate::ash::LoadingError),
 
     #[error("Framework error: {0}")]
     Vulkan(#[from] crate::ash::vk::Result),

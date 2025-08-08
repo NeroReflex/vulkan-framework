@@ -20,7 +20,11 @@
                 }
             },
             "args": [],
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_BACKTRACE": "full",
+                //"ENABLE_VULKAN_RENDERDOC_CAPTURE": "1",
+            }
         },
         {
             "type": "lldb",

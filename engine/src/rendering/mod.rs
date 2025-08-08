@@ -14,7 +14,7 @@ pub enum RenderingError {
     #[error("Vulkan error: {0}")]
     Vulkan(#[from] vulkan_framework::prelude::VulkanError),
 
-    #[error("SDL errored while creating the window")]
+    #[error("SDL errored while creating the window: {0}")]
     Window(#[from] WindowBuildError),
 
     #[error("I/O error: {0}")]
