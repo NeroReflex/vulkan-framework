@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     io::Read,
+    mem::MaybeUninit,
     ops::DerefMut,
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -10,6 +11,7 @@ use tar::Archive;
 
 use crate::{
     EmbeddedAssets,
+    core::texture::directdraw_surface::{DDSHeader, DDSHeaderDXT10, DirectDrawSurface},
     rendering::{
         MAX_MESHES, RenderingError, RenderingResult,
         resources::{ResourceError, SIZEOF_MATERIAL_DEFINITION, materials::MaterialManager},
@@ -306,12 +308,72 @@ impl Manager {
 
                         match *property {
                             "data" => {
+                                // a DDS fine begins with 0x44 0x44 0x53 0x20
+                                let mut header = [0x00u8, 0x00u8, 0x00u8, 0x00u8];
+                                let mut read_size = 0_usize;
+                                file.read_exact(&mut header).unwrap();
+                                read_size += 4;
+
+                                if header[0] == 0x44
+                                    && header[1] == 0x44
+                                    && header[2] == 0x53
+                                    && header[3] == 0x20
+                                {
+                                    let mut dds_uninitialized_header =
+                                        MaybeUninit::<DDSHeader>::uninit();
+                                    let dds_header_slice = unsafe {
+                                        std::slice::from_raw_parts_mut(
+                                            dds_uninitialized_header.as_mut_ptr()
+                                                as *mut std::ffi::c_void
+                                                as *mut u8,
+                                            std::mem::size_of::<DDSHeader>(),
+                                        )
+                                    };
+                                    file.read_exact(dds_header_slice).unwrap();
+                                    read_size += std::mem::size_of::<DDSHeader>();
+                                    let dds_header =
+                                        unsafe { dds_uninitialized_header.assume_init() };
+
+                                    texture_decl.height = Some(dds_header.height());
+                                    texture_decl.width = Some(dds_header.width());
+                                    texture_decl.miplevel = Some(dds_header.mip_map_count());
+
+                                    let dds_dxt10_header = if dds_header
+                                        .is_followed_by_dxt10_header()
+                                    {
+                                        let mut dxt10_uninitialized_header =
+                                            MaybeUninit::<DDSHeaderDXT10>::uninit();
+                                        let slice = unsafe {
+                                            std::slice::from_raw_parts_mut(
+                                                dxt10_uninitialized_header.as_mut_ptr()
+                                                    as *mut std::ffi::c_void
+                                                    as *mut u8,
+                                                std::mem::size_of::<DDSHeaderDXT10>(),
+                                            )
+                                        };
+                                        assert_eq!(
+                                            std::mem::size_of::<DDSHeaderDXT10>(),
+                                            slice.len()
+                                        );
+                                        file.read_exact(dds_header_slice).unwrap();
+                                        read_size += std::mem::size_of::<DDSHeaderDXT10>();
+                                        Some(unsafe { dxt10_uninitialized_header.assume_init() })
+                                    } else {
+                                        None
+                                    };
+
+                                    let surface_header =
+                                        DirectDrawSurface::new(dds_header, dds_dxt10_header);
+                                } else {
+                                    panic!("Only DDS is supported for now");
+                                }
+
                                 // Allocate the buffer that will be used to upload the vertex data to the vulkan device
                                 let buffer = Buffer::new(
                                     device.clone(),
                                     ConcreteBufferDescriptor::new(
                                         BufferUsage::from([BufferUseAs::TransferSrc].as_slice()),
-                                        file.header().size()?,
+                                        file.header().size()? - read_size as u64,
                                     ),
                                     None,
                                     Some(
