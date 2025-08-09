@@ -695,7 +695,7 @@ impl MeshRendering {
         recorder.image_barriers(
             [
                 ImageMemoryBarrier::new(
-                    PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
+                    PipelineStages::from([].as_slice()),
                     MemoryAccess::from([].as_slice()),
                     PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
                     MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
@@ -706,7 +706,7 @@ impl MeshRendering {
                     queue_family.clone(),
                 ),
                 ImageMemoryBarrier::new(
-                    PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
+                    PipelineStages::from([].as_slice()),
                     MemoryAccess::from([].as_slice()),
                     PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
                     MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
@@ -717,7 +717,7 @@ impl MeshRendering {
                     queue_family.clone(),
                 ),
                 ImageMemoryBarrier::new(
-                    PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
+                    PipelineStages::from([].as_slice()),
                     MemoryAccess::from([].as_slice()),
                     PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
                     MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
@@ -728,10 +728,10 @@ impl MeshRendering {
                     queue_family.clone(),
                 ),
                 ImageMemoryBarrier::new(
-                    PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
+                    PipelineStages::from([].as_slice()),
                     MemoryAccess::from([].as_slice()),
-                    PipelineStages::from([PipelineStage::EarlyFragmentTests].as_slice()),
-                    MemoryAccess::from([MemoryAccessAs::DepthStencilAttachmentWrite].as_slice()),
+                    PipelineStages::from([PipelineStage::EarlyFragmentTests, PipelineStage::LateFragmentTests].as_slice()),
+                    MemoryAccess::from([MemoryAccessAs::DepthStencilAttachmentWrite, MemoryAccessAs::DepthStencilAttachmentRead].as_slice()),
                     depth_stencil_imageview.image().into(),
                     ImageLayout::Undefined,
                     Self::output_image_depth_stencil_layout(),

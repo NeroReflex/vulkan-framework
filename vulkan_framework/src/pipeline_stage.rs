@@ -40,7 +40,6 @@ impl From<PipelineStageRayTracingPipelineKHR> for ash::vk::PipelineStageFlags2 {
 /// See https://registry.khronos.org/vulkan/specs/latest/man/html/VkPipelineStageFlagBits2.html
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum PipelineStage {
-    None,
     Clear,
     TopOfPipe,
     DrawIndirect,
@@ -93,7 +92,6 @@ impl From<PipelineStage> for ash::vk::PipelineStageFlags2 {
     fn from(val: PipelineStage) -> Self {
         type AshFlags = ash::vk::PipelineStageFlags2;
         match val {
-            PipelineStage::None => AshFlags::NONE,
             PipelineStage::Clear => AshFlags::CLEAR,
             PipelineStage::TopOfPipe => AshFlags::TOP_OF_PIPE,
             PipelineStage::DrawIndirect => AshFlags::DRAW_INDIRECT,
@@ -124,6 +122,10 @@ pub struct PipelineStages(ash::vk::PipelineStageFlags2);
 
 impl From<&[PipelineStage]> for PipelineStages {
     fn from(value: &[PipelineStage]) -> Self {
+        if value.is_empty() {
+            return Self(ash::vk::PipelineStageFlags2::NONE);
+        }
+
         let mut flags = ash::vk::PipelineStageFlags2::default();
         for v in value.iter() {
             flags |= v.to_owned().into()
