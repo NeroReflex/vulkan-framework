@@ -32,7 +32,7 @@ use vulkan_framework::{
     memory_barriers::{BufferMemoryBarrier, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
     memory_heap::{MemoryHostVisibility, MemoryType},
     memory_management::{DefaultMemoryManager, MemoryManagementTags, MemoryManagerTrait},
-    memory_pool::{MemoryMap, MemoryPoolBacked, MemoryPoolFeatures},
+    memory_pool::MemoryPoolFeatures,
     pipeline_stage::{PipelineStage, PipelineStages},
     queue::Queue,
     queue_family::{
