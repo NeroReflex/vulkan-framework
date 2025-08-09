@@ -10,6 +10,9 @@ use crate::rendering::resources::object::MaterialGPU;
 
 #[derive(Error, Debug)]
 pub enum ResourceError {
+    #[error("All material slots are occupied, there is no room for a new one")]
+    NoMaterialSlotAvailable,
+
     #[error("All texture slots are occupied, there is no room for a new one")]
     NoTextureSlotAvailable,
 

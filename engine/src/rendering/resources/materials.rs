@@ -343,7 +343,7 @@ impl MaterialManager {
         )?
         else {
             return Err(RenderingError::ResourceError(
-                super::ResourceError::NoTextureSlotAvailable,
+                super::ResourceError::NoMaterialSlotAvailable,
             ));
         };
 
