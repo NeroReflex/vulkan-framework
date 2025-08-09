@@ -37,16 +37,19 @@ use vulkan_framework::{
     buffer::{
         AllocatedBuffer, Buffer, BufferTrait, BufferUsage, BufferUseAs, ConcreteBufferDescriptor,
     },
-    command_buffer::CommandBufferRecorder,
+    command_buffer::{CommandBufferRecorder, CommandBufferTrait, PrimaryCommandBuffer},
+    command_pool::CommandPool,
     descriptor_set_layout::DescriptorSetLayout,
     device::DeviceOwned,
+    fence::{Fence, FenceWaiter},
     graphics_pipeline::{AttributeType, IndexType},
     image::Image2DDimensions,
     memory_heap::{MemoryHostVisibility, MemoryType},
     memory_management::{MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait},
     memory_pool::{MemoryMap, MemoryPoolBacked, MemoryPoolFeatures},
     pipeline_layout::PipelineLayout,
-    queue_family::QueueFamily,
+    queue::Queue,
+    queue_family::{QueueFamily, QueueFamilyOwned},
     shader_stage_access::ShaderStagesAccess,
 };
 
@@ -91,6 +94,44 @@ pub struct MaterialGPU {
     pub displacement_texture_index: u32,
 }
 
+struct TLASStatus {
+    tlas: Arc<TopLevelAccelerationStructure>,
+    loading: Option<FenceWaiter>,
+}
+
+impl TLASStatus {
+    pub fn new(tlas: Arc<TopLevelAccelerationStructure>, loading: FenceWaiter) -> Self {
+        Self {
+            tlas,
+            loading: Some(loading),
+        }
+    }
+
+    pub fn tlas(&self) -> Arc<TopLevelAccelerationStructure> {
+        self.tlas.clone()
+    }
+
+    pub fn wait_nonblocking(&mut self) -> RenderingResult<()> {
+        let Some(fence_waiter) = self.loading.take() else {
+            return Ok(());
+        };
+
+        if fence_waiter.complete()? {
+            drop(fence_waiter)
+        } else {
+            self.loading.replace(fence_waiter);
+        }
+
+        Ok(())
+    }
+
+    pub fn wait_blocking(&mut self) -> RenderingResult<()> {
+        drop(self.loading.take());
+
+        Ok(())
+    }
+}
+
 type LoadedMeshesType =
     smallvec::SmallVec<[Option<(MeshDefinition, MeshInstances)>; MAX_MESHES as usize]>;
 
@@ -98,6 +139,8 @@ pub struct Manager {
     debug_name: String,
 
     queue_family: Arc<QueueFamily>,
+
+    command_pool: Arc<CommandPool>,
 
     memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
 
@@ -107,7 +150,8 @@ pub struct Manager {
 
     current_mesh_to_material_map: Arc<AllocatedBuffer>,
 
-    current_tlas: Option<Arc<TopLevelAccelerationStructure>>,
+    tlas_loading_queue: Arc<Queue>,
+    current_tlas: Option<TLASStatus>,
 
     objects: LoadedMeshesType,
 }
@@ -130,6 +174,8 @@ impl Manager {
         debug_name: String,
     ) -> RenderingResult<Self> {
         let device = queue_family.get_parent_device();
+
+        let command_pool = CommandPool::new(queue_family.clone(), Some("tlas_command_pool"))?;
 
         let temp = EmbeddedAssets::get("stub.dds").unwrap();
         let stub_emedded_data = temp.data.as_ref();
@@ -225,9 +271,13 @@ impl Manager {
             objects.push(None);
         }
 
+        let tlas_loading_queue = Queue::new(queue_family.clone(), Some("tlas_loading_queue"))?;
         let current_tlas = None;
+
         Ok(Self {
             debug_name,
+
+            command_pool,
 
             queue_family,
 
@@ -239,6 +289,7 @@ impl Manager {
 
             current_mesh_to_material_map,
 
+            tlas_loading_queue,
             current_tlas,
 
             objects,
@@ -995,9 +1046,7 @@ impl Manager {
             )
         }?;
 
-        self.current_tlas.replace(tlas);
-
-        let current_tlas_ref = self.current_tlas.as_ref().unwrap();
+        let current_tlas_ref = tlas.as_ref();
 
         // wait for all meshes to be fully loaded: we will need them for the TLAS construction
         self.mesh_manager.wait_load_blocking()?;
@@ -1050,6 +1099,35 @@ impl Manager {
             }
         }
 
+        let fence = Fence::new(
+            self.command_pool
+                .get_parent_queue_family()
+                .get_parent_device(),
+            false,
+            Some("successive_tlas_commandl_buffer"),
+        )?;
+
+        let command_buffer = PrimaryCommandBuffer::new(
+            self.command_pool.clone(),
+            Some("successive_tlas_commandl_buffer"),
+        )?;
+
+        command_buffer.record_one_time_submit(|recorder| {
+            recorder.build_tlas(tlas.clone(), 0, max_instances);
+        })?;
+
+        let fence_waiter = self.tlas_loading_queue.submit(
+            [command_buffer as Arc<dyn CommandBufferTrait>].as_slice(),
+            [].as_slice(),
+            [].as_slice(),
+            fence,
+        )?;
+
+        // WARNING: overwriting the old value will also drop the FenceWaiter that might have
+        // been there, meaning this is a blocking instruction that might wait
+        // for the GPU to finish the previous operation.
+        self.current_tlas = Some(TLASStatus::new(tlas, fence_waiter));
+
         Ok(())
     }
 
@@ -1085,7 +1163,7 @@ impl Manager {
         push_constant_stages: ShaderStagesAccess,
     ) {
         // do not render anything if the TLAS does not exists
-        let Some(_) = self.current_tlas else {
+        let Some(_tlas) = &self.current_tlas else {
             return;
         };
 
@@ -1222,6 +1300,10 @@ impl Manager {
         self.texture_manager.wait_load_blocking()?;
         self.mesh_manager.wait_load_blocking()?;
         self.material_manager.wait_load_blocking()?;
+        if let Some(tlas_status) = &mut self.current_tlas {
+            tlas_status.wait_blocking()?;
+        };
+
         Ok(())
     }
 
@@ -1230,6 +1312,10 @@ impl Manager {
         self.texture_manager.wait_load_nonblock()?;
         self.mesh_manager.wait_load_nonblock()?;
         self.material_manager.wait_load_nonblock()?;
+        if let Some(tlas_status) = &mut self.current_tlas {
+            tlas_status.wait_nonblocking()?
+        };
+
         Ok(())
     }
 }
