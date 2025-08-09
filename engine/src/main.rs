@@ -1,7 +1,5 @@
 use std::time::{Duration, Instant};
 
-use renderdoc::{RenderDoc, V141};
-
 use artrtic::{
     core::camera::{HEAD_DOWN, spectator::SpectatorCamera},
     rendering::system::System,
@@ -26,24 +24,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // a test call
     renderer.test();
-
-    #[cfg(debug_assertions)]
-    let mut rd: Option<RenderDoc<V141>> = None;
-
-    #[cfg(debug_assertions)]
-    {
-        rd = match RenderDoc::<V141>::new() {
-            Ok(rd) => {
-                let (major, minor, patch) = rd.get_api_version();
-                println!("RenderDoc API {major}.{minor}.{patch}");
-                Some(rd)
-            }
-            Err(err) => {
-                eprintln!("Cound not open RenderDoc: {err}");
-                None
-            }
-        };
-    }
 
     let mut start_time = Instant::now();
     let mut frame_count = 0;
@@ -104,9 +84,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             start_time = Instant::now();
         }
     }
-
-    #[cfg(debug_assertions)]
-    drop(rd);
 
     Ok(())
 }
