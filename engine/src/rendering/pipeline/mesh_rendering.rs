@@ -798,7 +798,7 @@ impl MeshRendering {
                         self.image_dimensions.width() as f32,
                         self.image_dimensions.height() as f32,
                         0.0f32,
-                        0.0f32,
+                        1.0f32,
                     )),
                     Some(Scissor::new(0, 0, self.image_dimensions)),
                 );
