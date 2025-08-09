@@ -548,17 +548,17 @@ impl System {
             None,
         )?;
 
+        let camera_matrices = [
+            camera.view_matrix(),
+            camera.projection_matrix(
+                swapchain.images_extent().width(),
+                swapchain.images_extent().height(),
+            ),
+        ];
+
         {
             let mut static_meshes_resources = self.resources_manager.lock().unwrap();
             static_meshes_resources.wait_nonblocking()?;
-
-            let camera_matrices = [
-                camera.view_matrix(),
-                camera.projection_matrix(
-                    swapchain.images_extent().width(),
-                    swapchain.images_extent().height(),
-                ),
-            ];
 
             // here register the command buffer: command buffer at index i is associated with rendering_fences[i],
             // that I just awaited above, so thecommand buffer is surely NOT currently in use
