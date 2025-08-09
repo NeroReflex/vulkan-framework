@@ -137,7 +137,7 @@ layout(std430, set = 1, binding = 0) readonly buffer meshes
 
 void main() {
     // Calculate position of the current fragment
-    const vec4 vPosition_worldspace = vec4((in_vPosition_worldspace_minus_eye_position + in_eyePosition_worldspace).xyz, 1.0);
+    vec4 vPosition_worldspace = vec4((in_vPosition_worldspace_minus_eye_position + in_eyePosition_worldspace).xyz, 1.0);
 
     vec3 dFdxPos = dFdx( in_vPosition_worldspace_minus_eye_position.xyz );
 	vec3 dFdyPos = dFdy( in_vPosition_worldspace_minus_eye_position.xyz );
@@ -148,13 +148,13 @@ void main() {
 
     const uint diffuse_texture_index = info[material.material_id].diffuse_texture_index;
 
+    // in OpenGL depth is in range [-1;+1], while in vulkan it is [0.0;1.0]
+    // see https://docs.vulkan.org/guide/latest/depth.html "Porting from OpenGL"
+    vPosition_worldspace.z = (vPosition_worldspace.z + vPosition_worldspace.w) * 0.5;
+
     out_vPosition = vPosition_worldspace;
     out_vNormal = vec4(bestNormal.xyz, 0.0);
     out_vDiffuse = texture(textures[diffuse_texture_index], in_vTextureUV);
-
-    //out_vDiffuseAlbedo = vec4(getDiffuseMaterialAlbedo(in_vMaterialIndex, in_vTextureUV)) / 255.0;
-
-    //outColor = vec4(1.0, 0.0, 0.0, 1.0);
 }
 "#,
     frag
