@@ -312,9 +312,9 @@ impl System {
             [Arc<AllocatedBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
         > = memory_manager
             .allocate_resources(
-                &MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostVisibile {
-                    cached: false,
-                })),
+                // I don't care if the memory is visible or not to the host:
+                // I will use vkCmdUpdateBuffer to change memory content
+                &MemoryType::DeviceLocal(Some(MemoryHostVisibility::hidden())),
                 &MemoryPoolFeatures::default(),
                 view_projection_unallocated_buffers,
                 MemoryManagementTags::default().with_exclusivity(true),
