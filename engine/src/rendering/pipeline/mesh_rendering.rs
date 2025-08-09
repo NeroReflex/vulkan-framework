@@ -78,12 +78,12 @@ void main() {
 	const vec4 eye_position = vec4(camera.viewMatrix[3][0], camera.viewMatrix[3][1], camera.viewMatrix[3][2], 1.0);
 	eyePosition_worldspace = eye_position;
 
-	vec4 vPosition_worldspace = /* ModelMatrix * */ vec4(vertex_position_modelspace, 1.0);
+	vec4 vPosition_worldspace = ModelMatrix * vec4(vertex_position_modelspace, 1.0);
 	vPosition_worldspace /= vPosition_worldspace.w;
 
 	out_vTextureUV = vec2(vertex_texture.x, 1-vertex_texture.y);
 	out_vPosition_worldspace_minus_eye_position = vec4((vPosition_worldspace - eyePosition_worldspace).xyz, 1.0);
-	out_vNormal_worldspace = vec4((/*ModelMatrix * */ vec4(vertex_normal_modelspace, 0.0)).xyz, 0.0);
+	out_vNormal_worldspace = vec4((ModelMatrix * vec4(vertex_normal_modelspace, 0.0)).xyz, 0.0);
 
     gl_Position = MVP * vec4(vertex_position_modelspace, 1.0);
 }
@@ -602,7 +602,7 @@ impl MeshRendering {
             Some(DepthConfiguration::new(
                 true,
                 DepthCompareOp::Less,
-                Some((0.0, 1.0)),
+                None //Some((0.0, 1.0)),
             )),
             None,
             None,
