@@ -294,6 +294,7 @@ impl System {
                 Buffer::new(
                     device.clone(),
                     ConcreteBufferDescriptor::new(
+                        // vkCmdUpdateBuffer counts as a trasfer operation, therefore set TrasferDst
                         [BufferUseAs::UniformBuffer, BufferUseAs::TransferDst]
                             .as_slice()
                             .into(),
