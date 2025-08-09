@@ -678,7 +678,7 @@ impl Manager {
                         data.clone(),
                     )?;
 
-                    println!("Loaded texture {k} at id {texture_id}");
+                    //println!("Loaded texture {k} at id {texture_id}");
 
                     texture_id
                 }
