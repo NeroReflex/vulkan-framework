@@ -348,7 +348,7 @@ impl TextureManager {
                 [PipelineStage::Host].as_slice().into(),
                 [MemoryAccessAs::MemoryWrite].as_slice().into(),
                 [PipelineStage::Transfer].as_slice().into(),
-                [MemoryAccessAs::MemoryRead].as_slice().into(),
+                [MemoryAccessAs::TransferRead].as_slice().into(),
                 BufferSubresourceRange::new(image_data.clone(), 0u64, image_data.size()),
                 queue_family.clone(),
                 queue_family.clone(),

@@ -904,8 +904,12 @@ impl Manager {
         current_frame: usize,
         queue_family: Arc<QueueFamily>,
     ) {
-        self.material_manager
-            .update_buffers(recorder, current_frame, queue_family);
+        self.material_manager.update_buffers(
+            recorder,
+            current_frame,
+            self.current_mesh_to_material_map.clone(),
+            queue_family,
+        );
     }
 
     /// Performs a guided rendering.
@@ -1019,7 +1023,7 @@ impl Manager {
                     push_constant_offset,
                     unsafe {
                         ::core::slice::from_raw_parts(
-                            (&material_id as *const _) as *const u8,
+                            (&loaded_mesh.mesh_index as *const _) as *const u8,
                             push_constant_size as usize,
                         )
                     },

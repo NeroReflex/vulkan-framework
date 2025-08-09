@@ -107,9 +107,9 @@ layout (location = 2) in vec2 in_vTextureUV;
 
 layout(location = 4) in flat vec4 in_eyePosition_worldspace;
 
-layout(push_constant) uniform MaterialIDs {
-    uint material_id;
-} material;
+layout(push_constant) uniform MeshData {
+    uint mesh_id;
+} mesh_data;
 
 // MUST match with MAX_TEXTURES on rust side
 layout(set = 0, binding = 0) uniform sampler2D textures[256];
@@ -130,9 +130,9 @@ layout(std430, set = 1, binding = 0) readonly buffer material
     material_t info[];
 };
 
-layout(std430, set = 1, binding = 0) readonly buffer meshes
+layout(std430, set = 1, binding = 1) readonly buffer meshes
 {
-    mesh_to_material_t map[];
+    mesh_to_material_t material_for_mesh[];
 };
 
 void main() {
@@ -146,7 +146,8 @@ void main() {
     // The normal can either be calculated or provided from the mesh. Just pick the provided one if it is valid.
     const vec3 bestNormal = normalize(length(in_vNormal_worldspace.xyz) < 0.000001f ? facenormal : in_vNormal_worldspace.xyz);
 
-    const uint diffuse_texture_index = info[material.material_id].diffuse_texture_index;
+    const uint material_id = material_for_mesh[mesh_data.mesh_id].material_index;
+    const uint diffuse_texture_index = info[material_id].diffuse_texture_index;
 
     // in OpenGL depth is in range [-1;+1], while in vulkan it is [0.0;1.0]
     // see https://docs.vulkan.org/guide/latest/depth.html "Porting from OpenGL"
