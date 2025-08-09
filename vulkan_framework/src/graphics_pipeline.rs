@@ -172,9 +172,9 @@ pub enum CullMode {
     FrontAndBack,
 }
 
-impl Into<crate::ash::vk::CullModeFlags> for &CullMode {
-    fn into(self) -> crate::ash::vk::CullModeFlags {
-        match self {
+impl From<&CullMode> for crate::ash::vk::CullModeFlags {
+    fn from(val: &CullMode) -> Self {
+        match val {
             CullMode::None => ash::vk::CullModeFlags::NONE,
             CullMode::Front => ash::vk::CullModeFlags::FRONT,
             CullMode::Back => ash::vk::CullModeFlags::BACK,
@@ -183,9 +183,9 @@ impl Into<crate::ash::vk::CullModeFlags> for &CullMode {
     }
 }
 
-impl Into<crate::ash::vk::CullModeFlags> for CullMode {
-    fn into(self) -> crate::ash::vk::CullModeFlags {
-        (&self).into()
+impl From<CullMode> for crate::ash::vk::CullModeFlags {
+    fn from(val: CullMode) -> Self {
+        (&val).into()
     }
 }
 
@@ -195,18 +195,18 @@ pub enum FrontFace {
     CounterClockwise,
 }
 
-impl Into<crate::ash::vk::FrontFace> for &FrontFace {
-    fn into(self) -> crate::ash::vk::FrontFace {
-        match self {
+impl From<&FrontFace> for crate::ash::vk::FrontFace {
+    fn from(val: &FrontFace) -> Self {
+        match val {
             FrontFace::Clockwise => ash::vk::FrontFace::CLOCKWISE,
             FrontFace::CounterClockwise => ash::vk::FrontFace::COUNTER_CLOCKWISE,
         }
     }
 }
 
-impl Into<crate::ash::vk::FrontFace> for FrontFace {
-    fn into(self) -> crate::ash::vk::FrontFace {
-        (&self).into()
+impl From<FrontFace> for crate::ash::vk::FrontFace {
+    fn from(val: FrontFace) -> Self {
+        (&val).into()
     }
 }
 
@@ -215,17 +215,17 @@ pub enum PolygonMode {
     Fill,
 }
 
-impl Into<crate::ash::vk::PolygonMode> for &PolygonMode {
-    fn into(self) -> crate::ash::vk::PolygonMode {
-        match self {
+impl From<&PolygonMode> for crate::ash::vk::PolygonMode {
+    fn from(val: &PolygonMode) -> Self {
+        match val {
             PolygonMode::Fill => ash::vk::PolygonMode::FILL,
         }
     }
 }
 
-impl Into<crate::ash::vk::PolygonMode> for PolygonMode {
-    fn into(self) -> crate::ash::vk::PolygonMode {
-        (&self).into()
+impl From<PolygonMode> for crate::ash::vk::PolygonMode {
+    fn from(val: PolygonMode) -> Self {
+        (&val).into()
     }
 }
 
@@ -237,20 +237,20 @@ pub struct Rasterizer {
     depth_bias: Option<(f32, f32, f32)>,
 }
 
-impl<'a> Into<crate::ash::vk::PipelineRasterizationStateCreateInfo<'a>> for &Rasterizer {
-    fn into(self) -> crate::ash::vk::PipelineRasterizationStateCreateInfo<'a> {
+impl<'a> From<&Rasterizer> for crate::ash::vk::PipelineRasterizationStateCreateInfo<'a> {
+    fn from(val: &Rasterizer) -> Self {
         let rasterization_state_create_info =
             ash::vk::PipelineRasterizationStateCreateInfo::default()
-                .cull_mode(self.cull_mode().into())
-                .front_face(self.front_face().into())
-                .polygon_mode(self.polygon_mode().into())
+                .cull_mode(val.cull_mode().into())
+                .front_face(val.front_face().into())
+                .polygon_mode(val.polygon_mode().into())
                 // Setting rasterizer_discard_enable to true the geometry never passes through the rasterizer stage, disabling every output!
                 .rasterizer_discard_enable(false)
                 .depth_bias_enable(false)
                 .depth_clamp_enable(false)
                 .line_width(1.0f32);
 
-        match self.depth_bias() {
+        match val.depth_bias() {
             Some((depth_bias_constant_factor, depth_bias_clamp, depth_bias_slope_factor)) => {
                 rasterization_state_create_info
                     .depth_bias_clamp(depth_bias_clamp)
@@ -264,9 +264,9 @@ impl<'a> Into<crate::ash::vk::PipelineRasterizationStateCreateInfo<'a>> for &Ras
     }
 }
 
-impl<'a> Into<crate::ash::vk::PipelineRasterizationStateCreateInfo<'a>> for Rasterizer {
-    fn into(self) -> crate::ash::vk::PipelineRasterizationStateCreateInfo<'a> {
-        (&self).into()
+impl<'a> From<Rasterizer> for crate::ash::vk::PipelineRasterizationStateCreateInfo<'a> {
+    fn from(val: Rasterizer) -> Self {
+        (&val).into()
     }
 }
 
@@ -339,16 +339,16 @@ pub struct DepthConfiguration {
     bounds: Option<(f32, f32)>,
 }
 
-impl<'a> Into<crate::ash::vk::PipelineDepthStencilStateCreateInfo<'a>> for &DepthConfiguration {
-    fn into(self) -> crate::ash::vk::PipelineDepthStencilStateCreateInfo<'a> {
+impl<'a> From<&DepthConfiguration> for crate::ash::vk::PipelineDepthStencilStateCreateInfo<'a> {
+    fn from(val: &DepthConfiguration) -> Self {
         let depth_stencil_state_create_info_builder =
             ash::vk::PipelineDepthStencilStateCreateInfo::default()
                 .stencil_test_enable(false)
                 .depth_test_enable(true)
-                .depth_write_enable(self.write_enable())
-                .depth_compare_op(self.depth_compare().ash_flags());
+                .depth_write_enable(val.write_enable())
+                .depth_compare_op(val.depth_compare().ash_flags());
 
-        match self.bounds() {
+        match val.bounds() {
             Option::Some((min_depth_bounds, max_depth_bounds)) => {
                 depth_stencil_state_create_info_builder
                     .depth_bounds_test_enable(true)
@@ -360,9 +360,9 @@ impl<'a> Into<crate::ash::vk::PipelineDepthStencilStateCreateInfo<'a>> for &Dept
     }
 }
 
-impl<'a> Into<crate::ash::vk::PipelineDepthStencilStateCreateInfo<'a>> for DepthConfiguration {
-    fn into(self) -> crate::ash::vk::PipelineDepthStencilStateCreateInfo<'a> {
-        (&self).into()
+impl<'a> From<DepthConfiguration> for crate::ash::vk::PipelineDepthStencilStateCreateInfo<'a> {
+    fn from(val: DepthConfiguration) -> Self {
+        (&val).into()
     }
 }
 

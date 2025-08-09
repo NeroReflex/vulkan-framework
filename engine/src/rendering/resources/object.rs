@@ -740,16 +740,14 @@ impl Manager {
         for (k, v) in textures.into_iter() {
             let texture_id = match (&v.width, &v.height, &v.miplevel, &v.format, &v.data) {
                 (Some(width), Some(height), Some(miplevel), Some(format), Some(data)) => {
-                    let texture_id = self.texture_manager.load(
+                    //println!("Loaded texture {k} at id {texture_id}");
+
+                    self.texture_manager.load(
                         format.into(),
                         Image2DDimensions::new(*width, *height),
                         *miplevel,
                         data.clone(),
-                    )?;
-
-                    //println!("Loaded texture {k} at id {texture_id}");
-
-                    texture_id
+                    )?
                 }
                 _ => {
                     return Err(crate::rendering::RenderingError::ResourceError(
@@ -884,13 +882,12 @@ impl Manager {
                     Some(transform) => transform,
                     None => {
                         // create the transform buffer and preload it with the identity matrix
-                        let transform_buffer = self.mesh_manager.create_transform_buffer(
+
+                        self.mesh_manager.create_transform_buffer(
                             memory_manager.deref_mut(),
                             [BufferUseAs::VertexBuffer].as_slice().into(),
                             None,
-                        )?;
-
-                        transform_buffer
+                        )?
                     }
                 }
             };
@@ -987,7 +984,7 @@ impl Manager {
             })
             .sum();
 
-        let Some(loaded_mesh) = (&mut self.objects).get_mut(object) else {
+        let Some(loaded_mesh) = self.objects.get_mut(object) else {
             panic!()
             //return;
         };
@@ -1077,7 +1074,7 @@ impl Manager {
                     for obj_instance in obj_instances.instances.iter() {
                         slice[instance_num] =
                             vulkan_framework::ash::vk::AccelerationStructureInstanceKHR {
-                                transform: obj_instance.clone(),
+                                transform: *obj_instance,
                                 instance_shader_binding_table_record_offset_and_flags:
                                     vulkan_framework::ash::vk::Packed24_8::new(0, 0x01), // VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
                                 instance_custom_index_and_mask:

@@ -63,20 +63,15 @@ impl UnallocatedResource {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Default)]
 pub enum MemoryManagementTagSize {
+    #[default]
     Small,
     MediumSmall,
     Medium,
     MediumLarge,
     Large,
     VeryLarge,
-}
-
-impl Default for MemoryManagementTagSize {
-    fn default() -> Self {
-        MemoryManagementTagSize::Small
-    }
 }
 
 /// Represents hints to the memory manager:

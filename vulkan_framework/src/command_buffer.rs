@@ -590,7 +590,7 @@ impl<'a> CommandBufferRecorder<'a> {
         self.used_resources
             .insert(CommandBufferReferencedResource::Buffer(dst.clone()));
 
-        let bytes = src.len() * std::mem::size_of::<T>();
+        let bytes = std::mem::size_of_val(src);
         if bytes as u64 % 4 != 0 {
             panic!("Size not multiple of 4 given!");
         }

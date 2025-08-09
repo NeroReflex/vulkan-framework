@@ -1,4 +1,4 @@
-use crate::prelude::{FrameworkError, VulkanError, VulkanResult};
+use crate::prelude::VulkanResult;
 
 use std::ffi::CStr;
 use std::os::raw::c_char;
