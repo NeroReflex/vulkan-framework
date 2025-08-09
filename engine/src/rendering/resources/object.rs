@@ -57,6 +57,8 @@ struct LoadedMaterial {
     material_index: u32,
     diffuse_texture: LoadedTexture,
     normal_texture: LoadedTexture,
+    reflection_texture: LoadedTexture,
+    displacement_texture: LoadedTexture,
 }
 
 #[derive(Debug, Default, Copy, Clone)]
@@ -735,14 +737,50 @@ impl Manager {
                 },
             };
 
+            let displacement_texture = match &v.displacement_texture {
+                Some(texture_name) => match loaded_textures.get(texture_name) {
+                    Some(texture) => texture.to_owned(),
+                    None => {
+                        println!(
+                            "WARNING: no matching texture '{texture_name}' loaded for material {k}"
+                        );
+
+                        LoadedTexture {
+                            texture: self.texture_manager.stub_texture_index(),
+                        }
+                    }
+                },
+                None => LoadedTexture {
+                    texture: self.texture_manager.stub_texture_index(),
+                },
+            };
+
+            let reflection_texture = match &v.reflection_texture {
+                Some(texture_name) => match loaded_textures.get(texture_name) {
+                    Some(texture) => texture.to_owned(),
+                    None => {
+                        println!(
+                            "WARNING: no matching texture '{texture_name}' loaded for material {k}"
+                        );
+
+                        LoadedTexture {
+                            texture: self.texture_manager.stub_texture_index(),
+                        }
+                    }
+                },
+                None => LoadedTexture {
+                    texture: self.texture_manager.stub_texture_index(),
+                },
+            };
+
             let material_def_size = SIZEOF_MATERIAL_DEFINITION;
             assert_eq!(SIZEOF_MATERIAL_DEFINITION, material_def_size);
 
             let Ok(material_index) = self.material_manager.load(MaterialGPU {
                 diffuse_texture_index: diffuse_texture.texture,
-                normal_texture_index: self.texture_manager.stub_texture_index(),
-                reflection_texture_index: self.texture_manager.stub_texture_index(),
-                displacement_texture_index: self.texture_manager.stub_texture_index(),
+                normal_texture_index: normal_texture.texture,
+                reflection_texture_index: reflection_texture.texture,
+                displacement_texture_index: displacement_texture.texture,
             }) else {
                 panic!("MATERIAL NOT LOADED");
             };
@@ -752,7 +790,9 @@ impl Manager {
                 LoadedMaterial {
                     material_index,
                     diffuse_texture,
+                    reflection_texture,
                     normal_texture,
+                    displacement_texture,
                 },
             );
         }
@@ -927,7 +967,7 @@ impl Manager {
                     .is_loaded(loaded_mesh.material.diffuse_texture.texture as usize)
                 {
                     println!(
-                        "skipping drawing of a mesh due to a bound texture not being fully loaded"
+                        "skipping drawing of a mesh due to a bound (diffuse) texture not being fully loaded"
                     );
                     continue;
                 }
@@ -937,7 +977,27 @@ impl Manager {
                     .is_loaded(loaded_mesh.material.normal_texture.texture as usize)
                 {
                     println!(
-                        "skipping drawing of a mesh due to a bound texture not being fully loaded"
+                        "skipping drawing of a mesh due to a bound (normal) texture not being fully loaded"
+                    );
+                    continue;
+                }
+
+                if !self
+                    .texture_manager
+                    .is_loaded(loaded_mesh.material.reflection_texture.texture as usize)
+                {
+                    println!(
+                        "skipping drawing of a mesh due to a bound (reflection) texture not being fully loaded"
+                    );
+                    continue;
+                }
+
+                if !self
+                    .texture_manager
+                    .is_loaded(loaded_mesh.material.displacement_texture.texture as usize)
+                {
+                    println!(
+                        "skipping drawing of a mesh due to a bound (displacement) texture not being fully loaded"
                     );
                     continue;
                 }
