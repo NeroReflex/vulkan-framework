@@ -836,7 +836,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             vec![instances_buffer_backing.into()],
             MemoryManagementTags::default()
                 .with_exclusivity(false)
-                .with_name("non_raytracing".to_string())
+                .with_name("raytracing".to_string())
                 .with_size(MemoryManagementTagSize::MediumSmall),
         )?;
         assert_eq!(allocated_buffers.len(), 1);
