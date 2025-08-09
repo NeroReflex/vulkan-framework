@@ -602,7 +602,7 @@ impl MeshRendering {
             Some(DepthConfiguration::new(
                 true,
                 DepthCompareOp::Less,
-                None //Some((0.0, 1.0)),
+                Some((0.0, 1.0)),
             )),
             None,
             None,
