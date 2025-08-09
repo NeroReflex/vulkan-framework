@@ -737,51 +737,13 @@ impl Manager {
 
             let material_def_size = SIZEOF_MATERIAL_DEFINITION;
             assert_eq!(SIZEOF_MATERIAL_DEFINITION, material_def_size);
-            let material_buffer = Buffer::new(
-                device.clone(),
-                ConcreteBufferDescriptor::new(
-                    [BufferUseAs::TransferSrc].as_slice().into(),
-                    material_def_size as u64,
-                ),
-                None,
-                Some(""),
-            )?;
 
-            let material_buffer = {
-                let mut allocator = self.memory_manager.lock().unwrap();
-                let alloc_result = allocator
-                    .allocate_resources(
-                        &MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostVisibile {
-                            cached: false,
-                        })),
-                        &MemoryPoolFeatures::default(),
-                        vec![material_buffer.into()],
-                        MemoryManagementTags::default()
-                            .with_name("temp".to_string())
-                            .with_size(MemoryManagementTagSize::MediumSmall),
-                    )
-                    .inspect_err(|err| {
-                        println!("Unable to allocate buffer for material definition: {err}")
-                    })?;
-                assert_eq!(alloc_result.len(), 1_usize);
-                alloc_result[0].buffer()
-            };
-
-            {
-                // write material to the buffer memory
-                let mem_map = MemoryMap::new(material_buffer.get_backing_memory_pool())?;
-                let mut range = mem_map
-                    .range::<MaterialGPU>(material_buffer.clone() as Arc<dyn MemoryPoolBacked>)?;
-                let mapped_materials = range.as_mut_slice();
-                mapped_materials[0] = MaterialGPU {
-                    diffuse_texture_index: diffuse_texture.texture,
-                    normal_texture_index: self.texture_manager.stub_texture_index(),
-                    reflection_texture_index: self.texture_manager.stub_texture_index(),
-                    displacement_texture_index: self.texture_manager.stub_texture_index(),
-                };
-            }
-
-            let Ok(material_index) = self.material_manager.load(material_buffer) else {
+            let Ok(material_index) = self.material_manager.load(MaterialGPU {
+                diffuse_texture_index: diffuse_texture.texture,
+                normal_texture_index: self.texture_manager.stub_texture_index(),
+                reflection_texture_index: self.texture_manager.stub_texture_index(),
+                displacement_texture_index: self.texture_manager.stub_texture_index(),
+            }) else {
                 panic!("MATERIAL NOT LOADED");
             };
 

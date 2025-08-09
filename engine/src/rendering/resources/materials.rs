@@ -30,7 +30,9 @@ use vulkan_framework::{
 
 use crate::rendering::{
     MAX_FRAMES_IN_FLIGHT_NO_MALLOC, MAX_MATERIALS, MAX_TEXTURES, RenderingError, RenderingResult,
-    resources::{SIZEOF_MATERIAL_DEFINITION, collection::LoadableResourcesCollection},
+    resources::{
+        SIZEOF_MATERIAL_DEFINITION, collection::LoadableResourcesCollection, object::MaterialGPU,
+    },
 };
 
 type DescriptorSetsType =
@@ -287,7 +289,7 @@ impl MaterialManager {
         })
     }
 
-    pub fn load(&mut self, material_data: Arc<dyn BufferTrait>) -> RenderingResult<u32> {
+    pub fn load(&mut self, material_data: MaterialGPU) -> RenderingResult<u32> {
         let queue = self.queue.clone();
         let Some(texture_index) = self.materials.load(
             queue.clone(),
@@ -300,11 +302,11 @@ impl MaterialManager {
                 let copy_offset = (index as u64) * copy_size;
                 recorder.buffer_barriers(
                     [BufferMemoryBarrier::new(
-                        [PipelineStage::Host].as_slice().into(),
-                        [MemoryAccessAs::MemoryWrite].as_slice().into(),
+                        [].as_slice().into(),
+                        [].as_slice().into(),
                         [PipelineStage::Transfer].as_slice().into(),
-                        [MemoryAccessAs::MemoryRead].as_slice().into(),
-                        BufferSubresourceRange::new(material_data.clone(), 0u64, copy_size),
+                        [MemoryAccessAs::TransferRead].as_slice().into(),
+                        BufferSubresourceRange::new(self.current_materials_buffer.clone(), copy_offset, copy_size),
                         queue_family.clone(),
                         queue_family.clone(),
                     )]
@@ -312,19 +314,19 @@ impl MaterialManager {
                 );
 
                 // Copy the buffer in the correct slot
-                recorder.copy_buffer(
-                    material_data,
+                recorder.update_buffer(
                     self.current_materials_buffer.clone(),
-                    [(0u64, copy_offset, copy_size)].as_slice(),
+                    copy_offset,
+                    [material_data].as_slice()
                 );
 
                 // Place a memory barrier to wait for GPU to finish cloning the buffer
                 recorder.buffer_barriers(
                     [BufferMemoryBarrier::new(
                         [PipelineStage::Transfer].as_slice().into(),
-                        [MemoryAccessAs::MemoryWrite].as_slice().into(),
+                        [MemoryAccessAs::TransferWrite].as_slice().into(),
                         [PipelineStage::AllCommands].as_slice().into(),
-                        [MemoryAccessAs::MemoryRead].as_slice().into(),
+                        [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead].as_slice().into(),
                         BufferSubresourceRange::new(
                             self.current_materials_buffer.clone(),
                             copy_offset,
