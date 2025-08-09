@@ -29,9 +29,11 @@ use vulkan_framework::{
 };
 
 use crate::rendering::{
+    MAX_FRAMES_IN_FLIGHT_NO_MALLOC, MAX_MATERIALS, MAX_MESHES, MAX_TEXTURES, RenderingError,
+    RenderingResult,
     resources::{
-        collection::LoadableResourcesCollection, object::MaterialGPU, SIZEOF_MATERIAL_DEFINITION
-    }, RenderingError, RenderingResult, MAX_FRAMES_IN_FLIGHT_NO_MALLOC, MAX_MATERIALS, MAX_MESHES, MAX_TEXTURES
+        SIZEOF_MATERIAL_DEFINITION, collection::LoadableResourcesCollection, object::MaterialGPU,
+    },
 };
 
 type DescriptorSetsType =
@@ -166,18 +168,19 @@ impl MaterialManager {
 
         let descriptor_set_layout = DescriptorSetLayout::new(
             device.clone(),
-            [BindingDescriptor::new(
-                ShaderStagesAccess::graphics(),
-                BindingType::Native(NativeBindingType::StorageBuffer),
-                0,
-                1,
-            ),
-            BindingDescriptor::new(
-                ShaderStagesAccess::graphics(),
-                BindingType::Native(NativeBindingType::StorageBuffer),
-                1,
-                1,
-            )
+            [
+                BindingDescriptor::new(
+                    ShaderStagesAccess::graphics(),
+                    BindingType::Native(NativeBindingType::StorageBuffer),
+                    0,
+                    1,
+                ),
+                BindingDescriptor::new(
+                    ShaderStagesAccess::graphics(),
+                    BindingType::Native(NativeBindingType::StorageBuffer),
+                    1,
+                    1,
+                ),
             ]
             .as_slice(),
         )?;

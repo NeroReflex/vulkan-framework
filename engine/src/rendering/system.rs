@@ -9,6 +9,7 @@ use std::{
 
 use sdl2::VideoSubsystem;
 use vulkan_framework::{
+    acceleration_structure::bottom_level::IDENTITY_MATRIX,
     buffer::{
         AllocatedBuffer, Buffer, BufferSubresourceRange, BufferTrait, BufferUseAs,
         ConcreteBufferDescriptor,
@@ -152,9 +153,11 @@ impl System {
     pub fn test(&mut self) {
         let mut manager = self.resources_manager.lock().unwrap();
 
-        manager
+        let sponza_object_id = manager
             .load_object(PathBuf::from("crytek_sponza.tar"))
             .unwrap();
+
+        manager.add_instance(sponza_object_id, IDENTITY_MATRIX);
     }
 
     pub fn new(

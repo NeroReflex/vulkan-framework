@@ -19,6 +19,9 @@ pub enum ResourceError {
     #[error("All mesh slots are occupied, there is no room for a new one")]
     NoMeshSlotAvailable,
 
+    #[error("No such mesh found: {0}")]
+    NoMesh(usize),
+
     #[error("Incomplete texture: {0}")]
     IncompleteTexture(String),
 

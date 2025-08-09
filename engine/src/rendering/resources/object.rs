@@ -22,12 +22,16 @@ use super::{mesh::MeshManager, texture::TextureManager};
 
 use vulkan_framework::{
     acceleration_structure::{
-        VertexIndexing,
+        AllowedBuildingDevice, VertexIndexing,
         bottom_level::{
             BottomLevelAccelerationStructureIndexBuffer,
             BottomLevelAccelerationStructureTransformBuffer,
             BottomLevelAccelerationStructureVertexBuffer, BottomLevelTrianglesGroupDecl,
             BottomLevelVerticesTopologyDecl,
+        },
+        top_level::{
+            TopLevelAccelerationStructure, TopLevelAccelerationStructureInstanceBuffer,
+            TopLevelBLASGroupDecl,
         },
     },
     buffer::{
@@ -72,6 +76,12 @@ struct MeshDefinition {
     meshes: Vec<LoadedMesh>,
 }
 
+pub type InstanceDataType = vulkan_framework::ash::vk::TransformMatrixKHR;
+
+struct MeshInstances {
+    instances: Vec<InstanceDataType>,
+}
+
 #[repr(C, packed)]
 #[derive(Debug, Copy, Clone)]
 pub struct MaterialGPU {
@@ -81,7 +91,8 @@ pub struct MaterialGPU {
     pub displacement_texture_index: u32,
 }
 
-type LoadedMeshesType = smallvec::SmallVec<[Option<MeshDefinition>; MAX_MESHES as usize]>;
+type LoadedMeshesType =
+    smallvec::SmallVec<[Option<(MeshDefinition, MeshInstances)>; MAX_MESHES as usize]>;
 
 pub struct Manager {
     debug_name: String,
@@ -95,6 +106,8 @@ pub struct Manager {
     material_manager: MaterialManager,
 
     current_mesh_to_material_map: Arc<AllocatedBuffer>,
+
+    current_tlas: Option<Arc<TopLevelAccelerationStructure>>,
 
     objects: LoadedMeshesType,
 }
@@ -212,6 +225,7 @@ impl Manager {
             objects.push(None);
         }
 
+        let current_tlas = None;
         Ok(Self {
             debug_name,
 
@@ -224,6 +238,8 @@ impl Manager {
             material_manager,
 
             current_mesh_to_material_map,
+
+            current_tlas,
 
             objects,
         })
@@ -862,7 +878,12 @@ impl Manager {
                 },
             );
 
-            // register into the GPU the mesh->material association
+            // TODO: there can be the case where the mesh to matial of the previous frame is being copied
+            // to the frame-specific buffer while we modify the mapping loading the model for next frames:
+            // to avoid the risk of such race condition it would be best to clone the buffer into a new one
+            // and use that new buffer from this moment on.
+
+            // Register into the GPU the mesh->material association
             {
                 let mem_map = MemoryMap::new(
                     self.current_mesh_to_material_map
@@ -890,12 +911,146 @@ impl Manager {
                 continue;
             }
 
-            self.objects[allocation_index] = Some(mesh);
+            self.objects[allocation_index] = Some((mesh, MeshInstances { instances: vec![] }));
 
             return Ok(allocation_index);
         }
 
+        // TODO: I could not find a spot to placing the model
         todo!()
+    }
+
+    pub fn add_instance(
+        &mut self,
+        object: usize,
+        instance: InstanceDataType,
+    ) -> RenderingResult<()> {
+        let max_instances: usize = self
+            .objects
+            .iter()
+            .map(|loaded_obj| match loaded_obj {
+                Some((obj_meshes, obj_instances)) => {
+                    obj_meshes.meshes.len() * obj_instances.instances.len()
+                }
+                None => 0_usize,
+            })
+            .sum();
+
+        let Some(loaded_mesh) = (&mut self.objects).get_mut(object) else {
+            panic!()
+            //return;
+        };
+
+        let Some((mesh_model, mesh_instances)) = loaded_mesh else {
+            panic!()
+            //return;
+        };
+
+        let meshes_count = mesh_model.meshes.len();
+        mesh_instances.instances.push(instance);
+
+        assert!((max_instances + meshes_count) < (u32::MAX as usize));
+
+        let max_instances = max_instances as u32 + meshes_count as u32;
+        let blas_decl = TopLevelBLASGroupDecl::new();
+        let instance_unallocated_buffer = Buffer::new(
+            self.queue_family.get_parent_device(),
+            TopLevelAccelerationStructureInstanceBuffer::template(
+                &blas_decl,
+                max_instances,
+                [BufferUseAs::VertexBuffer].as_slice().into(),
+            ),
+            None,
+            Some("instance_buffer"),
+        )?;
+
+        let tlas = {
+            let mut mem_manager = self.memory_manager.lock().unwrap();
+            let instance_allocated_data = mem_manager.allocate_resources(
+                &MemoryType::DeviceLocal(Some(MemoryHostVisibility::visible(false))),
+                &MemoryPoolFeatures::new(true),
+                vec![instance_unallocated_buffer.into()],
+                MemoryManagementTags::default()
+                    .with_name("temp".to_string())
+                    .with_size(MemoryManagementTagSize::MediumSmall),
+            )?;
+
+            let instance_buffer = instance_allocated_data[0].buffer();
+
+            let tlas_buffer = TopLevelAccelerationStructureInstanceBuffer::new(
+                blas_decl,
+                max_instances,
+                instance_buffer,
+            )?;
+
+            TopLevelAccelerationStructure::new(
+                &mut *mem_manager,
+                AllowedBuildingDevice::DeviceOnly,
+                tlas_buffer,
+                MemoryManagementTags::default()
+                    .with_name("temp".to_string())
+                    .with_size(MemoryManagementTagSize::MediumSmall),
+                None,
+                Some("tlas"),
+            )
+        }?;
+
+        self.current_tlas.replace(tlas);
+
+        let current_tlas_ref = self.current_tlas.as_ref().unwrap();
+
+        // wait for all meshes to be fully loaded: we will need them for the TLAS construction
+        self.mesh_manager.wait_load_blocking()?;
+
+        // now recreate instances of the TLAS
+        {
+            let mem_map = MemoryMap::new(
+                current_tlas_ref
+                    .instance_buffer()
+                    .buffer()
+                    .get_backing_memory_pool(),
+            )?;
+            let mut range = mem_map
+                .range::<vulkan_framework::ash::vk::AccelerationStructureInstanceKHR>(
+                    current_tlas_ref.instance_buffer().buffer() as Arc<dyn MemoryPoolBacked>,
+                )?;
+
+            let slice = range.as_mut_slice();
+
+            let mut instance_num = 0_usize;
+            for obj in self.objects.iter() {
+                let Some((obj_mesh, obj_instances)) = obj else {
+                    continue;
+                };
+
+                for mesh in obj_mesh.meshes.iter() {
+                    let mesh_index = mesh.mesh_index;
+                    for obj_instance in obj_instances.instances.iter() {
+                        slice[instance_num] =
+                            vulkan_framework::ash::vk::AccelerationStructureInstanceKHR {
+                                transform: obj_instance.clone(),
+                                instance_shader_binding_table_record_offset_and_flags:
+                                    vulkan_framework::ash::vk::Packed24_8::new(0, 0x01), // VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
+                                instance_custom_index_and_mask:
+                                    vulkan_framework::ash::vk::Packed24_8::new(0x00, 0xFF),
+                                acceleration_structure_reference:
+                                    vulkan_framework::ash::vk::AccelerationStructureReferenceKHR {
+                                        device_handle: self
+                                            .mesh_manager
+                                            .fetch_loaded(mesh_index as usize)
+                                            .as_ref()
+                                            .unwrap()
+                                            .device_addr(),
+                                    },
+                            };
+
+                        instance_num += 1;
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub fn update_buffers(
@@ -929,6 +1084,11 @@ impl Manager {
         push_constant_size: u32,
         push_constant_stages: ShaderStagesAccess,
     ) {
+        // do not render anything if the TLAS does not exists
+        let Some(_) = self.current_tlas else {
+            return;
+        };
+
         // bind the updated materials descriptor sets (update happens by calling update_buffers):
         // WARNING: the update MUST have been happened before this method,
         // and proper barriers MUST have been placed already
@@ -946,15 +1106,21 @@ impl Manager {
 
         // now try to render every object that has its resources completely loaded in GPU memory
         for obj_index in 0..self.objects.len() {
-            let Some(loaded_obj) = &self.objects[obj_index] else {
+            let Some((loaded_obj_mesh, loaded_obj_instances)) = &self.objects[obj_index] else {
                 continue;
             };
+
+            // If this mesh has no instances skip the rendering
+            let instance_count = loaded_obj_instances.instances.len() as u32;
+            if instance_count == 0 {
+                continue;
+            }
 
             // just an optimization: avoid issuing lots of useless bind_vertex_buffers calls
             let mut last_bound_vertex_buffer = MAX_MESHES as u64;
 
-            for mesh_index in 0..loaded_obj.meshes.len() {
-                let loaded_mesh: &LoadedMesh = &loaded_obj.meshes[mesh_index];
+            for mesh_index in 0..loaded_obj_mesh.meshes.len() {
+                let loaded_mesh: &LoadedMesh = &loaded_obj_mesh.meshes[mesh_index];
 
                 let Some(blas) = self
                     .mesh_manager
@@ -1046,7 +1212,7 @@ impl Manager {
                 recorder.bind_index_buffer(0, blas.index_buffer().buffer(), IndexType::UInt32);
 
                 // TODO: for now drawing one instance, but in the future allows multiple instances to be rendered
-                recorder.draw_indexed(blas.max_primitives_count() * 3u32, 1, 0, 0, 0);
+                recorder.draw_indexed(blas.max_primitives_count() * 3u32, instance_count, 0, 0, 0);
             }
         }
     }
