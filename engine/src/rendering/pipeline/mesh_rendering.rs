@@ -730,8 +730,20 @@ impl MeshRendering {
                 ImageMemoryBarrier::new(
                     PipelineStages::from([].as_slice()),
                     MemoryAccess::from([].as_slice()),
-                    PipelineStages::from([PipelineStage::EarlyFragmentTests, PipelineStage::LateFragmentTests].as_slice()),
-                    MemoryAccess::from([MemoryAccessAs::DepthStencilAttachmentWrite, MemoryAccessAs::DepthStencilAttachmentRead].as_slice()),
+                    PipelineStages::from(
+                        [
+                            PipelineStage::EarlyFragmentTests,
+                            PipelineStage::LateFragmentTests,
+                        ]
+                        .as_slice(),
+                    ),
+                    MemoryAccess::from(
+                        [
+                            MemoryAccessAs::DepthStencilAttachmentWrite,
+                            MemoryAccessAs::DepthStencilAttachmentRead,
+                        ]
+                        .as_slice(),
+                    ),
                     depth_stencil_imageview.image().into(),
                     ImageLayout::Undefined,
                     Self::output_image_depth_stencil_layout(),

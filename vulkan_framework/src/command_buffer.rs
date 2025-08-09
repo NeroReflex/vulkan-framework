@@ -583,6 +583,37 @@ impl<'a> CommandBufferRecorder<'a> {
         result
     }
 
+    pub fn update_buffer<T>(&mut self, dst: Arc<dyn BufferTrait>, offset: u64, src: &[T])
+    where
+        T: Sized,
+    {
+        self.used_resources
+            .insert(CommandBufferReferencedResource::Buffer(dst.clone()));
+
+        let bytes = src.len() * std::mem::size_of::<T>();
+        if bytes as u64 % 4 != 0 {
+            panic!("Size not multiple of 4 given!");
+        }
+
+        if (offset % 4) != 0 {
+            panic!("Not aligned offset given!");
+        }
+
+        let ptr = src.as_ptr() as *const std::ffi::c_void;
+        if ptr as u64 % 4 != 0 {
+            panic!("Unaligned pointer given!");
+        }
+
+        unsafe {
+            self.device.ash_handle().cmd_update_buffer(
+                self.command_buffer.ash_handle(),
+                ash::vk::Buffer::from_raw(dst.native_handle()),
+                offset,
+                std::slice::from_raw_parts(ptr as *const u8, bytes),
+            )
+        };
+    }
+
     pub fn copy_buffer(
         &mut self,
         src: Arc<dyn BufferTrait>,

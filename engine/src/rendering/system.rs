@@ -282,13 +282,21 @@ impl System {
             })
             .collect();
 
+        // Follow-up code creates uniform buffers to hold view and projection matrix:
+        // shader expects those two to be a certain size and have no padding between them:
+        // check for the layout to be correct.
+        assert_eq!(std::mem::size_of::<glm::Mat4>(), 4 * 4 * 4);
+        assert_eq!(std::mem::size_of::<[glm::Mat4; 2]>(), 4 * 4 * 4 * 2);
+
         let mut view_projection_unallocated_buffers = vec![];
         for index in 0..frames_in_flight {
             view_projection_unallocated_buffers.push(
                 Buffer::new(
                     device.clone(),
                     ConcreteBufferDescriptor::new(
-                        [BufferUseAs::UniformBuffer].as_slice().into(),
+                        [BufferUseAs::UniformBuffer, BufferUseAs::TransferDst]
+                            .as_slice()
+                            .into(),
                         4u64 * 4u64 * 4u64 * 2u64,
                     ),
                     None,
@@ -543,40 +551,25 @@ impl System {
             let mut static_meshes_resources = self.resources_manager.lock().unwrap();
             static_meshes_resources.wait_nonblocking()?;
 
-            // Write two mat4 to the buffer and bind it to descriptor set
-            assert_eq!(std::mem::size_of::<glm::Mat4>(), 4 * 4 * 4);
-            assert_eq!(
-                std::mem::size_of::<glm::Mat4>() * 2,
-                self.view_projection_buffers[current_frame].size() as usize
-            );
-
-            // This is the Host stage that performs the MemoryWrite mentioned in the barrier (#)
-            {
-                let mem_map = MemoryMap::new(
-                    self.view_projection_buffers[current_frame].get_backing_memory_pool(),
-                )?;
-                let mut mapped_range = mem_map
-                    .range::<glm::Mat4>(self.view_projection_buffers[current_frame].clone()
-                        as Arc<dyn MemoryPoolBacked>)?;
-                let view_proj_mat = mapped_range.as_mut_slice();
-                assert_eq!(view_proj_mat.len(), 2_usize);
-                view_proj_mat[0] = camera.view_matrix();
-                view_proj_mat[1] = camera.projection_matrix(
+            let camera_matrices = [
+                camera.view_matrix(),
+                camera.projection_matrix(
                     swapchain.images_extent().width(),
                     swapchain.images_extent().height(),
-                );
-            }
+                ),
+            ];
 
             // here register the command buffer: command buffer at index i is associated with rendering_fences[i],
             // that I just awaited above, so thecommand buffer is surely NOT currently in use
             self.present_command_buffers[current_frame].record_one_time_submit(|recorder| {
-                // (#) Wait for view and projection matrices to be written to GPU memory before using them to render the scene
+                // Write view and projection matrices to GPU memory and wait for completion before using them to render the scene
+                recorder.update_buffer(self.view_projection_buffers[current_frame].clone(), 0, camera_matrices.as_slice());
                 recorder.buffer_barriers(
                     [BufferMemoryBarrier::new(
-                        [PipelineStage::Host].as_slice().into(),
-                        [MemoryAccessAs::MemoryWrite].as_slice().into(),
-                        [PipelineStage::AllGraphics].as_slice().into(),
-                        [MemoryAccessAs::ShaderRead].as_slice().into(),
+                        [PipelineStage::Transfer].as_slice().into(),
+                        [MemoryAccessAs::TransferWrite].as_slice().into(),
+                        [PipelineStage::AllCommands].as_slice().into(),
+                        [MemoryAccessAs::ShaderRead, MemoryAccessAs::MemoryRead].as_slice().into(),
                         BufferSubresourceRange::new(self.view_projection_buffers[current_frame].clone(), 0u64, self.view_projection_buffers[current_frame].size()),
                         self.queue_family(),
                         self.queue_family(),
