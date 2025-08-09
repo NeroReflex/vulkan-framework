@@ -187,7 +187,7 @@ impl MeshRendering {
     }
 
     fn output_image_depth_stencil_layout() -> ImageLayout {
-        ImageLayout::DepthStencilReadOnlyOptimal
+        ImageLayout::DepthStencilAttachmentOptimal
     }
 
     fn output_image_color_format() -> ImageFormat {
