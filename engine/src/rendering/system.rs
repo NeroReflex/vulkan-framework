@@ -157,7 +157,7 @@ impl System {
             .load_object(PathBuf::from("crytek_sponza.tar"))
             .unwrap();
 
-        manager.add_instance(sponza_object_id, IDENTITY_MATRIX);
+        manager.add_instance(sponza_object_id, IDENTITY_MATRIX).unwrap();
     }
 
     pub fn new(
