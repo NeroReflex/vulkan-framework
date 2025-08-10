@@ -84,7 +84,7 @@ void main() {
 
     hitValue = true;
 
-    traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, origin.xyz, 0.001, direction.xyz, 10.0, 0);
+    traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, origin.xyz, 0.001, direction.xyz, 100000.0, 0);
     //                      gl_RayFlagsNoneEXT
 
     const uint light_hit_bool = (!hitValue ? 1 : 0) << (32 - directional_lighting_data.light_index);
