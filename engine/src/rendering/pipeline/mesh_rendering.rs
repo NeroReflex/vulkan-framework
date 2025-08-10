@@ -523,7 +523,7 @@ impl MeshRendering {
                 DescriptorSetLayout::new(
                     device.clone(),
                     [BindingDescriptor::new(
-                        ShaderStagesAccess::graphics(),
+                        [ShaderStageAccessIn::RayTracing(vulkan_framework::shader_stage_access::ShaderStageAccessInRayTracingKHR::RayGen), ShaderStageAccessIn::Fragment].as_slice().into(),
                         BindingType::Native(NativeBindingType::CombinedImageSampler),
                         0,
                         3u32,
@@ -564,7 +564,7 @@ impl MeshRendering {
         let gbuffer_descriptor_set_layout = DescriptorSetLayout::new(
             device.clone(),
             [BindingDescriptor::new(
-                ShaderStagesAccess::graphics(),
+                [ShaderStageAccessIn::RayTracing(vulkan_framework::shader_stage_access::ShaderStageAccessInRayTracingKHR::RayGen), ShaderStageAccessIn::Fragment].as_slice().into(),
                 BindingType::Native(NativeBindingType::CombinedImageSampler),
                 0,
                 3,

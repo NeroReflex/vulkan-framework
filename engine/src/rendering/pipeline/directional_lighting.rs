@@ -25,12 +25,12 @@ use vulkan_framework::{
         ImageSubresourceRange, ImageTiling, ImageUseAs,
     },
     image_view::ImageView,
-    memory_barriers::{BufferMemoryBarrier, ImageMemoryBarrier, MemoryAccessAs},
+    memory_barriers::{BufferMemoryBarrier, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
     memory_heap::{MemoryHostVisibility, MemoryType},
     memory_management::{MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait},
     memory_pool::MemoryPoolFeatures,
     pipeline_layout::{PipelineLayout, PipelineLayoutDependant},
-    pipeline_stage::{PipelineStage, PipelineStageRayTracingPipelineKHR},
+    pipeline_stage::{PipelineStage, PipelineStageRayTracingPipelineKHR, PipelineStages},
     push_constant_range::PushConstanRange,
     queue_family::QueueFamily,
     raytracing_pipeline::RaytracingPipeline,
@@ -38,9 +38,7 @@ use vulkan_framework::{
     shader_layout_binding::{
         AccelerationStructureBindingType, BindingDescriptor, BindingType, NativeBindingType,
     },
-    shader_stage_access::{
-        ShaderStageAccessIn, ShaderStageAccessInRayTracingKHR, ShaderStagesAccess,
-    },
+    shader_stage_access::{ShaderStageAccessIn, ShaderStageAccessInRayTracingKHR},
     shaders::{
         closest_hit_shader::ClosestHitShader, miss_shader::MissShader, raygen_shader::RaygenShader,
     },
@@ -60,6 +58,9 @@ layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
 
 uniform layout(set = 0, binding = 1, r32ui) uimage2D outputImage;
 
+// gbuffer: 0 for position, 1 for normal, 2 for diffuse texture
+layout(set = 1, binding = 0) uniform sampler2D gbuffer[3];
+
 layout(std430, set = 0, binding = 2) readonly buffer directional_lights
 {
     vec3 direction[];
@@ -69,26 +70,24 @@ layout(push_constant) uniform DirectionalLightingData {
     uint light_index;
 } directional_lighting_data;
 
-layout(location = 0) rayPayloadEXT vec3 hitValue;
+layout(location = 0) rayPayloadEXT bool hitValue;
 
 void main() {
     const vec2 resolution = vec2(imageSize(outputImage));
 
     const ivec2 pixelCoords = ivec2(gl_LaunchIDEXT.xy);
 
-    const vec2 position_xy = vec2((float(pixelCoords.x) + 0.5) / resolution.x, (float(pixelCoords.y) + 0.5) / resolution.y);
-    const vec3 origin = vec3(position_xy, -0.5);
-    const vec3 direction = vec3(0.0, 0.0, 1.0);
+    const vec2 position_xy = vec2(float(gl_LaunchIDEXT.x) / float(resolution.x), float(gl_LaunchIDEXT.y) / float(resolution.y));
 
-    // TODO: change this 1 with the hit bool
-    const uint light_hit_bool = 1 << (32 - directional_lighting_data.light_index);
+    const vec3 origin = texture(gbuffer[0], position_xy).xyz;
+    const vec3 direction = -1.0 * direction[directional_lighting_data.light_index];
 
-    vec4 output_color = vec4(1.0, 0.0, 0.0, 0.0);
-
-    hitValue = vec3(0.0, 0.0, 0.1);
+    hitValue = true;
 
     traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, origin.xyz, 0.001, direction.xyz, 10.0, 0);
     //                      gl_RayFlagsNoneEXT
+
+    const uint light_hit_bool = (!hitValue ? 1 : 0) << (32 - directional_lighting_data.light_index);
 
     // Store the hit boolean to the image
     imageAtomicOr(outputImage, pixelCoords, light_hit_bool);
@@ -109,10 +108,10 @@ const MISS_SPV: &[u32] = inline_spirv!(
 
 //layout(binding = 0, set = 1) uniform accelerationStructureEXT topLevelAS;
 
-layout(location = 0) rayPayloadInEXT vec3 hitValue;
+layout(location = 0) rayPayloadInEXT bool hitValue;
 
 void main() {
-    hitValue = vec3(0.0, 0.0, 0.2);
+    hitValue = false;
 }
 "#,
     glsl,
@@ -127,15 +126,10 @@ const CHIT_SPV: &[u32] = inline_spirv!(
 #extension GL_EXT_ray_tracing : require
 #extension GL_EXT_nonuniform_qualifier : enable
 
-layout(location = 0) rayPayloadInEXT vec3 hitValue;
-hitAttributeEXT vec2 attribs;
-
-//layout(binding = 0, set = 0) uniform accelerationStructureEXT topLevelAS;
-//layout(binding = 1, set = 0) uniform image2D outputImage;
+layout(location = 0) rayPayloadInEXT bool hitValue;
 
 void main() {
-    const vec3 barycentricCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
-    hitValue = barycentricCoords;
+    hitValue = false;
 }
 "#,
     glsl,
@@ -184,6 +178,7 @@ impl DirectionalLighting {
         queue_family: Arc<QueueFamily>,
         render_area: &RenderingDimensions,
         memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
+        gbuffer_descriptor_set_layout: Arc<DescriptorSetLayout>,
         frames_in_flight: u32,
     ) -> RenderingResult<Self> {
         let device = queue_family.get_parent_device();
@@ -229,7 +224,10 @@ impl DirectionalLighting {
 
         let pipeline_layout = PipelineLayout::new(
             device.clone(),
-            &[rt_descriptor_set_layout.clone()],
+            &[
+                rt_descriptor_set_layout.clone(),
+                gbuffer_descriptor_set_layout,
+            ],
             &[PushConstanRange::new(
                 0,
                 std::mem::size_of::<u32>() as u32,
@@ -511,8 +509,11 @@ impl DirectionalLighting {
     pub fn record_rendering_commands(
         &self,
         tlas: Arc<TopLevelAccelerationStructure>,
+        gbuffer_descriptor_set: Arc<DescriptorSet>,
         directional_lights: &DirectionalLights,
         current_frame: usize,
+        dlbuffer_stages: PipelineStages,
+        dlbuffer_access: MemoryAccess,
         recorder: &mut CommandBufferRecorder,
     ) -> Arc<DescriptorSet> {
         let image_view = self.raytracing_ldbuffer[current_frame].clone();
@@ -637,7 +638,11 @@ impl DirectionalLighting {
         recorder.bind_descriptor_sets_for_ray_tracing_pipeline(
             self.raytracing_pipeline.get_parent_pipeline_layout(),
             0,
-            [self.raytracing_descriptor_sets[current_frame].clone()].as_slice(),
+            [
+                self.raytracing_descriptor_sets[current_frame].clone(),
+                gbuffer_descriptor_set,
+            ]
+            .as_slice(),
         );
 
         for light_index in 0..lights_count {
@@ -674,8 +679,8 @@ impl DirectionalLighting {
                 .as_slice()
                 .into(),
                 [].as_slice().into(),
-                [PipelineStage::AllGraphics].as_slice().into(),
-                [MemoryAccessAs::ShaderRead].as_slice().into(),
+                dlbuffer_stages,
+                dlbuffer_access,
                 self.raytracing_ldbuffer[current_frame].image().into(),
                 ImageLayout::General,
                 ImageLayout::ShaderReadOnlyOptimal,

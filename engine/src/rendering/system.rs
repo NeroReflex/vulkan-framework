@@ -34,7 +34,7 @@ use vulkan_framework::{
     memory_heap::{MemoryHostVisibility, MemoryType},
     memory_management::{DefaultMemoryManager, MemoryManagementTags, MemoryManagerTrait},
     memory_pool::MemoryPoolFeatures,
-    pipeline_stage::{PipelineStage, PipelineStages},
+    pipeline_stage::{PipelineStage, PipelineStageRayTracingPipelineKHR, PipelineStages},
     queue::Queue,
     queue_family::{
         ConcreteQueueFamilyDescriptor, QueueFamily, QueueFamilyOwned,
@@ -448,6 +448,7 @@ impl System {
             queue_family.clone(),
             &render_area,
             memory_manager.clone(),
+            mesh_rendering.descriptor_set_layout(),
             frames_in_flight,
         )?);
 
@@ -646,7 +647,7 @@ impl System {
                 let gbuffer_descriptor_set = self.mesh_rendering.record_rendering_commands(
                     self.view_projection_descriptor_sets[current_frame].clone(),
                     self.queue_family(),
-                    [PipelineStage::AllCommands].as_slice().into(),
+                    [PipelineStage::AllGraphics, PipelineStage::RayTracingPipelineKHR(PipelineStageRayTracingPipelineKHR::RayTracingShader)].as_slice().into(),
                     [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead].as_slice().into(),
                     current_frame,
                     static_meshes_resources,
@@ -655,8 +656,11 @@ impl System {
 
                 let dlbuffer_descriptor_set = self.directional_lighting.record_rendering_commands(
                     tlas,
+                    gbuffer_descriptor_set.clone(),
                     directional_lighting_resources.deref(),
                     current_frame,
+                    [PipelineStage::AllGraphics].as_slice().into(),
+                [MemoryAccessAs::ShaderRead].as_slice().into(),
                     recorder
                 );
 
