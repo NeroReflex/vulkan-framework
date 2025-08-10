@@ -1,4 +1,4 @@
-use vulkan_framework::image::Image2DDimensions;
+use vulkan_framework::image::{Image2DDimensions, ImageDimensions};
 
 /// Represents dimensions of the actual rendering target,
 /// NOT the dimensions of the image that has to be presented.
@@ -10,6 +10,12 @@ pub struct RenderingDimensions {
 impl From<&RenderingDimensions> for Image2DDimensions {
     fn from(val: &RenderingDimensions) -> Self {
         Image2DDimensions::new(val.width.to_owned(), val.height.to_owned())
+    }
+}
+
+impl From<&RenderingDimensions> for ImageDimensions {
+    fn from(val: &RenderingDimensions) -> Self {
+        ImageDimensions::Image2D { extent: val.into() }
     }
 }
 

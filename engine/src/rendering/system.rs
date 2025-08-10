@@ -1,4 +1,5 @@
 use std::{
+    ops::Deref,
     path::PathBuf,
     sync::{
         Arc, Mutex,
@@ -58,7 +59,7 @@ use crate::{
             hdr_transform::HDRTransform, mesh_rendering::MeshRendering, renderquad::RenderQuad,
         },
         rendering_dimensions::RenderingDimensions,
-        resources::object::Manager as ResourceManager,
+        resources::{directional_lights::DirectionalLights, object::Manager as ResourceManager},
         surface::SurfaceHelper,
     },
 };
@@ -98,6 +99,7 @@ pub struct System {
     renderquad: Arc<RenderQuad>,
 
     resources_manager: Arc<Mutex<ResourceManager>>,
+    lights_manager: Arc<Mutex<DirectionalLights>>,
 
     frames_in_flight: smallvec::SmallVec<[Option<FenceWaiter>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
 
@@ -329,9 +331,11 @@ impl System {
             .map(|r| r.buffer())
             .collect();
 
+        let memory_manager = Arc::new(Mutex::new(memory_manager));
+
         let obj_manager = ResourceManager::new(
             queue_family.clone(),
-            Arc::new(Mutex::new(memory_manager)),
+            memory_manager.clone(),
             frames_in_flight,
             String::from("resource_manager"),
         )?;
@@ -409,8 +413,9 @@ impl System {
         )?);
 
         let directional_lighting = Arc::new(DirectionalLighting::new(
-            device.clone(),
+            queue_family.clone(),
             &render_area,
+            memory_manager.clone(),
             frames_in_flight,
         )?);
 
@@ -436,6 +441,11 @@ impl System {
         )?);
 
         let resources_manager = Arc::new(Mutex::new(obj_manager));
+        let lights_manager = Arc::new(Mutex::new(DirectionalLights::new(
+            queue_family.clone(),
+            memory_manager.clone(),
+            String::from("directional_lights"),
+        )?));
 
         let frames_in_flight = (0..frames_in_flight).map(|_| Option::None).collect();
 
@@ -467,6 +477,7 @@ impl System {
             renderquad,
 
             resources_manager,
+            lights_manager,
         })
     }
 
@@ -571,6 +582,8 @@ impl System {
 
         {
             let mut static_meshes_resources = self.resources_manager.lock().unwrap();
+            let directional_lighting_resources = self.lights_manager.lock().unwrap();
+
             static_meshes_resources.wait_nonblocking()?;
 
             let tlas = static_meshes_resources.tlas();
@@ -608,6 +621,7 @@ impl System {
 
                 let _ = self.directional_lighting.record_rendering_commands(
                     tlas,
+                    directional_lighting_resources.deref(),
                     current_frame,
                     recorder
                 );

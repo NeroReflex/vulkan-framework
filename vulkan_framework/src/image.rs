@@ -287,6 +287,12 @@ impl From<ImageFormat> for ImageAspects {
             FormatType::R32G32B32_SFLOAT => Self::from([ImageAspect::Color].as_ref()),
             FormatType::R32G32B32_SINT => Self::from([ImageAspect::Color].as_ref()),
             FormatType::R32G32B32_UINT => Self::from([ImageAspect::Color].as_ref()),
+            FormatType::R32G32_SFLOAT => Self::from([ImageAspect::Color].as_ref()),
+            FormatType::R32G32_SINT => Self::from([ImageAspect::Color].as_ref()),
+            FormatType::R32G32_UINT => Self::from([ImageAspect::Color].as_ref()),
+            FormatType::R32_SFLOAT => Self::from([ImageAspect::Color].as_ref()),
+            FormatType::R32_SINT => Self::from([ImageAspect::Color].as_ref()),
+            FormatType::R32_UINT => Self::from([ImageAspect::Color].as_ref()),
             FormatType::B8G8R8A8_SRGB => Self::from([ImageAspect::Color].as_ref()),
             FormatType::B8G8R8A8_UINT => Self::from([ImageAspect::Color].as_ref()),
             FormatType::B8G8R8A8_UNORM => Self::from([ImageAspect::Color].as_ref()),
@@ -384,14 +390,22 @@ impl ImageSubresourceRange {
             array_layers_count,
         }
     }
+}
 
-    pub(crate) fn ash_subresource_range(&self) -> ash::vk::ImageSubresourceRange {
+impl Into<crate::ash::vk::ImageSubresourceRange> for &ImageSubresourceRange {
+    fn into(self) -> crate::ash::vk::ImageSubresourceRange {
         ash::vk::ImageSubresourceRange::default()
             .aspect_mask(self.image_aspects.into())
             .base_array_layer(self.base_array_layer)
             .layer_count(self.array_layers_count)
             .base_mip_level(self.base_mip_level)
             .level_count(self.mip_levels_count)
+    }
+}
+
+impl Into<crate::ash::vk::ImageSubresourceRange> for ImageSubresourceRange {
+    fn into(self) -> crate::ash::vk::ImageSubresourceRange {
+        (&self).into()
     }
 }
 

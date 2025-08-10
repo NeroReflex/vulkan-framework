@@ -60,6 +60,18 @@ where
     }
 
     #[inline]
+    pub fn foreach_loaded_mut<F>(&self, mut function: F)
+    where
+        F: FnMut(&T),
+    {
+        for obj in self.collection.iter() {
+            if let LoadableResource::Loaded(loaded_obj) = obj {
+                function(loaded_obj)
+            }
+        }
+    }
+
+    #[inline]
     pub fn foreach_loaded<F>(&self, function: F)
     where
         F: Fn(&T),

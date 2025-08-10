@@ -1,8 +1,16 @@
-use std::sync::Arc;
+use std::{
+    ops::DerefMut,
+    sync::{Arc, Mutex},
+};
 
 use inline_spirv::inline_spirv;
 use vulkan_framework::{
     acceleration_structure::top_level::TopLevelAccelerationStructure,
+    binding_tables::RaytracingBindingTables,
+    buffer::{
+        AllocatedBuffer, Buffer, BufferSubresourceRange, BufferTrait, BufferUseAs,
+        ConcreteBufferDescriptor,
+    },
     command_buffer::CommandBufferRecorder,
     descriptor_pool::{
         DescriptorPool, DescriptorPoolConcreteDescriptor,
@@ -10,18 +18,36 @@ use vulkan_framework::{
     },
     descriptor_set::DescriptorSet,
     descriptor_set_layout::DescriptorSetLayout,
-    device::Device,
+    device::{Device, DeviceOwned},
+    image::{
+        AllocatedImage, CommonImageFormat, ConcreteImageDescriptor, Image, Image1DTrait,
+        Image2DTrait, Image3DDimensions, ImageFlags, ImageFormat, ImageLayout, ImageMultisampling,
+        ImageSubresourceRange, ImageTiling, ImageUseAs,
+    },
+    image_view::ImageView,
+    memory_barriers::{BufferMemoryBarrier, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
+    memory_heap::{MemoryHostVisibility, MemoryType},
+    memory_management::{MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait},
+    memory_pool::MemoryPoolFeatures,
     pipeline_layout::{PipelineLayout, PipelineLayoutDependant},
+    pipeline_stage::{PipelineStage, PipelineStageRayTracingPipelineKHR, PipelineStages},
+    push_constant_range::PushConstanRange,
+    queue_family::QueueFamily,
     raytracing_pipeline::RaytracingPipeline,
-    shader_layout_binding::{AccelerationStructureBindingType, BindingDescriptor, BindingType},
-    shader_stage_access::{ShaderStageAccessIn, ShaderStageAccessInRayTracingKHR},
+    shader_layout_binding::{
+        AccelerationStructureBindingType, BindingDescriptor, BindingType, NativeBindingType,
+    },
+    shader_stage_access::{
+        ShaderStageAccessIn, ShaderStageAccessInRayTracingKHR, ShaderStagesAccess,
+    },
     shaders::{
         closest_hit_shader::ClosestHitShader, miss_shader::MissShader, raygen_shader::RaygenShader,
     },
 };
 
 use crate::rendering::{
-    MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingResult, rendering_dimensions::RenderingDimensions,
+    MAX_DIRECTIONAL_LIGHTS, MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingResult,
+    rendering_dimensions::RenderingDimensions, resources::directional_lights::DirectionalLights,
 };
 
 const RAYGEN_SPV: &[u32] = inline_spirv!(
@@ -31,7 +57,16 @@ const RAYGEN_SPV: &[u32] = inline_spirv!(
 
 layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
 
-uniform layout(set = 0, binding = 1, rgba32f) writeonly image2D outputImage;
+uniform layout(set = 0, binding = 1, r32ui) uimage2D outputImage;
+
+layout(std430, set = 0, binding = 2) readonly buffer directional_lights
+{
+    vec3 direction[];
+};
+
+layout(push_constant) uniform DirectionalLightingData {
+    uint light_index;
+} directional_lighting_data;
 
 layout(location = 0) rayPayloadEXT vec3 hitValue;
 
@@ -44,6 +79,9 @@ void main() {
     const vec3 origin = vec3(position_xy, -0.5);
     const vec3 direction = vec3(0.0, 0.0, 1.0);
 
+    // TODO: change this 1 with the hit bool
+    const uint light_hit_bool = 1 << directional_lighting_data.light_index;
+
     vec4 output_color = vec4(1.0, 0.0, 0.0, 0.0);
 
     hitValue = vec3(0.0, 0.0, 0.1);
@@ -51,8 +89,8 @@ void main() {
     traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, origin.xyz, 0.001, direction.xyz, 10.0, 0);
     //                      gl_RayFlagsNoneEXT
 
-    // Store the output color to the image
-    imageStore(outputImage, pixelCoords, vec4(hitValue.xyz, 1.0));
+    // Store the hit boolean to the image
+    imageAtomicOr(outputImage, pixelCoords, light_hit_bool);
 }
 "#,
     glsl,
@@ -66,7 +104,7 @@ const MISS_SPV: &[u32] = inline_spirv!(
 #version 460
 #extension GL_EXT_ray_tracing : require
 
-//uniform layout(binding=0, set = 0, rgba32f) writeonly image2D someImage;
+//uniform layout(binding=0, set = 0, r32) writeonly uimage2D someImage;
 
 //layout(binding = 0, set = 1) uniform accelerationStructureEXT topLevelAS;
 
@@ -105,8 +143,26 @@ void main() {
     entry = "main"
 );
 
+type DirectionsBuffersType =
+    smallvec::SmallVec<[Arc<AllocatedBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
+
+type LDBuffersType = smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
+
+type RaytracingSBTPerDLightType =
+    smallvec::SmallVec<[Arc<RaytracingBindingTables>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
+
+type RaytracingSBTType =
+    smallvec::SmallVec<[RaytracingSBTPerDLightType; MAX_DIRECTIONAL_LIGHTS as usize]>;
+
 pub struct DirectionalLighting {
+    queue_family: Arc<QueueFamily>,
+
     raytracing_pipeline: Arc<RaytracingPipeline>,
+
+    raytracing_directions: DirectionsBuffersType,
+    raytracing_ldbuffer: LDBuffersType,
+
+    raytracing_sbts: RaytracingSBTType,
 
     raytracing_descriptor_sets:
         smallvec::SmallVec<[Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
@@ -114,31 +170,60 @@ pub struct DirectionalLighting {
 
 impl DirectionalLighting {
     pub fn new(
-        device: Arc<Device>,
+        queue_family: Arc<QueueFamily>,
         render_area: &RenderingDimensions,
+        memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
         frames_in_flight: u32,
     ) -> RenderingResult<Self> {
+        let device = queue_family.get_parent_device();
+
         let rt_descriptor_set_layout = DescriptorSetLayout::new(
             device.clone(),
-            [BindingDescriptor::new(
-                [ShaderStageAccessIn::RayTracing(
-                    ShaderStageAccessInRayTracingKHR::RayGen,
-                )]
-                .as_slice()
-                .into(),
-                BindingType::AccelerationStructure(
-                    AccelerationStructureBindingType::AccelerationStructure,
+            [
+                BindingDescriptor::new(
+                    [ShaderStageAccessIn::RayTracing(
+                        ShaderStageAccessInRayTracingKHR::RayGen,
+                    )]
+                    .as_slice()
+                    .into(),
+                    BindingType::AccelerationStructure(
+                        AccelerationStructureBindingType::AccelerationStructure,
+                    ),
+                    0,
+                    1,
                 ),
-                0,
-                1,
-            )]
+                BindingDescriptor::new(
+                    [ShaderStageAccessIn::RayTracing(
+                        ShaderStageAccessInRayTracingKHR::RayGen,
+                    )]
+                    .as_slice()
+                    .into(),
+                    BindingType::Native(NativeBindingType::StorageImage),
+                    1,
+                    1,
+                ),
+                BindingDescriptor::new(
+                    [ShaderStageAccessIn::RayTracing(
+                        ShaderStageAccessInRayTracingKHR::RayGen,
+                    )]
+                    .as_slice()
+                    .into(),
+                    BindingType::Native(NativeBindingType::StorageBuffer),
+                    2,
+                    1,
+                ),
+            ]
             .as_slice(),
         )?;
 
         let pipeline_layout = PipelineLayout::new(
             device.clone(),
             &[rt_descriptor_set_layout.clone()],
-            &[],
+            &[PushConstanRange::new(
+                0,
+                std::mem::size_of::<u32>() as u32,
+                ShaderStagesAccess::raytracing(),
+            )],
             Some("directional_lighting_pipeline_layout"),
         )?;
 
@@ -160,6 +245,117 @@ impl DirectionalLighting {
             Some("directional_lighting_raytracing_pipeline!"),
         )?;
 
+        let mut raytracing_ldbuffer_unallocated = vec![];
+        for index in 0..frames_in_flight {
+            raytracing_ldbuffer_unallocated.push(
+                Image::new(
+                    device.clone(),
+                    ConcreteImageDescriptor::new(
+                        render_area.into(),
+                        [ImageUseAs::TransferDst, ImageUseAs::Storage]
+                            .as_slice()
+                            .into(),
+                        ImageMultisampling::SamplesPerPixel1,
+                        1,
+                        1,
+                        ImageFormat::from(CommonImageFormat::r32_uint),
+                        ImageFlags::empty(),
+                        ImageTiling::Optimal,
+                    ),
+                    None,
+                    Some(format!("raytracing_ldimage[{index}]").as_str()),
+                )?
+                .into(),
+            );
+        }
+
+        let raytracing_directions_unallocated = (0..frames_in_flight)
+            .into_iter()
+            .map(|index| {
+                Buffer::new(
+                    device.clone(),
+                    ConcreteBufferDescriptor::new(
+                        [BufferUseAs::TransferDst, BufferUseAs::StorageBuffer]
+                            .as_slice()
+                            .into(),
+                        4u64 * 3u64 * (MAX_DIRECTIONAL_LIGHTS as u64),
+                    ),
+                    None,
+                    Some(format!("raytracing_directions[{index}]").as_str()),
+                )
+                .unwrap()
+                .into()
+            })
+            .collect::<Vec<_>>();
+
+        let (raytracing_directions, raytracing_ldbuffer, raytracing_sbts) = {
+            let mut mem_manager = memory_manager.lock().unwrap();
+
+            let raytracing_directions_allocated = mem_manager.allocate_resources(
+                &MemoryType::DeviceLocal(Some(MemoryHostVisibility::hidden())),
+                &MemoryPoolFeatures::new(false),
+                raytracing_directions_unallocated,
+                MemoryManagementTags::default()
+                    .with_name("directional_lighting".to_string())
+                    .with_size(MemoryManagementTagSize::MediumSmall),
+            )?;
+
+            let raytracing_ldbuffer_allocated = mem_manager.allocate_resources(
+                &MemoryType::DeviceLocal(Some(MemoryHostVisibility::hidden())),
+                &MemoryPoolFeatures::new(false),
+                raytracing_ldbuffer_unallocated,
+                MemoryManagementTags::default()
+                    .with_name("directional_lighting".to_string())
+                    .with_size(MemoryManagementTagSize::MediumSmall),
+            )?;
+
+            let raytracing_directions = raytracing_directions_allocated
+                .into_iter()
+                .map(|allocated| allocated.buffer())
+                .collect::<DirectionsBuffersType>();
+
+            let raytracing_sbts = (0..MAX_DIRECTIONAL_LIGHTS)
+                .into_iter()
+                .map(|_sbt_index| {
+                    (0..frames_in_flight)
+                        .into_iter()
+                        .map(|_frame_index| {
+                            RaytracingBindingTables::new(
+                                raytracing_pipeline.clone(),
+                                mem_manager.deref_mut(),
+                                MemoryManagementTags::default()
+                                    .with_name("directional_lighting".to_string())
+                                    .with_size(MemoryManagementTagSize::MediumSmall),
+                            )
+                            .unwrap()
+                        })
+                        .collect::<RaytracingSBTPerDLightType>()
+                })
+                .collect::<RaytracingSBTType>();
+
+            let raytracing_ldbuffer = raytracing_ldbuffer_allocated
+                .into_iter()
+                .enumerate()
+                .map(|(index, allocated)| {
+                    ImageView::new(
+                        allocated.image(),
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        Some(format!("raytracing_ldimage_imageview[{index}]").as_str()),
+                    )
+                    .unwrap()
+                })
+                .collect::<LDBuffersType>();
+
+            (raytracing_directions, raytracing_ldbuffer, raytracing_sbts)
+        };
+
         let raytracing_descriptor_pool = DescriptorPool::new(
             device.clone(),
             DescriptorPoolConcreteDescriptor::new(
@@ -167,10 +363,10 @@ impl DirectionalLighting {
                     0,
                     0,
                     0,
+                    frames_in_flight,
                     0,
                     0,
-                    0,
-                    0,
+                    frames_in_flight,
                     0,
                     0,
                     Some(DescriptorPoolSizesAcceletarionStructureKHR::new(1)),
@@ -183,15 +379,44 @@ impl DirectionalLighting {
         let mut raytracing_descriptor_sets = smallvec::SmallVec::<
             [Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
         >::with_capacity(frames_in_flight as usize);
-        for _ in 0..frames_in_flight {
-            raytracing_descriptor_sets.push(DescriptorSet::new(
+        for index in 0..(frames_in_flight as usize) {
+            let descriptor_set = DescriptorSet::new(
                 raytracing_descriptor_pool.clone(),
                 rt_descriptor_set_layout.clone(),
-            )?);
+            )?;
+
+            descriptor_set.bind_resources(|binder| {
+                binder
+                    .bind_storage_images(
+                        1,
+                        [(ImageLayout::General, raytracing_ldbuffer[index].clone())].as_slice(),
+                    )
+                    .unwrap();
+
+                binder
+                    .bind_storage_buffers(
+                        2,
+                        [(
+                            raytracing_directions[index].clone() as Arc<dyn BufferTrait>,
+                            None,
+                            None,
+                        )]
+                        .as_slice(),
+                    )
+                    .unwrap();
+            })?;
+
+            raytracing_descriptor_sets.push(descriptor_set);
         }
 
         Ok(Self {
+            queue_family,
+
             raytracing_pipeline,
+
+            raytracing_directions,
+            raytracing_ldbuffer,
+            raytracing_sbts,
 
             raytracing_descriptor_sets,
         })
@@ -200,9 +425,123 @@ impl DirectionalLighting {
     pub fn record_rendering_commands(
         &self,
         tlas: Arc<TopLevelAccelerationStructure>,
+        directional_lights: &DirectionalLights,
         current_frame: usize,
         recorder: &mut CommandBufferRecorder,
     ) {
+        let image_view = self.raytracing_ldbuffer[current_frame].clone();
+
+        // TODO: of all word positions from GBUFFER, (order them, maybe) and for each directional light
+        // use those to decide the portion that has to be rendered as depth in the shadow map
+
+        // Here clear the image and transition its layout for using it in the raytracing pipeline
+        {
+            let image_srr: ImageSubresourceRange =
+                self.raytracing_ldbuffer[current_frame].image().into();
+
+            recorder.image_barriers(
+                [ImageMemoryBarrier::new(
+                    [].as_slice().into(),
+                    [].as_slice().into(),
+                    [PipelineStage::RayTracingPipelineKHR(
+                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                    )]
+                    .as_slice()
+                    .into(),
+                    [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
+                        .as_slice()
+                        .into(),
+                    image_srr.clone(),
+                    ImageLayout::Undefined,
+                    ImageLayout::TransferDstOptimal,
+                    self.queue_family.clone(),
+                    self.queue_family.clone(),
+                )]
+                .as_slice(),
+            );
+
+            recorder.clear_color_image(image_srr.clone());
+
+            recorder.image_barriers(
+                [ImageMemoryBarrier::new(
+                    [PipelineStage::Transfer].as_slice().into(),
+                    [MemoryAccessAs::TransferWrite].as_slice().into(),
+                    [PipelineStage::RayTracingPipelineKHR(
+                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                    )]
+                    .as_slice()
+                    .into(),
+                    [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
+                        .as_slice()
+                        .into(),
+                    image_srr,
+                    ImageLayout::TransferDstOptimal,
+                    ImageLayout::General,
+                    self.queue_family.clone(),
+                    self.queue_family.clone(),
+                )]
+                .as_slice(),
+            );
+        }
+
+        // get the number of directional lights to compute and transfer into the buffer theirs directions
+        let lights_count = directional_lights.count();
+        let size_of_direction = 4u64 * 3u64;
+
+        if lights_count > 0
+        {
+            recorder.buffer_barriers(
+                [BufferMemoryBarrier::new(
+                    [].as_slice().into(),
+                    [].as_slice().into(),
+                    [PipelineStage::Transfer].as_slice().into(),
+                    [MemoryAccessAs::TransferWrite].as_slice().into(),
+                    BufferSubresourceRange::new(
+                        self.raytracing_directions[current_frame].clone(),
+                        0,
+                        (lights_count as u64) * size_of_direction,
+                    ),
+                    self.queue_family.clone(),
+                    self.queue_family.clone(),
+                )]
+                .as_slice(),
+            );
+            
+            directional_lights.foreach(|dir_light| {
+                recorder.copy_buffer(
+                    dir_light.clone(),
+                    self.raytracing_directions[current_frame].clone(),
+                    [(
+                        0u64,
+                        (lights_count as u64) * size_of_direction,
+                        size_of_direction,
+                    )]
+                    .as_slice(),
+                );
+            });
+
+            recorder.buffer_barriers(
+                [BufferMemoryBarrier::new(
+                    [PipelineStage::Transfer].as_slice().into(),
+                    [MemoryAccessAs::TransferWrite].as_slice().into(),
+                    [PipelineStage::RayTracingPipelineKHR(
+                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                    )]
+                    .as_slice()
+                    .into(),
+                    [MemoryAccessAs::ShaderRead].as_slice().into(),
+                    BufferSubresourceRange::new(
+                        self.raytracing_directions[current_frame].clone(),
+                        0,
+                        size_of_direction * (lights_count as u64),
+                    ),
+                    self.queue_family.clone(),
+                    self.queue_family.clone(),
+                )]
+                .as_slice(),
+            );
+        };
+
         self.raytracing_descriptor_sets[current_frame]
             .bind_resources(|binder| {
                 binder.bind_tlas(0, [tlas].as_slice()).unwrap();
@@ -215,5 +554,31 @@ impl DirectionalLighting {
             0,
             [self.raytracing_descriptor_sets[current_frame].clone()].as_slice(),
         );
+
+        for light_index in 0..lights_count {
+            recorder.push_constant(
+                self.raytracing_pipeline.get_parent_pipeline_layout(),
+                [ShaderStageAccessIn::RayTracing(
+                    ShaderStageAccessInRayTracingKHR::RayGen,
+                )]
+                .as_slice()
+                .into(),
+                0,
+                unsafe { std::mem::transmute::<&u32, &[u8; 4]>(&light_index) },
+            );
+
+            recorder.trace_rays(
+                self.raytracing_sbts[light_index as usize][current_frame].clone(),
+                match image_view.image().dimensions() {
+                    vulkan_framework::image::ImageDimensions::Image1D { extent } => {
+                        Image3DDimensions::new(extent.width(), 1, 1)
+                    }
+                    vulkan_framework::image::ImageDimensions::Image2D { extent } => {
+                        Image3DDimensions::new(extent.width(), extent.height(), 1)
+                    }
+                    vulkan_framework::image::ImageDimensions::Image3D { extent } => extent,
+                },
+            );
+        }
     }
 }

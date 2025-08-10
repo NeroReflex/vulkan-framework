@@ -1,4 +1,5 @@
 pub mod collection;
+pub mod directional_lights;
 pub mod materials;
 pub mod mesh;
 pub mod object;

@@ -207,7 +207,7 @@ impl<'a> From<&ImageMemoryBarrier> for ash::vk::ImageMemoryBarrier2<'a> {
             .new_layout(val.new_layout.into())
             .src_queue_family_index(val.src_queue_family.get_family_index())
             .dst_queue_family_index(val.dst_queue_family.get_family_index())
-            .subresource_range(val.subresource_range.ash_subresource_range())
+            .subresource_range((&val.subresource_range).into())
     }
 }
 

@@ -13,7 +13,7 @@ use parking_lot::{const_mutex, Mutex};
 #[cfg(not(feature = "better_mutex"))]
 use std::sync::Mutex;
 
-use ash::vk::{Handle, Offset2D};
+use ash::vk::{ClearColorValue, Handle, Offset2D};
 
 use crate::{
     acceleration_structure::{
@@ -28,7 +28,7 @@ use crate::{
     graphics_pipeline::{GraphicsPipeline, IndexType, Scissor, Viewport},
     image::{
         Image1DTrait, Image2DDimensions, Image2DTrait, Image3DDimensions, Image3DTrait,
-        ImageDimensions, ImageLayout, ImageSubresourceLayers, ImageTrait,
+        ImageDimensions, ImageLayout, ImageSubresourceLayers, ImageSubresourceRange, ImageTrait,
     },
     image_view::ImageView,
     memory_barriers::{BufferMemoryBarrier, ImageMemoryBarrier},
@@ -696,6 +696,30 @@ impl<'a> CommandBufferRecorder<'a> {
                 ash::vk::Image::from_raw(dst.native_handle()),
                 dst_layout.into(),
                 &[regions],
+            );
+        }
+    }
+
+    /// Place a command to clear the specified image and returns the `ImageSubresourceRange`
+    /// that has to be used for image barriers.
+    ///
+    /// WARNING: The image layout MUST be VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+    /// at the time of the transfer operation
+    pub fn clear_color_image(&mut self, image_srr: ImageSubresourceRange) {
+        self.used_resources
+            .insert(CommandBufferReferencedResource::Image(image_srr.image()));
+
+        let clear_color = ClearColorValue {
+            uint32: [0, 0, 0, 0],
+        };
+
+        unsafe {
+            self.device.ash_handle().cmd_clear_color_image(
+                self.command_buffer.ash_handle(),
+                ash::vk::Image::from_raw(image_srr.image().native_handle()),
+                crate::ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &clear_color,
+                &[image_srr.clone().into()],
             );
         }
     }

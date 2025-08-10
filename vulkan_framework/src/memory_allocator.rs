@@ -75,7 +75,7 @@ pub trait MemoryAllocator: Sync + Send {
 }
 
 pub struct DefaultAllocator {
-    management_array: Mutex<smallvec::SmallVec<[u8; 4096]>>,
+    management_array: Mutex<smallvec::SmallVec<[u64; 4096]>>,
     total_size: u64,
     block_size: u64,
 }
@@ -88,8 +88,8 @@ impl DefaultAllocator {
         );
 
         let protected_resource = (0..(number_of_blocks as usize))
-            .map(|_idx| 0u8)
-            .collect::<smallvec::SmallVec<[u8; 4096]>>();
+            .map(|_idx| 0u64)
+            .collect::<smallvec::SmallVec<[u64; 4096]>>();
 
         #[cfg(feature = "better_mutex")]
         let management_array = const_mutex(protected_resource);
@@ -114,6 +114,42 @@ impl DefaultAllocator {
         );
 
         Self::with_blocksize(block_size, number_of_blocks)
+    }
+
+    fn flag_used(mem_tracker: &mut [u64], used: bool, start_block: u64) {
+        let index = (start_block as u64) / 64u64;
+        let bit_number = (start_block as u64) % 64u64;
+        let bitmask = 1u64 << bit_number;
+
+        match used {
+            true => mem_tracker[index as usize] |= bitmask,
+            false => mem_tracker[index as usize] &= !bitmask,
+        };
+    }
+
+    fn flag_blocks(mem_tracker: &mut [u64], used: bool, start_block: u64, blocks_count: u64) {
+        for block in start_block..(start_block + blocks_count) {
+            Self::flag_used(mem_tracker, used, block)
+        }
+    }
+
+    fn check_free(mem_tracker: &[u64], start_block: u64) -> bool {
+        let index = (start_block as u64) / 64u64;
+        let bit_number = (start_block as u64) % 64u64;
+        let bitmask = 1u64 << bit_number;
+
+        (mem_tracker[index as usize] & bitmask) == 0u64
+    }
+
+    fn check_free_blocks(mem_tracker: &[u64], start_block: u64, blocks_count: u64) -> u64 {
+        let mut used_blocks = 0u64;
+        for block in start_block..(start_block + blocks_count) {
+            if Self::check_free(mem_tracker, block) == false {
+                used_blocks += 1;
+            }
+        }
+
+        used_blocks
     }
 }
 
@@ -178,17 +214,14 @@ impl MemoryAllocator for DefaultAllocator {
             }
 
             // make sure the requested memory is free
-            for j in i..(i + required_number_of_blocks) {
-                while (*lck)[j as usize] != 0u8 {
-                    i += 1;
-                    continue 'find_first_block;
-                }
+            let used_blocks = Self::check_free_blocks(lck.as_slice(), i, required_number_of_blocks);
+            if used_blocks > 0 {
+                i += used_blocks;
+                continue 'find_first_block;
             }
 
             // found a suitable set of blocks: set them as occupied and retun the allocated memory
-            for j in i..(i + required_number_of_blocks) {
-                (*lck)[j as usize] = 1u8
-            }
+            Self::flag_blocks(lck.as_mut_slice(), true, i, required_number_of_blocks);
 
             // early drop the mutex lock when not needed anymore
             drop(lck);
@@ -231,13 +264,19 @@ impl MemoryAllocator for DefaultAllocator {
             }
         };
 
-        for i in first_block..number_of_allocated_blocks {
-            if (*lck)[i as usize] != 1u8 {
-                panic!("Memory was not allocated from this pool! :O");
-            }
+        let used_blocks =
+            Self::check_free_blocks(lck.as_slice(), first_block, number_of_allocated_blocks);
 
-            (*lck)[i as usize] = 0u8;
+        if used_blocks != number_of_allocated_blocks {
+            panic!("Memory was not allocated from this pool! :O");
         }
+
+        Self::flag_blocks(
+            lck.as_mut_slice(),
+            false,
+            first_block,
+            number_of_allocated_blocks,
+        );
     }
 }
 
