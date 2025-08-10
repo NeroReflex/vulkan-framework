@@ -1315,4 +1315,9 @@ impl Manager {
 
         Ok(())
     }
+
+    #[inline]
+    pub fn tlas(&self) -> Arc<TopLevelAccelerationStructure> {
+        self.current_tlas.as_ref().unwrap().tlas()
+    }
 }

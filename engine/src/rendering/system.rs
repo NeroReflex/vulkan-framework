@@ -54,8 +54,8 @@ use crate::{
     rendering::{
         MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingError, RenderingResult,
         pipeline::{
-            final_rendering::FinalRendering, hdr_transform::HDRTransform,
-            mesh_rendering::MeshRendering, renderquad::RenderQuad,
+            directional_lighting::DirectionalLighting, final_rendering::FinalRendering,
+            hdr_transform::HDRTransform, mesh_rendering::MeshRendering, renderquad::RenderQuad,
         },
         rendering_dimensions::RenderingDimensions,
         resources::object::Manager as ResourceManager,
@@ -92,6 +92,7 @@ pub struct System {
         smallvec::SmallVec<[Arc<AllocatedBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
 
     mesh_rendering: Arc<MeshRendering>,
+    directional_lighting: Arc<DirectionalLighting>,
     final_rendering: Arc<FinalRendering>,
     hdr: Arc<HDRTransform>,
     renderquad: Arc<RenderQuad>,
@@ -407,6 +408,12 @@ impl System {
             frames_in_flight,
         )?);
 
+        let directional_lighting = Arc::new(DirectionalLighting::new(
+            device.clone(),
+            &render_area,
+            frames_in_flight,
+        )?);
+
         let final_rendering = Arc::new(FinalRendering::new(
             device.clone(),
             mesh_rendering.descriptor_set_layout(),
@@ -454,6 +461,7 @@ impl System {
             view_projection_buffers,
 
             mesh_rendering,
+            directional_lighting,
             final_rendering,
             hdr,
             renderquad,
@@ -565,6 +573,8 @@ impl System {
             let mut static_meshes_resources = self.resources_manager.lock().unwrap();
             static_meshes_resources.wait_nonblocking()?;
 
+            let tlas = static_meshes_resources.tlas();
+
             // here register the command buffer: command buffer at index i is associated with rendering_fences[i],
             // that I just awaited above, so thecommand buffer is surely NOT currently in use
             self.present_command_buffers[current_frame].record_one_time_submit(|recorder| {
@@ -593,6 +603,12 @@ impl System {
                     [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead].as_slice().into(),
                     current_frame,
                     static_meshes_resources,
+                    recorder
+                );
+
+                let _ = self.directional_lighting.record_rendering_commands(
+                    tlas,
+                    current_frame,
                     recorder
                 );
 
