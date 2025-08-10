@@ -392,20 +392,20 @@ impl ImageSubresourceRange {
     }
 }
 
-impl Into<crate::ash::vk::ImageSubresourceRange> for &ImageSubresourceRange {
-    fn into(self) -> crate::ash::vk::ImageSubresourceRange {
+impl From<&ImageSubresourceRange> for crate::ash::vk::ImageSubresourceRange {
+    fn from(val: &ImageSubresourceRange) -> Self {
         ash::vk::ImageSubresourceRange::default()
-            .aspect_mask(self.image_aspects.into())
-            .base_array_layer(self.base_array_layer)
-            .layer_count(self.array_layers_count)
-            .base_mip_level(self.base_mip_level)
-            .level_count(self.mip_levels_count)
+            .aspect_mask(val.image_aspects.into())
+            .base_array_layer(val.base_array_layer)
+            .layer_count(val.array_layers_count)
+            .base_mip_level(val.base_mip_level)
+            .level_count(val.mip_levels_count)
     }
 }
 
-impl Into<crate::ash::vk::ImageSubresourceRange> for ImageSubresourceRange {
-    fn into(self) -> crate::ash::vk::ImageSubresourceRange {
-        (&self).into()
+impl From<ImageSubresourceRange> for crate::ash::vk::ImageSubresourceRange {
+    fn from(val: ImageSubresourceRange) -> Self {
+        (&val).into()
     }
 }
 

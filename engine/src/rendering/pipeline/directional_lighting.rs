@@ -287,7 +287,6 @@ impl DirectionalLighting {
         }
 
         let raytracing_directions_unallocated = (0..frames_in_flight)
-            .into_iter()
             .map(|index| {
                 Buffer::new(
                     device.clone(),
@@ -332,10 +331,8 @@ impl DirectionalLighting {
                 .collect::<DirectionsBuffersType>();
 
             let raytracing_sbts = (0..MAX_DIRECTIONAL_LIGHTS)
-                .into_iter()
                 .map(|_sbt_index| {
                     (0..frames_in_flight)
-                        .into_iter()
                         .map(|_frame_index| {
                             RaytracingBindingTables::new(
                                 raytracing_pipeline.clone(),

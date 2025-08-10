@@ -117,8 +117,8 @@ impl DefaultAllocator {
     }
 
     fn flag_used(mem_tracker: &mut [u64], used: bool, start_block: u64) {
-        let index = (start_block as u64) / 64u64;
-        let bit_number = (start_block as u64) % 64u64;
+        let index = start_block / 64u64;
+        let bit_number = start_block % 64u64;
         let bitmask = 1u64 << bit_number;
 
         match used {
@@ -134,8 +134,8 @@ impl DefaultAllocator {
     }
 
     fn check_free(mem_tracker: &[u64], start_block: u64) -> bool {
-        let index = (start_block as u64) / 64u64;
-        let bit_number = (start_block as u64) % 64u64;
+        let index = start_block / 64u64;
+        let bit_number = start_block % 64u64;
         let bitmask = 1u64 << bit_number;
 
         (mem_tracker[index as usize] & bitmask) == 0u64
@@ -144,7 +144,7 @@ impl DefaultAllocator {
     fn check_free_blocks(mem_tracker: &[u64], start_block: u64, blocks_count: u64) -> u64 {
         let mut used_blocks = 0u64;
         for block in start_block..(start_block + blocks_count) {
-            if Self::check_free(mem_tracker, block) == false {
+            if !Self::check_free(mem_tracker, block) {
                 used_blocks += 1;
             }
         }
