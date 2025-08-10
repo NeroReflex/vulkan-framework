@@ -615,9 +615,10 @@ impl System {
 
         {
             let mut static_meshes_resources = self.resources_manager.lock().unwrap();
-            let directional_lighting_resources = self.lights_manager.lock().unwrap();
+            let mut directional_lighting_resources = self.lights_manager.lock().unwrap();
 
             static_meshes_resources.wait_nonblocking()?;
+            directional_lighting_resources.wait_nonblocking()?;
 
             let tlas = static_meshes_resources.tlas();
 

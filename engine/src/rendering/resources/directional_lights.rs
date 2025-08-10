@@ -116,4 +116,18 @@ impl DirectionalLights {
     {
         self.lights.foreach_loaded_mut(fun);
     }
+
+    #[inline]
+    pub fn wait_blocking(&mut self) -> RenderingResult<()> {
+        self.lights.wait_load_blocking()?;
+
+        Ok(())
+    }
+
+    #[inline]
+    pub fn wait_nonblocking(&mut self) -> RenderingResult<()> {
+        self.lights.wait_load_nonblock()?;
+
+        Ok(())
+    }
 }

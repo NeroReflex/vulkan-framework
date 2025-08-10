@@ -233,7 +233,11 @@ impl DirectionalLighting {
             &[PushConstanRange::new(
                 0,
                 std::mem::size_of::<u32>() as u32,
-                ShaderStagesAccess::raytracing(),
+                [ShaderStageAccessIn::RayTracing(
+                    ShaderStageAccessInRayTracingKHR::RayGen,
+                )]
+                .as_slice()
+                .into(),
             )],
             Some("directional_lighting_pipeline_layout"),
         )?;
