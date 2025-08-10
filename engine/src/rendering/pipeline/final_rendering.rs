@@ -77,13 +77,23 @@ layout (location = 0) in vec2 in_vTextureUV;
 
 // gbuffer: 0 for position, 1 for normal, 2 for diffuse texture
 layout(set = 0, binding = 0) uniform sampler2D gbuffer[3];
+layout(set = 1, binding = 0) uniform usampler2D dlbuffer;
 
 void main() {
     const vec3 in_vPosition_worldspace = texture(gbuffer[0], in_vTextureUV).xyz;
     const vec3 in_vNormal_worldspace = texture(gbuffer[1], in_vTextureUV).xyz;
     const vec4 in_vDiffuseAlbedo = texture(gbuffer[2], in_vTextureUV);
 
-    outColor = vec4(in_vDiffuseAlbedo.xyz, 1.0);
+    vec3 out_vDiffuseAlbedo = vec3(0.0, 0.0, 0.0);
+
+    const uvec4 in_dir_lights_collisions = texture(dlbuffer, in_vTextureUV);
+    for (uint dl_index = 0; dl_index < 32; dl_index++) {
+        if ((in_dir_lights_collisions.x & (1 << (32 - dl_index))) != 0) {
+            out_vDiffuseAlbedo += in_vDiffuseAlbedo.xyz;
+        }
+    }
+
+    outColor = vec4(out_vDiffuseAlbedo.xyz, 1.0);
 }
 "#,
     frag
@@ -115,6 +125,7 @@ impl FinalRendering {
     pub fn new(
         device: Arc<Device>,
         gbuffer_descriptor_set_layout: Arc<DescriptorSetLayout>,
+        dlbuffer_descriptor_set_layout: Arc<DescriptorSetLayout>,
         render_area: &RenderingDimensions,
         frames_in_flight: u32,
     ) -> RenderingResult<Self> {
@@ -205,7 +216,10 @@ impl FinalRendering {
 
         let pipeline_layout = PipelineLayout::new(
             device.clone(),
-            &[gbuffer_descriptor_set_layout],
+            &[
+                gbuffer_descriptor_set_layout,
+                dlbuffer_descriptor_set_layout,
+            ],
             &[],
             Some("final_rendering.pipeline_layout"),
         )?;
@@ -249,6 +263,7 @@ impl FinalRendering {
         &self,
         queue_family: Arc<QueueFamily>,
         gbuffer_descriptor_set: Arc<DescriptorSet>,
+        dlbuffer_descriptor_set: Arc<DescriptorSet>,
         current_frame: usize,
         recorder: &mut CommandBufferRecorder,
     ) -> (Arc<ImageView>, ImageSubresourceRange, ImageLayout) {
@@ -301,6 +316,12 @@ impl FinalRendering {
                     self.graphics_pipeline.get_parent_pipeline_layout(),
                     0,
                     [gbuffer_descriptor_set].as_slice(),
+                );
+
+                recorder.bind_descriptor_sets_for_graphics_pipeline(
+                    self.graphics_pipeline.get_parent_pipeline_layout(),
+                    1,
+                    [dlbuffer_descriptor_set].as_slice(),
                 );
 
                 recorder.draw(0, 6, 0, 1);

@@ -18,22 +18,23 @@ use vulkan_framework::{
     },
     descriptor_set::DescriptorSet,
     descriptor_set_layout::DescriptorSetLayout,
-    device::{Device, DeviceOwned},
+    device::DeviceOwned,
     image::{
-        AllocatedImage, CommonImageFormat, ConcreteImageDescriptor, Image, Image1DTrait,
-        Image2DTrait, Image3DDimensions, ImageFlags, ImageFormat, ImageLayout, ImageMultisampling,
+        CommonImageFormat, ConcreteImageDescriptor, Image, Image1DTrait, Image2DTrait,
+        Image3DDimensions, ImageFlags, ImageFormat, ImageLayout, ImageMultisampling,
         ImageSubresourceRange, ImageTiling, ImageUseAs,
     },
     image_view::ImageView,
-    memory_barriers::{BufferMemoryBarrier, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
+    memory_barriers::{BufferMemoryBarrier, ImageMemoryBarrier, MemoryAccessAs},
     memory_heap::{MemoryHostVisibility, MemoryType},
     memory_management::{MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait},
     memory_pool::MemoryPoolFeatures,
     pipeline_layout::{PipelineLayout, PipelineLayoutDependant},
-    pipeline_stage::{PipelineStage, PipelineStageRayTracingPipelineKHR, PipelineStages},
+    pipeline_stage::{PipelineStage, PipelineStageRayTracingPipelineKHR},
     push_constant_range::PushConstanRange,
     queue_family::QueueFamily,
     raytracing_pipeline::RaytracingPipeline,
+    sampler::{Filtering, MipmapMode, Sampler},
     shader_layout_binding::{
         AccelerationStructureBindingType, BindingDescriptor, BindingType, NativeBindingType,
     },
@@ -80,7 +81,7 @@ void main() {
     const vec3 direction = vec3(0.0, 0.0, 1.0);
 
     // TODO: change this 1 with the hit bool
-    const uint light_hit_bool = 1 << directional_lighting_data.light_index;
+    const uint light_hit_bool = 1 << (32 - directional_lighting_data.light_index);
 
     vec4 output_color = vec4(1.0, 0.0, 0.0, 0.0);
 
@@ -166,9 +167,19 @@ pub struct DirectionalLighting {
 
     raytracing_descriptor_sets:
         smallvec::SmallVec<[Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
+
+    dlbuffer_descriptor_set_layout: Arc<DescriptorSetLayout>,
+    dlbuffer_descriptor_sets:
+        smallvec::SmallVec<[Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
 }
 
 impl DirectionalLighting {
+    /// Returns the descriptor set layout for the gbuffer
+    #[inline(always)]
+    pub fn descriptor_set_layout(&self) -> Arc<DescriptorSetLayout> {
+        self.dlbuffer_descriptor_set_layout.clone()
+    }
+
     pub fn new(
         queue_family: Arc<QueueFamily>,
         render_area: &RenderingDimensions,
@@ -252,9 +263,13 @@ impl DirectionalLighting {
                     device.clone(),
                     ConcreteImageDescriptor::new(
                         render_area.into(),
-                        [ImageUseAs::TransferDst, ImageUseAs::Storage]
-                            .as_slice()
-                            .into(),
+                        [
+                            ImageUseAs::TransferDst,
+                            ImageUseAs::Storage,
+                            ImageUseAs::Sampled,
+                        ]
+                        .as_slice()
+                        .into(),
                         ImageMultisampling::SamplesPerPixel1,
                         1,
                         1,
@@ -409,6 +424,70 @@ impl DirectionalLighting {
             raytracing_descriptor_sets.push(descriptor_set);
         }
 
+        let dlbuffer_descriptor_set_layout = DescriptorSetLayout::new(
+            device.clone(),
+            [BindingDescriptor::new(
+                [ShaderStageAccessIn::Fragment].as_slice().into(),
+                BindingType::Native(NativeBindingType::CombinedImageSampler),
+                0,
+                1,
+            )]
+            .as_slice(),
+        )?;
+
+        let dlbuffer_descriptor_pool = DescriptorPool::new(
+            device.clone(),
+            DescriptorPoolConcreteDescriptor::new(
+                DescriptorPoolSizesConcreteDescriptor::new(
+                    0,
+                    frames_in_flight,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    None,
+                ),
+                frames_in_flight,
+            ),
+            Some(""),
+        )?;
+
+        let dlbuffer_sampler = Sampler::new(
+            device.clone(),
+            Filtering::Nearest,
+            Filtering::Nearest,
+            MipmapMode::ModeNearest,
+            0.0,
+        )?;
+
+        let mut dlbuffer_descriptor_sets =
+            smallvec::SmallVec::<_>::with_capacity(frames_in_flight as usize);
+        for index in 0_usize..(frames_in_flight as usize) {
+            let descriptor_set = DescriptorSet::new(
+                dlbuffer_descriptor_pool.clone(),
+                dlbuffer_descriptor_set_layout.clone(),
+            )?;
+
+            descriptor_set.bind_resources(|binder| {
+                binder
+                    .bind_combined_images_samplers(
+                        0,
+                        [(
+                            ImageLayout::ShaderReadOnlyOptimal,
+                            raytracing_ldbuffer[index].clone(),
+                            dlbuffer_sampler.clone(),
+                        )]
+                        .as_slice(),
+                    )
+                    .unwrap()
+            })?;
+
+            dlbuffer_descriptor_sets.push(descriptor_set);
+        }
+
         Ok(Self {
             queue_family,
 
@@ -419,6 +498,9 @@ impl DirectionalLighting {
             raytracing_sbts,
 
             raytracing_descriptor_sets,
+
+            dlbuffer_descriptor_set_layout,
+            dlbuffer_descriptor_sets,
         })
     }
 
@@ -428,7 +510,7 @@ impl DirectionalLighting {
         directional_lights: &DirectionalLights,
         current_frame: usize,
         recorder: &mut CommandBufferRecorder,
-    ) {
+    ) -> Arc<DescriptorSet> {
         let image_view = self.raytracing_ldbuffer[current_frame].clone();
 
         // TODO: of all word positions from GBUFFER, (order them, maybe) and for each directional light
@@ -488,8 +570,7 @@ impl DirectionalLighting {
         let lights_count = directional_lights.count();
         let size_of_direction = 4u64 * 3u64;
 
-        if lights_count > 0
-        {
+        if lights_count > 0 {
             recorder.buffer_barriers(
                 [BufferMemoryBarrier::new(
                     [].as_slice().into(),
@@ -506,7 +587,7 @@ impl DirectionalLighting {
                 )]
                 .as_slice(),
             );
-            
+
             directional_lights.foreach(|dir_light| {
                 recorder.copy_buffer(
                     dir_light.clone(),
@@ -580,5 +661,26 @@ impl DirectionalLighting {
                 },
             );
         }
+
+        recorder.image_barriers(
+            [ImageMemoryBarrier::new(
+                [PipelineStage::RayTracingPipelineKHR(
+                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                )]
+                .as_slice()
+                .into(),
+                [].as_slice().into(),
+                [PipelineStage::AllGraphics].as_slice().into(),
+                [MemoryAccessAs::ShaderRead].as_slice().into(),
+                self.raytracing_ldbuffer[current_frame].image().into(),
+                ImageLayout::General,
+                ImageLayout::ShaderReadOnlyOptimal,
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )]
+            .as_slice(),
+        );
+
+        self.dlbuffer_descriptor_sets[current_frame].clone()
     }
 }

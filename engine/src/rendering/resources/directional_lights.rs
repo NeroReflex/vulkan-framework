@@ -1,13 +1,21 @@
-use std::sync::{Arc, Mutex, atomic::AtomicU64};
+use std::sync::{Arc, Mutex};
 
 use vulkan_framework::{
-    buffer::AllocatedBuffer, memory_management::MemoryManagerTrait, queue::Queue,
-    queue_family::QueueFamily,
+    buffer::{AllocatedBuffer, Buffer, BufferTrait, BufferUseAs, ConcreteBufferDescriptor},
+    device::DeviceOwned,
+    memory_heap::MemoryType,
+    memory_management::{MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait},
+    memory_pool::MemoryPoolFeatures,
+    queue::Queue,
+    queue_family::{QueueFamily, QueueFamilyOwned},
 };
 
-use crate::rendering::{
-    MAX_DIRECTIONAL_LIGHTS, MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingResult,
-    resources::collection::LoadableResourcesCollection,
+use crate::{
+    core::lights::directional::DirectionalLight,
+    rendering::{
+        MAX_DIRECTIONAL_LIGHTS, RenderingError, RenderingResult,
+        resources::collection::LoadableResourcesCollection,
+    },
 };
 
 pub struct DirectionalLights {
@@ -45,15 +53,59 @@ impl DirectionalLights {
         })
     }
 
-    pub fn load(&mut self) -> RenderingResult<usize> {
-        Ok(todo!())
+    pub fn load(&mut self, light: DirectionalLight) -> RenderingResult<u32> {
+        assert_eq!(std::mem::size_of_val(&light), 4_usize * 6_usize);
+
+        let Some(light_index) = self.lights.load(
+            self.queue.clone(),
+            |index| {
+                let light_buffer = Buffer::new(
+                    self.queue.get_parent_queue_family().get_parent_device(),
+                    ConcreteBufferDescriptor::new(
+                        [BufferUseAs::TransferSrc, BufferUseAs::TransferDst]
+                            .as_slice()
+                            .into(),
+                        4u64 * 6u64,
+                    ),
+                    None,
+                    Some(format!("{}->light[{index}]", self.debug_name).as_str()),
+                )?;
+
+                let mut mem_manager = self.memory_manager.lock().unwrap();
+                mem_manager
+                    .allocate_resources(
+                        &MemoryType::DeviceLocal(None),
+                        &MemoryPoolFeatures::new(false),
+                        vec![light_buffer.into()],
+                        MemoryManagementTags::default()
+                            .with_name("DirectionalLights".to_string())
+                            .with_size(MemoryManagementTagSize::Small),
+                    )
+                    .map(|allocated| allocated[0].buffer())
+                    .map_err(|err| err.into())
+            },
+            |recorder, _, buffer| {
+                recorder.update_buffer(
+                    buffer.clone() as Arc<dyn BufferTrait>,
+                    0,
+                    [light.direction(), light.albedo()].as_slice(),
+                );
+
+                Ok(())
+            },
+        )?
+        else {
+            return Err(RenderingError::ResourceError(
+                super::ResourceError::NoDirectionalLightingSlotAvailable,
+            ));
+        };
+
+        Ok(light_index)
     }
 
     pub fn count(&self) -> u32 {
         let mut count = 0u32;
-        self.foreach(|_| {
-            count += 1
-        });
+        self.foreach(|_| count += 1);
 
         count
     }

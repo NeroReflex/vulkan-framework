@@ -20,6 +20,9 @@ pub enum ResourceError {
     #[error("All mesh slots are occupied, there is no room for a new one")]
     NoMeshSlotAvailable,
 
+    #[error("All directional lights slots are occupied, there is no room for a new one")]
+    NoDirectionalLightingSlotAvailable,
+
     #[error("No such mesh found: {0}")]
     NoMesh(usize),
 

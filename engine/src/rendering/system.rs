@@ -51,7 +51,7 @@ use vulkan_framework::{
 };
 
 use crate::{
-    core::{camera::CameraTrait, hdr::HDR},
+    core::{camera::CameraTrait, hdr::HDR, lights::directional::DirectionalLight},
     rendering::{
         MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingError, RenderingResult,
         pipeline::{
@@ -162,6 +162,38 @@ impl System {
 
         manager
             .add_instance(sponza_object_id, IDENTITY_MATRIX)
+            .unwrap();
+
+        /*
+        scene->addDirectionalLight(
+            NeroReflex::PBRenderer::Core::Lighting::DirectionalLight(
+                glm::vec3(0.0f, -1.0, 0.0f),
+                glm::vec3(1.0, 1.0, 1.0),
+                glm::float32(10.2f)
+            )
+        );
+        scene->addDirectionalLight(
+            NeroReflex::PBRenderer::Core::Lighting::DirectionalLight(
+                glm::vec3(0, +0.947768, 0.318959),
+                glm::vec3(1.0, 1.0, 1.0),
+                glm::float32(10.2f)
+            )
+        );
+        scene->addDirectionalLight(
+            NeroReflex::PBRenderer::Core::Lighting::DirectionalLight(
+                glm::vec3(0.0, -0.98, 0.6),
+                glm::vec3(1.0, 1.0, 0.90),
+                glm::float32(10.2f)
+            )
+        );
+        */
+
+        let mut lights = self.lights_manager.lock().unwrap();
+        lights
+            .load(DirectionalLight::new(
+                glm::Vec3::new(-0.6, -0.98, 0.00000001),
+                glm::Vec3::new(10.2, 10.2, 10.2),
+            ))
             .unwrap();
     }
 
@@ -422,6 +454,7 @@ impl System {
         let final_rendering = Arc::new(FinalRendering::new(
             device.clone(),
             mesh_rendering.descriptor_set_layout(),
+            directional_lighting.descriptor_set_layout(),
             &render_area,
             frames_in_flight,
         )?);
@@ -619,7 +652,7 @@ impl System {
                     recorder
                 );
 
-                let _ = self.directional_lighting.record_rendering_commands(
+                let dlbuffer_descriptor_set = self.directional_lighting.record_rendering_commands(
                     tlas,
                     directional_lighting_resources.deref(),
                     current_frame,
@@ -635,6 +668,7 @@ impl System {
                 ) = self.final_rendering.record_rendering_commands(
                     self.queue_family(),
                     gbuffer_descriptor_set,
+                    dlbuffer_descriptor_set,
                     current_frame,
                     recorder,
                 );

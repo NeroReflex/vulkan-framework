@@ -183,23 +183,28 @@ pub struct MeshRendering {
 }
 
 impl MeshRendering {
+    #[inline(always)]
     fn output_image_color_layout() -> ImageLayout {
         ImageLayout::ColorAttachmentOptimal
     }
 
+    #[inline(always)]
     fn output_image_depth_stencil_layout() -> ImageLayout {
         ImageLayout::DepthStencilAttachmentOptimal
     }
 
+    #[inline(always)]
     fn output_image_color_format() -> ImageFormat {
         ImageFormat::from(CommonImageFormat::r32g32b32a32_sfloat)
     }
 
+    #[inline(always)]
     fn output_image_depth_stencil_format() -> ImageFormat {
         ImageFormat::from(CommonImageFormat::d32_sfloat_s8_uint)
     }
 
     /// Returns the descriptor set layout for the gbuffer
+    #[inline(always)]
     pub fn descriptor_set_layout(&self) -> Arc<DescriptorSetLayout> {
         self.gbuffer_descriptor_set_layout.clone()
     }
