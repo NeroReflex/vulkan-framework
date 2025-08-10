@@ -75,7 +75,7 @@ impl BindingDescriptor {
         self.shader_access
     }
 
-    pub(crate) fn ash_handle(&self) -> ash::vk::DescriptorSetLayoutBinding {
+    pub(crate) fn ash_handle(&self) -> ash::vk::DescriptorSetLayoutBinding<'_> {
         ash::vk::DescriptorSetLayoutBinding::default()
             .binding(self.binding_point)
             .stage_flags(self.shader_access.into())
