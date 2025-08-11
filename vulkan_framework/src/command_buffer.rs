@@ -184,7 +184,7 @@ impl<'a> CommandBufferRecorder<'a> {
         // See https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
         let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::default()
             .geometries(geometries.as_slice())
-            .flags(ash::vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
+            .flags(tlas.build_flags())
             .ty(ash::vk::AccelerationStructureTypeKHR::TOP_LEVEL)
             .mode(ash::vk::BuildAccelerationStructureModeKHR::BUILD)
             .src_acceleration_structure(ash::vk::AccelerationStructureKHR::null())

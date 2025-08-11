@@ -217,6 +217,15 @@ impl TopLevelAccelerationStructure {
         )
     }
 
+    pub(crate) fn geometry_info<'a>(
+        geometries: &'a [AccelerationStructureGeometryKHR],
+    ) -> ash::vk::AccelerationStructureBuildGeometryInfoKHR<'a> {
+        ash::vk::AccelerationStructureBuildGeometryInfoKHR::default()
+            .geometries(geometries)
+            .flags(Self::static_build_flags())
+            .ty(ash::vk::AccelerationStructureTypeKHR::TOP_LEVEL)
+    }
+
     /*
      * This function allows the user to estimate a minimum size for provided geometry info.
      *
@@ -245,10 +254,7 @@ impl TopLevelAccelerationStructure {
         // Any VkDeviceOrHostAddressKHR members of pBuildInfo are ignored by this command,
         // except that the hostAddress member of VkAccelerationStructureGeometryTrianglesDataKHR::transformData
         // will be examined to check if it is NULL.
-        let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::default()
-            .geometries(geometries.as_slice())
-            .flags(ash::vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
-            .ty(ash::vk::AccelerationStructureTypeKHR::TOP_LEVEL);
+        let geometry_info = Self::geometry_info(geometries.as_slice());
 
         let mut build_sizes = ash::vk::AccelerationStructureBuildSizesInfoKHR::default();
         unsafe {
@@ -287,10 +293,7 @@ impl TopLevelAccelerationStructure {
             smallvec::smallvec![max_primitives];
 
         // See https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
-        let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::default()
-            .geometries(geometries.as_slice())
-            .flags(ash::vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
-            .ty(ash::vk::AccelerationStructureTypeKHR::TOP_LEVEL);
+        let geometry_info = Self::geometry_info(geometries.as_slice());
 
         let mut build_sizes = ash::vk::AccelerationStructureBuildSizesInfoKHR::default();
         unsafe {
@@ -387,6 +390,16 @@ impl TopLevelAccelerationStructure {
         Ok((buffer, buffer_device_addr))
     }
 
+    #[inline(always)]
+    pub(crate) fn static_build_flags() -> ash::vk::BuildAccelerationStructureFlagsKHR {
+        ash::vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE
+    }
+
+    #[inline(always)]
+    pub(crate) fn build_flags(&self) -> ash::vk::BuildAccelerationStructureFlagsKHR {
+        Self::static_build_flags()
+    }
+
     pub fn new(
         memory_manager: &mut dyn MemoryManagerTrait,
         allowed_building_devices: AllowedBuildingDevice,
@@ -435,7 +448,6 @@ impl TopLevelAccelerationStructure {
             .size(buffer.size())
             .ty(ash::vk::AccelerationStructureTypeKHR::TOP_LEVEL)
             .create_flags(ash::vk::AccelerationStructureCreateFlagsKHR::empty());
-        //.device_address(buffer_device_addr)
 
         let handle = unsafe {
             as_ext.create_acceleration_structure(
