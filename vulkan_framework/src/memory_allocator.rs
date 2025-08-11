@@ -87,7 +87,7 @@ impl DefaultAllocator {
             number_of_blocks, block_size
         );
 
-        let protected_resource = (0..(number_of_blocks as usize))
+        let protected_resource = (0..(((number_of_blocks / 64) + 1) as usize))
             .map(|_idx| 0u64)
             .collect::<smallvec::SmallVec<[u64; 4096]>>();
 

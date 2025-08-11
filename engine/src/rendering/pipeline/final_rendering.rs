@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use inline_spirv::*;
 
@@ -10,7 +10,6 @@ use vulkan_framework::{
     command_buffer::{ClearValues, ColorClearValues, CommandBufferRecorder},
     descriptor_set::DescriptorSet,
     descriptor_set_layout::DescriptorSetLayout,
-    device::Device,
     dynamic_rendering::{
         AttachmentLoadOp, AttachmentStoreOp, DynamicRendering, DynamicRenderingAttachment,
     },
@@ -19,16 +18,15 @@ use vulkan_framework::{
         Rasterizer, Scissor, Viewport,
     },
     image::{
-        AllocatedImage, CommonImageFormat, ConcreteImageDescriptor, Image, Image1DTrait,
-        Image2DDimensions, Image2DTrait, ImageDimensions, ImageFlags, ImageFormat, ImageLayout,
-        ImageMultisampling, ImageSubresourceRange, ImageTiling, ImageTrait, ImageUsage, ImageUseAs,
+        CommonImageFormat, ConcreteImageDescriptor, Image, Image1DTrait, Image2DDimensions,
+        Image2DTrait, ImageDimensions, ImageFlags, ImageFormat, ImageLayout, ImageMultisampling,
+        ImageSubresourceRange, ImageTiling, ImageUsage, ImageUseAs,
     },
     image_view::{ImageView, ImageViewType},
-    memory_allocator::{DefaultAllocator, MemoryAllocator},
     memory_barriers::{ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
-    memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryRequirements, MemoryType},
-    memory_pool::{MemoryPool, MemoryPoolFeatures},
-    memory_requiring::AllocationRequiring,
+    memory_heap::{MemoryHostVisibility, MemoryType},
+    memory_management::{MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait},
+    memory_pool::MemoryPoolFeatures,
     pipeline_layout::{PipelineLayout, PipelineLayoutDependant},
     pipeline_stage::{PipelineStage, PipelineStages},
     queue_family::QueueFamily,
@@ -104,10 +102,7 @@ void main() {
 ///
 /// This is the deferred shading step, basically.
 pub struct FinalRendering {
-    _memory_pool: Arc<MemoryPool>,
-
     image_dimensions: Image2DDimensions,
-    images: smallvec::SmallVec<[Arc<AllocatedImage>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
     image_views: smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
 
     graphics_pipeline: Arc<GraphicsPipeline>,
@@ -123,16 +118,19 @@ impl FinalRendering {
     }
 
     pub fn new(
-        device: Arc<Device>,
+        memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
         gbuffer_descriptor_set_layout: Arc<DescriptorSetLayout>,
         dlbuffer_descriptor_set_layout: Arc<DescriptorSetLayout>,
         render_area: &RenderingDimensions,
         frames_in_flight: u32,
     ) -> RenderingResult<Self> {
+        let mut mem_manager = memory_manager.lock().unwrap();
+
+        let device = mem_manager.get_parent_device();
+
         let image_dimensions = render_area.into();
 
-        let mut image_handles: smallvec::SmallVec<[_; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]> =
-            smallvec::smallvec![];
+        let mut image_handles = vec![];
         for index in 0..(frames_in_flight as usize) {
             let image_name = format!("final_rendering.image[{index}]");
             let image = Image::new(
@@ -153,47 +151,26 @@ impl FinalRendering {
                 Some(image_name.as_str()),
             )?;
 
-            image_handles.push(image);
+            image_handles.push(image.into());
         }
-
-        let memory_required: u64 = image_handles
-            .iter()
-            .map(|obj| {
-                obj.allocation_requirements().size() + obj.allocation_requirements().alignment()
-            })
-            .sum();
-
-        let allocator = DefaultAllocator::with_blocksize(
-            1024,
-            (frames_in_flight as u64) + (memory_required / 1024u64),
-        );
-        let memory_heap = MemoryHeap::new(
-            device.clone(),
-            ConcreteMemoryHeapDescriptor::new(
-                MemoryType::DeviceLocal(None),
-                allocator.total_size(),
-            ),
-            MemoryRequirements::try_from(image_handles.as_slice())?,
-        )?;
-
-        let memory_pool = MemoryPool::new(
-            memory_heap,
-            Arc::new(allocator),
-            MemoryPoolFeatures::from([].as_slice()),
-        )?;
 
         let mut image_views: smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]> =
             smallvec::smallvec![];
-        let mut images: smallvec::SmallVec<[Arc<AllocatedImage>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]> =
-            smallvec::smallvec![];
-        for (index, image) in image_handles.into_iter().enumerate() {
-            let allocated_image = AllocatedImage::new(memory_pool.clone(), image)?;
-
-            images.push(allocated_image.clone());
-
+        for (index, image) in mem_manager
+            .allocate_resources(
+                &MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostHidden)),
+                &MemoryPoolFeatures::new(false),
+                image_handles,
+                MemoryManagementTags::default()
+                    .with_name("final_rendering".to_string())
+                    .with_size(MemoryManagementTagSize::MediumSmall),
+            )?
+            .into_iter()
+            .enumerate()
+        {
             let image_view_name = format!("final_rendering.image_view[{index}]");
             let image_view = ImageView::new(
-                allocated_image,
+                image.image(),
                 Some(ImageViewType::Image2D),
                 None,
                 None,
@@ -249,11 +226,8 @@ impl FinalRendering {
         )?;
 
         Ok(Self {
-            _memory_pool: memory_pool,
-
             image_dimensions,
             image_views,
-            images,
 
             graphics_pipeline,
         })
@@ -329,8 +303,8 @@ impl FinalRendering {
         );
 
         (
-            image_view,
-            ImageSubresourceRange::from(self.images[current_frame].clone() as Arc<dyn ImageTrait>),
+            image_view.clone(),
+            ImageSubresourceRange::from(image_view.image()),
             Self::output_image_layout(),
         )
     }

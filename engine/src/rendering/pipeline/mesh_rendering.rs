@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use inline_spirv::*;
 
@@ -14,7 +14,6 @@ use vulkan_framework::{
     },
     descriptor_set::DescriptorSet,
     descriptor_set_layout::DescriptorSetLayout,
-    device::Device,
     dynamic_rendering::{
         AttachmentLoadOp, AttachmentStoreOp, DynamicRendering, DynamicRenderingAttachment,
     },
@@ -29,11 +28,10 @@ use vulkan_framework::{
         ImageMultisampling, ImageTiling, ImageUsage, ImageUseAs,
     },
     image_view::{ImageView, ImageViewType},
-    memory_allocator::{DefaultAllocator, MemoryAllocator},
     memory_barriers::{ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
-    memory_heap::{ConcreteMemoryHeapDescriptor, MemoryHeap, MemoryRequirements, MemoryType},
-    memory_pool::{MemoryPool, MemoryPoolFeatures},
-    memory_requiring::AllocationRequiring,
+    memory_heap::{MemoryHostVisibility, MemoryType},
+    memory_management::{MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait},
+    memory_pool::MemoryPoolFeatures,
     pipeline_layout::{PipelineLayout, PipelineLayoutDependant},
     pipeline_stage::{PipelineStage, PipelineStages},
     push_constant_range::PushConstanRange,
@@ -210,18 +208,20 @@ impl MeshRendering {
     }
 
     pub fn new(
-        device: Arc<Device>,
+        memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
         textures_descriptor_set_layout: Arc<DescriptorSetLayout>,
         materials_descriptor_set_layout: Arc<DescriptorSetLayout>,
         view_projection_descriptor_set_layout: Arc<DescriptorSetLayout>,
         render_area: &RenderingDimensions,
         frames_in_flight: u32,
     ) -> RenderingResult<Self> {
+        let mut mem_manager = memory_manager.lock().unwrap();
+
+        let device = mem_manager.get_parent_device();
+
         let image_dimensions = render_area.into();
 
-        let mut gbuffer_depth_stencil_image_handles: smallvec::SmallVec<
-            [_; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
-        > = smallvec::smallvec![];
+        let mut gbuffer_depth_stencil_image_handles = vec![];
         for index in 0..(frames_in_flight as usize) {
             let image_name = format!("mesh_rendering.gbuffer_depth_stencil_images[{index}]");
             let image = Image::new(
@@ -244,12 +244,10 @@ impl MeshRendering {
                 Some(image_name.as_str()),
             )?;
 
-            gbuffer_depth_stencil_image_handles.push(image);
+            gbuffer_depth_stencil_image_handles.push(image.into());
         }
 
-        let mut gbuffer_position_image_handles: smallvec::SmallVec<
-            [_; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
-        > = smallvec::smallvec![];
+        let mut gbuffer_position_image_handles = vec![];
         for index in 0..(frames_in_flight as usize) {
             let image_name = format!("mesh_rendering.gbuffer_position_images[{index}]");
             let image = Image::new(
@@ -270,12 +268,10 @@ impl MeshRendering {
                 Some(image_name.as_str()),
             )?;
 
-            gbuffer_position_image_handles.push(image);
+            gbuffer_position_image_handles.push(image.into());
         }
 
-        let mut gbuffer_normal_image_handles: smallvec::SmallVec<
-            [_; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
-        > = smallvec::smallvec![];
+        let mut gbuffer_normal_image_handles = vec![];
         for index in 0..(frames_in_flight as usize) {
             let image_name = format!("mesh_rendering.gbuffer_normal_images[{index}]");
             let image = Image::new(
@@ -296,12 +292,10 @@ impl MeshRendering {
                 Some(image_name.as_str()),
             )?;
 
-            gbuffer_normal_image_handles.push(image);
+            gbuffer_normal_image_handles.push(image.into());
         }
 
-        let mut gbuffer_texture_image_handles: smallvec::SmallVec<
-            [_; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
-        > = smallvec::smallvec![];
+        let mut gbuffer_texture_image_handles = vec![];
         for index in 0..(frames_in_flight as usize) {
             let image_name = format!("mesh_rendering.gbuffer_texture_images[{index}]");
             let image = Image::new(
@@ -322,84 +316,28 @@ impl MeshRendering {
                 Some(image_name.as_str()),
             )?;
 
-            gbuffer_texture_image_handles.push(image);
+            gbuffer_texture_image_handles.push(image.into());
         }
-
-        let memory_required: u64 = gbuffer_depth_stencil_image_handles
-            .iter()
-            .map(|obj| {
-                obj.allocation_requirements().size() + obj.allocation_requirements().alignment()
-            })
-            .chain(gbuffer_position_image_handles.iter().map(|obj| {
-                obj.allocation_requirements().size() + obj.allocation_requirements().alignment()
-            }))
-            .chain(gbuffer_normal_image_handles.iter().map(|obj| {
-                obj.allocation_requirements().size() + obj.allocation_requirements().alignment()
-            }))
-            .chain(gbuffer_texture_image_handles.iter().map(|obj| {
-                obj.allocation_requirements().size() + obj.allocation_requirements().alignment()
-            }))
-            .sum();
-
-        let framebuffer_memory_pool = {
-            let image_handles: Vec<&dyn AllocationRequiring> = gbuffer_depth_stencil_image_handles
-                .iter()
-                .map(|obj| obj as &dyn AllocationRequiring)
-                .chain(
-                    gbuffer_position_image_handles
-                        .iter()
-                        .map(|obj| obj as &dyn AllocationRequiring),
-                )
-                .chain(
-                    gbuffer_normal_image_handles
-                        .iter()
-                        .map(|obj| obj as &dyn AllocationRequiring),
-                )
-                .chain(
-                    gbuffer_texture_image_handles
-                        .iter()
-                        .map(|obj| obj as &dyn AllocationRequiring),
-                )
-                .collect();
-
-            // one block for each resource to take care of the alignment,
-            // plus the number of blocks needed to have memory_required bytes,
-            // plus a few extra blocks
-            let allocator = DefaultAllocator::with_blocksize(
-                1024u64,
-                (4u64 * (frames_in_flight as u64 * 4u64)) + ((memory_required / 1024u64) + 4u64),
-            );
-
-            let memory_heap = MemoryHeap::new(
-                device.clone(),
-                ConcreteMemoryHeapDescriptor::new(
-                    MemoryType::DeviceLocal(None),
-                    allocator.total_size(),
-                ),
-                MemoryRequirements::try_from(image_handles.as_slice())?,
-            )?;
-
-            MemoryPool::new(
-                memory_heap,
-                Arc::new(allocator),
-                MemoryPoolFeatures::from([].as_slice()),
-            )?
-        };
 
         let mut gbuffer_depth_stencil_image_views: smallvec::SmallVec<
             [Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
         > = smallvec::smallvec![];
-        let mut gbuffer_depth_stencil_images: smallvec::SmallVec<
-            [Arc<AllocatedImage>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
-        > = smallvec::smallvec![];
-        for (index, image) in gbuffer_depth_stencil_image_handles.into_iter().enumerate() {
-            let allocated_image = AllocatedImage::new(framebuffer_memory_pool.clone(), image)?;
-            gbuffer_depth_stencil_images.push(allocated_image.clone());
-
+        for (index, image) in mem_manager
+            .allocate_resources(
+                &MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostHidden)),
+                &MemoryPoolFeatures::new(false),
+                gbuffer_depth_stencil_image_handles,
+                MemoryManagementTags::default()
+                    .with_name("mesh_rendering".to_string())
+                    .with_size(MemoryManagementTagSize::MediumSmall),
+            )?
+            .into_iter()
+            .enumerate()
+        {
             let image_view_name =
                 format!("mesh_rendering.gbuffer_depth_stencil_image_views[{index}]");
             gbuffer_depth_stencil_image_views.push(ImageView::new(
-                allocated_image,
+                image.image(),
                 Some(ImageViewType::Image2D),
                 None,
                 None,
@@ -418,8 +356,19 @@ impl MeshRendering {
         let mut gbuffer_position_images: smallvec::SmallVec<
             [Arc<AllocatedImage>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
         > = smallvec::smallvec![];
-        for (index, image) in gbuffer_position_image_handles.into_iter().enumerate() {
-            let allocated_image = AllocatedImage::new(framebuffer_memory_pool.clone(), image)?;
+        for (index, image) in mem_manager
+            .allocate_resources(
+                &MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostHidden)),
+                &MemoryPoolFeatures::new(false),
+                gbuffer_position_image_handles,
+                MemoryManagementTags::default()
+                    .with_name("mesh_rendering".to_string())
+                    .with_size(MemoryManagementTagSize::MediumSmall),
+            )?
+            .into_iter()
+            .enumerate()
+        {
+            let allocated_image = image.image();
             gbuffer_position_images.push(allocated_image.clone());
 
             let image_view_name = format!("mesh_rendering.gbuffer_position_image_views[{index}]");
@@ -443,8 +392,19 @@ impl MeshRendering {
         let mut gbuffer_normal_images: smallvec::SmallVec<
             [Arc<AllocatedImage>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
         > = smallvec::smallvec![];
-        for (index, image) in gbuffer_normal_image_handles.into_iter().enumerate() {
-            let allocated_image = AllocatedImage::new(framebuffer_memory_pool.clone(), image)?;
+        for (index, image) in mem_manager
+            .allocate_resources(
+                &MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostHidden)),
+                &MemoryPoolFeatures::new(false),
+                gbuffer_normal_image_handles,
+                MemoryManagementTags::default()
+                    .with_name("mesh_rendering".to_string())
+                    .with_size(MemoryManagementTagSize::MediumSmall),
+            )?
+            .into_iter()
+            .enumerate()
+        {
+            let allocated_image = image.image();
             gbuffer_normal_images.push(allocated_image.clone());
 
             let image_view_name = format!("mesh_rendering.gbuffer_normal_image_views[{index}]");
@@ -468,8 +428,19 @@ impl MeshRendering {
         let mut gbuffer_texture_images: smallvec::SmallVec<
             [Arc<AllocatedImage>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
         > = smallvec::smallvec![];
-        for (index, image) in gbuffer_texture_image_handles.into_iter().enumerate() {
-            let allocated_image = AllocatedImage::new(framebuffer_memory_pool.clone(), image)?;
+        for (index, image) in mem_manager
+            .allocate_resources(
+                &MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostHidden)),
+                &MemoryPoolFeatures::new(false),
+                gbuffer_texture_image_handles,
+                MemoryManagementTags::default()
+                    .with_name("mesh_rendering".to_string())
+                    .with_size(MemoryManagementTagSize::MediumSmall),
+            )?
+            .into_iter()
+            .enumerate()
+        {
+            let allocated_image = image.image();
             gbuffer_texture_images.push(allocated_image.clone());
 
             let image_view_name = format!("mesh_rendering.gbuffer_texture_image_views[{index}]");

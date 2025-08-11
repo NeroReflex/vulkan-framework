@@ -436,7 +436,7 @@ impl System {
         }
 
         let mesh_rendering = Arc::new(MeshRendering::new(
-            device.clone(),
+            memory_manager.clone(),
             obj_manager.textures_descriptor_set_layout(),
             obj_manager.materials_descriptor_set_layout(),
             view_projection_descriptor_set_layout,
@@ -453,7 +453,7 @@ impl System {
         )?);
 
         let final_rendering = Arc::new(FinalRendering::new(
-            device.clone(),
+            memory_manager.clone(),
             mesh_rendering.descriptor_set_layout(),
             directional_lighting.descriptor_set_layout(),
             &render_area,
@@ -461,7 +461,7 @@ impl System {
         )?);
 
         let hdr = Arc::new(HDRTransform::new(
-            device.clone(),
+            memory_manager.clone(),
             frames_in_flight,
             &render_area,
         )?);
