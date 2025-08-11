@@ -172,9 +172,14 @@ impl<'a> CommandBufferRecorder<'a> {
             .ash_build_info(primitive_offset, primitive_count)
             .unwrap();
 
+        assert!(!geometries.is_empty());
+        assert!(!range_infos.is_empty());
+
         let ranges_collection: smallvec::SmallVec<
             [&[ash::vk::AccelerationStructureBuildRangeInfoKHR]; 1],
         > = range_infos.iter().map(|r| r.as_slice()).collect();
+
+        assert!(!ranges_collection.is_empty());
 
         // See https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
         let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::default()
@@ -190,6 +195,8 @@ impl<'a> CommandBufferRecorder<'a> {
         let Some(rt_ext) = self.device.ash_ext_acceleration_structure_khr() else {
             panic!("Ray tracing pipeline is not enabled!");
         };
+
+        assert_eq!(ranges_collection.len(), 1_usize);
 
         unsafe {
             rt_ext.cmd_build_acceleration_structures(
