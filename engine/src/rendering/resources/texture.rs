@@ -23,7 +23,7 @@ use vulkan_framework::{
     },
     image_view::ImageView,
     memory_barriers::{BufferMemoryBarrier, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
-    memory_heap::MemoryType,
+    memory_heap::{MemoryHostVisibility, MemoryType},
     memory_management::{MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait},
     memory_pool::MemoryPoolFeatures,
     pipeline_stage::{PipelineStage, PipelineStages},
@@ -305,7 +305,7 @@ impl TextureManager {
     ) -> RenderingResult<Arc<ImageView>> {
         let texture = {
             let allocation_result = allocator.allocate_resources(
-                &MemoryType::DeviceLocal(None),
+                &MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostHidden)),
                 &MemoryPoolFeatures::from([].as_slice()),
                 vec![texture.into()],
                 MemoryManagementTags::default()
