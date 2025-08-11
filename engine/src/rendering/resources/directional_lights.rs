@@ -88,7 +88,7 @@ impl DirectionalLights {
                 recorder.update_buffer(
                     buffer.clone() as Arc<dyn BufferTrait>,
                     0,
-                    [light.direction(), light.albedo()].as_slice(),
+                    [glm::normalize(light.direction()), light.albedo()].as_slice(),
                 );
 
                 Ok(())
