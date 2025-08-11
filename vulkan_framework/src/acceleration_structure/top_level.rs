@@ -210,7 +210,6 @@ impl TopLevelAccelerationStructure {
         Self::static_ash_geometry(
             self.blas_decl
                 .iter()
-                .map(|g| g)
                 .collect::<smallvec::SmallVec<[&'a TopLevelBLASGroupDecl; 1]>>()
                 .as_slice(),
             self.instance_buffer(),
