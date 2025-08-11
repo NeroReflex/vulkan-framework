@@ -210,8 +210,15 @@ impl FinalRendering {
                 DepthCompareOp::Always,
                 Some((0.0, 1.0)),
             )),
-            None,
-            None,
+            Some(Viewport::new(
+                0.0f32,
+                0.0f32,
+                image_dimensions.width() as f32,
+                image_dimensions.height() as f32,
+                0.0f32,
+                0.0f32,
+            )),
+            Some(Scissor::new(0, 0, image_dimensions)),
             pipeline_layout,
             &[],
             Rasterizer::new(
@@ -273,18 +280,7 @@ impl FinalRendering {
             None,
             None,
             |recorder| {
-                recorder.bind_graphics_pipeline(
-                    self.graphics_pipeline.clone(),
-                    Some(Viewport::new(
-                        0.0f32,
-                        0.0f32,
-                        self.image_dimensions.width() as f32,
-                        self.image_dimensions.height() as f32,
-                        0.0f32,
-                        0.0f32,
-                    )),
-                    Some(Scissor::new(0, 0, self.image_dimensions)),
-                );
+                recorder.bind_graphics_pipeline(self.graphics_pipeline.clone(), None, None);
 
                 recorder.bind_descriptor_sets_for_graphics_pipeline(
                     self.graphics_pipeline.get_parent_pipeline_layout(),
