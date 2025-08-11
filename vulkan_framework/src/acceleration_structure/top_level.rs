@@ -483,10 +483,9 @@ impl TopLevelAccelerationStructure {
             [smallvec::SmallVec<[ash::vk::AccelerationStructureBuildRangeInfoKHR; 1]>; 1],
         >,
     )> {
-        let tlas_max_instances = self.max_instances() as u64;
         let selected_instances_max_index =
             (primitive_offset.to_owned() as u64) + (primitive_count.to_owned() as u64);
-        assert!(tlas_max_instances >= selected_instances_max_index);
+        assert!((self.max_instances() as u64) >= selected_instances_max_index);
 
         let geometries = self.ash_geometry();
 
