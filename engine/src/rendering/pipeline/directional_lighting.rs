@@ -75,8 +75,6 @@ layout(location = 0) rayPayloadEXT bool hitValue;
 void main() {
     const vec2 resolution = vec2(imageSize(outputImage));
 
-    const ivec2 pixelCoords = ivec2(gl_LaunchIDEXT.xy);
-
     const vec2 position_xy = vec2(float(gl_LaunchIDEXT.x) / float(resolution.x), float(gl_LaunchIDEXT.y) / float(resolution.y));
 
     const vec3 origin = texture(gbuffer[0], position_xy).xyz;
@@ -84,13 +82,17 @@ void main() {
 
     hitValue = true;
 
-    traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, origin.xyz, 0.001, direction.xyz, 100000.0, 0);
-    //                      gl_RayFlagsNoneEXT
+    if (!(origin.x == 0 && origin.y == 0 && origin.z == 0)) {
+        traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, origin.xyz, 0.001, direction.xyz, 100000.0, 0);
+        //                      gl_RayFlagsNoneEXT
+    } else {
+        hitValue = true;
+    }
 
     const uint light_hit_bool = (!hitValue ? 1 : 0) << (32 - directional_lighting_data.light_index);
 
     // Store the hit boolean to the image
-    imageAtomicOr(outputImage, pixelCoords, light_hit_bool);
+    imageAtomicOr(outputImage, ivec2(gl_LaunchIDEXT.xy), light_hit_bool);
 }
 "#,
     glsl,
@@ -103,10 +105,6 @@ const MISS_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
 #extension GL_EXT_ray_tracing : require
-
-//uniform layout(binding=0, set = 0, r32) writeonly uimage2D someImage;
-
-//layout(binding = 0, set = 1) uniform accelerationStructureEXT topLevelAS;
 
 layout(location = 0) rayPayloadInEXT bool hitValue;
 
@@ -124,7 +122,6 @@ const CHIT_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
 #extension GL_EXT_ray_tracing : require
-#extension GL_EXT_nonuniform_qualifier : enable
 
 layout(location = 0) rayPayloadInEXT bool hitValue;
 
