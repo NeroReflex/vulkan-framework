@@ -635,6 +635,11 @@ impl Manager {
 
                                 let vertex_count =
                                     indexes_size as usize / std::mem::size_of::<u32>();
+
+                                if (vertex_count as u64 % 3u64) != 0 {
+                                    panic!("wrong vertex count");
+                                }
+
                                 let triangle_count = vertex_count as u64 / 3u64;
 
                                 let triangles_decl = BottomLevelTrianglesGroupDecl::new(
@@ -649,7 +654,7 @@ impl Manager {
                                         mem_manager_guard.deref_mut(),
                                         triangles_decl,
                                         BufferUsage::from(
-                                            [BufferUseAs::IndexBuffer, BufferUseAs::UniformBuffer]
+                                            [BufferUseAs::IndexBuffer]
                                                 .as_slice(),
                                         ),
                                         None,
