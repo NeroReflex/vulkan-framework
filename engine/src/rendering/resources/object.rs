@@ -22,35 +22,18 @@ use super::{mesh::MeshManager, texture::TextureManager};
 
 use vulkan_framework::{
     acceleration_structure::{
-        AllowedBuildingDevice, VertexIndexing,
         bottom_level::{
             BottomLevelAccelerationStructureIndexBuffer,
             BottomLevelAccelerationStructureTransformBuffer,
             BottomLevelAccelerationStructureVertexBuffer, BottomLevelTrianglesGroupDecl,
             BottomLevelVerticesTopologyDecl,
-        },
-        top_level::{
+        }, top_level::{
             TopLevelAccelerationStructure, TopLevelAccelerationStructureInstanceBuffer,
             TopLevelBLASGroupDecl,
-        },
-    },
-    buffer::{
-        AllocatedBuffer, Buffer, BufferTrait, BufferUsage, BufferUseAs, ConcreteBufferDescriptor,
-    },
-    command_buffer::{CommandBufferRecorder, CommandBufferTrait, PrimaryCommandBuffer},
-    command_pool::CommandPool,
-    descriptor_set_layout::DescriptorSetLayout,
-    device::DeviceOwned,
-    fence::{Fence, FenceWaiter},
-    graphics_pipeline::{AttributeType, IndexType},
-    image::Image2DDimensions,
-    memory_heap::{MemoryHostVisibility, MemoryType},
-    memory_management::{MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait},
-    memory_pool::{MemoryMap, MemoryPoolBacked, MemoryPoolFeatures},
-    pipeline_layout::PipelineLayout,
-    queue::Queue,
-    queue_family::{QueueFamily, QueueFamilyOwned},
-    shader_stage_access::ShaderStagesAccess,
+        }, AllowedBuildingDevice, VertexIndexing
+    }, buffer::{
+        AllocatedBuffer, Buffer, BufferSubresourceRange, BufferTrait, BufferUsage, BufferUseAs, ConcreteBufferDescriptor
+    }, command_buffer::{CommandBufferRecorder, CommandBufferTrait, PrimaryCommandBuffer}, command_pool::CommandPool, descriptor_set_layout::DescriptorSetLayout, device::DeviceOwned, fence::{Fence, FenceWaiter}, graphics_pipeline::{AttributeType, IndexType}, image::Image2DDimensions, memory_barriers::{BufferMemoryBarrier, MemoryAccessAs}, memory_heap::{MemoryHostVisibility, MemoryType}, memory_management::{MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait}, memory_pool::{MemoryMap, MemoryPoolBacked, MemoryPoolFeatures}, pipeline_layout::PipelineLayout, pipeline_stage::{PipelineStage, PipelineStageAccelerationStructureKHR}, queue::Queue, queue_family::{QueueFamily, QueueFamilyOwned}, shader_stage_access::ShaderStagesAccess
 };
 
 #[derive(Debug, Default, Copy, Clone)]
@@ -1025,12 +1008,10 @@ impl Manager {
                     .with_size(MemoryManagementTagSize::MediumSmall),
             )?;
 
-            let instance_buffer = instance_allocated_data[0].buffer();
-
             let tlas_buffer = TopLevelAccelerationStructureInstanceBuffer::new(
                 blas_decl,
                 max_instances,
-                instance_buffer,
+                instance_allocated_data[0].buffer(),
             )?;
 
             TopLevelAccelerationStructure::new(
@@ -1112,7 +1093,31 @@ impl Manager {
         )?;
 
         command_buffer.record_one_time_submit(|recorder| {
+            recorder.buffer_barriers([
+                BufferMemoryBarrier::new(
+                    [PipelineStage::Host].as_slice().into(),
+                    [MemoryAccessAs::HostWrite].as_slice().into(),
+                    [PipelineStage::AccelerationStructureKHR(PipelineStageAccelerationStructureKHR::Build)].as_slice().into(),
+                    [MemoryAccessAs::MemoryRead].as_slice().into(),
+                    BufferSubresourceRange::new(tlas.instance_buffer().buffer(), 0, tlas.instance_buffer().buffer().size()),
+                    self.queue_family.clone(),
+                    self.queue_family.clone()
+                )
+            ].as_slice());
+
             recorder.build_tlas(tlas.clone(), 0, max_instances);
+
+            recorder.buffer_barriers([
+                BufferMemoryBarrier::new(
+                    [PipelineStage::AccelerationStructureKHR(PipelineStageAccelerationStructureKHR::Build)].as_slice().into(),
+                    [MemoryAccessAs::MemoryRead].as_slice().into(),
+                    [PipelineStage::BottomOfPipe].as_slice().into(),
+                    [].as_slice().into(),
+                    BufferSubresourceRange::new(tlas.instance_buffer().buffer(), 0, tlas.instance_buffer().buffer().size()),
+                    self.queue_family.clone(),
+                    self.queue_family.clone()
+                )
+            ].as_slice());
         })?;
 
         let fence_waiter = self.tlas_loading_queue.submit(
