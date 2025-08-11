@@ -380,7 +380,7 @@ impl DirectionalLighting {
                     frames_in_flight,
                     0,
                     0,
-                    Some(DescriptorPoolSizesAcceletarionStructureKHR::new(1)),
+                    Some(DescriptorPoolSizesAcceletarionStructureKHR::new(frames_in_flight)),
                 ),
                 frames_in_flight,
             ),
