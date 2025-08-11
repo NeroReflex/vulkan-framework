@@ -581,8 +581,15 @@ impl MeshRendering {
                 DepthCompareOp::Less,
                 Some((0.0, 1.0)),
             )),
-            None,
-            None,
+            Some(Viewport::new(
+                0.0f32,
+                0.0f32,
+                image_dimensions.width() as f32,
+                image_dimensions.height() as f32,
+                0.0f32,
+                1.0f32,
+            )),
+            Some(Scissor::new(0, 0, image_dimensions)),
             pipeline_layout,
             [
                 VertexInputBinding::new(
@@ -767,18 +774,7 @@ impl MeshRendering {
             Some(&rendering_depth_attachment),
             None,
             |recorder| {
-                recorder.bind_graphics_pipeline(
-                    self.graphics_pipeline.clone(),
-                    Some(Viewport::new(
-                        0.0f32,
-                        0.0f32,
-                        self.image_dimensions.width() as f32,
-                        self.image_dimensions.height() as f32,
-                        0.0f32,
-                        1.0f32,
-                    )),
-                    Some(Scissor::new(0, 0, self.image_dimensions)),
-                );
+                recorder.bind_graphics_pipeline(self.graphics_pipeline.clone(), None, None);
 
                 // bind the view-projection matrix
                 recorder.bind_descriptor_sets_for_graphics_pipeline(
