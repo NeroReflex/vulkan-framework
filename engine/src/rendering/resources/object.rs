@@ -653,10 +653,7 @@ impl Manager {
                                     self.mesh_manager.create_index_buffer(
                                         mem_manager_guard.deref_mut(),
                                         triangles_decl,
-                                        BufferUsage::from(
-                                            [BufferUseAs::IndexBuffer]
-                                                .as_slice(),
-                                        ),
+                                        BufferUsage::from([BufferUseAs::IndexBuffer].as_slice()),
                                         None,
                                     )?
                                 };

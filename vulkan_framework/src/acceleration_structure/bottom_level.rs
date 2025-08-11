@@ -37,6 +37,7 @@ impl BottomLevelVerticesTopologyDecl {
      * @param vertex_format the in-memory format of the vertex position
      * @param per_vertex_user_stride the [unused] space (in bytes) that follows each vertex definition
      */
+    #[inline(always)]
     pub fn new(
         max_vertices: u32,
         vertex_format: AttributeType,
@@ -49,7 +50,7 @@ impl BottomLevelVerticesTopologyDecl {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn max_vertices(&self) -> u32 {
         self.max_vertices
     }
@@ -76,7 +77,7 @@ impl BottomLevelVerticesTopologyDecl {
             }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn vertex_format(&self) -> AttributeType {
         self.vertex_format
     }
@@ -98,6 +99,7 @@ impl BottomLevelTrianglesGroupDecl {
      * @param vertex_format the in-memory format of the vertex position
      * @param per_vertex_user_stride the [unused] space (in bytes) that follows each vertex definition
      */
+    #[inline(always)]
     pub fn new(vertex_indexing: VertexIndexing, max_triangles: u32) -> Self {
         Self {
             vertex_indexing,
@@ -105,17 +107,17 @@ impl BottomLevelTrianglesGroupDecl {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn vertex_indexing(&self) -> VertexIndexing {
         self.vertex_indexing
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn max_triangles(&self) -> u32 {
         self.max_triangles
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn max_vertices(&self) -> u32 {
         self.max_triangles() * 3u32
     }
@@ -180,7 +182,7 @@ impl BottomLevelAccelerationStructureTransformBuffer {
         })
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn buffer(&self) -> Arc<AllocatedBuffer> {
         self.buffer.clone()
     }
@@ -262,7 +264,7 @@ impl BottomLevelAccelerationStructureIndexBuffer {
         })
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn buffer(&self) -> Arc<AllocatedBuffer> {
         self.buffer.clone()
     }
@@ -349,17 +351,17 @@ impl BottomLevelAccelerationStructureVertexBuffer {
         })
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn buffer(&self) -> Arc<AllocatedBuffer> {
         self.buffer.clone()
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn buffer_device_addr(&self) -> u64 {
         self.buffer_device_addr.to_owned()
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn vertices_topology(&self) -> &BottomLevelVerticesTopologyDecl {
         &self.vertices_topology
     }
@@ -519,26 +521,21 @@ impl BottomLevelAccelerationStructure {
     pub(crate) fn ash_geometry<'a>(
         &'a self,
     ) -> smallvec::SmallVec<[ash::vk::AccelerationStructureGeometryKHR<'a>; 1]> {
-        self.triangles_decl
-            .iter()
-            .map(|(a, b)| {
-                let mut data = Self::ash_geometry_single(b, a);
-
-                data.geometry.triangles.vertex_data = DeviceOrHostAddressConstKHR {
-                    device_address: self.vertex_buffer().buffer_device_addr(),
-                };
-
-                data.geometry.triangles.index_data = DeviceOrHostAddressConstKHR {
-                    device_address: self.index_buffer().buffer_device_addr(),
-                };
-                /*
-                                data.geometry.triangles.transform_data = DeviceOrHostAddressConstKHR {
-                                    device_address: self.transform_buffer().buffer_device_addr(),
-                                };
-                */
-                data
-            })
-            .collect::<smallvec::SmallVec<_>>()
+        Self::static_ash_geometry(
+            self.triangles_decl
+                .iter()
+                .map(|(a, b)| (a, b))
+                .collect::<smallvec::SmallVec<
+                    [(
+                        &BottomLevelVerticesTopologyDecl,
+                        &BottomLevelTrianglesGroupDecl,
+                    ); 4],
+                >>()
+                .as_slice(),
+            self.vertex_buffer(),
+            self.index_buffer(),
+            self.transform_buffer(),
+        )
     }
 
     /*
@@ -617,37 +614,37 @@ impl BottomLevelAccelerationStructure {
         self.triangles_decl.as_slice()
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn device_addr(&self) -> u64 {
         self.acceleration_structure_device_addr.to_owned()
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn vertex_buffer(&self) -> &BottomLevelAccelerationStructureVertexBuffer {
         &self.vertex_buffer
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn index_buffer(&self) -> &BottomLevelAccelerationStructureIndexBuffer {
         &self.index_buffer
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn transform_buffer(&self) -> &BottomLevelAccelerationStructureTransformBuffer {
         &self.transform_buffer
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn buffer_size(&self) -> u64 {
         self.blas_buffer.size()
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn allowed_building_devices(&self) -> AllowedBuildingDevice {
         self.allowed_building_devices.to_owned()
     }
 
-    #[inline]
+    #[inline(always)]
     pub(crate) fn device_build_scratch_buffer(&self) -> Arc<DeviceScratchBuffer> {
         self.device_build_scratch_buffer.clone()
     }
