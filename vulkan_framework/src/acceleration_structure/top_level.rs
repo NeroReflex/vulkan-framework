@@ -59,8 +59,13 @@ impl TopLevelAccelerationStructureInstanceBuffer {
     #[inline(always)]
     fn size_from_definition(blas_decl: &TopLevelBLASGroupDecl, max_instances: u32) -> u64 {
         // TODO: if array_of_pointers act accordingly
-        (core::mem::size_of::<ash::vk::AccelerationStructureInstanceKHR>() as u64)
-            * (max_instances as u64)
+        match blas_decl.array_of_pointers() {
+            true => todo!(),
+            false => {
+                (core::mem::size_of::<ash::vk::AccelerationStructureInstanceKHR>() as u64)
+                    * (max_instances as u64)
+            }
+        }
     }
 
     #[inline(always)]
@@ -190,7 +195,7 @@ impl TopLevelAccelerationStructure {
             .map(|g| {
                 let mut data = g.ash_geometry();
 
-                data.geometry.triangles.transform_data = DeviceOrHostAddressConstKHR {
+                data.geometry.instances.data = DeviceOrHostAddressConstKHR {
                     device_address: instance_buffer.buffer_device_addr(),
                 };
 
@@ -202,18 +207,14 @@ impl TopLevelAccelerationStructure {
     pub(crate) fn ash_geometry<'a>(
         &'a self,
     ) -> smallvec::SmallVec<[ash::vk::AccelerationStructureGeometryKHR<'a>; 1]> {
-        self.blas_decl
-            .iter()
-            .map(|g| {
-                let mut data = g.ash_geometry();
-
-                data.geometry.instances.data = DeviceOrHostAddressConstKHR {
-                    device_address: self.instance_buffer().buffer_device_addr(),
-                };
-
-                data
-            })
-            .collect::<smallvec::SmallVec<_>>()
+        Self::static_ash_geometry(
+            self.blas_decl
+                .iter()
+                .map(|g| g)
+                .collect::<smallvec::SmallVec<[&'a TopLevelBLASGroupDecl; 1]>>()
+                .as_slice(),
+            self.instance_buffer(),
+        )
     }
 
     /*
@@ -304,42 +305,42 @@ impl TopLevelAccelerationStructure {
         Ok(build_sizes.build_scratch_size)
     }
 
-    #[inline]
+    #[inline(always)]
     pub(crate) fn ash_handle(&self) -> ash::vk::AccelerationStructureKHR {
         self.handle
     }
 
-    #[inline]
+    #[inline(always)]
     pub(crate) fn device_build_scratch_buffer(&self) -> Arc<DeviceScratchBuffer> {
         self.device_build_scratch_buffer.clone()
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn max_instances(&self) -> u32 {
         self.max_instances.to_owned()
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn blas_decl(&self) -> &[TopLevelBLASGroupDecl] {
         self.blas_decl.as_slice()
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn allowed_building_devices(&self) -> AllowedBuildingDevice {
         self.allowed_building_devices
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn buffer_device_addr(&self) -> u64 {
         self.buffer_device_addr
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn buffer_size(&self) -> u64 {
         self.buffer.size()
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn instance_buffer(&self) -> &TopLevelAccelerationStructureInstanceBuffer {
         &self.instance_buffer
     }
