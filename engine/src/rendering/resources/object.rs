@@ -80,6 +80,7 @@ struct LoadedMesh {
 
 struct MeshDefinition {
     meshes: Vec<LoadedMesh>,
+    load_transform: vulkan_framework::ash::vk::TransformMatrixKHR,
 }
 
 pub type InstanceDataType = vulkan_framework::ash::vk::TransformMatrixKHR;
@@ -299,7 +300,11 @@ impl Manager {
         })
     }
 
-    pub fn load_object(&mut self, file: PathBuf) -> RenderingResult<usize> {
+    pub fn load_object(
+        &mut self,
+        file: PathBuf,
+        transform_data: vulkan_framework::ash::vk::TransformMatrixKHR,
+    ) -> RenderingResult<usize> {
         let device = self.queue_family.get_parent_device();
 
         #[derive(Default, Clone)]
@@ -323,7 +328,6 @@ impl Manager {
         struct ModelDecl {
             material_name: Option<String>,
             indexes: Option<BottomLevelAccelerationStructureIndexBuffer>,
-            transform: Option<BottomLevelAccelerationStructureTransformBuffer>,
         }
 
         let mut textures: HashMap<String, TextureDecl> = HashMap::new();
@@ -867,6 +871,19 @@ impl Manager {
             );
         }
 
+        let transform_shared_buffer = {
+            let mut memory_manager = self.memory_manager.lock().unwrap();
+
+            self.mesh_manager
+                .create_transform_buffer(
+                    memory_manager.deref_mut(),
+                    &transform_data,
+                    [BufferUseAs::VertexBuffer].as_slice().into(),
+                    None,
+                )?
+                .buffer()
+        };
+
         // TODO: allow for multiple instances.
         let Some((vertices_topology, vertex_buffer)) = vertex_buffer.take() else {
             return Err(RenderingError::ResourceError(
@@ -881,21 +898,9 @@ impl Manager {
                 continue;
             };
 
-            let transform_buffer = {
-                let mut memory_manager = self.memory_manager.lock().unwrap();
-                match v.transform.take() {
-                    Some(transform) => transform,
-                    None => {
-                        // create the transform buffer and preload it with the identity matrix
-
-                        self.mesh_manager.create_transform_buffer(
-                            memory_manager.deref_mut(),
-                            [BufferUseAs::VertexBuffer].as_slice().into(),
-                            None,
-                        )?
-                    }
-                }
-            };
+            let transform_buffer = BottomLevelAccelerationStructureTransformBuffer::new(
+                transform_shared_buffer.clone(),
+            )?;
 
             let Some(material_name) = v.material_name else {
                 println!(
@@ -957,6 +962,7 @@ impl Manager {
 
         let mesh = MeshDefinition {
             meshes: loaded_models.iter().map(|mesh| *mesh.1).collect(),
+            load_transform: transform_data,
         };
 
         for allocation_index in 0..self.objects.len() {
@@ -1189,9 +1195,11 @@ impl Manager {
 
     /// Performs a guided rendering.
     /// When called inside a rendering recording function it will update a push constant
-    /// containing a single u32 to the specified offset and stage, bind the vertex buffer,
+    /// containing a mat3x4 and a u32 to the specified offset and stage, bind the vertex buffer,
     /// bind the index buffers and dispatch relevants draw calls.
     ///
+    /// The mat3x4 is the transformation matrix of the mesh, and the u32 is the mesh index.
+    /// 
     /// This function avoids rendering assets that are not completely loaded in GPU memory.
     pub fn guided_rendering(
         &self,
@@ -1201,11 +1209,10 @@ impl Manager {
         textures_descriptor_set_binding: u32,
         materials_descriptor_set_binding: u32,
         push_constant_offset: u32,
-        push_constant_size: u32,
         push_constant_stages: ShaderStagesAccess,
     ) {
         // do not render anything if the TLAS does not exists
-        let Some(_tlas) = &self.current_tlas else {
+        let Some(tlas) = &self.current_tlas else {
             return;
         };
 
@@ -1224,6 +1231,8 @@ impl Manager {
             [self.material_manager.material_descriptor_set(current_frame)].as_slice(),
         );
 
+        let mut drawn = 0u64;
+
         // now try to render every object that has its resources completely loaded in GPU memory
         for obj_index in 0..self.objects.len() {
             let Some((loaded_obj_mesh, loaded_obj_instances)) = &self.objects[obj_index] else {
@@ -1235,6 +1244,8 @@ impl Manager {
             if instance_count == 0 {
                 continue;
             }
+
+            let transform_data = loaded_obj_mesh.load_transform.clone();
 
             // just an optimization: avoid issuing lots of useless bind_vertex_buffers calls
             let mut last_bound_vertex_buffer = MAX_MESHES as u64;
@@ -1303,20 +1314,33 @@ impl Manager {
                     continue;
                 }
 
+                let transform_size = core::mem::size_of_val(&transform_data) as u32;
                 recorder.push_constant(
                     pipeline_layout.clone(),
                     push_constant_stages,
                     push_constant_offset,
                     unsafe {
                         ::core::slice::from_raw_parts(
+                            (&transform_data as *const _) as *const u8,
+                            transform_size as usize,
+                        )
+                    },
+                );
+
+                let mesh_id_size = core::mem::size_of_val(&loaded_mesh.mesh_index) as u32;
+                recorder.push_constant(
+                    pipeline_layout.clone(),
+                    push_constant_stages,
+                    push_constant_offset + transform_size,
+                    unsafe {
+                        ::core::slice::from_raw_parts(
                             (&loaded_mesh.mesh_index as *const _) as *const u8,
-                            push_constant_size as usize,
+                            mesh_id_size as usize,
                         )
                     },
                 );
 
                 let vertex_buffer = blas.vertex_buffer();
-                let transform_buffer = blas.transform_buffer();
                 if vertex_buffer.buffer().native_handle() != last_bound_vertex_buffer {
                     last_bound_vertex_buffer = vertex_buffer.buffer().native_handle();
                     recorder.bind_vertex_buffers(
@@ -1325,7 +1349,15 @@ impl Manager {
                     );
                     recorder.bind_vertex_buffers(
                         1,
-                        [(0u64, transform_buffer.buffer() as Arc<dyn BufferTrait>)].as_slice(),
+                        [(
+                            drawn
+                                * (instance_count as u64)
+                                * (core::mem::size_of::<
+                                    vulkan_framework::ash::vk::AccelerationStructureInstanceKHR,
+                                >() as u64),
+                            tlas.tlas().instance_buffer().buffer() as Arc<dyn BufferTrait>,
+                        )]
+                        .as_slice(),
                     );
                 }
 
@@ -1333,6 +1365,7 @@ impl Manager {
 
                 // TODO: for now drawing one instance, but in the future allows multiple instances to be rendered
                 recorder.draw_indexed(blas.max_primitives_count() * 3u32, instance_count, 0, 0, 0);
+                drawn += instance_count as u64;
             }
         }
     }

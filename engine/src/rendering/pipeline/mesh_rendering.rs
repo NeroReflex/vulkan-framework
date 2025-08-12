@@ -67,10 +67,17 @@ layout(std140, set = 2, binding = 0) uniform camera_uniform {
 	mat4 projectionMatrix;
 } camera;
 
+layout(push_constant) uniform MeshData {
+    mat3x4 load_matrix;
+    uint mesh_id;
+} mesh_data;
+
 void main() {
+    const mat4 LoadMatrix = mat4(mesh_data.load_matrix[0], mesh_data.load_matrix[1], mesh_data.load_matrix[2], vec4(0.0, 0.0, 0.0, 1.0));
+
     const mat4 ModelMatrix = mat4(ModelMatrix_first_row, ModelMatrix_second_row, ModelMatrix_third_row, vec4(0.0, 0.0, 0.0, 1.0));
 
-    const mat4 MVP = camera.projectionMatrix * camera.viewMatrix * ModelMatrix; 
+    const mat4 MVP = camera.projectionMatrix * camera.viewMatrix * ModelMatrix * LoadMatrix; 
 
     // Get the eye position
 	const vec4 eye_position = vec4(camera.viewMatrix[3][0], camera.viewMatrix[3][1], camera.viewMatrix[3][2], 1.0);
@@ -106,6 +113,7 @@ layout (location = 2) in vec2 in_vTextureUV;
 layout(location = 4) in flat vec4 in_eyePosition_worldspace;
 
 layout(push_constant) uniform MeshData {
+    mat3x4 load_matrix;
     uint mesh_id;
 } mesh_data;
 
@@ -167,7 +175,7 @@ pub struct MeshRendering {
     gbuffer_descriptor_sets:
         smallvec::SmallVec<[Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
 
-    push_constants_access: ShaderStagesAccess,
+    push_constants_stages: ShaderStagesAccess,
     graphics_pipeline: Arc<GraphicsPipeline>,
 
     gbuffer_depth_stencil_image_views:
@@ -549,8 +557,9 @@ impl MeshRendering {
         let fragment_shader =
             FragmentShader::new(device.clone(), &[], &[], MESH_RENDERING_FRAGMENT_SPV).unwrap();
 
-        let push_constants_access = [ShaderStageAccessIn::Fragment].as_slice().into();
-
+        let push_constants_stages = [ShaderStageAccessIn::Vertex, ShaderStageAccessIn::Fragment]
+            .as_slice()
+            .into();
         let pipeline_layout = PipelineLayout::new(
             device.clone(),
             [
@@ -559,78 +568,81 @@ impl MeshRendering {
                 view_projection_descriptor_set_layout,
             ]
             .as_slice(),
-            [PushConstanRange::new(0, 4u32, push_constants_access)].as_slice(),
+            [PushConstanRange::new(0, 52u32, push_constants_stages)].as_slice(),
             Some("mesh_rendering.pipeline_layout"),
         )?;
 
-        let graphics_pipeline = GraphicsPipeline::new(
-            None,
-            DynamicRendering::new(
+        let graphics_pipeline =
+            GraphicsPipeline::new(
+                None,
+                DynamicRendering::new(
+                    [
+                        Self::output_image_color_format(),
+                        Self::output_image_color_format(),
+                        Self::output_image_color_format(),
+                    ]
+                    .as_slice(),
+                    Some(Self::output_image_depth_stencil_format()),
+                    None,
+                ),
+                ImageMultisampling::SamplesPerPixel1,
+                Some(DepthConfiguration::new(
+                    true,
+                    DepthCompareOp::Less,
+                    Some((0.0, 1.0)),
+                )),
+                Some(Viewport::new(
+                    0.0f32,
+                    0.0f32,
+                    image_dimensions.width() as f32,
+                    image_dimensions.height() as f32,
+                    0.0f32,
+                    1.0f32,
+                )),
+                Some(Scissor::new(0, 0, image_dimensions)),
+                pipeline_layout,
                 [
-                    Self::output_image_color_format(),
-                    Self::output_image_color_format(),
-                    Self::output_image_color_format(),
+                    VertexInputBinding::new(
+                        VertexInputRate::PerVertex,
+                        (4u32) * (3u32 + 3u32 + 2u32),
+                        [
+                            // vertex position data
+                            VertexInputAttribute::new(0, 0, AttributeType::Vec3),
+                            // vertex normal data
+                            VertexInputAttribute::new(1, 4 * 3, AttributeType::Vec3),
+                            // vertex text coords
+                            VertexInputAttribute::new(2, 4 * (3 + 3), AttributeType::Vec2),
+                        ]
+                        .as_slice(),
+                    ),
+                    VertexInputBinding::new(
+                        VertexInputRate::PerInstance,
+                        // mat 4x3
+                        core::mem::size_of::<
+                            vulkan_framework::ash::vk::AccelerationStructureInstanceKHR,
+                        >() as u32,
+                        [
+                            // model matrix first row
+                            VertexInputAttribute::new(3, 0, AttributeType::Vec4),
+                            // model matrix second row
+                            VertexInputAttribute::new(4, 4 * 4, AttributeType::Vec4),
+                            // model matrix third row
+                            VertexInputAttribute::new(5, 4 * 8, AttributeType::Vec4),
+                        ]
+                        .as_slice(),
+                    ),
                 ]
                 .as_slice(),
-                Some(Self::output_image_depth_stencil_format()),
-                None,
-            ),
-            ImageMultisampling::SamplesPerPixel1,
-            Some(DepthConfiguration::new(
-                true,
-                DepthCompareOp::Less,
-                Some((0.0, 1.0)),
-            )),
-            Some(Viewport::new(
-                0.0f32,
-                0.0f32,
-                image_dimensions.width() as f32,
-                image_dimensions.height() as f32,
-                0.0f32,
-                1.0f32,
-            )),
-            Some(Scissor::new(0, 0, image_dimensions)),
-            pipeline_layout,
-            [
-                VertexInputBinding::new(
-                    VertexInputRate::PerVertex,
-                    (4u32) * (3u32 + 3u32 + 2u32),
-                    [
-                        // vertex position data
-                        VertexInputAttribute::new(0, 0, AttributeType::Vec3),
-                        // vertex normal data
-                        VertexInputAttribute::new(1, 4 * 3, AttributeType::Vec3),
-                        // vertex text coords
-                        VertexInputAttribute::new(2, 4 * (3 + 3), AttributeType::Vec2),
-                    ]
-                    .as_slice(),
+                Rasterizer::new(
+                    PolygonMode::Fill,
+                    FrontFace::Clockwise,
+                    CullMode::Back,
+                    None,
                 ),
-                VertexInputBinding::new(
-                    VertexInputRate::PerInstance,
-                    // mat 4x3
-                    4u32 * 12u32,
-                    [
-                        // model matrix first row
-                        VertexInputAttribute::new(3, 0, AttributeType::Vec4),
-                        // model matrix second row
-                        VertexInputAttribute::new(4, 4 * 4, AttributeType::Vec4),
-                        // model matrix third row
-                        VertexInputAttribute::new(5, 4 * 8, AttributeType::Vec4),
-                    ]
-                    .as_slice(),
-                ),
-            ]
-            .as_slice(),
-            Rasterizer::new(
-                PolygonMode::Fill,
-                FrontFace::Clockwise,
-                CullMode::Back,
-                None,
-            ),
-            (vertex_shader, None),
-            (fragment_shader, None),
-            Some("mesh_rendering.graphics_pipeline"),
-        )?;
+                (vertex_shader, None),
+                (fragment_shader, None),
+                Some("mesh_rendering.graphics_pipeline"),
+            )?;
 
         Ok(Self {
             image_dimensions,
@@ -638,7 +650,7 @@ impl MeshRendering {
             gbuffer_descriptor_set_layout,
             gbuffer_descriptor_sets,
 
-            push_constants_access,
+            push_constants_stages,
             graphics_pipeline,
 
             gbuffer_depth_stencil_image_views,
@@ -791,8 +803,7 @@ impl MeshRendering {
                     0,
                     1,
                     0,
-                    4u32,
-                    self.push_constants_access,
+                    self.push_constants_stages,
                 );
             },
         );

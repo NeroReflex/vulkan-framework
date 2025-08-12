@@ -192,6 +192,7 @@ impl MeshManager {
     pub fn create_transform_buffer(
         &self,
         memory_manager: &mut dyn MemoryManagerTrait,
+        transform_data: &vulkan_framework::ash::vk::TransformMatrixKHR,
         usage: BufferUsage,
         sharing: Option<&[std::sync::Weak<QueueFamily>]>,
     ) -> RenderingResult<BottomLevelAccelerationStructureTransformBuffer> {
@@ -226,7 +227,7 @@ impl MeshManager {
             )?;
             let transform = range.as_mut_slice();
             assert_eq!(transform.len(), 1);
-            transform[0] = IDENTITY_MATRIX;
+            transform[0] = *transform_data;
         }
 
         Ok(transform_buffer)
