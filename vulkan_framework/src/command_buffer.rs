@@ -175,11 +175,104 @@ impl<'a> CommandBufferRecorder<'a> {
         assert!(!geometries.is_empty());
         assert!(!range_infos.is_empty());
 
+        // Print TLAS build info and Vulkan struct details
+        let geometry = &geometries[0];
+        let build_range_info = &range_infos[0][0];
+        let geometry_count = geometries.len();
+        let instance_count = build_range_info.primitive_count;
+        println!("TLAS Vulkan build info:");
+        println!("  instance_count: {}", instance_count);
+        println!("  geometry_count: {}", geometry_count);
+    // Access union fields with unsafe
+    let device_address = unsafe { geometry.geometry.instances.data.device_address };
+    let array_of_pointers = unsafe { geometry.geometry.instances.array_of_pointers };
+        println!("  geometry.geometry.instances.data.deviceAddress: 0x{:x}", device_address);
+        println!("  geometry.geometry.instances.arrayOfPointers: {}", array_of_pointers);
+    println!("  geometry.sType: {:?}", geometry.s_type);
+        println!("  build_range_info.primitive_count: {}", build_range_info.primitive_count);
+        println!("  build_range_info.primitive_offset: {}", build_range_info.primitive_offset);
+        println!("  build_range_info.first_vertex: {}", build_range_info.first_vertex);
+        println!("  build_range_info.transform_offset: {}", build_range_info.transform_offset);
+        println!("Instance buffer address alignment: {} (should be multiple of 16 and 64)", device_address % 64);
+        let geometry_bytes = unsafe {
+            std::slice::from_raw_parts((geometry as *const _) as *const u8, std::mem::size_of_val(geometry))
+        };
+        println!("VkAccelerationStructureGeometryKHR bytes: {:?}", geometry_bytes);
+        let build_range_bytes = unsafe {
+            std::slice::from_raw_parts((build_range_info as *const _) as *const u8, std::mem::size_of_val(build_range_info))
+        };
+        println!("VkAccelerationStructureBuildRangeInfoKHR bytes: {:?}", build_range_bytes);
         let ranges_collection: smallvec::SmallVec<
             [&[ash::vk::AccelerationStructureBuildRangeInfoKHR]; 1],
         > = range_infos.iter().map(|r| r.as_slice()).collect();
 
         assert!(!ranges_collection.is_empty());
+
+        // Debug prints for TLAS build
+        let instance_buffer = tlas.instance_buffer();
+        let buffer_addr = instance_buffer.buffer_device_addr();
+    // Print TLAS build geometry info
+    println!("TLAS Vulkan build info:");
+    println!("  instance_count: {}", instance_count);
+        let buffer_size = instance_buffer.buffer().size();
+        let max_instances = instance_buffer.max_instances();
+        println!("TLAS build: buffer_addr = {:#x}, buffer_size = {}, max_instances = {}", buffer_addr, buffer_size, max_instances);
+
+        // Print first 10 instances (as bytes)
+        use crate::memory_pool::MemoryPoolBacked;
+        let buffer = instance_buffer.buffer();
+        println!("  geometry_count: {}", geometry_count);
+        println!("  geometry.geometry.instances.data.deviceAddress: 0x{:x}", device_address);
+        println!("  geometry.geometry.instances.arrayOfPointers: {}", array_of_pointers);
+        println!("  geometry.sType: {:?}", geometry.s_type);
+        println!("  build_range_info.primitive_count: {}", build_range_info.primitive_count);
+        println!("  build_range_info.primitive_offset: {}", build_range_info.primitive_offset);
+        println!("  build_range_info.first_vertex: {}", build_range_info.first_vertex);
+        println!("  build_range_info.transform_offset: {}", build_range_info.transform_offset);
+
+        // Print buffer alignment
+        println!("Instance buffer address alignment: {} (should be multiple of 16 and 64)", device_address % 64);
+
+        // Print geometry struct raw bytes (for deep debugging)
+        let geometry_bytes = unsafe {
+            std::slice::from_raw_parts((&geometry as *const _) as *const u8, std::mem::size_of_val(&geometry))
+        };
+        println!("VkAccelerationStructureGeometryKHR bytes: {:?}", geometry_bytes);
+
+        let mem_map = crate::memory_pool::MemoryMap::new(buffer.as_ref().get_backing_memory_pool()).unwrap();
+        let range = mem_map.range::<ash::vk::AccelerationStructureInstanceKHR>(buffer.clone() as Arc<dyn MemoryPoolBacked>).unwrap();
+        let instances = range.as_slice();
+        use std::collections::HashSet;
+        let mut unique_device_handles = HashSet::new();
+        let mut mask_counts = std::collections::HashMap::new();
+        let mut flags_counts = std::collections::HashMap::new();
+        for i in 0..instances.len() {
+            let inst = &instances[i];
+            let matrix: [[f32; 4]; 3] = unsafe { std::mem::transmute(inst.transform.matrix) };
+            let device_handle = unsafe { inst.acceleration_structure_reference.device_handle };
+            unique_device_handles.insert(device_handle);
+            let mask_dbg = format!("{:?}", inst.instance_custom_index_and_mask);
+            let flags_dbg = format!("{:?}", inst.instance_shader_binding_table_record_offset_and_flags);
+            *mask_counts.entry(mask_dbg.clone()).or_insert(0) += 1;
+            *flags_counts.entry(flags_dbg.clone()).or_insert(0) += 1;
+            println!("Instance {}: transform = [{:?}], sbt_offset_flags = {}, custom_index_mask = {}, as_ref.device_handle = {:#x}",
+                i, matrix, flags_dbg, mask_dbg, device_handle);
+        }
+        println!("Total instances: {}", instances.len());
+        println!("Unique device handles: {}", unique_device_handles.len());
+        println!("Mask counts:");
+        for (mask, count) in mask_counts.iter() {
+            // Print build range struct raw bytes
+            let build_range_bytes = unsafe {
+                std::slice::from_raw_parts((&build_range_info as *const _) as *const u8, std::mem::size_of_val(&build_range_info))
+            };
+            println!("VkAccelerationStructureBuildRangeInfoKHR bytes: {:?}", build_range_bytes);
+            println!("  {}: {}", mask, count);
+        }
+        println!("Flags counts:");
+        for (flags, count) in flags_counts.iter() {
+            println!("  {}: {}", flags, count);
+        }
 
         // See https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
         let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::default()

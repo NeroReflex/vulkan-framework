@@ -324,10 +324,12 @@ impl AllocationRequiring for Buffer {
                 .get_buffer_memory_requirements2(&requirements_info, &mut requirements);
         };
 
+        // Force alignment to 256 bytes for quick test (Vulkan minimum is 16, 64 recommended)
+        let forced_alignment = 256u64;
         AllocationRequirements::new(
             requirements.memory_requirements.memory_type_bits,
             requirements.memory_requirements.size,
-            requirements.memory_requirements.alignment,
+            std::cmp::max(requirements.memory_requirements.alignment, forced_alignment),
         )
     }
 }
