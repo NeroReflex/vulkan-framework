@@ -14,6 +14,9 @@ use crate::{
 pub struct DeferredHostOperationKHR {
     device: Arc<Device>,
     deferred_operation: DeferredOperationKHR,
+
+    tlas: Option<Arc<TopLevelAccelerationStructure>>,
+    blas: Option<Arc<BottomLevelAccelerationStructure>>,
 }
 
 impl DeviceOwned for DeferredHostOperationKHR {
@@ -34,6 +37,9 @@ impl Drop for DeferredHostOperationKHR {
             .unwrap();
 
         unsafe { deferred_host_op_ext.destroy_deferred_operation(self.deferred_operation, None) };
+
+        drop(self.tlas.take());
+        drop(self.blas.take());
     }
 }
 
@@ -98,9 +104,14 @@ impl DeferredHostOperationKHR {
             )
         }?;
 
+        let tlas = None;
+        let blas = Some(blas.clone());
         Ok(Arc::new(Self {
             device,
             deferred_operation,
+
+            tlas,
+            blas,
         }))
     }
 
@@ -159,9 +170,14 @@ impl DeferredHostOperationKHR {
             )
         }?;
 
+        let tlas = Some(tlas.clone());
+        let blas = None;
         Ok(Arc::new(Self {
             device,
             deferred_operation,
+
+            tlas,
+            blas,
         }))
     }
 }

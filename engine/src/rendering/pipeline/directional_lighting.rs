@@ -85,7 +85,7 @@ void main() {
         hitValue = true;
 
         if (!(origin.x == 0 && origin.y == 0 && origin.z == 0)) {
-            traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, origin.xyz, 0.001, direction.xyz, 100000.0, 0);
+            traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, origin.xyz + direction[light_index], 0.001, direction.xyz, 100000.0, 0);
             //                      gl_RayFlagsNoneEXT
         } else {
             hitValue = true;

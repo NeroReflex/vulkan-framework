@@ -574,6 +574,8 @@ impl Device {
                     enabled_extensions: enabled_extensions.clone(),
                 };
 
+                assert!(currently_selected_device_data.selected_device_features.texture_compression_bc != 0);
+
                 println!("Found suitable device: {phy_device_name}");
 
                 match selected_physical_device {
@@ -656,7 +658,7 @@ impl Device {
                         as *mut ash::vk::PhysicalDeviceBufferDeviceAddressFeatures
                         as *mut std::ffi::c_void;
                 }
-                features2 = features2.push_next(&mut accel_structure_features);
+                features2.p_next = &mut accel_structure_features as *mut _ as *mut std::ffi::c_void;
             }
 
             get_imageless_framebuffer_features.p_next = features2.p_next;
@@ -686,6 +688,9 @@ impl Device {
 
             // make sure dynamic rendering is enbaled
             assert!(get_dynamic_rendering_features.dynamic_rendering != 0);
+
+            // nVidia cannot build the AS on the host
+            //assert!(accel_structure_features.acceleration_structure_host_commands != 0);
 
             let mut raytracing_info: Option<RaytracingInfo> = Option::None;
 

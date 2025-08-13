@@ -915,7 +915,6 @@ impl Manager {
                 .buffer()
         };
 
-        // TODO: allow for multiple instances.
         let Some((vertices_topology, vertex_buffer)) = vertex_buffer.take() else {
             return Err(RenderingError::ResourceError(
                 ResourceError::MissingVertexBuffer,
@@ -1145,6 +1144,9 @@ impl Manager {
             Some("successive_tlas_commandl_buffer"),
         )?;
 
+        // WARNING: overwriting the old value will also drop the FenceWaiter that might have
+        // been there, meaning this is a blocking instruction that might wait
+        // for the GPU (and/or CPU) to finish the previous operation.
         self.current_tlas = match device {
             TLASRebuildDevice::GPU => {
                 let command_buffer = PrimaryCommandBuffer::new(
@@ -1205,12 +1207,12 @@ impl Manager {
                     fence,
                 )?;
 
-                // WARNING: overwriting the old value will also drop the FenceWaiter that might have
-                // been there, meaning this is a blocking instruction that might wait
-                // for the GPU to finish the previous operation.
                 Some(TLASStatus::new_gpu_loading(tlas, fence_waiter))
             }
-            TLASRebuildDevice::CPU => todo!(),
+            TLASRebuildDevice::CPU => Some(TLASStatus::new_cpu_loading(
+                tlas.clone(),
+                DeferredHostOperationKHR::build_tlas(tlas, 0, max_instances)?,
+            )),
         };
 
         Ok(())

@@ -26,7 +26,7 @@ use vulkan_framework::{
         MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait, UnallocatedResource,
     },
     memory_pool::{MemoryMap, MemoryPoolBacked, MemoryPoolFeatures},
-    pipeline_stage::PipelineStage,
+    pipeline_stage::{PipelineStage, PipelineStageAccelerationStructureKHR},
     queue::Queue,
     queue_family::{QueueFamily, QueueFamilyOwned},
 };
@@ -264,10 +264,13 @@ impl MeshManager {
         let queue_family = queue.get_parent_queue_family();
 
         let vertex_buffer_raw = vertex_buffer.buffer();
-        let vertex_buffer_size = vertex_buffer.buffer().size();
+        let vertex_buffer_size = vertex_buffer_raw.size();
 
-        let index_buffer_raw = vertex_buffer.buffer();
-        let index_buffer_size = vertex_buffer.buffer().size();
+        let index_buffer_raw = index_buffer.buffer();
+        let index_buffer_size = index_buffer_raw.size();
+
+        let transform_buffer_raw = transform_buffer.buffer();
+        let transform_buffer_size = transform_buffer_raw.size();
 
         let mut allocator = self.memory_manager.lock().unwrap();
 
@@ -291,8 +294,14 @@ impl MeshManager {
                         BufferMemoryBarrier::new(
                             [PipelineStage::Host].as_slice().into(),
                             [MemoryAccessAs::MemoryWrite].as_slice().into(),
-                            [PipelineStage::Transfer].as_slice().into(),
-                            [MemoryAccessAs::MemoryRead].as_slice().into(),
+                            [PipelineStage::AccelerationStructureKHR(
+                                PipelineStageAccelerationStructureKHR::Build,
+                            )]
+                            .as_slice()
+                            .into(),
+                            [MemoryAccessAs::AccelerationStructureRead]
+                                .as_slice()
+                                .into(),
                             BufferSubresourceRange::new(
                                 vertex_buffer_raw,
                                 0u64,
@@ -304,9 +313,34 @@ impl MeshManager {
                         BufferMemoryBarrier::new(
                             [PipelineStage::Host].as_slice().into(),
                             [MemoryAccessAs::MemoryWrite].as_slice().into(),
-                            [PipelineStage::Transfer].as_slice().into(),
-                            [MemoryAccessAs::MemoryRead].as_slice().into(),
+                            [PipelineStage::AccelerationStructureKHR(
+                                PipelineStageAccelerationStructureKHR::Build,
+                            )]
+                            .as_slice()
+                            .into(),
+                            [MemoryAccessAs::AccelerationStructureRead]
+                                .as_slice()
+                                .into(),
                             BufferSubresourceRange::new(index_buffer_raw, 0u64, index_buffer_size),
+                            queue_family.clone(),
+                            queue_family.clone(),
+                        ),
+                        BufferMemoryBarrier::new(
+                            [PipelineStage::Host].as_slice().into(),
+                            [MemoryAccessAs::MemoryWrite].as_slice().into(),
+                            [PipelineStage::AccelerationStructureKHR(
+                                PipelineStageAccelerationStructureKHR::Build,
+                            )]
+                            .as_slice()
+                            .into(),
+                            [MemoryAccessAs::AccelerationStructureRead]
+                                .as_slice()
+                                .into(),
+                            BufferSubresourceRange::new(
+                                transform_buffer_raw,
+                                0u64,
+                                transform_buffer_size,
+                            ),
                             queue_family.clone(),
                             queue_family.clone(),
                         ),
@@ -316,6 +350,8 @@ impl MeshManager {
 
                 let primitives_count = blas.max_primitives_count();
                 recorder.build_blas(blas, 0, primitives_count, 0, 0);
+
+                // TODO: place a barrier to wait for the BLAS build to finish
 
                 Ok(())
             },
