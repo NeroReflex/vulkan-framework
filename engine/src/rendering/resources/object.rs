@@ -1042,115 +1042,11 @@ impl Manager {
         assert!((max_instances + meshes_count) < (u32::MAX as usize));
 
         let max_instances = max_instances as u32 + meshes_count as u32;
-        let blas_decl = TopLevelBLASGroupDecl::new();
-        let instance_unallocated_buffer = Buffer::new(
-            self.queue_family.get_parent_device(),
-            TopLevelAccelerationStructureInstanceBuffer::template(
-                &blas_decl,
-                max_instances,
-                [BufferUseAs::VertexBuffer].as_slice().into(),
-            ),
-            None,
-            Some("instance_buffer"),
-        )?;
-
-        let tlas = {
-            let mut mem_manager = self.memory_manager.lock().unwrap();
-            let instance_allocated_data = mem_manager.allocate_resources(
-                &MemoryType::device_local_and_host_visible(),
-                &MemoryPoolFeatures::new(true),
-                vec![instance_unallocated_buffer.into()],
-                MemoryManagementTags::default()
-                    .with_name("temp".to_string())
-                    .with_size(MemoryManagementTagSize::MediumSmall),
-            )?;
-
-            let tlas_buffer = TopLevelAccelerationStructureInstanceBuffer::new(
-                blas_decl,
-                max_instances,
-                instance_allocated_data[0].buffer(),
-            )?;
-
-            TopLevelAccelerationStructure::new(
-                &mut *mem_manager,
-                AllowedBuildingDevice::DeviceOnly,
-                tlas_buffer,
-                MemoryManagementTags::default()
-                    .with_name("temp".to_string())
-                    .with_size(MemoryManagementTagSize::MediumSmall),
-                None,
-                Some("tlas"),
-            )
-        }?;
-
-        let current_tlas_ref = tlas.as_ref();
 
         // wait for all meshes to be fully loaded: we will need them for the TLAS construction
         self.mesh_manager.wait_load_blocking()?;
 
-        let mut buffer_barriers = Vec::new();
-
-        // now recreate instances of the TLAS
-        {
-            let mem_map = MemoryMap::new(
-                current_tlas_ref
-                    .instance_buffer()
-                    .buffer()
-                    .get_backing_memory_pool(),
-            )?;
-            let mut range = mem_map
-                .range::<vulkan_framework::ash::vk::AccelerationStructureInstanceKHR>(
-                    current_tlas_ref.instance_buffer().buffer() as Arc<dyn MemoryPoolBacked>,
-                )?;
-
-            let slice = range.as_mut_slice();
-
-            let mut instance_num = 0_usize;
-            for obj in self.objects.iter() {
-                let Some((obj_mesh, obj_instances)) = obj else {
-                    continue;
-                };
-
-                for mesh in obj_mesh.meshes.iter() {
-                    let mesh_index = mesh.mesh_index;
-                    let blas = self
-                        .mesh_manager
-                        .fetch_loaded(mesh_index as usize)
-                        .unwrap()
-                        .clone();
-                    for obj_instance in obj_instances.instances.iter() {
-                        slice[instance_num] =
-                            vulkan_framework::ash::vk::AccelerationStructureInstanceKHR {
-                                transform: *obj_instance,
-                                instance_shader_binding_table_record_offset_and_flags:
-                                    vulkan_framework::ash::vk::Packed24_8::new(0, 0x01), // VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
-                                instance_custom_index_and_mask:
-                                    vulkan_framework::ash::vk::Packed24_8::new(0x00, 0xFF),
-                                acceleration_structure_reference:
-                                    vulkan_framework::ash::vk::AccelerationStructureReferenceKHR {
-                                        device_handle: blas.device_addr(),
-                                    },
-                            };
-
-                        buffer_barriers.push(BufferMemoryBarrier::new(
-                            [PipelineStage::TopOfPipe].as_slice().into(),
-                            [].as_slice().into(),
-                            [PipelineStage::AccelerationStructureKHR(
-                                PipelineStageAccelerationStructureKHR::Build,
-                            )]
-                            .as_slice()
-                            .into(),
-                            [MemoryAccessAs::AccelerationStructureRead, MemoryAccessAs::MemoryRead].as_slice().into(),
-                            BufferSubresourceRange::new(blas.buffer(), 0, blas.buffer_size()),
-                            self.queue_family.clone(),
-                            self.queue_family.clone(),
-                        ));
-
-                        instance_num += 1;
-                    }
-                }
-            }
-        }
+        let (buffer_barriers, tlas) = self.create_tlas()?;
 
         let fence = Fence::new(
             self.command_pool
@@ -1199,7 +1095,7 @@ impl Manager {
 
                     recorder.buffer_barriers(buffer_barriers.as_slice());
 
-                    recorder.build_tlas(tlas.clone(), 0, max_instances);
+                    recorder.build_tlas(tlas.clone(), 0, tlas.max_instances());
 
                     recorder.buffer_barriers(
                         [BufferMemoryBarrier::new(
@@ -1247,6 +1143,193 @@ impl Manager {
         };
 
         Ok(())
+    }
+
+    pub fn create_tlas(&self) -> RenderingResult<(Vec<BufferMemoryBarrier>, Arc<TopLevelAccelerationStructure>)> {
+        let max_instances: usize = self
+            .objects
+            .iter()
+            .map(|loaded_obj| match loaded_obj {
+                Some((obj_meshes, obj_instances)) => {
+                    obj_meshes.meshes.len() * obj_instances.instances.len()
+                }
+                None => 0_usize,
+            })
+            .sum();
+
+        assert!(max_instances < (u32::MAX as usize));
+
+        let blas_decl = TopLevelBLASGroupDecl::new();
+        let instance_unallocated_buffer = Buffer::new(
+            self.queue_family.get_parent_device(),
+            TopLevelAccelerationStructureInstanceBuffer::template(
+                &blas_decl,
+                max_instances as u32,
+                [BufferUseAs::VertexBuffer].as_slice().into(),
+            ),
+            None,
+            Some("instance_buffer"),
+        )?;
+
+        let tlas = {
+            let mut mem_manager = self.memory_manager.lock().unwrap();
+            let instance_allocated_data = mem_manager.allocate_resources(
+                &MemoryType::device_local_and_host_visible(),
+                &MemoryPoolFeatures::new(true),
+                vec![instance_unallocated_buffer.into()],
+                MemoryManagementTags::default()
+                    .with_name("temp".to_string())
+                    .with_size(MemoryManagementTagSize::MediumSmall),
+            )?;
+
+            let tlas_buffer = TopLevelAccelerationStructureInstanceBuffer::new(
+                blas_decl,
+                max_instances as u32,
+                instance_allocated_data[0].buffer(),
+            )?;
+
+            TopLevelAccelerationStructure::new(
+                &mut *mem_manager,
+                AllowedBuildingDevice::DeviceOnly,
+                tlas_buffer,
+                MemoryManagementTags::default()
+                    .with_name("temp".to_string())
+                    .with_size(MemoryManagementTagSize::MediumSmall),
+                None,
+                Some("tlas"),
+            )
+        }?;
+
+        let current_tlas_ref = tlas.as_ref();
+
+        let mut buffer_barriers = Vec::new();
+
+        // now recreate instances of the TLAS
+        {
+            let mem_map = MemoryMap::new(
+                current_tlas_ref
+                    .instance_buffer()
+                    .buffer()
+                    .get_backing_memory_pool(),
+            )?;
+            let mut range = mem_map
+                .range::<vulkan_framework::ash::vk::AccelerationStructureInstanceKHR>(
+                    current_tlas_ref.instance_buffer().buffer() as Arc<dyn MemoryPoolBacked>,
+                )?;
+
+            let slice = range.as_mut_slice();
+
+            let mut instance_num = 0_usize;
+            for obj in self.objects.iter() {
+                let Some((obj_mesh, obj_instances)) = obj else {
+                    continue;
+                };
+
+                for mesh in obj_mesh.meshes.iter() {
+                    let mesh_index = mesh.mesh_index;
+                    let blas = self
+                        .mesh_manager
+                        .fetch_loaded(mesh_index as usize)
+                        .unwrap()
+                        .clone();
+                    for obj_instance in obj_instances.instances.iter() {
+                        slice[instance_num] =
+                            vulkan_framework::ash::vk::AccelerationStructureInstanceKHR {
+                                transform: *obj_instance,
+                                instance_shader_binding_table_record_offset_and_flags:
+                                    vulkan_framework::ash::vk::Packed24_8::new(0, 0x01), // VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
+                                instance_custom_index_and_mask:
+                                    vulkan_framework::ash::vk::Packed24_8::new(0x00, 0xFF),
+                                acceleration_structure_reference:
+                                    vulkan_framework::ash::vk::AccelerationStructureReferenceKHR {
+                                        device_handle: blas.device_addr(),
+                                    },
+                            };
+
+                        buffer_barriers.push(BufferMemoryBarrier::new(
+                            [].as_slice().into(),
+                            [].as_slice().into(),
+                            [PipelineStage::AccelerationStructureKHR(
+                                PipelineStageAccelerationStructureKHR::Build,
+                            )]
+                            .as_slice()
+                            .into(),
+                            [MemoryAccessAs::AccelerationStructureRead, MemoryAccessAs::MemoryRead].as_slice().into(),
+                            BufferSubresourceRange::new(blas.buffer(), 0, blas.buffer_size()),
+                            self.queue_family.clone(),
+                            self.queue_family.clone(),
+                        ));
+
+                        instance_num += 1;
+                    }
+                }
+            }
+        }
+
+        Ok((buffer_barriers, tlas))
+    }
+
+    pub fn record_tlas_generation(
+        &self,
+        recorder: &mut CommandBufferRecorder,
+        tlas: Arc<TopLevelAccelerationStructure>,
+    ) {
+        recorder.buffer_barriers(
+            [BufferMemoryBarrier::new(
+                [PipelineStage::Host].as_slice().into(),
+                [MemoryAccessAs::HostWrite].as_slice().into(),
+                [PipelineStage::AccelerationStructureKHR(
+                    PipelineStageAccelerationStructureKHR::Build,
+                )]
+                .as_slice()
+                .into(),
+                [
+                    MemoryAccessAs::AccelerationStructureRead,
+                    MemoryAccessAs::MemoryRead,
+                ]
+                .as_slice()
+                .into(),
+                BufferSubresourceRange::new(
+                    tlas.instance_buffer().buffer(),
+                    0,
+                    tlas.instance_buffer().buffer().size(),
+                ),
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )]
+            .as_slice(),
+        );
+
+        recorder.build_tlas(tlas.clone(), 0, tlas.max_instances());
+
+        recorder.buffer_barriers(
+            [BufferMemoryBarrier::new(
+                [PipelineStage::AccelerationStructureKHR(
+                    PipelineStageAccelerationStructureKHR::Build,
+                )]
+                .as_slice()
+                .into(),
+                [MemoryAccessAs::AccelerationStructureWrite]
+                    .as_slice()
+                    .into(),
+                [PipelineStage::AllCommands].as_slice().into(),
+                [
+                    MemoryAccessAs::AccelerationStructureRead,
+                    MemoryAccessAs::MemoryRead,
+                    MemoryAccessAs::ShaderRead
+                ]
+                .as_slice()
+                .into(),
+                BufferSubresourceRange::new(
+                    tlas.instance_buffer().buffer(),
+                    0,
+                    tlas.instance_buffer().buffer().size(),
+                ),
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )]
+            .as_slice(),
+        );
     }
 
     pub fn update_buffers(

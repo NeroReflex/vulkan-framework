@@ -624,11 +624,14 @@ impl System {
             static_meshes_resources.wait_nonblocking()?;
             directional_lighting_resources.wait_nonblocking()?;
 
-            let tlas = static_meshes_resources.tlas();
+            let (tlas_buffer_barriers, tlas) = static_meshes_resources.create_tlas()?;
 
             // here register the command buffer: command buffer at index i is associated with rendering_fences[i],
             // that I just awaited above, so thecommand buffer is surely NOT currently in use
             self.present_command_buffers[current_frame].record_one_time_submit(|recorder| {
+                // Ensure TLAS elements are coherent in memory
+                recorder.buffer_barriers(tlas_buffer_barriers.as_slice());
+
                 // Write view and projection matrices to GPU memory and wait for completion before using them to render the scene
                 recorder.update_buffer(self.view_projection_buffers[current_frame].clone(), 0, camera_matrices.as_slice());
                 recorder.buffer_barriers(
@@ -643,6 +646,8 @@ impl System {
                     )]
                     .as_slice(),
                 );
+
+                static_meshes_resources.record_tlas_generation(recorder, tlas.clone());
 
                 // Record rendering commands to generate the gbuffer (position, normal and texture) for each
                 // pixel in the final image: this solves the visibility problem and provides data for later stager
