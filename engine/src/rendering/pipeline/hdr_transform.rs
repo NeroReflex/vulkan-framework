@@ -280,7 +280,7 @@ impl HDRTransform {
             smallvec::smallvec![];
         for (index, image) in mem_manager
             .allocate_resources(
-                &MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostHidden)),
+                &MemoryType::device_local(),
                 &MemoryPoolFeatures::new(false),
                 image_handles,
                 MemoryManagementTags::default()

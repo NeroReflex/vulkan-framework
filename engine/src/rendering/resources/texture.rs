@@ -305,7 +305,7 @@ impl TextureManager {
     ) -> RenderingResult<Arc<ImageView>> {
         let texture = {
             let allocation_result = allocator.allocate_resources(
-                &MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostHidden)),
+                &MemoryType::device_local(),
                 &MemoryPoolFeatures::from([].as_slice()),
                 vec![texture.into()],
                 MemoryManagementTags::default()

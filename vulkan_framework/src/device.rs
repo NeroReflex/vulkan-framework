@@ -24,6 +24,7 @@ pub trait DeviceOwned {
 struct DeviceExtensions {
     debug_utils_khr_ext: Option<Arc<ash::ext::debug_utils::Device>>,
     swapchain_khr_ext: Option<ash::khr::swapchain::Device>,
+    deferred_host_operation_khr_ext: Option<ash::khr::deferred_host_operations::Device>,
     raytracing_pipeline_khr_ext: Option<ash::khr::ray_tracing_pipeline::Device>,
     raytracing_maintenance_khr_ext: Option<ash::khr::ray_tracing_maintenance1::Device>,
     acceleration_structure_khr_ext: Option<ash::khr::acceleration_structure::Device>,
@@ -196,6 +197,12 @@ impl Device {
         &self,
     ) -> &Option<ash::khr::ray_tracing_pipeline::Device> {
         &self.extensions.raytracing_pipeline_khr_ext
+    }
+
+    pub(crate) fn ash_ext_deferred_host_operation_khr(
+        &self,
+    ) -> &Option<ash::khr::deferred_host_operations::Device> {
+        &self.extensions.deferred_host_operation_khr_ext
     }
 
     pub(crate) fn ash_ext_acceleration_structure_khr(
@@ -709,6 +716,22 @@ impl Device {
                 false => Option::None,
             };
 
+            let deferred_host_operation_ext: Option<ash::khr::deferred_host_operations::Device> =
+                match ray_tracing_enabled {
+                    true => {
+                        raytracing_info = Some(RaytracingInfo::from(
+                            &accel_structure_properties,
+                            &ray_tracing_pipeline_properties,
+                        ));
+
+                        Option::Some(ash::khr::deferred_host_operations::Device::new(
+                            instance.ash_handle(),
+                            &device,
+                        ))
+                    }
+                    false => Option::None,
+                };
+
             let raytracing_pipeline_ext: Option<ash::khr::ray_tracing_pipeline::Device> =
                 match ray_tracing_enabled {
                     true => {
@@ -786,6 +809,7 @@ impl Device {
                 device,
                 extensions: DeviceExtensions {
                     swapchain_khr_ext: swapchain_ext,
+                    deferred_host_operation_khr_ext: deferred_host_operation_ext,
                     raytracing_pipeline_khr_ext: raytracing_pipeline_ext,
                     raytracing_maintenance_khr_ext: raytracing_maintenance_ext,
                     acceleration_structure_khr_ext: acceleration_structure_ext,

@@ -73,7 +73,7 @@ layout(push_constant) uniform DirectionalLightingData {
 layout(location = 0) rayPayloadEXT bool hitValue;
 
 void main() {
-    const vec2 resolution = vec2(imageSize(outputImage));
+    const ivec2 resolution = imageSize(outputImage);
 
     const vec2 position_xy = vec2(float(gl_LaunchIDEXT.x) / float(resolution.x), float(gl_LaunchIDEXT.y) / float(resolution.y));
 
@@ -308,7 +308,7 @@ impl DirectionalLighting {
             let mut mem_manager = memory_manager.lock().unwrap();
 
             let raytracing_directions_allocated = mem_manager.allocate_resources(
-                &MemoryType::DeviceLocal(Some(MemoryHostVisibility::hidden())),
+                &MemoryType::device_local(),
                 &MemoryPoolFeatures::new(false),
                 raytracing_directions_unallocated,
                 MemoryManagementTags::default()
@@ -317,7 +317,7 @@ impl DirectionalLighting {
             )?;
 
             let raytracing_ldbuffer_allocated = mem_manager.allocate_resources(
-                &MemoryType::DeviceLocal(Some(MemoryHostVisibility::hidden())),
+                &MemoryType::device_local(),
                 &MemoryPoolFeatures::new(false),
                 raytracing_ldbuffer_unallocated,
                 MemoryManagementTags::default()

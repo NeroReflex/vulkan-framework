@@ -196,7 +196,10 @@ impl TopLevelAccelerationStructure {
                 let mut data = g.ash_geometry();
 
                 assert_eq!(data.geometry_type, ash::vk::GeometryTypeKHR::INSTANCES);
-                assert_eq!(unsafe { data.geometry.instances.array_of_pointers }, g.array_of_pointers() as u32);
+                assert_eq!(
+                    unsafe { data.geometry.instances.array_of_pointers },
+                    g.array_of_pointers() as u32
+                );
 
                 data.geometry.instances.data = DeviceOrHostAddressConstKHR {
                     device_address: instance_buffer.buffer_device_addr(),
@@ -379,7 +382,7 @@ impl TopLevelAccelerationStructure {
         )?;
 
         let buffer = memory_manager.allocate_resources(
-            &MemoryType::DeviceLocal(Some(MemoryHostVisibility::visible(false))),
+            &MemoryType::device_local_and_host_visible(),
             &MemoryPoolFeatures::new(true),
             vec![tlas_buffer.into()],
             allocation_tags,

@@ -28,6 +28,7 @@ pub enum MemoryHostCoherence {
     // host coherence is implemented via memory being uncached, as stated by vulkan specification:
     // "uncached memory is always host coherent"
     Uncached,
+    Coherent,
 }
 
 /**
@@ -39,10 +40,56 @@ pub enum MemoryHostCoherence {
  * is selected, if HostLocal(None) is selected a heap that is NOT host-coherent will be selected,
  * otherwise if Some(Uncached) is selected than a memory heap with VK_MEMORY_PROPERTY_HOST_CACHED_BIT unset.
  */
+/*
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum MemoryType {
     DeviceLocal(Option<MemoryHostVisibility>),
     HostLocal(Option<MemoryHostCoherence>),
+}
+*/
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct MemoryType(crate::ash::vk::MemoryPropertyFlags);
+
+impl MemoryType {
+    pub fn device_local() -> Self {
+        Self(crate::ash::vk::MemoryPropertyFlags::DEVICE_LOCAL)
+    }
+
+    pub fn host_visible() -> Self {
+        Self(crate::ash::vk::MemoryPropertyFlags::HOST_VISIBLE)
+    }
+
+    pub fn device_local_and_host_visible() -> Self {
+        Self(
+            crate::ash::vk::MemoryPropertyFlags::DEVICE_LOCAL
+                | crate::ash::vk::MemoryPropertyFlags::HOST_VISIBLE,
+        )
+    }
+
+    pub fn host_visible_and_coherent() -> Self {
+        Self(
+            crate::ash::vk::MemoryPropertyFlags::HOST_VISIBLE
+                | crate::ash::vk::MemoryPropertyFlags::HOST_COHERENT,
+        )
+    }
+
+    pub fn host_cached() -> Self {
+        Self(crate::ash::vk::MemoryPropertyFlags::HOST_CACHED)
+    }
+}
+
+impl From<crate::ash::vk::MemoryPropertyFlags> for MemoryType {
+    fn from(value: crate::ash::vk::MemoryPropertyFlags) -> Self {
+        Self(value)
+    }
+}
+
+impl MemoryType {
+    fn satisfacted_by(&self, property_flags: crate::ash::vk::MemoryPropertyFlags) -> bool {
+        (property_flags.as_raw() & self.0.as_raw()) == self.0.as_raw()
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -234,66 +281,11 @@ impl MemoryHeap {
                 continue 'suitable_heap_search;
             }
 
-            match current_requested_memory_heap_descriptor.memory_type() {
-                MemoryType::DeviceLocal(host_visibility) => {
-                    // if I want device-local memory just ignore heaps that are not device-local
-                    if !heap_descriptor
-                        .property_flags
-                        .contains(ash::vk::MemoryPropertyFlags::DEVICE_LOCAL)
-                    {
-                        continue 'suitable_heap_search;
-                    }
-
-                    // TODO: what about ash::vk::MemoryPropertyFlags::PROTECTED ?
-                    if let Some(visibility_model) = host_visibility {
-                        match visibility_model {
-                            MemoryHostVisibility::MemoryHostVisibile { cached } => {
-                                if !heap_descriptor
-                                    .property_flags
-                                    .contains(ash::vk::MemoryPropertyFlags::HOST_VISIBLE)
-                                {
-                                    continue 'suitable_heap_search;
-                                }
-
-                                match cached {
-                                    true => {
-                                        if !heap_descriptor
-                                            .property_flags
-                                            .contains(ash::vk::MemoryPropertyFlags::HOST_CACHED)
-                                        {
-                                            continue 'suitable_heap_search;
-                                        }
-                                    }
-                                    false => {
-                                        if heap_descriptor
-                                            .property_flags
-                                            .contains(ash::vk::MemoryPropertyFlags::HOST_CACHED)
-                                        {
-                                            continue 'suitable_heap_search;
-                                        }
-                                    }
-                                }
-                            }
-                            MemoryHostVisibility::MemoryHostHidden => {
-                                if heap_descriptor
-                                    .property_flags
-                                    .contains(ash::vk::MemoryPropertyFlags::HOST_VISIBLE)
-                                {
-                                    continue 'suitable_heap_search;
-                                }
-                            }
-                        }
-                    }
-                }
-                MemoryType::HostLocal(_coherence_model) => {
-                    // if I want host-local memory just ignore heaps that are not host-local
-                    if heap_descriptor
-                        .property_flags
-                        .contains(ash::vk::MemoryPropertyFlags::DEVICE_LOCAL)
-                    {
-                        continue 'suitable_heap_search;
-                    }
-                }
+            if !current_requested_memory_heap_descriptor
+                .memory_type()
+                .satisfacted_by(heap_descriptor.property_flags)
+            {
+                continue 'suitable_heap_search;
             }
 
             // If I'm here the previous search has find that the current heap is suitable...

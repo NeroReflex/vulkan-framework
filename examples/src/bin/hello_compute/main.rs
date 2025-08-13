@@ -160,9 +160,7 @@ fn main() {
     let Ok(memory_heap) = MemoryHeap::new(
         device.clone(),
         ConcreteMemoryHeapDescriptor::new(
-            MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostVisibile {
-                cached: false,
-            })),
+            MemoryType::device_local_and_host_visible(),
             1024 * 1024 * 512, // Memory heap with at least 512MiB of memory
         ),
         MemoryRequirements::try_from([&image_handle as &dyn AllocationRequiring].as_slice())

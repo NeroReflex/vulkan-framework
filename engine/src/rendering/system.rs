@@ -31,7 +31,7 @@ use vulkan_framework::{
     image_view::ImageView,
     instance::InstanceOwned,
     memory_barriers::{BufferMemoryBarrier, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
-    memory_heap::{MemoryHostVisibility, MemoryType},
+    memory_heap::MemoryType,
     memory_management::{DefaultMemoryManager, MemoryManagementTags, MemoryManagerTrait},
     memory_pool::MemoryPoolFeatures,
     pipeline_stage::{PipelineStage, PipelineStageRayTracingPipelineKHR, PipelineStages},
@@ -59,7 +59,10 @@ use crate::{
             hdr_transform::HDRTransform, mesh_rendering::MeshRendering, renderquad::RenderQuad,
         },
         rendering_dimensions::RenderingDimensions,
-        resources::{directional_lights::DirectionalLights, object::Manager as ResourceManager},
+        resources::{
+            directional_lights::DirectionalLights,
+            object::{Manager as ResourceManager, TLASRebuildDevice},
+        },
         surface::SurfaceHelper,
     },
 };
@@ -161,7 +164,7 @@ impl System {
             .unwrap();
 
         manager
-            .add_instance(sponza_object_id, IDENTITY_MATRIX)
+            .add_instance(sponza_object_id, IDENTITY_MATRIX, TLASRebuildDevice::GPU)
             .unwrap();
 
         /*
@@ -354,7 +357,7 @@ impl System {
             .allocate_resources(
                 // I don't care if the memory is visible or not to the host:
                 // I will use vkCmdUpdateBuffer to change memory content
-                &MemoryType::DeviceLocal(Some(MemoryHostVisibility::hidden())),
+                &MemoryType::device_local_and_host_visible(),
                 &MemoryPoolFeatures::default(),
                 view_projection_unallocated_buffers,
                 MemoryManagementTags::default().with_exclusivity(true),

@@ -74,7 +74,7 @@ impl DirectionalLights {
                 let mut mem_manager = self.memory_manager.lock().unwrap();
                 mem_manager
                     .allocate_resources(
-                        &MemoryType::DeviceLocal(None),
+                        &MemoryType::device_local(),
                         &MemoryPoolFeatures::new(false),
                         vec![light_buffer.into()],
                         MemoryManagementTags::default()

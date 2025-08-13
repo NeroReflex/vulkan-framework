@@ -332,7 +332,7 @@ impl MeshRendering {
         > = smallvec::smallvec![];
         for (index, image) in mem_manager
             .allocate_resources(
-                &MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostHidden)),
+                &MemoryType::device_local(),
                 &MemoryPoolFeatures::new(false),
                 gbuffer_depth_stencil_image_handles,
                 MemoryManagementTags::default()
@@ -366,7 +366,7 @@ impl MeshRendering {
         > = smallvec::smallvec![];
         for (index, image) in mem_manager
             .allocate_resources(
-                &MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostHidden)),
+                &MemoryType::device_local(),
                 &MemoryPoolFeatures::new(false),
                 gbuffer_position_image_handles,
                 MemoryManagementTags::default()
@@ -402,7 +402,7 @@ impl MeshRendering {
         > = smallvec::smallvec![];
         for (index, image) in mem_manager
             .allocate_resources(
-                &MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostHidden)),
+                &MemoryType::device_local(),
                 &MemoryPoolFeatures::new(false),
                 gbuffer_normal_image_handles,
                 MemoryManagementTags::default()
@@ -438,7 +438,7 @@ impl MeshRendering {
         > = smallvec::smallvec![];
         for (index, image) in mem_manager
             .allocate_resources(
-                &MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostHidden)),
+                &MemoryType::device_local(),
                 &MemoryPoolFeatures::new(false),
                 gbuffer_texture_image_handles,
                 MemoryManagementTags::default()

@@ -686,7 +686,7 @@ impl BottomLevelAccelerationStructure {
         )?;
 
         let buffer = memory_manager.allocate_resources(
-            &MemoryType::DeviceLocal(Some(MemoryHostVisibility::visible(false))),
+            &MemoryType::device_local_and_host_visible(),
             &MemoryPoolFeatures::new(true),
             vec![blas_buffer.into()],
             allocation_tags,
@@ -710,6 +710,8 @@ impl BottomLevelAccelerationStructure {
         debug_name: Option<&str>,
     ) -> VulkanResult<Arc<Self>> {
         let device = memory_manager.get_parent_device();
+
+        // TODO: assert the device is the same among all buffers
 
         let Some(as_ext) = device.ash_ext_acceleration_structure_khr() else {
             return Err(VulkanError::MissingExtension(String::from(

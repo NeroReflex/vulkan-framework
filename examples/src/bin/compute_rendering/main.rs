@@ -310,7 +310,7 @@ fn main() {
 
     let memory_heap = match MemoryHeap::new(
         device.clone(),
-        ConcreteMemoryHeapDescriptor::new(MemoryType::DeviceLocal(None), 1024 * 1024 * 512),
+        ConcreteMemoryHeapDescriptor::new(MemoryType::device_local(), 1024 * 1024 * 512),
         MemoryRequirements::try_from([&image as &dyn AllocationRequiring].as_slice()).unwrap(),
     ) {
         Ok(memory_heap) => memory_heap,

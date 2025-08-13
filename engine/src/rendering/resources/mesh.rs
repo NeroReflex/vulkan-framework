@@ -145,7 +145,7 @@ impl MeshManager {
         )?;
 
         let buffer = memory_manager.allocate_resources(
-            &MemoryType::DeviceLocal(Some(MemoryHostVisibility::visible(false))),
+            &MemoryType::device_local_and_host_visible(),
             &MemoryPoolFeatures::new(true),
             vec![UnallocatedResource::Buffer(backing_buffer)],
             Self::allocation_tags(),
@@ -177,7 +177,7 @@ impl MeshManager {
         )?;
 
         let buffer = memory_manager.allocate_resources(
-            &MemoryType::DeviceLocal(Some(MemoryHostVisibility::visible(false))),
+            &MemoryType::device_local_and_host_visible(),
             &MemoryPoolFeatures::new(true),
             vec![UnallocatedResource::Buffer(backing_buffer)],
             Self::allocation_tags(),
@@ -205,7 +205,7 @@ impl MeshManager {
         )?;
 
         let buffer = memory_manager.allocate_resources(
-            &MemoryType::DeviceLocal(Some(MemoryHostVisibility::visible(false))),
+            &MemoryType::device_local_and_host_visible(),
             &MemoryPoolFeatures::new(true),
             vec![UnallocatedResource::Buffer(backing_buffer)],
             Self::allocation_tags(),
