@@ -80,12 +80,12 @@ void main() {
     const vec3 origin = texture(gbuffer[0], position_xy).xyz;
 
     for (uint light_index = 0; light_index < directional_lighting_data.lights_count; light_index++) {
-        const vec3 direction = -1.0 * direction[light_index];
+        const vec3 ray_dir = -1.0 * direction[light_index];
 
         hitValue = true;
 
         if (!(origin.x == 0 && origin.y == 0 && origin.z == 0)) {
-            traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, origin.xyz + direction[light_index], 0.001, direction.xyz, 100000.0, 0);
+            traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, origin.xyz /*+ (ray_dir * 0.1)*/, 0.001, ray_dir, 100.0, 0);
             //                      gl_RayFlagsNoneEXT
         } else {
             hitValue = true;

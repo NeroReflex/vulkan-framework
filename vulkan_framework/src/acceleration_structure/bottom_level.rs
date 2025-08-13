@@ -125,7 +125,8 @@ impl BottomLevelTrianglesGroupDecl {
 
 /// Identity matrix to be loaded on `BottomLevelAccelerationStructureTransformBuffer`
 pub const IDENTITY_MATRIX: ash::vk::TransformMatrixKHR = ash::vk::TransformMatrixKHR {
-    matrix: [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+    //matrix: [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+    matrix: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
 };
 
 pub struct BottomLevelAccelerationStructureTransformBuffer {
@@ -480,6 +481,7 @@ impl BottomLevelAccelerationStructure {
                 ash::vk::AccelerationStructureGeometryKHR::default()
                     // TODO: .flags(ash::vk::GeometryFlagsKHR::NO_DUPLICATE_ANY_HIT_INVOCATION | ash::vk::GeometryFlagsKHR::OPAQUE)
                     .geometry_type(ash::vk::GeometryTypeKHR::TRIANGLES)
+                    .flags(crate::ash::vk::GeometryFlagsKHR::OPAQUE)
                     .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
                         triangles: ash::vk::AccelerationStructureGeometryTrianglesDataKHR::default(
                         )
