@@ -10,7 +10,7 @@ use vulkan_framework::{
             BottomLevelAccelerationStructure, BottomLevelAccelerationStructureIndexBuffer,
             BottomLevelAccelerationStructureTransformBuffer,
             BottomLevelAccelerationStructureVertexBuffer, BottomLevelTrianglesGroupDecl,
-            BottomLevelVerticesTopologyDecl, IDENTITY_MATRIX,
+            BottomLevelVerticesTopologyDecl,
         },
     },
     ash::vk::TransformMatrixKHR,
