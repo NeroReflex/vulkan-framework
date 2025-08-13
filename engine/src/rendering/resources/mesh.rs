@@ -349,9 +349,28 @@ impl MeshManager {
                 );
 
                 let primitives_count = blas.max_primitives_count();
-                recorder.build_blas(blas, 0, primitives_count, 0, 0);
+                recorder.build_blas(blas.clone(), 0, primitives_count, 0, 0);
 
-                // TODO: place a barrier to wait for the BLAS build to finish
+                recorder.buffer_barriers(
+                    [BufferMemoryBarrier::new(
+                        [PipelineStage::AccelerationStructureKHR(
+                            PipelineStageAccelerationStructureKHR::Build,
+                        )]
+                        .as_slice()
+                        .into(),
+                        [MemoryAccessAs::AccelerationStructureWrite]
+                            .as_slice()
+                            .into(),
+                        [PipelineStage::AllCommands].as_slice().into(),
+                        [MemoryAccessAs::AccelerationStructureRead]
+                            .as_slice()
+                            .into(),
+                        BufferSubresourceRange::new(blas.buffer(), 0u64, blas.buffer_size()),
+                        queue_family.clone(),
+                        queue_family.clone(),
+                    )]
+                    .as_slice(),
+                );
 
                 Ok(())
             },

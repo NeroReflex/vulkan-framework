@@ -1088,6 +1088,8 @@ impl Manager {
         // wait for all meshes to be fully loaded: we will need them for the TLAS construction
         self.mesh_manager.wait_load_blocking()?;
 
+        let mut buffer_barriers = Vec::new();
+
         // now recreate instances of the TLAS
         {
             let mem_map = MemoryMap::new(
@@ -1111,6 +1113,11 @@ impl Manager {
 
                 for mesh in obj_mesh.meshes.iter() {
                     let mesh_index = mesh.mesh_index;
+                    let blas = self
+                        .mesh_manager
+                        .fetch_loaded(mesh_index as usize)
+                        .unwrap()
+                        .clone();
                     for obj_instance in obj_instances.instances.iter() {
                         slice[instance_num] =
                             vulkan_framework::ash::vk::AccelerationStructureInstanceKHR {
@@ -1121,14 +1128,23 @@ impl Manager {
                                     vulkan_framework::ash::vk::Packed24_8::new(0x00, 0xFF),
                                 acceleration_structure_reference:
                                     vulkan_framework::ash::vk::AccelerationStructureReferenceKHR {
-                                        device_handle: self
-                                            .mesh_manager
-                                            .fetch_loaded(mesh_index as usize)
-                                            .as_ref()
-                                            .unwrap()
-                                            .device_addr(),
+                                        device_handle: blas.device_addr(),
                                     },
                             };
+
+                        buffer_barriers.push(BufferMemoryBarrier::new(
+                            [PipelineStage::TopOfPipe].as_slice().into(),
+                            [].as_slice().into(),
+                            [PipelineStage::AccelerationStructureKHR(
+                                PipelineStageAccelerationStructureKHR::Build,
+                            )]
+                            .as_slice()
+                            .into(),
+                            [MemoryAccessAs::AccelerationStructureRead, MemoryAccessAs::MemoryRead].as_slice().into(),
+                            BufferSubresourceRange::new(blas.buffer(), 0, blas.buffer_size()),
+                            self.queue_family.clone(),
+                            self.queue_family.clone(),
+                        ));
 
                         instance_num += 1;
                     }
@@ -1164,7 +1180,12 @@ impl Manager {
                             )]
                             .as_slice()
                             .into(),
-                            [MemoryAccessAs::MemoryRead].as_slice().into(),
+                            [
+                                MemoryAccessAs::AccelerationStructureRead,
+                                MemoryAccessAs::MemoryRead,
+                            ]
+                            .as_slice()
+                            .into(),
                             BufferSubresourceRange::new(
                                 tlas.instance_buffer().buffer(),
                                 0,
@@ -1176,6 +1197,8 @@ impl Manager {
                         .as_slice(),
                     );
 
+                    recorder.buffer_barriers(buffer_barriers.as_slice());
+
                     recorder.build_tlas(tlas.clone(), 0, max_instances);
 
                     recorder.buffer_barriers(
@@ -1185,9 +1208,17 @@ impl Manager {
                             )]
                             .as_slice()
                             .into(),
-                            [MemoryAccessAs::MemoryRead].as_slice().into(),
-                            [PipelineStage::BottomOfPipe].as_slice().into(),
-                            [].as_slice().into(),
+                            [MemoryAccessAs::AccelerationStructureWrite]
+                                .as_slice()
+                                .into(),
+                            [PipelineStage::AllCommands].as_slice().into(),
+                            [
+                                MemoryAccessAs::AccelerationStructureRead,
+                                MemoryAccessAs::MemoryRead,
+                                MemoryAccessAs::ShaderRead
+                            ]
+                            .as_slice()
+                            .into(),
                             BufferSubresourceRange::new(
                                 tlas.instance_buffer().buffer(),
                                 0,

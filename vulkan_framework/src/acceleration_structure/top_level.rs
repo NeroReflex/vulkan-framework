@@ -349,6 +349,11 @@ impl TopLevelAccelerationStructure {
     }
 
     #[inline(always)]
+    pub fn buffer(&self) -> Arc<dyn BufferTrait> {
+        self.buffer.clone()
+    }
+
+    #[inline(always)]
     pub fn instance_buffer(&self) -> &TopLevelAccelerationStructureInstanceBuffer {
         &self.instance_buffer
     }

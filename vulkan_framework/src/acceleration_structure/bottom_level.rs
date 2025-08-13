@@ -621,6 +621,11 @@ impl BottomLevelAccelerationStructure {
     }
 
     #[inline(always)]
+    pub fn buffer(&self) -> Arc<dyn BufferTrait> {
+        self.blas_buffer.clone()
+    }
+
+    #[inline(always)]
     pub fn buffer_size(&self) -> u64 {
         self.blas_buffer.size()
     }

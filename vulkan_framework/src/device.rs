@@ -574,7 +574,12 @@ impl Device {
                     enabled_extensions: enabled_extensions.clone(),
                 };
 
-                assert!(currently_selected_device_data.selected_device_features.texture_compression_bc != 0);
+                assert!(
+                    currently_selected_device_data
+                        .selected_device_features
+                        .texture_compression_bc
+                        != 0
+                );
 
                 println!("Found suitable device: {phy_device_name}");
 
