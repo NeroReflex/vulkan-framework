@@ -10,7 +10,7 @@ use vulkan_framework::{
             BottomLevelAccelerationStructure, BottomLevelAccelerationStructureIndexBuffer,
             BottomLevelAccelerationStructureTransformBuffer,
             BottomLevelAccelerationStructureVertexBuffer, BottomLevelTrianglesGroupDecl,
-            BottomLevelVerticesTopologyDecl, IDENTITY_MATRIX,
+            BottomLevelVerticesTopologyDecl,
         },
     },
     ash::vk::TransformMatrixKHR,
@@ -21,12 +21,12 @@ use vulkan_framework::{
     },
     device::DeviceOwned,
     memory_barriers::{BufferMemoryBarrier, MemoryAccessAs},
-    memory_heap::{MemoryHeapOwned, MemoryHostVisibility, MemoryType},
+    memory_heap::{MemoryHeapOwned, MemoryType},
     memory_management::{
         MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait, UnallocatedResource,
     },
     memory_pool::{MemoryMap, MemoryPoolBacked, MemoryPoolFeatures},
-    pipeline_stage::PipelineStage,
+    pipeline_stage::{PipelineStage, PipelineStageAccelerationStructureKHR},
     queue::Queue,
     queue_family::{QueueFamily, QueueFamilyOwned},
 };
@@ -145,7 +145,7 @@ impl MeshManager {
         )?;
 
         let buffer = memory_manager.allocate_resources(
-            &MemoryType::DeviceLocal(Some(MemoryHostVisibility::visible(false))),
+            &MemoryType::device_local_and_host_visible(),
             &MemoryPoolFeatures::new(true),
             vec![UnallocatedResource::Buffer(backing_buffer)],
             Self::allocation_tags(),
@@ -177,7 +177,7 @@ impl MeshManager {
         )?;
 
         let buffer = memory_manager.allocate_resources(
-            &MemoryType::DeviceLocal(Some(MemoryHostVisibility::visible(false))),
+            &MemoryType::device_local_and_host_visible(),
             &MemoryPoolFeatures::new(true),
             vec![UnallocatedResource::Buffer(backing_buffer)],
             Self::allocation_tags(),
@@ -205,7 +205,7 @@ impl MeshManager {
         )?;
 
         let buffer = memory_manager.allocate_resources(
-            &MemoryType::DeviceLocal(Some(MemoryHostVisibility::visible(false))),
+            &MemoryType::device_local_and_host_visible(),
             &MemoryPoolFeatures::new(true),
             vec![UnallocatedResource::Buffer(backing_buffer)],
             Self::allocation_tags(),
@@ -264,10 +264,13 @@ impl MeshManager {
         let queue_family = queue.get_parent_queue_family();
 
         let vertex_buffer_raw = vertex_buffer.buffer();
-        let vertex_buffer_size = vertex_buffer.buffer().size();
+        let vertex_buffer_size = vertex_buffer_raw.size();
 
-        let index_buffer_raw = vertex_buffer.buffer();
-        let index_buffer_size = vertex_buffer.buffer().size();
+        let index_buffer_raw = index_buffer.buffer();
+        let index_buffer_size = index_buffer_raw.size();
+
+        let transform_buffer_raw = transform_buffer.buffer();
+        let transform_buffer_size = transform_buffer_raw.size();
 
         let mut allocator = self.memory_manager.lock().unwrap();
 
@@ -291,8 +294,14 @@ impl MeshManager {
                         BufferMemoryBarrier::new(
                             [PipelineStage::Host].as_slice().into(),
                             [MemoryAccessAs::MemoryWrite].as_slice().into(),
-                            [PipelineStage::Transfer].as_slice().into(),
-                            [MemoryAccessAs::MemoryRead].as_slice().into(),
+                            [PipelineStage::AccelerationStructureKHR(
+                                PipelineStageAccelerationStructureKHR::Build,
+                            )]
+                            .as_slice()
+                            .into(),
+                            [MemoryAccessAs::AccelerationStructureRead]
+                                .as_slice()
+                                .into(),
                             BufferSubresourceRange::new(
                                 vertex_buffer_raw,
                                 0u64,
@@ -304,9 +313,34 @@ impl MeshManager {
                         BufferMemoryBarrier::new(
                             [PipelineStage::Host].as_slice().into(),
                             [MemoryAccessAs::MemoryWrite].as_slice().into(),
-                            [PipelineStage::Transfer].as_slice().into(),
-                            [MemoryAccessAs::MemoryRead].as_slice().into(),
+                            [PipelineStage::AccelerationStructureKHR(
+                                PipelineStageAccelerationStructureKHR::Build,
+                            )]
+                            .as_slice()
+                            .into(),
+                            [MemoryAccessAs::AccelerationStructureRead]
+                                .as_slice()
+                                .into(),
                             BufferSubresourceRange::new(index_buffer_raw, 0u64, index_buffer_size),
+                            queue_family.clone(),
+                            queue_family.clone(),
+                        ),
+                        BufferMemoryBarrier::new(
+                            [PipelineStage::Host].as_slice().into(),
+                            [MemoryAccessAs::MemoryWrite].as_slice().into(),
+                            [PipelineStage::AccelerationStructureKHR(
+                                PipelineStageAccelerationStructureKHR::Build,
+                            )]
+                            .as_slice()
+                            .into(),
+                            [MemoryAccessAs::AccelerationStructureRead]
+                                .as_slice()
+                                .into(),
+                            BufferSubresourceRange::new(
+                                transform_buffer_raw,
+                                0u64,
+                                transform_buffer_size,
+                            ),
                             queue_family.clone(),
                             queue_family.clone(),
                         ),
@@ -315,7 +349,28 @@ impl MeshManager {
                 );
 
                 let primitives_count = blas.max_primitives_count();
-                recorder.build_blas(blas, 0, primitives_count, 0, 0);
+                recorder.build_blas(blas.clone(), 0, primitives_count, 0, 0);
+
+                recorder.buffer_barriers(
+                    [BufferMemoryBarrier::new(
+                        [PipelineStage::AccelerationStructureKHR(
+                            PipelineStageAccelerationStructureKHR::Build,
+                        )]
+                        .as_slice()
+                        .into(),
+                        [MemoryAccessAs::AccelerationStructureWrite]
+                            .as_slice()
+                            .into(),
+                        [PipelineStage::AllCommands].as_slice().into(),
+                        [MemoryAccessAs::AccelerationStructureRead]
+                            .as_slice()
+                            .into(),
+                        BufferSubresourceRange::new(blas.buffer(), 0u64, blas.buffer_size()),
+                        queue_family.clone(),
+                        queue_family.clone(),
+                    )]
+                    .as_slice(),
+                );
 
                 Ok(())
             },

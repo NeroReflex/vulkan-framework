@@ -395,7 +395,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let rt_images: Vec<Arc<AllocatedImage>> = mem_manager
             .allocate_resources(
-                &MemoryType::DeviceLocal(None),
+                &MemoryType::device_local(),
                 &MemoryPoolFeatures::from([].as_slice()),
                 rt_image_handles,
                 MemoryManagementTags::default()
@@ -748,9 +748,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some("blas_transform_buffer"),
         )?;
 
-        let memory_type = MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostVisibile {
-            cached: false,
-        }));
+        let memory_type = MemoryType::device_local_and_host_visible();
 
         let allocated_buffers = mem_manager.allocate_resources(
             &memory_type,

@@ -13,7 +13,7 @@ use crate::{
     device::DeviceOwned,
     graphics_pipeline::AttributeType,
     instance::InstanceOwned,
-    memory_heap::{MemoryHostVisibility, MemoryType},
+    memory_heap::MemoryType,
     memory_management::{MemoryManagementTags, MemoryManagerTrait},
     memory_pool::{MemoryPoolBacked, MemoryPoolFeatures},
     prelude::{VulkanError, VulkanResult},
@@ -302,7 +302,6 @@ impl BottomLevelAccelerationStructureVertexBuffer {
             BufferUsage::from(
                 <BufferUsage as Into<ash::vk::BufferUsageFlags>>::into(usage).as_raw()
                     | (ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
-                        | ash::vk::BufferUsageFlags::VERTEX_BUFFER
                         | ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS)
                         .as_raw(),
             ),
@@ -327,8 +326,6 @@ impl BottomLevelAccelerationStructureVertexBuffer {
                 ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR,
             ) {
                 panic!("Buffer used as an acceleration structure vertex buffer was not created with ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR");
-            } else if !usage.contains(ash::vk::BufferUsageFlags::VERTEX_BUFFER) {
-                panic!("Buffer used as an acceleration structure vertex buffer was not created with VERTEX_BUFFER");
             } else if !usage.contains(ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS) {
                 panic!("Buffer used as an acceleration structure vertex buffer was not created with SHADER_DEVICE_ADDRESS");
             } else if buffer.size() < Self::size_from_vertices_topology(&vertices_topology) {
@@ -468,25 +465,6 @@ impl BottomLevelAccelerationStructure {
         Ok(build_sizes.acceleration_structure_size)
     }
 
-    fn ash_geometry_single<'a>(
-        triangles_decl: &BottomLevelTrianglesGroupDecl,
-        triangles_topology: &BottomLevelVerticesTopologyDecl,
-    ) -> ash::vk::AccelerationStructureGeometryKHR<'a> {
-        ash::vk::AccelerationStructureGeometryKHR::default()
-            // TODO: .flags(ash::vk::GeometryFlagsKHR::NO_DUPLICATE_ANY_HIT_INVOCATION | ash::vk::GeometryFlagsKHR::OPAQUE)
-            .geometry_type(ash::vk::GeometryTypeKHR::TRIANGLES)
-            .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
-                triangles: ash::vk::AccelerationStructureGeometryTrianglesDataKHR::default()
-                    .index_type(triangles_decl.vertex_indexing().ash_index_type())
-                    // this is very incredibly stupid: the vulkan specification states:
-                    // maxVertex is the number of vertices in vertexData minus one
-                    // See https://registry.khronos.org/vulkan/specs/latest/man/html/VkAccelerationStructureGeometryTrianglesDataKHR.html
-                    .max_vertex(triangles_decl.max_vertices() - 1)
-                    .vertex_format(triangles_topology.vertex_format().ash_format())
-                    .vertex_stride(triangles_topology.vertex_stride()),
-            })
-    }
-
     pub(crate) fn static_ash_geometry<'a>(
         geometries_decl: &[(
             &BottomLevelVerticesTopologyDecl,
@@ -499,21 +477,29 @@ impl BottomLevelAccelerationStructure {
         geometries_decl
             .iter()
             .map(|(t, g)| {
-                let mut data = Self::ash_geometry_single(g, t);
-
-                data.geometry.triangles.vertex_data = DeviceOrHostAddressConstKHR {
-                    device_address: vertex_buffer.buffer_device_addr(),
-                };
-
-                data.geometry.triangles.index_data = DeviceOrHostAddressConstKHR {
-                    device_address: index_buffer.buffer_device_addr(),
-                };
-
-                data.geometry.triangles.transform_data = DeviceOrHostAddressConstKHR {
-                    device_address: transform_buffer.buffer_device_addr(),
-                };
-
-                data
+                ash::vk::AccelerationStructureGeometryKHR::default()
+                    // TODO: .flags(ash::vk::GeometryFlagsKHR::NO_DUPLICATE_ANY_HIT_INVOCATION | ash::vk::GeometryFlagsKHR::OPAQUE)
+                    .geometry_type(ash::vk::GeometryTypeKHR::TRIANGLES)
+                    .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
+                        triangles: ash::vk::AccelerationStructureGeometryTrianglesDataKHR::default(
+                        )
+                        .index_type(g.vertex_indexing().ash_index_type())
+                        // this is very incredibly stupid: the vulkan specification states:
+                        // maxVertex is the number of vertices in vertexData minus one
+                        // See https://registry.khronos.org/vulkan/specs/latest/man/html/VkAccelerationStructureGeometryTrianglesDataKHR.html
+                        .max_vertex(g.max_vertices() - 1)
+                        .vertex_format(t.vertex_format().ash_format())
+                        .vertex_stride(t.vertex_stride())
+                        .vertex_data(DeviceOrHostAddressConstKHR {
+                            device_address: vertex_buffer.buffer_device_addr(),
+                        })
+                        .index_data(DeviceOrHostAddressConstKHR {
+                            device_address: index_buffer.buffer_device_addr(),
+                        })
+                        .transform_data(DeviceOrHostAddressConstKHR {
+                            device_address: transform_buffer.buffer_device_addr(),
+                        }),
+                    })
             })
             .collect::<smallvec::SmallVec<_>>()
     }
@@ -635,6 +621,11 @@ impl BottomLevelAccelerationStructure {
     }
 
     #[inline(always)]
+    pub fn buffer(&self) -> Arc<dyn BufferTrait> {
+        self.blas_buffer.clone()
+    }
+
+    #[inline(always)]
     pub fn buffer_size(&self) -> u64 {
         self.blas_buffer.size()
     }
@@ -686,7 +677,7 @@ impl BottomLevelAccelerationStructure {
         )?;
 
         let buffer = memory_manager.allocate_resources(
-            &MemoryType::DeviceLocal(Some(MemoryHostVisibility::visible(false))),
+            &MemoryType::device_local_and_host_visible(),
             &MemoryPoolFeatures::new(true),
             vec![blas_buffer.into()],
             allocation_tags,
@@ -710,6 +701,8 @@ impl BottomLevelAccelerationStructure {
         debug_name: Option<&str>,
     ) -> VulkanResult<Arc<Self>> {
         let device = memory_manager.get_parent_device();
+
+        // TODO: assert the device is the same among all buffers
 
         let Some(as_ext) = device.ash_ext_acceleration_structure_khr() else {
             return Err(VulkanError::MissingExtension(String::from(

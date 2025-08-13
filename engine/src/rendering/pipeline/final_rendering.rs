@@ -24,7 +24,7 @@ use vulkan_framework::{
     },
     image_view::{ImageView, ImageViewType},
     memory_barriers::{ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
-    memory_heap::{MemoryHostVisibility, MemoryType},
+    memory_heap::MemoryType,
     memory_management::{MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait},
     memory_pool::MemoryPoolFeatures,
     pipeline_layout::{PipelineLayout, PipelineLayoutDependant},
@@ -158,7 +158,7 @@ impl FinalRendering {
             smallvec::smallvec![];
         for (index, image) in mem_manager
             .allocate_resources(
-                &MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostHidden)),
+                &MemoryType::device_local(),
                 &MemoryPoolFeatures::new(false),
                 image_handles,
                 MemoryManagementTags::default()

@@ -40,17 +40,19 @@ use vulkan_framework::{
     },
     command_buffer::{CommandBufferRecorder, CommandBufferTrait, PrimaryCommandBuffer},
     command_pool::CommandPool,
+    deferred_host_operations::DeferredHostOperationKHR,
     descriptor_set_layout::DescriptorSetLayout,
     device::DeviceOwned,
     fence::{Fence, FenceWaiter},
     graphics_pipeline::{AttributeType, IndexType},
     image::Image2DDimensions,
     memory_barriers::{BufferMemoryBarrier, MemoryAccessAs},
-    memory_heap::{MemoryHostVisibility, MemoryType},
+    memory_heap::MemoryType,
     memory_management::{MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait},
     memory_pool::{MemoryMap, MemoryPoolBacked, MemoryPoolFeatures},
     pipeline_layout::PipelineLayout,
     pipeline_stage::{PipelineStage, PipelineStageAccelerationStructureKHR},
+    prelude::VulkanResult,
     queue::Queue,
     queue_family::{QueueFamily, QueueFamilyOwned},
     shader_stage_access::ShaderStagesAccess,
@@ -98,17 +100,54 @@ pub struct MaterialGPU {
     pub displacement_texture_index: u32,
 }
 
+enum TLASLoading {
+    GPU(FenceWaiter),
+    CPU(Arc<DeferredHostOperationKHR>),
+}
+
+impl From<FenceWaiter> for TLASLoading {
+    fn from(value: FenceWaiter) -> Self {
+        Self::GPU(value)
+    }
+}
+
+impl From<Arc<DeferredHostOperationKHR>> for TLASLoading {
+    fn from(value: Arc<DeferredHostOperationKHR>) -> Self {
+        Self::CPU(value)
+    }
+}
+
+impl TLASLoading {
+    fn complete(&self) -> VulkanResult<bool> {
+        match self {
+            Self::CPU(deferred) => todo!(),
+            Self::GPU(fence_waiter) => fence_waiter.complete(),
+        }
+    }
+}
+
 struct TLASStatus {
     tlas: Arc<TopLevelAccelerationStructure>,
-    loading: Option<FenceWaiter>,
+    loading: Option<TLASLoading>,
+}
+
+pub enum TLASRebuildDevice {
+    CPU,
+    GPU,
 }
 
 impl TLASStatus {
-    pub fn new(tlas: Arc<TopLevelAccelerationStructure>, loading: FenceWaiter) -> Self {
-        Self {
-            tlas,
-            loading: Some(loading),
-        }
+    pub fn new_gpu_loading(tlas: Arc<TopLevelAccelerationStructure>, loading: FenceWaiter) -> Self {
+        let loading = Some(loading.into());
+        Self { tlas, loading }
+    }
+
+    pub fn new_cpu_loading(
+        tlas: Arc<TopLevelAccelerationStructure>,
+        loading: Arc<DeferredHostOperationKHR>,
+    ) -> Self {
+        let loading = Some(loading.into());
+        Self { tlas, loading }
     }
 
     pub fn tlas(&self) -> Arc<TopLevelAccelerationStructure> {
@@ -209,9 +248,7 @@ impl Manager {
         let mut memory_allocator = memory_manager.lock().unwrap();
         let alloc_result = memory_allocator
             .allocate_resources(
-                &MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostVisibile {
-                    cached: false,
-                })),
+                &MemoryType::device_local_and_host_visible(),
                 &MemoryPoolFeatures::default(),
                 vec![stub_data_buffer.into()],
                 MemoryManagementTags::default()
@@ -224,9 +261,7 @@ impl Manager {
 
         let alloc_result = memory_allocator
             .allocate_resources(
-                &MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostVisibile {
-                    cached: false,
-                })),
+                &MemoryType::device_local_and_host_visible(),
                 &MemoryPoolFeatures::default(),
                 vec![current_mesh_to_material_map.into()],
                 MemoryManagementTags::default()
@@ -468,11 +503,7 @@ impl Manager {
                                 let buffer = {
                                     let mut allocator = self.memory_manager.lock().unwrap();
                                     let alloc_result = allocator.allocate_resources(
-                                        &MemoryType::DeviceLocal(Some(
-                                            MemoryHostVisibility::MemoryHostVisibile {
-                                                cached: false,
-                                            },
-                                        )),
+                                        &MemoryType::device_local_and_host_visible(),
                                         &MemoryPoolFeatures::default(),
                                         vec![buffer.into()],
                                         MemoryManagementTags::default()
@@ -884,7 +915,6 @@ impl Manager {
                 .buffer()
         };
 
-        // TODO: allow for multiple instances.
         let Some((vertices_topology, vertex_buffer)) = vertex_buffer.take() else {
             return Err(RenderingError::ResourceError(
                 ResourceError::MissingVertexBuffer,
@@ -983,6 +1013,7 @@ impl Manager {
         &mut self,
         object: usize,
         instance: InstanceDataType,
+        device: TLASRebuildDevice,
     ) -> RenderingResult<()> {
         let max_instances: usize = self
             .objects
@@ -1026,7 +1057,7 @@ impl Manager {
         let tlas = {
             let mut mem_manager = self.memory_manager.lock().unwrap();
             let instance_allocated_data = mem_manager.allocate_resources(
-                &MemoryType::DeviceLocal(Some(MemoryHostVisibility::visible(false))),
+                &MemoryType::device_local_and_host_visible(),
                 &MemoryPoolFeatures::new(true),
                 vec![instance_unallocated_buffer.into()],
                 MemoryManagementTags::default()
@@ -1057,6 +1088,8 @@ impl Manager {
         // wait for all meshes to be fully loaded: we will need them for the TLAS construction
         self.mesh_manager.wait_load_blocking()?;
 
+        let mut buffer_barriers = Vec::new();
+
         // now recreate instances of the TLAS
         {
             let mem_map = MemoryMap::new(
@@ -1080,6 +1113,11 @@ impl Manager {
 
                 for mesh in obj_mesh.meshes.iter() {
                     let mesh_index = mesh.mesh_index;
+                    let blas = self
+                        .mesh_manager
+                        .fetch_loaded(mesh_index as usize)
+                        .unwrap()
+                        .clone();
                     for obj_instance in obj_instances.instances.iter() {
                         slice[instance_num] =
                             vulkan_framework::ash::vk::AccelerationStructureInstanceKHR {
@@ -1090,14 +1128,23 @@ impl Manager {
                                     vulkan_framework::ash::vk::Packed24_8::new(0x00, 0xFF),
                                 acceleration_structure_reference:
                                     vulkan_framework::ash::vk::AccelerationStructureReferenceKHR {
-                                        device_handle: self
-                                            .mesh_manager
-                                            .fetch_loaded(mesh_index as usize)
-                                            .as_ref()
-                                            .unwrap()
-                                            .device_addr(),
+                                        device_handle: blas.device_addr(),
                                     },
                             };
+
+                        buffer_barriers.push(BufferMemoryBarrier::new(
+                            [PipelineStage::TopOfPipe].as_slice().into(),
+                            [].as_slice().into(),
+                            [PipelineStage::AccelerationStructureKHR(
+                                PipelineStageAccelerationStructureKHR::Build,
+                            )]
+                            .as_slice()
+                            .into(),
+                            [MemoryAccessAs::AccelerationStructureRead, MemoryAccessAs::MemoryRead].as_slice().into(),
+                            BufferSubresourceRange::new(blas.buffer(), 0, blas.buffer_size()),
+                            self.queue_family.clone(),
+                            self.queue_family.clone(),
+                        ));
 
                         instance_num += 1;
                     }
@@ -1113,68 +1160,91 @@ impl Manager {
             Some("successive_tlas_commandl_buffer"),
         )?;
 
-        let command_buffer = PrimaryCommandBuffer::new(
-            self.command_pool.clone(),
-            Some("successive_tlas_commandl_buffer"),
-        )?;
-
-        command_buffer.record_one_time_submit(|recorder| {
-            recorder.buffer_barriers(
-                [BufferMemoryBarrier::new(
-                    [PipelineStage::Host].as_slice().into(),
-                    [MemoryAccessAs::HostWrite].as_slice().into(),
-                    [PipelineStage::AccelerationStructureKHR(
-                        PipelineStageAccelerationStructureKHR::Build,
-                    )]
-                    .as_slice()
-                    .into(),
-                    [MemoryAccessAs::MemoryRead].as_slice().into(),
-                    BufferSubresourceRange::new(
-                        tlas.instance_buffer().buffer(),
-                        0,
-                        tlas.instance_buffer().buffer().size(),
-                    ),
-                    self.queue_family.clone(),
-                    self.queue_family.clone(),
-                )]
-                .as_slice(),
-            );
-
-            recorder.build_tlas(tlas.clone(), 0, max_instances);
-
-            recorder.buffer_barriers(
-                [BufferMemoryBarrier::new(
-                    [PipelineStage::AccelerationStructureKHR(
-                        PipelineStageAccelerationStructureKHR::Build,
-                    )]
-                    .as_slice()
-                    .into(),
-                    [MemoryAccessAs::MemoryRead].as_slice().into(),
-                    [PipelineStage::BottomOfPipe].as_slice().into(),
-                    [].as_slice().into(),
-                    BufferSubresourceRange::new(
-                        tlas.instance_buffer().buffer(),
-                        0,
-                        tlas.instance_buffer().buffer().size(),
-                    ),
-                    self.queue_family.clone(),
-                    self.queue_family.clone(),
-                )]
-                .as_slice(),
-            );
-        })?;
-
-        let fence_waiter = self.tlas_loading_queue.submit(
-            [command_buffer as Arc<dyn CommandBufferTrait>].as_slice(),
-            [].as_slice(),
-            [].as_slice(),
-            fence,
-        )?;
-
         // WARNING: overwriting the old value will also drop the FenceWaiter that might have
         // been there, meaning this is a blocking instruction that might wait
-        // for the GPU to finish the previous operation.
-        self.current_tlas = Some(TLASStatus::new(tlas, fence_waiter));
+        // for the GPU (and/or CPU) to finish the previous operation.
+        self.current_tlas = match device {
+            TLASRebuildDevice::GPU => {
+                let command_buffer = PrimaryCommandBuffer::new(
+                    self.command_pool.clone(),
+                    Some("successive_tlas_commandl_buffer"),
+                )?;
+
+                command_buffer.record_one_time_submit(|recorder| {
+                    recorder.buffer_barriers(
+                        [BufferMemoryBarrier::new(
+                            [PipelineStage::Host].as_slice().into(),
+                            [MemoryAccessAs::HostWrite].as_slice().into(),
+                            [PipelineStage::AccelerationStructureKHR(
+                                PipelineStageAccelerationStructureKHR::Build,
+                            )]
+                            .as_slice()
+                            .into(),
+                            [
+                                MemoryAccessAs::AccelerationStructureRead,
+                                MemoryAccessAs::MemoryRead,
+                            ]
+                            .as_slice()
+                            .into(),
+                            BufferSubresourceRange::new(
+                                tlas.instance_buffer().buffer(),
+                                0,
+                                tlas.instance_buffer().buffer().size(),
+                            ),
+                            self.queue_family.clone(),
+                            self.queue_family.clone(),
+                        )]
+                        .as_slice(),
+                    );
+
+                    recorder.buffer_barriers(buffer_barriers.as_slice());
+
+                    recorder.build_tlas(tlas.clone(), 0, max_instances);
+
+                    recorder.buffer_barriers(
+                        [BufferMemoryBarrier::new(
+                            [PipelineStage::AccelerationStructureKHR(
+                                PipelineStageAccelerationStructureKHR::Build,
+                            )]
+                            .as_slice()
+                            .into(),
+                            [MemoryAccessAs::AccelerationStructureWrite]
+                                .as_slice()
+                                .into(),
+                            [PipelineStage::AllCommands].as_slice().into(),
+                            [
+                                MemoryAccessAs::AccelerationStructureRead,
+                                MemoryAccessAs::MemoryRead,
+                                MemoryAccessAs::ShaderRead
+                            ]
+                            .as_slice()
+                            .into(),
+                            BufferSubresourceRange::new(
+                                tlas.instance_buffer().buffer(),
+                                0,
+                                tlas.instance_buffer().buffer().size(),
+                            ),
+                            self.queue_family.clone(),
+                            self.queue_family.clone(),
+                        )]
+                        .as_slice(),
+                    );
+                })?;
+
+                let fence_waiter = self.tlas_loading_queue.submit(
+                    [command_buffer as Arc<dyn CommandBufferTrait>].as_slice(),
+                    [].as_slice(),
+                    [].as_slice(),
+                    fence,
+                )?;
+
+                Some(TLASStatus::new_gpu_loading(tlas, fence_waiter))
+            }
+            TLASRebuildDevice::CPU => Some(TLASStatus::new_cpu_loading(
+                tlas.clone(),
+                DeferredHostOperationKHR::build_tlas(tlas, 0, max_instances)?,
+            )),
+        };
 
         Ok(())
     }
@@ -1199,7 +1269,7 @@ impl Manager {
     /// bind the index buffers and dispatch relevants draw calls.
     ///
     /// The mat3x4 is the transformation matrix of the mesh, and the u32 is the mesh index.
-    /// 
+    ///
     /// This function avoids rendering assets that are not completely loaded in GPU memory.
     pub fn guided_rendering(
         &self,
@@ -1245,7 +1315,7 @@ impl Manager {
                 continue;
             }
 
-            let transform_data = loaded_obj_mesh.load_transform.clone();
+            let transform_data = loaded_obj_mesh.load_transform;
 
             // just an optimization: avoid issuing lots of useless bind_vertex_buffers calls
             let mut last_bound_vertex_buffer = MAX_MESHES as u64;

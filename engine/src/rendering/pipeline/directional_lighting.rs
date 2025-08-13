@@ -26,7 +26,7 @@ use vulkan_framework::{
     },
     image_view::ImageView,
     memory_barriers::{BufferMemoryBarrier, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
-    memory_heap::{MemoryHostVisibility, MemoryType},
+    memory_heap::MemoryType,
     memory_management::{MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait},
     memory_pool::MemoryPoolFeatures,
     pipeline_layout::{PipelineLayout, PipelineLayoutDependant},
@@ -67,32 +67,35 @@ layout(std430, set = 0, binding = 2) readonly buffer directional_lights
 };
 
 layout(push_constant) uniform DirectionalLightingData {
-    uint light_index;
+    uint lights_count;
 } directional_lighting_data;
 
 layout(location = 0) rayPayloadEXT bool hitValue;
 
 void main() {
-    const vec2 resolution = vec2(imageSize(outputImage));
+    const ivec2 resolution = imageSize(outputImage);
 
     const vec2 position_xy = vec2(float(gl_LaunchIDEXT.x) / float(resolution.x), float(gl_LaunchIDEXT.y) / float(resolution.y));
 
     const vec3 origin = texture(gbuffer[0], position_xy).xyz;
-    const vec3 direction = -1.0 * direction[directional_lighting_data.light_index];
 
-    hitValue = true;
+    for (uint light_index = 0; light_index < directional_lighting_data.lights_count; light_index++) {
+        const vec3 direction = -1.0 * direction[light_index];
 
-    if (!(origin.x == 0 && origin.y == 0 && origin.z == 0)) {
-        traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, origin.xyz, 0.001, direction.xyz, 100000.0, 0);
-        //                      gl_RayFlagsNoneEXT
-    } else {
         hitValue = true;
+
+        if (!(origin.x == 0 && origin.y == 0 && origin.z == 0)) {
+            traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, origin.xyz + direction[light_index], 0.001, direction.xyz, 100000.0, 0);
+            //                      gl_RayFlagsNoneEXT
+        } else {
+            hitValue = true;
+        }
+
+        const uint light_hit_bool = (!hitValue ? 1 : 0) << (32 - light_index);
+
+        // Store the hit boolean to the image
+        imageAtomicOr(outputImage, ivec2(gl_LaunchIDEXT.xy), light_hit_bool);
     }
-
-    const uint light_hit_bool = (!hitValue ? 1 : 0) << (32 - directional_lighting_data.light_index);
-
-    // Store the hit boolean to the image
-    imageAtomicOr(outputImage, ivec2(gl_LaunchIDEXT.xy), light_hit_bool);
 }
 "#,
     glsl,
@@ -305,7 +308,7 @@ impl DirectionalLighting {
             let mut mem_manager = memory_manager.lock().unwrap();
 
             let raytracing_directions_allocated = mem_manager.allocate_resources(
-                &MemoryType::DeviceLocal(Some(MemoryHostVisibility::hidden())),
+                &MemoryType::device_local(),
                 &MemoryPoolFeatures::new(false),
                 raytracing_directions_unallocated,
                 MemoryManagementTags::default()
@@ -314,7 +317,7 @@ impl DirectionalLighting {
             )?;
 
             let raytracing_ldbuffer_allocated = mem_manager.allocate_resources(
-                &MemoryType::DeviceLocal(Some(MemoryHostVisibility::hidden())),
+                &MemoryType::device_local(),
                 &MemoryPoolFeatures::new(false),
                 raytracing_ldbuffer_unallocated,
                 MemoryManagementTags::default()
@@ -641,31 +644,29 @@ impl DirectionalLighting {
             .as_slice(),
         );
 
-        for light_index in 0..lights_count {
-            recorder.push_constant(
-                self.raytracing_pipeline.get_parent_pipeline_layout(),
-                [ShaderStageAccessIn::RayTracing(
-                    ShaderStageAccessInRayTracingKHR::RayGen,
-                )]
-                .as_slice()
-                .into(),
-                0,
-                unsafe { std::mem::transmute::<&u32, &[u8; 4]>(&light_index) },
-            );
+        recorder.push_constant(
+            self.raytracing_pipeline.get_parent_pipeline_layout(),
+            [ShaderStageAccessIn::RayTracing(
+                ShaderStageAccessInRayTracingKHR::RayGen,
+            )]
+            .as_slice()
+            .into(),
+            0,
+            unsafe { std::mem::transmute::<&u32, &[u8; 4]>(&lights_count) },
+        );
 
-            recorder.trace_rays(
-                self.raytracing_sbts[light_index as usize][current_frame].clone(),
-                match image_view.image().dimensions() {
-                    vulkan_framework::image::ImageDimensions::Image1D { extent } => {
-                        Image3DDimensions::new(extent.width(), 1, 1)
-                    }
-                    vulkan_framework::image::ImageDimensions::Image2D { extent } => {
-                        Image3DDimensions::new(extent.width(), extent.height(), 1)
-                    }
-                    vulkan_framework::image::ImageDimensions::Image3D { extent } => extent,
-                },
-            );
-        }
+        recorder.trace_rays(
+            self.raytracing_sbts[0][current_frame].clone(),
+            match image_view.image().dimensions() {
+                vulkan_framework::image::ImageDimensions::Image1D { extent } => {
+                    Image3DDimensions::new(extent.width(), 1, 1)
+                }
+                vulkan_framework::image::ImageDimensions::Image2D { extent } => {
+                    Image3DDimensions::new(extent.width(), extent.height(), 1)
+                }
+                vulkan_framework::image::ImageDimensions::Image3D { extent } => extent,
+            },
+        );
 
         recorder.image_barriers(
             [ImageMemoryBarrier::new(

@@ -16,7 +16,7 @@ use vulkan_framework::{
     descriptor_set_layout::DescriptorSetLayout,
     device::DeviceOwned,
     memory_barriers::{BufferMemoryBarrier, MemoryAccessAs},
-    memory_heap::{MemoryHostVisibility, MemoryType},
+    memory_heap::MemoryType,
     memory_management::{
         MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait, UnallocatedResource,
     },
@@ -234,7 +234,7 @@ impl MaterialManager {
         let mut mem_manager = memory_manager.lock().unwrap();
 
         let current_materials_allocated_buffer = mem_manager.allocate_resources(
-            &MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostHidden)),
+            &MemoryType::device_local_and_host_visible(),
             &MemoryPoolFeatures::new(false),
             vec![current_materials_unallocated_buffer.into()],
             MemoryManagementTags::default()
@@ -243,7 +243,7 @@ impl MaterialManager {
         )?;
 
         let materials_allocated_buffers = mem_manager.allocate_resources(
-            &MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostHidden)),
+            &MemoryType::device_local_and_host_visible(),
             &MemoryPoolFeatures::new(false),
             materials_unallocated_buffer,
             MemoryManagementTags::default()
@@ -252,7 +252,7 @@ impl MaterialManager {
         )?;
 
         let mesh_material_allocated_buffers = mem_manager.allocate_resources(
-            &MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostHidden)),
+            &MemoryType::device_local_and_host_visible(),
             &MemoryPoolFeatures::new(false),
             mesh_material_unallocated_buffers,
             MemoryManagementTags::default()

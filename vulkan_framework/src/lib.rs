@@ -4,6 +4,7 @@ pub mod buffer;
 pub mod command_buffer;
 pub mod command_pool;
 pub mod compute_pipeline;
+pub mod deferred_host_operations;
 pub mod descriptor_pool;
 pub mod descriptor_set;
 pub mod descriptor_set_layout;

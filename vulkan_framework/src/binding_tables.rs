@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::{
     buffer::{Buffer, BufferTrait, BufferUsage, ConcreteBufferDescriptor},
     device::DeviceOwned,
-    memory_heap::{MemoryHostVisibility, MemoryType},
+    memory_heap::MemoryType,
     memory_management::{MemoryManagementTags, MemoryManagerTrait},
     memory_pool::{MemoryMap, MemoryPoolBacked, MemoryPoolFeatures},
     prelude::{VulkanError, VulkanResult},
@@ -85,7 +85,7 @@ impl RaytracingBindingTables {
         allocation_tags: MemoryManagementTags,
     ) -> VulkanResult<Arc<Self>> {
         // memory type should be DeviceLocal for performance reasons, but also be host visible so that I can write to it
-        let memory_type = MemoryType::DeviceLocal(Some(MemoryHostVisibility::visible(false)));
+        let memory_type = MemoryType::device_local_and_host_visible();
 
         // memory pool features MUST include device addressable
         let memory_pool_features = MemoryPoolFeatures::new(true);

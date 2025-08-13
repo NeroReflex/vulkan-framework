@@ -34,7 +34,6 @@ use vulkan_framework::memory_allocator::StackAllocator;
 use vulkan_framework::memory_barriers::{ImageMemoryBarrier, MemoryAccess, MemoryAccessAs};
 use vulkan_framework::memory_heap::ConcreteMemoryHeapDescriptor;
 use vulkan_framework::memory_heap::MemoryHeap;
-use vulkan_framework::memory_heap::MemoryHostVisibility;
 use vulkan_framework::memory_heap::MemoryRequirements;
 use vulkan_framework::memory_heap::MemoryType;
 use vulkan_framework::memory_pool::MemoryMap;
@@ -160,9 +159,7 @@ fn main() {
     let Ok(memory_heap) = MemoryHeap::new(
         device.clone(),
         ConcreteMemoryHeapDescriptor::new(
-            MemoryType::DeviceLocal(Some(MemoryHostVisibility::MemoryHostVisibile {
-                cached: false,
-            })),
+            MemoryType::device_local_and_host_visible(),
             1024 * 1024 * 512, // Memory heap with at least 512MiB of memory
         ),
         MemoryRequirements::try_from([&image_handle as &dyn AllocationRequiring].as_slice())

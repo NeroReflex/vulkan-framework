@@ -9,7 +9,7 @@ use std::sync::Mutex;
 use crate::{
     buffer::{Buffer, BufferTrait, BufferUsage, ConcreteBufferDescriptor},
     device::{Device, DeviceOwned},
-    memory_heap::{MemoryHostVisibility, MemoryType},
+    memory_heap::MemoryType,
     memory_management::{MemoryManagementTags, MemoryManagerTrait},
     memory_pool::MemoryPoolFeatures,
     prelude::VulkanResult,
@@ -66,7 +66,7 @@ impl DeviceScratchBuffer {
         )?;
 
         let buffer = memory_manager.allocate_resources(
-            &MemoryType::DeviceLocal(Some(MemoryHostVisibility::visible(false))),
+            &MemoryType::device_local_and_host_visible(),
             &MemoryPoolFeatures::new(true),
             vec![backing_buffer.into()],
             allocation_tags,
