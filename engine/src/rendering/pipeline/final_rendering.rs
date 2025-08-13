@@ -24,7 +24,7 @@ use vulkan_framework::{
     },
     image_view::{ImageView, ImageViewType},
     memory_barriers::{ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
-    memory_heap::{MemoryHostVisibility, MemoryType},
+    memory_heap::MemoryType,
     memory_management::{MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait},
     memory_pool::MemoryPoolFeatures,
     pipeline_layout::{PipelineLayout, PipelineLayoutDependant},

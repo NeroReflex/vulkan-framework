@@ -7,47 +7,6 @@ use crate::{
 
 use std::{sync::Arc, u32};
 
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
-pub enum MemoryHostVisibility {
-    MemoryHostVisibile { cached: bool },
-    MemoryHostHidden,
-}
-
-impl MemoryHostVisibility {
-    pub fn visible(cached: bool) -> Self {
-        Self::MemoryHostVisibile { cached }
-    }
-
-    pub fn hidden() -> Self {
-        Self::MemoryHostHidden
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum MemoryHostCoherence {
-    // host coherence is implemented via memory being uncached, as stated by vulkan specification:
-    // "uncached memory is always host coherent"
-    Uncached,
-    Coherent,
-}
-
-/**
- * If DeviceOnly(None) is specified the selected memory heap will have:
- *  - VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT bit set
- *  - VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT bit NOT set
- *
- * If HostLocal is specified a memory heap with at least VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
- * is selected, if HostLocal(None) is selected a heap that is NOT host-coherent will be selected,
- * otherwise if Some(Uncached) is selected than a memory heap with VK_MEMORY_PROPERTY_HOST_CACHED_BIT unset.
- */
-/*
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum MemoryType {
-    DeviceLocal(Option<MemoryHostVisibility>),
-    HostLocal(Option<MemoryHostCoherence>),
-}
-*/
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct MemoryType(crate::ash::vk::MemoryPropertyFlags);

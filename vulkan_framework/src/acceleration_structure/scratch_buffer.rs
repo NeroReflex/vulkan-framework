@@ -9,7 +9,7 @@ use std::sync::Mutex;
 use crate::{
     buffer::{Buffer, BufferTrait, BufferUsage, ConcreteBufferDescriptor},
     device::{Device, DeviceOwned},
-    memory_heap::{MemoryHostVisibility, MemoryType},
+    memory_heap::MemoryType,
     memory_management::{MemoryManagementTags, MemoryManagerTrait},
     memory_pool::MemoryPoolFeatures,
     prelude::VulkanResult,

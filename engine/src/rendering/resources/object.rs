@@ -47,7 +47,7 @@ use vulkan_framework::{
     graphics_pipeline::{AttributeType, IndexType},
     image::Image2DDimensions,
     memory_barriers::{BufferMemoryBarrier, MemoryAccessAs},
-    memory_heap::{MemoryHostCoherence, MemoryHostVisibility, MemoryType},
+    memory_heap::MemoryType,
     memory_management::{MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait},
     memory_pool::{MemoryMap, MemoryPoolBacked, MemoryPoolFeatures},
     pipeline_layout::PipelineLayout,
@@ -1282,7 +1282,7 @@ impl Manager {
                 continue;
             }
 
-            let transform_data = loaded_obj_mesh.load_transform.clone();
+            let transform_data = loaded_obj_mesh.load_transform;
 
             // just an optimization: avoid issuing lots of useless bind_vertex_buffers calls
             let mut last_bound_vertex_buffer = MAX_MESHES as u64;

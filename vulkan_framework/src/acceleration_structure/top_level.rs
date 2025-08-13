@@ -7,7 +7,7 @@ use crate::{
     buffer::{AllocatedBuffer, Buffer, BufferTrait, BufferUsage, ConcreteBufferDescriptor},
     device::DeviceOwned,
     instance::InstanceOwned,
-    memory_heap::{MemoryHostVisibility, MemoryType},
+    memory_heap::MemoryType,
     memory_management::{MemoryManagementTags, MemoryManagerTrait},
     memory_pool::{MemoryPoolBacked, MemoryPoolFeatures},
     prelude::{VulkanError, VulkanResult},

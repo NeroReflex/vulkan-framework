@@ -13,7 +13,7 @@ use crate::{
     device::DeviceOwned,
     graphics_pipeline::AttributeType,
     instance::InstanceOwned,
-    memory_heap::{MemoryHostVisibility, MemoryType},
+    memory_heap::MemoryType,
     memory_management::{MemoryManagementTags, MemoryManagerTrait},
     memory_pool::{MemoryPoolBacked, MemoryPoolFeatures},
     prelude::{VulkanError, VulkanResult},

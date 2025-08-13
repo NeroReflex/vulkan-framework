@@ -21,7 +21,7 @@ use vulkan_framework::{
     },
     device::DeviceOwned,
     memory_barriers::{BufferMemoryBarrier, MemoryAccessAs},
-    memory_heap::{MemoryHeapOwned, MemoryHostVisibility, MemoryType},
+    memory_heap::{MemoryHeapOwned, MemoryType},
     memory_management::{
         MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait, UnallocatedResource,
     },

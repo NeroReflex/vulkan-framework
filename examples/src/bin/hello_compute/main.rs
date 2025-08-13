@@ -34,7 +34,6 @@ use vulkan_framework::memory_allocator::StackAllocator;
 use vulkan_framework::memory_barriers::{ImageMemoryBarrier, MemoryAccess, MemoryAccessAs};
 use vulkan_framework::memory_heap::ConcreteMemoryHeapDescriptor;
 use vulkan_framework::memory_heap::MemoryHeap;
-use vulkan_framework::memory_heap::MemoryHostVisibility;
 use vulkan_framework::memory_heap::MemoryRequirements;
 use vulkan_framework::memory_heap::MemoryType;
 use vulkan_framework::memory_pool::MemoryMap;

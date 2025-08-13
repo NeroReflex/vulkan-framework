@@ -160,7 +160,7 @@ impl System {
         let mut manager = self.resources_manager.lock().unwrap();
 
         let sponza_object_id = manager
-            .load_object(PathBuf::from("crytek_sponza.tar"), IDENTITY_MATRIX.clone())
+            .load_object(PathBuf::from("crytek_sponza.tar"), IDENTITY_MATRIX)
             .unwrap();
 
         manager
