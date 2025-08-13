@@ -29,7 +29,6 @@ impl TopLevelBLASGroupDecl {
     pub(crate) fn ash_geometry(&self) -> ash::vk::AccelerationStructureGeometryKHR {
         ash::vk::AccelerationStructureGeometryKHR::default()
             // TODO: .flags()
-            .flags(crate::ash::vk::GeometryFlagsKHR::OPAQUE)
             .geometry_type(ash::vk::GeometryTypeKHR::INSTANCES)
             .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
                 instances: ash::vk::AccelerationStructureGeometryInstancesDataKHR::default()
