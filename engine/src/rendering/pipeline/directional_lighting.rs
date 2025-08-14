@@ -70,7 +70,7 @@ layout(push_constant) uniform DirectionalLightingData {
     uint lights_count;
 } directional_lighting_data;
 
-layout(location = 0) rayPayloadEXT bool hitValue;
+layout(location = 0) rayPayloadEXT vec3 hitValue;
 
 void main() {
     const ivec2 resolution = imageSize(outputImage);
@@ -82,16 +82,14 @@ void main() {
     for (uint light_index = 0; light_index < directional_lighting_data.lights_count; light_index++) {
         const vec3 direction = -1.0 * direction[light_index];
 
-        hitValue = true;
+        hitValue = vec3(0.0, 0.0, 0.0);
 
         if (!(origin.x == 0 && origin.y == 0 && origin.z == 0)) {
             traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, origin.xyz + direction[light_index], 0.001, direction.xyz, 100000.0, 0);
             //                      gl_RayFlagsNoneEXT
-        } else {
-            hitValue = true;
         }
 
-        const uint light_hit_bool = (!hitValue ? 1 : 0) << (32 - light_index);
+        const uint light_hit_bool = (hitValue == vec3(0.0, 0.0, 0.0) ? 1 : 0) << (32 - light_index);
 
         // Store the hit boolean to the image
         imageAtomicOr(outputImage, ivec2(gl_LaunchIDEXT.xy), light_hit_bool);
@@ -109,10 +107,10 @@ const MISS_SPV: &[u32] = inline_spirv!(
 #version 460
 #extension GL_EXT_ray_tracing : require
 
-layout(location = 0) rayPayloadInEXT bool hitValue;
+layout(location = 0) rayPayloadInEXT vec3 hitValue;
 
 void main() {
-    hitValue = false;
+    hitValue = vec3(0.0, 0.0, 0.0);
 }
 "#,
     glsl,
@@ -125,11 +123,15 @@ const CHIT_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
 #extension GL_EXT_ray_tracing : require
+#extension GL_EXT_nonuniform_qualifier : enable
 
-layout(location = 0) rayPayloadInEXT bool hitValue;
+layout(location = 0) rayPayloadInEXT vec3 hitValue;
+
+hitAttributeEXT vec2 attribs;
 
 void main() {
-    hitValue = false;
+    const vec3 barycentricCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
+    hitValue = barycentricCoords;
 }
 "#,
     glsl,
