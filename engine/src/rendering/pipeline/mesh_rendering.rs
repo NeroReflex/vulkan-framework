@@ -56,11 +56,11 @@ layout (location = 5) in vec4 ModelMatrix_third_row;
 
 //layout (location = 3) in uint vMaterialIndex;
 
-layout (location = 0) out vec4 out_vPosition_worldspace_minus_eye_position;
+layout (location = 0) out vec4 out_vPosition_worldspace;
 layout (location = 1) out vec4 out_vNormal_worldspace;
 layout (location = 2) out vec2 out_vTextureUV;
-
-layout(location = 4) out flat vec4 eyePosition_worldspace;
+layout (location = 3) out vec4 out_vPosition_worldspace_minus_eye_position;
+layout (location = 4) out flat vec4 eyePosition_worldspace;
 
 layout(std140, set = 2, binding = 0) uniform camera_uniform {
 	mat4 viewMatrix;
@@ -74,10 +74,11 @@ layout(push_constant) uniform MeshData {
 
 void main() {
     const mat4 LoadMatrix = mat4(mesh_data.load_matrix[0], mesh_data.load_matrix[1], mesh_data.load_matrix[2], vec4(0.0, 0.0, 0.0, 1.0));
+    const mat4 InstanceMatrix = mat4(ModelMatrix_first_row, ModelMatrix_second_row, ModelMatrix_third_row, vec4(0.0, 0.0, 0.0, 1.0));
 
-    const mat4 ModelMatrix = mat4(ModelMatrix_first_row, ModelMatrix_second_row, ModelMatrix_third_row, vec4(0.0, 0.0, 0.0, 1.0));
+    const mat4 ModelMatrix = InstanceMatrix * LoadMatrix;
 
-    const mat4 MVP = camera.projectionMatrix * camera.viewMatrix * ModelMatrix * LoadMatrix; 
+    const mat4 MVP = camera.projectionMatrix * camera.viewMatrix * ModelMatrix; 
 
     // Get the eye position
 	const vec4 eye_position = vec4(camera.viewMatrix[3][0], camera.viewMatrix[3][1], camera.viewMatrix[3][2], 1.0);
@@ -106,11 +107,11 @@ layout (location = 1) out vec4 out_vNormal;             // Search for GBUFFER_FB
 layout (location = 2) out vec4 out_vDiffuse;            // Search for GBUFFER_FB2
 // ===============================================================================================================
 
-layout (location = 0) in vec4 in_vPosition_worldspace_minus_eye_position;
+layout (location = 0) in vec4 in_vPosition_worldspace;
 layout (location = 1) in vec4 in_vNormal_worldspace;
 layout (location = 2) in vec2 in_vTextureUV;
-
-layout(location = 4) in flat vec4 in_eyePosition_worldspace;
+layout (location = 3) in vec4 in_vPosition_worldspace_minus_eye_position;
+layout (location = 4) in flat vec4 in_eyePosition_worldspace;
 
 layout(push_constant) uniform MeshData {
     mat3x4 load_matrix;
@@ -143,7 +144,7 @@ layout(std430, set = 1, binding = 1) readonly buffer meshes
 
 void main() {
     // Calculate position of the current fragment
-    vec4 vPosition_worldspace = vec4((in_vPosition_worldspace_minus_eye_position + in_eyePosition_worldspace).xyz, 1.0);
+    //vec4 vPosition_worldspace = vec4((in_vPosition_worldspace_minus_eye_position + in_eyePosition_worldspace).xyz, 1.0);
 
     vec3 dFdxPos = dFdx( in_vPosition_worldspace_minus_eye_position.xyz );
 	vec3 dFdyPos = dFdy( in_vPosition_worldspace_minus_eye_position.xyz );
@@ -157,9 +158,9 @@ void main() {
 
     // in OpenGL depth is in range [-1;+1], while in vulkan it is [0.0;1.0]
     // see https://docs.vulkan.org/guide/latest/depth.html "Porting from OpenGL"
-    vPosition_worldspace.z = (vPosition_worldspace.z + vPosition_worldspace.w) * 0.5;
+    //vPosition_worldspace.z = (vPosition_worldspace.z + vPosition_worldspace.w) * 0.5;
 
-    out_vPosition = vPosition_worldspace;
+    out_vPosition = in_vPosition_worldspace;
     out_vNormal = vec4(bestNormal.xyz, 0.0);
     out_vDiffuse = texture(textures[diffuse_texture_index], in_vTextureUV);
 }

@@ -53,6 +53,8 @@ const RAYGEN_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
 #extension GL_EXT_ray_tracing : require
+#extension GL_EXT_ray_flags_primitive_culling : require
+#extension GL_EXT_nonuniform_qualifier : enable
 
 layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
 
@@ -70,7 +72,7 @@ layout(push_constant) uniform DirectionalLightingData {
     uint lights_count;
 } directional_lighting_data;
 
-layout(location = 0) rayPayloadEXT vec3 hitValue;
+layout(location = 0) rayPayloadEXT bool hitValue;
 
 void main() {
     const ivec2 resolution = imageSize(outputImage);
@@ -82,14 +84,14 @@ void main() {
     for (uint light_index = 0; light_index < directional_lighting_data.lights_count; light_index++) {
         const vec3 direction = -1.0 * direction[light_index];
 
-        hitValue = vec3(0.0, 0.0, 0.0);
+        hitValue = true;
 
-        if (!(origin.x == 0 && origin.y == 0 && origin.z == 0)) {
-            traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, origin.xyz + direction[light_index], 0.001, direction.xyz, 100000.0, 0);
+        //if (!(origin.x == 0 && origin.y == 0 && origin.z == 0)) {
+            traceRayEXT(topLevelAS, gl_RayFlagsSkipAABBEXT | gl_RayFlagsCullNoOpaqueEXT | gl_RayFlagsTerminateOnFirstHitEXT, 0xff, 0, 0, 0, origin.xyz + direction[light_index], 0.001, direction.xyz, 100000.0, 0);
             //                      gl_RayFlagsNoneEXT
-        }
+        //}
 
-        const uint light_hit_bool = (hitValue == vec3(0.0, 0.0, 0.0) ? 1 : 0) << (32 - light_index);
+        const uint light_hit_bool = (!hitValue ? 1 : 0) << (32 - light_index);
 
         // Store the hit boolean to the image
         imageAtomicOr(outputImage, ivec2(gl_LaunchIDEXT.xy), light_hit_bool);
@@ -106,11 +108,12 @@ const MISS_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
 #extension GL_EXT_ray_tracing : require
+#extension GL_EXT_nonuniform_qualifier : enable
 
-layout(location = 0) rayPayloadInEXT vec3 hitValue;
+layout(location = 0) rayPayloadInEXT bool hitValue;
 
 void main() {
-    hitValue = vec3(0.0, 0.0, 0.0);
+    hitValue = false;
 }
 "#,
     glsl,
@@ -125,13 +128,13 @@ const CHIT_SPV: &[u32] = inline_spirv!(
 #extension GL_EXT_ray_tracing : require
 #extension GL_EXT_nonuniform_qualifier : enable
 
-layout(location = 0) rayPayloadInEXT vec3 hitValue;
+layout(location = 0) rayPayloadInEXT bool hitValue;
 
-hitAttributeEXT vec2 attribs;
+//hitAttributeEXT vec2 attribs;
 
 void main() {
-    const vec3 barycentricCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
-    hitValue = barycentricCoords;
+    //const vec3 barycentricCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
+    //hitValue = barycentricCoords;
 }
 "#,
     glsl,
@@ -148,9 +151,6 @@ type LDBuffersType = smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO
 type RaytracingSBTPerDLightType =
     smallvec::SmallVec<[Arc<RaytracingBindingTables>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
 
-type RaytracingSBTType =
-    smallvec::SmallVec<[RaytracingSBTPerDLightType; MAX_DIRECTIONAL_LIGHTS as usize]>;
-
 pub struct DirectionalLighting {
     queue_family: Arc<QueueFamily>,
 
@@ -159,7 +159,7 @@ pub struct DirectionalLighting {
     raytracing_directions: DirectionsBuffersType,
     raytracing_ldbuffer: LDBuffersType,
 
-    raytracing_sbts: RaytracingSBTType,
+    raytracing_sbts: RaytracingSBTPerDLightType,
 
     raytracing_descriptor_sets:
         smallvec::SmallVec<[Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
@@ -332,22 +332,18 @@ impl DirectionalLighting {
                 .map(|allocated| allocated.buffer())
                 .collect::<DirectionsBuffersType>();
 
-            let raytracing_sbts = (0..MAX_DIRECTIONAL_LIGHTS)
-                .map(|_sbt_index| {
-                    (0..frames_in_flight)
-                        .map(|_frame_index| {
-                            RaytracingBindingTables::new(
-                                raytracing_pipeline.clone(),
-                                mem_manager.deref_mut(),
-                                MemoryManagementTags::default()
-                                    .with_name("directional_lighting".to_string())
-                                    .with_size(MemoryManagementTagSize::MediumSmall),
-                            )
-                            .unwrap()
-                        })
-                        .collect::<RaytracingSBTPerDLightType>()
+            let raytracing_sbts = (0..frames_in_flight)
+                .map(|_frame_index| {
+                    RaytracingBindingTables::new(
+                        raytracing_pipeline.clone(),
+                        mem_manager.deref_mut(),
+                        MemoryManagementTags::default()
+                            .with_name("directional_lighting".to_string())
+                            .with_size(MemoryManagementTagSize::MediumSmall),
+                    )
+                    .unwrap()
                 })
-                .collect::<RaytracingSBTType>();
+                .collect::<RaytracingSBTPerDLightType>();
 
             let raytracing_ldbuffer = raytracing_ldbuffer_allocated
                 .into_iter()
@@ -658,7 +654,7 @@ impl DirectionalLighting {
         );
 
         recorder.trace_rays(
-            self.raytracing_sbts[0][current_frame].clone(),
+            self.raytracing_sbts[current_frame].clone(),
             match image_view.image().dimensions() {
                 vulkan_framework::image::ImageDimensions::Image1D { extent } => {
                     Image3DDimensions::new(extent.width(), 1, 1)
@@ -677,7 +673,14 @@ impl DirectionalLighting {
                 )]
                 .as_slice()
                 .into(),
-                [].as_slice().into(),
+                [
+                    MemoryAccessAs::MemoryWrite,
+                    MemoryAccessAs::MemoryRead,
+                    MemoryAccessAs::ShaderWrite,
+                    MemoryAccessAs::ShaderRead,
+                ]
+                .as_slice()
+                .into(),
                 dlbuffer_stages,
                 dlbuffer_access,
                 self.raytracing_ldbuffer[current_frame].image().into(),

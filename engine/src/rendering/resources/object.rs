@@ -1140,7 +1140,12 @@ impl Manager {
                             )]
                             .as_slice()
                             .into(),
-                            [MemoryAccessAs::AccelerationStructureRead, MemoryAccessAs::MemoryRead].as_slice().into(),
+                            [
+                                MemoryAccessAs::AccelerationStructureRead,
+                                MemoryAccessAs::MemoryRead,
+                            ]
+                            .as_slice()
+                            .into(),
                             BufferSubresourceRange::new(blas.buffer(), 0, blas.buffer_size()),
                             self.queue_family.clone(),
                             self.queue_family.clone(),
@@ -1215,7 +1220,7 @@ impl Manager {
                             [
                                 MemoryAccessAs::AccelerationStructureRead,
                                 MemoryAccessAs::MemoryRead,
-                                MemoryAccessAs::ShaderRead
+                                MemoryAccessAs::ShaderRead,
                             ]
                             .as_slice()
                             .into(),

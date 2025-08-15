@@ -663,7 +663,7 @@ impl System {
                     directional_lighting_resources.deref(),
                     current_frame,
                     [PipelineStage::AllGraphics].as_slice().into(),
-                [MemoryAccessAs::ShaderRead].as_slice().into(),
+                    [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead].as_slice().into(),
                     recorder
                 );
 
