@@ -104,6 +104,49 @@ impl<'a> DescriptorSetWriter<'a> {
         Ok(())
     }
 
+    pub fn bind_combined_images_samplers_with_same_layout_and_sampler(
+        &mut self,
+        first_layout_id: u32,
+        layout: ImageLayout,
+        sampler: Arc<Sampler>,
+        images: &[Arc<ImageView>],
+    ) -> VulkanResult<()> {
+        let Some(used_res) = &mut self.used_resources else {
+            return Err(VulkanError::Framework(
+                FrameworkError::InvalidDescriptorSetUsage,
+            ));
+        };
+
+        if first_layout_id as usize + images.len() > used_res.len() {
+            return Err(VulkanError::Framework(
+                FrameworkError::DescriptorSetBindingOutOfRange,
+            ));
+        }
+
+        let mut bindee =
+            smallvec::SmallVec::<[(ImageLayout, Arc<ImageView>, Arc<Sampler>); 4]>::with_capacity(
+                images.len(),
+            );
+        for (idx, image_view) in images.iter().enumerate() {
+            if used_res[first_layout_id as usize + idx]
+                .replace(DescriptorSetBoundResource::CombinedImageViewSampler((
+                    image_view.clone(),
+                    sampler.clone(),
+                )))
+                .is_some()
+            {
+                return Err(VulkanError::Framework(
+                    FrameworkError::DescriptorSetBindingDuplicated,
+                ));
+            }
+
+            bindee.push((layout.clone(), image_view.clone(), sampler.clone()));
+        }
+
+        self.combined_image_sampler.push((first_layout_id, bindee));
+        Ok(())
+    }
+
     pub fn bind_combined_images_samplers(
         &mut self,
         first_layout_id: u32,
@@ -170,6 +213,43 @@ impl<'a> DescriptorSetWriter<'a> {
 
         self.sampled_images
             .push((first_layout_id, images.iter().cloned().collect()));
+        Ok(())
+    }
+
+    pub fn bind_storage_images_with_same_layout(
+        &mut self,
+        first_layout_id: u32,
+        images_layout: ImageLayout,
+        images: &[Arc<ImageView>],
+    ) -> VulkanResult<()> {
+        let Some(used_res) = &mut self.used_resources else {
+            return Err(VulkanError::Framework(
+                FrameworkError::InvalidDescriptorSetUsage,
+            ));
+        };
+
+        if first_layout_id as usize + images.len() > used_res.len() {
+            return Err(VulkanError::Framework(
+                FrameworkError::DescriptorSetBindingOutOfRange,
+            ));
+        }
+
+        let mut bindee =
+            smallvec::SmallVec::<[(ImageLayout, Arc<ImageView>); 4]>::with_capacity(images.len());
+        for (idx, image_view) in images.iter().enumerate() {
+            if used_res[first_layout_id as usize + idx]
+                .replace(DescriptorSetBoundResource::ImageView(image_view.clone()))
+                .is_some()
+            {
+                return Err(VulkanError::Framework(
+                    FrameworkError::DescriptorSetBindingDuplicated,
+                ));
+            }
+
+            bindee.push((images_layout.clone(), image_view.clone()));
+        }
+
+        self.storage_images.push((first_layout_id, bindee));
         Ok(())
     }
 

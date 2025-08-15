@@ -1,7 +1,10 @@
 use std::sync::{Arc, Mutex};
 
 use vulkan_framework::{
-    buffer::{AllocatedBuffer, Buffer, BufferSubresourceRange, BufferTrait, BufferUseAs, ConcreteBufferDescriptor},
+    buffer::{
+        AllocatedBuffer, Buffer, BufferSubresourceRange, BufferTrait, BufferUseAs,
+        ConcreteBufferDescriptor,
+    },
     device::DeviceOwned,
     memory_barriers::{BufferMemoryBarrier, MemoryAccessAs},
     memory_heap::MemoryType,
@@ -91,12 +94,8 @@ impl DirectionalLights {
                     [BufferMemoryBarrier::new(
                         [].as_slice().into(),
                         [].as_slice().into(),
-                        [PipelineStage::Transfer]
-                        .as_slice()
-                        .into(),
-                        [MemoryAccessAs::TransferWrite]
-                            .as_slice()
-                            .into(),
+                        [PipelineStage::Transfer].as_slice().into(),
+                        [MemoryAccessAs::TransferWrite].as_slice().into(),
                         BufferSubresourceRange::new(
                             buffer.clone() as Arc<dyn BufferTrait>,
                             0,
@@ -116,12 +115,8 @@ impl DirectionalLights {
 
                 recorder.buffer_barriers(
                     [BufferMemoryBarrier::new(
-                        [PipelineStage::Transfer]
-                        .as_slice()
-                        .into(),
-                        [MemoryAccessAs::TransferWrite]
-                            .as_slice()
-                            .into(),
+                        [PipelineStage::Transfer].as_slice().into(),
+                        [MemoryAccessAs::TransferWrite].as_slice().into(),
                         [PipelineStage::BottomOfPipe].as_slice().into(),
                         [].as_slice().into(),
                         BufferSubresourceRange::new(
