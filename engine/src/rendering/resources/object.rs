@@ -1123,7 +1123,7 @@ impl Manager {
                             vulkan_framework::ash::vk::AccelerationStructureInstanceKHR {
                                 transform: *obj_instance,
                                 instance_shader_binding_table_record_offset_and_flags:
-                                    vulkan_framework::ash::vk::Packed24_8::new(0, 0x01), // VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
+                                    vulkan_framework::ash::vk::Packed24_8::new(0, 0x07), // VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
                                 instance_custom_index_and_mask:
                                     vulkan_framework::ash::vk::Packed24_8::new(0x00, 0xFF),
                                 acceleration_structure_reference:
