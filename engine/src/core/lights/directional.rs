@@ -10,7 +10,7 @@ impl DirectionalLight {
     }
 
     pub fn direction(&self) -> glm::Vec3 {
-        self.direction
+        glm::normalize(self.direction)
     }
 
     pub fn albedo(&self) -> glm::Vec3 {

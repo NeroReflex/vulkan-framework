@@ -1,11 +1,13 @@
 use std::sync::{Arc, Mutex};
 
 use vulkan_framework::{
-    buffer::{AllocatedBuffer, Buffer, BufferTrait, BufferUseAs, ConcreteBufferDescriptor},
+    buffer::{AllocatedBuffer, Buffer, BufferSubresourceRange, BufferTrait, BufferUseAs, ConcreteBufferDescriptor},
     device::DeviceOwned,
+    memory_barriers::{BufferMemoryBarrier, MemoryAccessAs},
     memory_heap::MemoryType,
     memory_management::{MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait},
     memory_pool::MemoryPoolFeatures,
+    pipeline_stage::PipelineStage,
     queue::Queue,
     queue_family::{QueueFamily, QueueFamilyOwned},
 };
@@ -85,10 +87,52 @@ impl DirectionalLights {
                     .map_err(|err| err.into())
             },
             |recorder, _, buffer| {
+                recorder.buffer_barriers(
+                    [BufferMemoryBarrier::new(
+                        [].as_slice().into(),
+                        [].as_slice().into(),
+                        [PipelineStage::Transfer]
+                        .as_slice()
+                        .into(),
+                        [MemoryAccessAs::TransferWrite]
+                            .as_slice()
+                            .into(),
+                        BufferSubresourceRange::new(
+                            buffer.clone() as Arc<dyn BufferTrait>,
+                            0,
+                            4 * 6,
+                        ),
+                        self.queue.get_parent_queue_family(),
+                        self.queue.get_parent_queue_family(),
+                    )]
+                    .as_slice(),
+                );
+
                 recorder.update_buffer(
                     buffer.clone() as Arc<dyn BufferTrait>,
                     0,
-                    [glm::normalize(light.direction()), light.albedo()].as_slice(),
+                    [light.direction(), light.albedo()].as_slice(),
+                );
+
+                recorder.buffer_barriers(
+                    [BufferMemoryBarrier::new(
+                        [PipelineStage::Transfer]
+                        .as_slice()
+                        .into(),
+                        [MemoryAccessAs::TransferWrite]
+                            .as_slice()
+                            .into(),
+                        [PipelineStage::BottomOfPipe].as_slice().into(),
+                        [].as_slice().into(),
+                        BufferSubresourceRange::new(
+                            buffer.clone() as Arc<dyn BufferTrait>,
+                            0,
+                            4 * 6,
+                        ),
+                        self.queue.get_parent_queue_family(),
+                        self.queue.get_parent_queue_family(),
+                    )]
+                    .as_slice(),
                 );
 
                 Ok(())

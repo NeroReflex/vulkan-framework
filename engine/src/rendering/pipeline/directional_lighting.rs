@@ -82,8 +82,7 @@ void main() {
     const vec3 origin = texture(gbuffer[0], position_xy).xyz;
 
     for (uint light_index = 0; light_index < directional_lighting_data.lights_count; light_index++) {
-        //const vec3 direction = -1.0 * direction[light_index];
-        const vec3 direction = -1.0 * vec3(-0.6, -0.98, 0.00000001);
+        const vec3 direction = -1.0 * direction[light_index];
 
         hitValue = true;
 
@@ -593,17 +592,20 @@ impl DirectionalLighting {
                 .as_slice(),
             );
 
+            let mut light_index = 0u64;
             directional_lights.foreach(|dir_light| {
                 recorder.copy_buffer(
                     dir_light.clone(),
                     self.raytracing_directions[current_frame].clone(),
                     [(
                         0u64,
-                        (lights_count as u64) * size_of_direction,
+                        (light_index as u64) * size_of_direction,
                         size_of_direction,
                     )]
                     .as_slice(),
                 );
+
+                light_index += 1u64;
             });
 
             recorder.buffer_barriers(
@@ -615,7 +617,9 @@ impl DirectionalLighting {
                     )]
                     .as_slice()
                     .into(),
-                    [MemoryAccessAs::ShaderRead].as_slice().into(),
+                    [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead]
+                        .as_slice()
+                        .into(),
                     BufferSubresourceRange::new(
                         self.raytracing_directions[current_frame].clone(),
                         0,
