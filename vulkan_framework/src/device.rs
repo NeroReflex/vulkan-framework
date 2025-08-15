@@ -465,7 +465,10 @@ impl Device {
                                 .iter()
                                 .any(|supported_ext| requested_extension == supported_ext)
                             {
-                                println!("Requested extension {requested_extension} is not supported by physical device {phy_device_name}. This device won't be selected.");
+                                #[cfg(debug_assertions)]
+                                {
+                                    println!("Requested extension {requested_extension} is not supported by physical device {phy_device_name}. This device won't be selected.");
+                                }
                                 continue 'suitable_device_search;
                             }
                         }
@@ -581,7 +584,10 @@ impl Device {
                         != 0
                 );
 
-                println!("Found suitable device: {phy_device_name}");
+                #[cfg(debug_assertions)]
+                {
+                    println!("Found suitable device: {phy_device_name}");
+                }
 
                 match selected_physical_device {
                     Some(currently_selected_device) => {
