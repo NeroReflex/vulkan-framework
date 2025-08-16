@@ -57,14 +57,26 @@ const RAYGEN_SPV: &[u32] = inline_spirv!(
 #extension GL_EXT_ray_flags_primitive_culling : require
 #extension GL_EXT_nonuniform_qualifier : enable
 
+#define MAX_DIRECTIONAL_LIGHTS 8
+
 layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
+
+struct light_t {
+    float direction_x;
+    float direction_y;
+    float direction_z;
+
+    float intensity_x;
+    float intensity_y;
+    float intensity_z;
+};
 
 layout(std430, set = 0, binding = 1) readonly buffer directional_lights
 {
-    vec3 direction[];
+    light_t light[];
 };
 
-uniform layout(set = 0, binding = 2, r32ui) uimage2D outputImage[32];
+uniform layout(set = 0, binding = 2, r32f) image2D outputImage[MAX_DIRECTIONAL_LIGHTS];
 
 // gbuffer: 0 for position, 1 for normal, 2 for diffuse texture
 layout(set = 1, binding = 0) uniform sampler2D gbuffer[3];
@@ -81,21 +93,25 @@ void main() {
     const vec2 position_xy = vec2(float(gl_LaunchIDEXT.x) / float(resolution.x), float(gl_LaunchIDEXT.y) / float(resolution.y));
 
     const vec3 origin = texture(gbuffer[0], position_xy).xyz;
+    const vec3 normal = texture(gbuffer[1], position_xy).xyz;
 
     for (uint light_index = 0; light_index < directional_lighting_data.lights_count; light_index++) {
-        const vec3 direction = -1.0 * direction[light_index];
+        const vec3 light_dir = vec3(light[light_index].direction_x, light[light_index].direction_y, light[light_index].direction_z);
+        const vec3 ray_dir = -1.0 * light_dir;
 
         hitValue = true;
 
         if (!(origin.x == 0 && origin.y == 0 && origin.z == 0)) {
             // other flags: gl_RayFlagsCullNoOpaqueEXT gl_RayFlagsNoneEXT
-            traceRayEXT(topLevelAS, gl_RayFlagsSkipAABBEXT | gl_RayFlagsTerminateOnFirstHitEXT, 0xff, 0, 0, 0, origin.xyz + (0.5 * direction.xyz), 0.001, direction.xyz, 10000.0, 0);
+            traceRayEXT(topLevelAS, gl_RayFlagsSkipAABBEXT | gl_RayFlagsTerminateOnFirstHitEXT, 0xff, 0, 0, 0, origin.xyz + (0.5 * ray_dir.xyz), 0.001, ray_dir.xyz, 10000.0, 0);
         }
 
-        const uint light_hit_bool = (!hitValue ? 1 : 0) << (32 - light_index);
+        float contribution = 0.0;
+        if (!hitValue) {
+            contribution = max(dot(normal, ray_dir), 0.0);
+        }
 
-        // Store the hit boolean to the image
-        imageAtomicOr(outputImage[0], ivec2(gl_LaunchIDEXT.xy), light_hit_bool);
+        imageStore(outputImage[light_index], ivec2(gl_LaunchIDEXT.xy), vec4(contribution, 0.0, 0.0, 0.0));
     }
 }
 "#,
@@ -285,7 +301,7 @@ impl DirectionalLighting {
                             ImageMultisampling::SamplesPerPixel1,
                             1,
                             1,
-                            ImageFormat::from(CommonImageFormat::r32_uint),
+                            ImageFormat::from(CommonImageFormat::r32_sfloat),
                             ImageFlags::empty(),
                             ImageTiling::Optimal,
                         ),
@@ -305,7 +321,7 @@ impl DirectionalLighting {
                         [BufferUseAs::TransferDst, BufferUseAs::StorageBuffer]
                             .as_slice()
                             .into(),
-                        4u64 * 3u64 * (MAX_DIRECTIONAL_LIGHTS as u64),
+                        4u64 * 6u64 * (MAX_DIRECTIONAL_LIGHTS as u64),
                     ),
                     None,
                     Some(format!("raytracing_directions[{index}]").as_str()),
@@ -442,12 +458,20 @@ impl DirectionalLighting {
 
         let dlbuffer_descriptor_set_layout = DescriptorSetLayout::new(
             device.clone(),
-            [BindingDescriptor::new(
-                [ShaderStageAccessIn::Fragment].as_slice().into(),
-                BindingType::Native(NativeBindingType::CombinedImageSampler),
-                0,
-                MAX_DIRECTIONAL_LIGHTS,
-            )]
+            [
+                BindingDescriptor::new(
+                    [ShaderStageAccessIn::Fragment].as_slice().into(),
+                    BindingType::Native(NativeBindingType::StorageBuffer),
+                    0,
+                    1,
+                ),
+                BindingDescriptor::new(
+                    [ShaderStageAccessIn::Fragment].as_slice().into(),
+                    BindingType::Native(NativeBindingType::CombinedImageSampler),
+                    1,
+                    MAX_DIRECTIONAL_LIGHTS,
+                ),
+            ]
             .as_slice(),
         )?;
 
@@ -461,7 +485,7 @@ impl DirectionalLighting {
                     0,
                     0,
                     0,
-                    0,
+                    frames_in_flight,
                     0,
                     0,
                     None,
@@ -489,13 +513,24 @@ impl DirectionalLighting {
 
             descriptor_set.bind_resources(|binder| {
                 binder
-                    .bind_combined_images_samplers_with_same_layout_and_sampler(
+                    .bind_storage_buffers(
                         0,
+                        [(
+                            raytracing_directions[index].clone() as Arc<dyn BufferTrait>,
+                            None,
+                            None,
+                        )]
+                        .as_slice(),
+                    )
+                    .unwrap();
+                binder
+                    .bind_combined_images_samplers_with_same_layout_and_sampler(
+                        1,
                         ImageLayout::ShaderReadOnlyOptimal,
                         dlbuffer_sampler.clone(),
                         raytracing_ldbuffer[index].as_slice(),
                     )
-                    .unwrap()
+                    .unwrap();
             })?;
 
             dlbuffer_descriptor_sets.push(descriptor_set);
@@ -595,7 +630,7 @@ impl DirectionalLighting {
 
         // get the number of directional lights to compute and transfer into the buffer theirs directions
         let lights_count = directional_lights.count();
-        let size_of_direction = 4u64 * 3u64;
+        let size_of_light = 4u64 * 6u64;
 
         if lights_count > 0 {
             recorder.buffer_barriers(
@@ -607,7 +642,7 @@ impl DirectionalLighting {
                     BufferSubresourceRange::new(
                         self.raytracing_directions[current_frame].clone(),
                         0,
-                        (lights_count as u64) * size_of_direction,
+                        (lights_count as u64) * size_of_light,
                     ),
                     self.queue_family.clone(),
                     self.queue_family.clone(),
@@ -620,12 +655,7 @@ impl DirectionalLighting {
                 recorder.copy_buffer(
                     dir_light.clone(),
                     self.raytracing_directions[current_frame].clone(),
-                    [(
-                        0u64,
-                        (light_index as u64) * size_of_direction,
-                        size_of_direction,
-                    )]
-                    .as_slice(),
+                    [(0u64, (light_index as u64) * size_of_light, size_of_light)].as_slice(),
                 );
 
                 light_index += 1u64;
@@ -635,9 +665,12 @@ impl DirectionalLighting {
                 [BufferMemoryBarrier::new(
                     [PipelineStage::Transfer].as_slice().into(),
                     [MemoryAccessAs::TransferWrite].as_slice().into(),
-                    [PipelineStage::RayTracingPipelineKHR(
-                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                    )]
+                    [
+                        PipelineStage::RayTracingPipelineKHR(
+                            PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                        ),
+                        PipelineStage::AllGraphics,
+                    ]
                     .as_slice()
                     .into(),
                     [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead]
@@ -646,7 +679,7 @@ impl DirectionalLighting {
                     BufferSubresourceRange::new(
                         self.raytracing_directions[current_frame].clone(),
                         0,
-                        size_of_direction * (lights_count as u64),
+                        size_of_light * (lights_count as u64),
                     ),
                     self.queue_family.clone(),
                     self.queue_family.clone(),
@@ -688,38 +721,38 @@ impl DirectionalLighting {
             Image3DDimensions::new(self.renderarea_width, self.renderarea_height, 1),
         );
 
+        let mut image_barriers = vec![];
         for light_index in 0..MAX_DIRECTIONAL_LIGHTS {
             let image_srr: ImageSubresourceRange = self.raytracing_ldbuffer[current_frame]
                 [light_index as usize]
                 .image()
                 .into();
 
-            recorder.image_barriers(
-                [ImageMemoryBarrier::new(
-                    [PipelineStage::RayTracingPipelineKHR(
-                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                    )]
-                    .as_slice()
-                    .into(),
-                    [
-                        MemoryAccessAs::MemoryWrite,
-                        MemoryAccessAs::MemoryRead,
-                        MemoryAccessAs::ShaderWrite,
-                        MemoryAccessAs::ShaderRead,
-                    ]
-                    .as_slice()
-                    .into(),
-                    dlbuffer_stages,
-                    dlbuffer_access,
-                    image_srr,
-                    ImageLayout::General,
-                    ImageLayout::ShaderReadOnlyOptimal,
-                    self.queue_family.clone(),
-                    self.queue_family.clone(),
+            image_barriers.push(ImageMemoryBarrier::new(
+                [PipelineStage::RayTracingPipelineKHR(
+                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
                 )]
-                .as_slice(),
-            );
+                .as_slice()
+                .into(),
+                [
+                    MemoryAccessAs::MemoryWrite,
+                    MemoryAccessAs::MemoryRead,
+                    MemoryAccessAs::ShaderWrite,
+                    MemoryAccessAs::ShaderRead,
+                ]
+                .as_slice()
+                .into(),
+                dlbuffer_stages,
+                dlbuffer_access,
+                image_srr,
+                ImageLayout::General,
+                ImageLayout::ShaderReadOnlyOptimal,
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            ));
         }
+
+        recorder.image_barriers(&image_barriers.as_slice());
 
         self.dlbuffer_descriptor_sets[current_frame].clone()
     }

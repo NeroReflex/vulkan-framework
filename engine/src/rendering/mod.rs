@@ -39,4 +39,4 @@ pub(crate) const MAX_FRAMES_IN_FLIGHT_NO_MALLOC: usize = 4;
 pub(crate) const MAX_TEXTURES: u32 = 256;
 pub(crate) const MAX_MATERIALS: u32 = 128;
 pub(crate) const MAX_MESHES: u32 = 1024;
-pub(crate) const MAX_DIRECTIONAL_LIGHTS: u32 = 32;
+pub(crate) const MAX_DIRECTIONAL_LIGHTS: u32 = 8;

@@ -71,13 +71,29 @@ const FINAL_RENDERING_FRAGMENT_SPV: &[u32] = inline_spirv!(
     r#"
 #version 450 core
 
-layout(location = 0) out vec4 outColor;
+#define MAX_DIRECTIONAL_LIGHTS 8
+
+layout (location = 0) out vec4 outColor;
 
 layout (location = 0) in vec2 in_vTextureUV;
 
+struct light_t {
+    float direction_x;
+    float direction_y;
+    float direction_z;
+
+    float intensity_x;
+    float intensity_y;
+    float intensity_z;
+};
+
 // gbuffer: 0 for position, 1 for normal, 2 for diffuse texture
 layout(set = 0, binding = 0) uniform sampler2D gbuffer[3];
-layout(set = 1, binding = 0) uniform usampler2D dlbuffer[32];
+layout(set = 1, binding = 1) uniform sampler2D dlbuffer[MAX_DIRECTIONAL_LIGHTS];
+layout(std430, set = 1, binding = 0) readonly buffer directional_lights
+{
+    light_t light[];
+};
 
 void main() {
     const vec3 in_vPosition_worldspace = texture(gbuffer[0], in_vTextureUV).xyz;
@@ -86,10 +102,11 @@ void main() {
 
     vec3 out_vDiffuseAlbedo = vec3(0.0, 0.0, 0.0);
 
-    const uvec4 in_dir_lights_collisions = texture(dlbuffer[0], in_vTextureUV);
-    for (uint dl_index = 0; dl_index < 32; dl_index++) {
-        if ((in_dir_lights_collisions.x & (1 << (32 - dl_index))) != 0) {
-            out_vDiffuseAlbedo += in_vDiffuseAlbedo.xyz;
+    for (uint dl_index = 0; dl_index < MAX_DIRECTIONAL_LIGHTS; dl_index++) {
+        const float dl_contribution = texture(dlbuffer[dl_index], in_vTextureUV).r;
+        if (dl_contribution > 0.00001) {
+            const vec3 intensity = vec3(light[dl_index].intensity_x, light[dl_index].intensity_y, light[dl_index].intensity_z);
+            out_vDiffuseAlbedo += in_vDiffuseAlbedo.xyz * intensity * dl_contribution;
         }
     }
 
