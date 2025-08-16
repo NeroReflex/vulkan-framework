@@ -31,6 +31,10 @@ impl SpectatorCamera {
         self.vert_angle += amount;
     }
 
+    pub fn apply_movement(&mut self, move_vect: glm::Vec3, amount: f32) {
+        self.position = self.position + (move_vect * amount);
+    }
+
     pub fn new(
         position: glm::Vec3,
         head: glm::Vec3,
