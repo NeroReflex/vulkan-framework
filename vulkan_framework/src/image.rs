@@ -364,7 +364,12 @@ impl From<Arc<dyn ImageTrait>> for ImageSubresourceRange {
 }
 
 impl ImageSubresourceRange {
-    #[inline]
+    #[inline(always)]
+    pub fn aspects(&self) -> &ImageAspects {
+        &self.image_aspects
+    }
+
+    #[inline(always)]
     pub fn image(&self) -> Arc<dyn ImageTrait> {
         self.image.clone()
     }

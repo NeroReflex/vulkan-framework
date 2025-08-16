@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
+use ash::vk::Handle;
+
 use crate::{
-    command_buffer::ClearValues,
-    image::{ImageFormat, ImageLayout},
+    clear_values::{ColorClearValues, DepthClearValues, StencilClearValues},
+    image::ImageFormat,
     image_view::ImageView,
 };
 
@@ -72,47 +74,190 @@ impl DynamicRendering {
     }
 }
 
+/// When beginning a rendering operation an attachment can either have:
+///   - its initial state set to the previous state of the attachment (recycle previous data)
+///   - its initial state set to being cleared with either a specific color or any color (as in you don't care)
+#[derive(Debug, Clone)]
+pub enum RenderingAttachmentSetup<T>
+where
+    T: Into<crate::ash::vk::ClearValue>,
+{
+    Load,
+    Clear(Option<T>),
+}
+
+impl<T> RenderingAttachmentSetup<T>
+where
+    T: Into<crate::ash::vk::ClearValue>,
+{
+    pub fn load() -> Self {
+        Self::Load
+    }
+
+    pub fn clear(value: T) -> Self {
+        Self::Clear(Some(value))
+    }
+
+    pub fn dont_care() -> Self {
+        Self::Clear(None)
+    }
+}
+
+impl<T> Into<crate::ash::vk::AttachmentLoadOp> for RenderingAttachmentSetup<T>
+where
+    T: Into<crate::ash::vk::ClearValue>,
+{
+    fn into(self) -> crate::ash::vk::AttachmentLoadOp {
+        match self {
+            RenderingAttachmentSetup::Load => crate::ash::vk::AttachmentLoadOp::LOAD,
+            RenderingAttachmentSetup::Clear(maybe_clear) => match maybe_clear {
+                Some(_) => crate::ash::vk::AttachmentLoadOp::CLEAR,
+                None => crate::ash::vk::AttachmentLoadOp::DONT_CARE,
+            },
+        }
+    }
+}
+
+impl<T> Into<crate::ash::vk::ClearValue> for RenderingAttachmentSetup<T>
+where
+    T: Into<crate::ash::vk::ClearValue>,
+{
+    fn into(self) -> crate::ash::vk::ClearValue {
+        match self {
+            RenderingAttachmentSetup::Load => crate::ash::vk::ClearValue::default(),
+            RenderingAttachmentSetup::Clear(maybe_clear) => match maybe_clear {
+                Some(clear_value) => clear_value.into(),
+                None => crate::ash::vk::ClearValue::default(),
+            },
+        }
+    }
+}
+
 #[derive(Clone)]
-pub struct DynamicRenderingAttachment(
+pub struct DynamicRenderingColorAttachment(
     Arc<ImageView>,
-    ImageLayout,
-    ClearValues,
-    AttachmentLoadOp,
+    RenderingAttachmentSetup<ColorClearValues>,
     AttachmentStoreOp,
 );
 
-impl DynamicRenderingAttachment {
+impl<'a> Into<crate::ash::vk::RenderingAttachmentInfo<'a>> for DynamicRenderingColorAttachment {
+    fn into(self) -> crate::ash::vk::RenderingAttachmentInfo<'a> {
+        ash::vk::RenderingAttachmentInfo::default()
+            .image_layout(crate::ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .image_view(ash::vk::ImageView::from_raw(self.0.native_handle()))
+            .store_op(self.2.into())
+            .load_op(self.1.clone().into())
+            .clear_value(self.1.into())
+    }
+}
+
+impl DynamicRenderingColorAttachment {
     #[inline]
     pub fn image_view(&self) -> Arc<ImageView> {
         self.0.clone()
     }
 
-    pub fn image_layout(&self) -> &ImageLayout {
+    #[inline]
+    pub fn clear_value(&self) -> &RenderingAttachmentSetup<ColorClearValues> {
         &self.1
     }
 
     #[inline]
-    pub fn clear_value(&self) -> &ClearValues {
-        &self.2
-    }
-
-    #[inline]
-    pub fn load_op(&self) -> &AttachmentLoadOp {
-        &self.3
-    }
-
-    #[inline]
     pub fn store_op(&self) -> &AttachmentStoreOp {
-        &self.4
+        &self.2
     }
 
     pub fn new(
         image_view: Arc<ImageView>,
-        image_layout: ImageLayout,
-        clear_value: ClearValues,
-        load_op: AttachmentLoadOp,
+        load_op: RenderingAttachmentSetup<ColorClearValues>,
         store_op: AttachmentStoreOp,
     ) -> Self {
-        Self(image_view, image_layout, clear_value, load_op, store_op)
+        Self(image_view, load_op, store_op)
+    }
+}
+
+#[derive(Clone)]
+pub struct DynamicRenderingDepthAttachment(
+    Arc<ImageView>,
+    RenderingAttachmentSetup<DepthClearValues>,
+    AttachmentStoreOp,
+);
+
+impl<'a> Into<crate::ash::vk::RenderingAttachmentInfo<'a>> for DynamicRenderingDepthAttachment {
+    fn into(self) -> crate::ash::vk::RenderingAttachmentInfo<'a> {
+        ash::vk::RenderingAttachmentInfo::default()
+            .image_layout(crate::ash::vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
+            .image_view(ash::vk::ImageView::from_raw(self.0.native_handle()))
+            .store_op(self.2.into())
+            .load_op(self.1.clone().into())
+            .clear_value(self.1.into())
+    }
+}
+
+impl DynamicRenderingDepthAttachment {
+    #[inline]
+    pub fn image_view(&self) -> Arc<ImageView> {
+        self.0.clone()
+    }
+
+    #[inline]
+    pub fn clear_value(&self) -> &RenderingAttachmentSetup<DepthClearValues> {
+        &self.1
+    }
+
+    #[inline]
+    pub fn store_op(&self) -> &AttachmentStoreOp {
+        &self.2
+    }
+
+    pub fn new(
+        image_view: Arc<ImageView>,
+        load_op: RenderingAttachmentSetup<DepthClearValues>,
+        store_op: AttachmentStoreOp,
+    ) -> Self {
+        Self(image_view, load_op, store_op)
+    }
+}
+
+#[derive(Clone)]
+pub struct DynamicRenderingStencilAttachment(
+    Arc<ImageView>,
+    RenderingAttachmentSetup<StencilClearValues>,
+    AttachmentStoreOp,
+);
+
+impl<'a> Into<crate::ash::vk::RenderingAttachmentInfo<'a>> for DynamicRenderingStencilAttachment {
+    fn into(self) -> crate::ash::vk::RenderingAttachmentInfo<'a> {
+        ash::vk::RenderingAttachmentInfo::default()
+            .image_layout(crate::ash::vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL)
+            .image_view(ash::vk::ImageView::from_raw(self.0.native_handle()))
+            .store_op(self.2.into())
+            .load_op(self.1.clone().into())
+            .clear_value(self.1.into())
+    }
+}
+
+impl DynamicRenderingStencilAttachment {
+    #[inline]
+    pub fn image_view(&self) -> Arc<ImageView> {
+        self.0.clone()
+    }
+
+    #[inline]
+    pub fn clear_value(&self) -> &RenderingAttachmentSetup<StencilClearValues> {
+        &self.1
+    }
+
+    #[inline]
+    pub fn store_op(&self) -> &AttachmentStoreOp {
+        &self.2
+    }
+
+    pub fn new(
+        image_view: Arc<ImageView>,
+        load_op: RenderingAttachmentSetup<StencilClearValues>,
+        store_op: AttachmentStoreOp,
+    ) -> Self {
+        Self(image_view, load_op, store_op)
     }
 }

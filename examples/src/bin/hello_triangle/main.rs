@@ -3,11 +3,13 @@ use std::{sync::Arc, time::Duration};
 use inline_spirv::*;
 
 use vulkan_framework::{
-    command_buffer::{ClearValues, ColorClearValues, CommandBufferRecorder, PrimaryCommandBuffer},
+    clear_values::ColorClearValues,
+    command_buffer::{CommandBufferRecorder, PrimaryCommandBuffer},
     command_pool::CommandPool,
     device::*,
     dynamic_rendering::{
-        AttachmentLoadOp, AttachmentStoreOp, DynamicRendering, DynamicRenderingAttachment,
+        AttachmentStoreOp, DynamicRendering, DynamicRenderingColorAttachment,
+        RenderingAttachmentSetup,
     },
     fence::Fence,
     graphics_pipeline::{
@@ -367,11 +369,11 @@ fn main() {
                             .as_slice(),
                         );
 
-                        let rendering_color_attachments = [DynamicRenderingAttachment::new(
+                        let rendering_color_attachments = [DynamicRenderingColorAttachment::new(
                             swapchain_image_views[swapchain_index as usize].clone(),
-                            ImageLayout::ColorAttachmentOptimal,
-                            ClearValues::new(Some(ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0))),
-                            AttachmentLoadOp::Clear,
+                            RenderingAttachmentSetup::clear(ColorClearValues::Vec4(
+                                0.0, 0.0, 0.0, 0.0,
+                            )),
                             AttachmentStoreOp::Store,
                         )];
                         recorder.graphics_rendering(

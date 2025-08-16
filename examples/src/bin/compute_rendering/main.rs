@@ -2,9 +2,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use inline_spirv::*;
-use vulkan_framework::command_buffer::{
-    ClearValues, ColorClearValues, CommandBufferRecorder, PrimaryCommandBuffer,
-};
+use vulkan_framework::clear_values::ColorClearValues;
+use vulkan_framework::command_buffer::{CommandBufferRecorder, PrimaryCommandBuffer};
 use vulkan_framework::command_pool::CommandPool;
 use vulkan_framework::compute_pipeline::ComputePipeline;
 use vulkan_framework::descriptor_pool::{
@@ -14,7 +13,7 @@ use vulkan_framework::descriptor_set::DescriptorSet;
 use vulkan_framework::descriptor_set_layout::DescriptorSetLayout;
 use vulkan_framework::device::*;
 use vulkan_framework::dynamic_rendering::{
-    AttachmentLoadOp, AttachmentStoreOp, DynamicRendering, DynamicRenderingAttachment,
+    AttachmentStoreOp, DynamicRendering, DynamicRenderingColorAttachment, RenderingAttachmentSetup,
 };
 use vulkan_framework::fence::Fence;
 use vulkan_framework::graphics_pipeline::{
@@ -752,11 +751,9 @@ fn main() {
                         .as_slice(),
                     );
 
-                    let rendering_color_attachments = [DynamicRenderingAttachment::new(
+                    let rendering_color_attachments = [DynamicRenderingColorAttachment::new(
                         swapchain_images_imageview[swapchain_index as usize].clone(),
-                        ImageLayout::ColorAttachmentOptimal,
-                        ClearValues::new(Some(ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0))),
-                        AttachmentLoadOp::Clear,
+                        RenderingAttachmentSetup::clear(ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0)),
                         AttachmentStoreOp::Store,
                     )];
                     recorder.graphics_rendering(

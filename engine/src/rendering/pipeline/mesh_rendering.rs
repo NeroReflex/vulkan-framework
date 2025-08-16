@@ -8,14 +8,16 @@ use crate::rendering::{
 };
 
 use vulkan_framework::{
-    command_buffer::{ClearValues, ColorClearValues, CommandBufferRecorder},
+    clear_values::{ColorClearValues, DepthClearValues},
+    command_buffer::CommandBufferRecorder,
     descriptor_pool::{
         DescriptorPool, DescriptorPoolConcreteDescriptor, DescriptorPoolSizesConcreteDescriptor,
     },
     descriptor_set::DescriptorSet,
     descriptor_set_layout::DescriptorSetLayout,
     dynamic_rendering::{
-        AttachmentLoadOp, AttachmentStoreOp, DynamicRendering, DynamicRenderingAttachment,
+        AttachmentStoreOp, DynamicRendering, DynamicRenderingColorAttachment,
+        DynamicRenderingDepthAttachment, RenderingAttachmentSetup,
     },
     graphics_pipeline::{
         AttributeType, CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline,
@@ -753,33 +755,25 @@ impl MeshRendering {
         );
 
         let rendering_color_attachments = [
-            DynamicRenderingAttachment::new(
+            DynamicRenderingColorAttachment::new(
                 position_imageview.clone(),
-                Self::output_image_color_layout(),
-                ClearValues::new(Some(ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0))),
-                AttachmentLoadOp::Clear,
+                RenderingAttachmentSetup::clear(ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0)),
                 AttachmentStoreOp::Store,
             ),
-            DynamicRenderingAttachment::new(
+            DynamicRenderingColorAttachment::new(
                 normal_imageview.clone(),
-                Self::output_image_color_layout(),
-                ClearValues::new(Some(ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0))),
-                AttachmentLoadOp::Clear,
+                RenderingAttachmentSetup::clear(ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0)),
                 AttachmentStoreOp::Store,
             ),
-            DynamicRenderingAttachment::new(
+            DynamicRenderingColorAttachment::new(
                 texture_imageview.clone(),
-                Self::output_image_color_layout(),
-                ClearValues::new(Some(ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0))),
-                AttachmentLoadOp::Clear,
+                RenderingAttachmentSetup::clear(ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0)),
                 AttachmentStoreOp::Store,
             ),
         ];
-        let rendering_depth_attachment = DynamicRenderingAttachment::new(
+        let rendering_depth_attachment = DynamicRenderingDepthAttachment::new(
             depth_stencil_imageview.clone(),
-            Self::output_image_depth_stencil_layout(),
-            ClearValues::new(Some(ColorClearValues::Vec4(1.0, 1.0, 1.0, 1.0))),
-            AttachmentLoadOp::Clear,
+            RenderingAttachmentSetup::clear(DepthClearValues::new(1.0)),
             AttachmentStoreOp::Store,
         );
         recorder.graphics_rendering(

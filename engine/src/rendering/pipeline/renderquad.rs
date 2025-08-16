@@ -3,7 +3,8 @@ use std::sync::Arc;
 use inline_spirv::*;
 
 use vulkan_framework::{
-    command_buffer::{ClearValues, ColorClearValues, CommandBufferRecorder},
+    clear_values::ColorClearValues,
+    command_buffer::CommandBufferRecorder,
     descriptor_pool::{
         DescriptorPool, DescriptorPoolConcreteDescriptor,
         DescriptorPoolSizesAcceletarionStructureKHR, DescriptorPoolSizesConcreteDescriptor,
@@ -12,7 +13,8 @@ use vulkan_framework::{
     descriptor_set_layout::DescriptorSetLayout,
     device::Device,
     dynamic_rendering::{
-        AttachmentLoadOp, AttachmentStoreOp, DynamicRendering, DynamicRenderingAttachment,
+        AttachmentStoreOp, DynamicRendering, DynamicRenderingColorAttachment,
+        RenderingAttachmentSetup,
     },
     graphics_pipeline::{
         CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline, PolygonMode,
@@ -240,11 +242,9 @@ impl RenderQuad {
             })
             .unwrap();
 
-        let rendering_color_attachments = [DynamicRenderingAttachment::new(
+        let rendering_color_attachments = [DynamicRenderingColorAttachment::new(
             output_image_view.clone(),
-            ImageLayout::ColorAttachmentOptimal,
-            ClearValues::new(Some(ColorClearValues::Vec4(1.0, 1.0, 1.0, 1.0))),
-            AttachmentLoadOp::Clear,
+            RenderingAttachmentSetup::clear(ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0)),
             AttachmentStoreOp::Store,
         )];
         recorder.graphics_rendering(

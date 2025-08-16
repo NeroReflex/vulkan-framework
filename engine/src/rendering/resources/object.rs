@@ -120,7 +120,7 @@ impl From<Arc<DeferredHostOperationKHR>> for TLASLoading {
 impl TLASLoading {
     fn complete(&self) -> VulkanResult<bool> {
         match self {
-            Self::CPU(deferred) => todo!(),
+            Self::CPU(_deferred) => todo!(),
             Self::GPU(fence_waiter) => fence_waiter.complete(),
         }
     }

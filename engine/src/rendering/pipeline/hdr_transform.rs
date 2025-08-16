@@ -3,7 +3,8 @@ use std::sync::{Arc, Mutex};
 use inline_spirv::*;
 
 use vulkan_framework::{
-    command_buffer::{ClearValues, ColorClearValues, CommandBufferRecorder},
+    clear_values::ColorClearValues,
+    command_buffer::CommandBufferRecorder,
     descriptor_pool::{
         DescriptorPool, DescriptorPoolConcreteDescriptor,
         DescriptorPoolSizesAcceletarionStructureKHR, DescriptorPoolSizesConcreteDescriptor,
@@ -11,7 +12,8 @@ use vulkan_framework::{
     descriptor_set::DescriptorSet,
     descriptor_set_layout::DescriptorSetLayout,
     dynamic_rendering::{
-        AttachmentLoadOp, AttachmentStoreOp, DynamicRendering, DynamicRenderingAttachment,
+        AttachmentStoreOp, DynamicRendering, DynamicRenderingColorAttachment,
+        RenderingAttachmentSetup,
     },
     graphics_pipeline::{
         CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline, PolygonMode,
@@ -373,11 +375,9 @@ impl HDRTransform {
             .as_slice(),
         );
 
-        let rendering_color_attachments = [DynamicRenderingAttachment::new(
+        let rendering_color_attachments = [DynamicRenderingColorAttachment::new(
             self.image_views[current_frame].clone(),
-            Self::output_image_layout(),
-            ClearValues::new(Some(ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0))),
-            AttachmentLoadOp::Clear,
+            RenderingAttachmentSetup::clear(ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0)),
             AttachmentStoreOp::Store,
         )];
         recorder.graphics_rendering(

@@ -1,6 +1,7 @@
 pub mod acceleration_structure;
 pub mod binding_tables;
 pub mod buffer;
+pub mod clear_values;
 pub mod command_buffer;
 pub mod command_pool;
 pub mod compute_pipeline;

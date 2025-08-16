@@ -19,13 +19,15 @@ use vulkan_framework::{
     ash::vk::{AccelerationStructureInstanceKHR, TransformMatrixKHR},
     binding_tables::RaytracingBindingTables,
     buffer::{Buffer, BufferUsage},
-    command_buffer::{ClearValues, ColorClearValues, CommandBufferRecorder, PrimaryCommandBuffer},
+    clear_values::ColorClearValues,
+    command_buffer::{CommandBufferRecorder, PrimaryCommandBuffer},
     command_pool::CommandPool,
     descriptor_pool::DescriptorPoolSizesAcceletarionStructureKHR,
     descriptor_set_layout::DescriptorSetLayout,
     device::*,
     dynamic_rendering::{
-        AttachmentLoadOp, AttachmentStoreOp, DynamicRendering, DynamicRenderingAttachment,
+        AttachmentStoreOp, DynamicRendering, DynamicRenderingColorAttachment,
+        RenderingAttachmentSetup,
     },
     fence::Fence,
     graphics_pipeline::{
@@ -1074,11 +1076,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .as_slice(),
                         );
 
-                        let rendering_color_attachments = [DynamicRenderingAttachment::new(
+                        let rendering_color_attachments = [DynamicRenderingColorAttachment::new(
                             swapchain_image_views[swapchain_index as usize].clone(),
-                            ImageLayout::ColorAttachmentOptimal,
-                            ClearValues::new(Some(ColorClearValues::Vec4(1.0, 1.0, 1.0, 1.0))),
-                            AttachmentLoadOp::Clear,
+                            RenderingAttachmentSetup::clear(ColorClearValues::Vec4(
+                                1.0, 1.0, 1.0, 1.0,
+                            )),
                             AttachmentStoreOp::Store,
                         )];
                         recorder.graphics_rendering(

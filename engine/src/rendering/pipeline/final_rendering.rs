@@ -7,11 +7,13 @@ use crate::rendering::{
 };
 
 use vulkan_framework::{
-    command_buffer::{ClearValues, ColorClearValues, CommandBufferRecorder},
+    clear_values::ColorClearValues,
+    command_buffer::CommandBufferRecorder,
     descriptor_set::DescriptorSet,
     descriptor_set_layout::DescriptorSetLayout,
     dynamic_rendering::{
-        AttachmentLoadOp, AttachmentStoreOp, DynamicRendering, DynamicRenderingAttachment,
+        AttachmentStoreOp, DynamicRendering, DynamicRenderingColorAttachment,
+        RenderingAttachmentSetup,
     },
     graphics_pipeline::{
         CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline, PolygonMode,
@@ -75,7 +77,7 @@ layout (location = 0) in vec2 in_vTextureUV;
 
 // gbuffer: 0 for position, 1 for normal, 2 for diffuse texture
 layout(set = 0, binding = 0) uniform sampler2D gbuffer[3];
-layout(set = 1, binding = 0) uniform usampler2D dlbuffer;
+layout(set = 1, binding = 0) uniform usampler2D dlbuffer[32];
 
 void main() {
     const vec3 in_vPosition_worldspace = texture(gbuffer[0], in_vTextureUV).xyz;
@@ -84,7 +86,7 @@ void main() {
 
     vec3 out_vDiffuseAlbedo = vec3(0.0, 0.0, 0.0);
 
-    const uvec4 in_dir_lights_collisions = texture(dlbuffer, in_vTextureUV);
+    const uvec4 in_dir_lights_collisions = texture(dlbuffer[0], in_vTextureUV);
     for (uint dl_index = 0; dl_index < 32; dl_index++) {
         if ((in_dir_lights_collisions.x & (1 << (32 - dl_index))) != 0) {
             out_vDiffuseAlbedo += in_vDiffuseAlbedo.xyz;
@@ -267,11 +269,9 @@ impl FinalRendering {
             .as_slice(),
         );
 
-        let rendering_color_attachments = [DynamicRenderingAttachment::new(
+        let rendering_color_attachments = [DynamicRenderingColorAttachment::new(
             image_view.clone(),
-            Self::output_image_layout(),
-            ClearValues::new(Some(ColorClearValues::Vec4(0.0, 0.0, 0.0, 1.0))),
-            AttachmentLoadOp::Clear,
+            RenderingAttachmentSetup::clear(ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0)),
             AttachmentStoreOp::Store,
         )];
         recorder.graphics_rendering(

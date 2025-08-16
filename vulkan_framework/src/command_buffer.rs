@@ -22,9 +22,13 @@ use crate::{
     },
     binding_tables::RaytracingBindingTables,
     buffer::BufferTrait,
+    clear_values::{ColorClearValues, DepthClearValues},
     command_pool::{CommandPool, CommandPoolOwned},
     device::DeviceOwned,
-    dynamic_rendering::DynamicRenderingAttachment,
+    dynamic_rendering::{
+        DynamicRenderingColorAttachment, DynamicRenderingDepthAttachment,
+        DynamicRenderingStencilAttachment,
+    },
     graphics_pipeline::{GraphicsPipeline, IndexType, Scissor, Viewport},
     image::{
         Image1DTrait, Image2DDimensions, Image2DTrait, Image3DDimensions, Image3DTrait,
@@ -100,44 +104,6 @@ impl PartialEq for CommandBufferReferencedResource {
 impl Hash for CommandBufferReferencedResource {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         state.write_u128(self.hash())
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub enum ColorClearValues {
-    Vec4(f32, f32, f32, f32),
-    IVec4(i32, i32, i32, i32),
-    UVec4(u32, u32, u32, u32),
-}
-
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub struct ClearValues {
-    color: Option<ColorClearValues>,
-}
-
-impl ClearValues {
-    pub fn new(color: Option<ColorClearValues>) -> Self {
-        Self { color }
-    }
-
-    pub(crate) fn ash_clear(&self) -> ash::vk::ClearValue {
-        let mut result = ash::vk::ClearValue::default();
-
-        if let Some(color) = self.color {
-            match color {
-                ColorClearValues::Vec4(r, g, b, a) => {
-                    result.color.float32 = [r, g, b, a];
-                }
-                ColorClearValues::IVec4(r, g, b, a) => {
-                    result.color.int32 = [r, g, b, a];
-                }
-                ColorClearValues::UVec4(r, g, b, a) => {
-                    result.color.uint32 = [r, g, b, a];
-                }
-            }
-        }
-
-        result
     }
 }
 
@@ -499,32 +465,28 @@ impl<'a> CommandBufferRecorder<'a> {
     ///
     /// You are free to use less attachments than what the graphics pipeline supports,
     /// and/or exclude the depth or stencil buffer.
+    ///
+    /// Color attachments will be transitioned to `ImageLayout::ColorAttachmentOptimal`
+    /// and depth/stencil attachments will be transitioned to `ImageLayout::DepthStencilAttachmentOptimal`.
     pub fn graphics_rendering<T>(
         &mut self,
         render_extent: Image2DDimensions,
-        color_attachments: &[DynamicRenderingAttachment],
-        depth_attachment: Option<&DynamicRenderingAttachment>,
-        stencil_attachment: Option<&DynamicRenderingAttachment>,
+        color_attachments: &[DynamicRenderingColorAttachment],
+        depth_attachment: Option<&DynamicRenderingDepthAttachment>,
+        stencil_attachment: Option<&DynamicRenderingStencilAttachment>,
         fun: impl FnOnce(&mut Self) -> T,
     ) -> T {
         let mut ash_color_attachments: smallvec::SmallVec<[ash::vk::RenderingAttachmentInfo; 8]> =
             smallvec::smallvec![];
-        for attachment in color_attachments.iter() {
+        for attachment in color_attachments.iter().cloned() {
             // TODO: check for dimensions to fit into the render_extent
-
-            ash_color_attachments.push(
-                ash::vk::RenderingAttachmentInfo::default()
-                    .image_layout(attachment.image_layout().into())
-                    .clear_value(attachment.clear_value().ash_clear())
-                    .image_view(attachment.image_view().ash_handle())
-                    .load_op(attachment.load_op().into())
-                    .store_op(attachment.store_op().into()),
-            );
 
             self.used_resources
                 .insert(CommandBufferReferencedResource::ImageView(
                     attachment.image_view().clone(),
                 ));
+
+            ash_color_attachments.push(attachment.into());
         }
 
         let render_area = ash::vk::Rect2D::default()
@@ -543,12 +505,13 @@ impl<'a> CommandBufferRecorder<'a> {
         let mut d_attachment = ash::vk::RenderingAttachmentInfo::default();
         render_info = match depth_attachment {
             Some(attachment) => {
-                d_attachment = d_attachment
-                    .image_layout(attachment.image_layout().into())
-                    .clear_value(attachment.clear_value().ash_clear())
-                    .image_view(attachment.image_view().ash_handle())
-                    .load_op(attachment.load_op().into())
-                    .store_op(attachment.store_op().into());
+                // TODO: check for dimensions to fit into the render_extent
+
+                self.used_resources
+                    .insert(CommandBufferReferencedResource::ImageView(
+                        attachment.image_view().clone(),
+                    ));
+                d_attachment = attachment.clone().into();
                 render_info.depth_attachment(&d_attachment)
             }
             None => render_info,
@@ -557,12 +520,13 @@ impl<'a> CommandBufferRecorder<'a> {
         let mut s_attachment = ash::vk::RenderingAttachmentInfo::default();
         render_info = match stencil_attachment {
             Some(attachment) => {
-                s_attachment = s_attachment
-                    .image_layout(attachment.image_layout().into())
-                    .clear_value(attachment.clear_value().ash_clear())
-                    .image_view(attachment.image_view().ash_handle())
-                    .load_op(attachment.load_op().into())
-                    .store_op(attachment.store_op().into());
+                // TODO: check for dimensions to fit into the render_extent
+
+                self.used_resources
+                    .insert(CommandBufferReferencedResource::ImageView(
+                        attachment.image_view().clone(),
+                    ));
+                s_attachment = attachment.clone().into();
                 render_info.stencil_attachment(&s_attachment)
             }
             None => render_info,
@@ -702,21 +666,45 @@ impl<'a> CommandBufferRecorder<'a> {
         }
     }
 
-    /// Place a command to clear the specified image and returns the `ImageSubresourceRange`
+    /// Place a command to clear the specified (color) image and returns the `ImageSubresourceRange`
     /// that has to be used for image barriers.
     ///
     /// WARNING: The image layout MUST be VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
     /// at the time of the transfer operation
-    pub fn clear_color_image(&mut self, image_srr: ImageSubresourceRange) {
+    pub fn clear_color_image(&mut self, value: ColorClearValues, image_srr: ImageSubresourceRange) {
+        let aspects: crate::ash::vk::ImageAspectFlags = image_srr.aspects().clone().into();
+        assert!(aspects.contains(ash::vk::ImageAspectFlags::COLOR));
+
         self.used_resources
             .insert(CommandBufferReferencedResource::Image(image_srr.image()));
 
-        let clear_color = ClearColorValue {
-            uint32: [0, 0, 0, 0],
-        };
-
+        let clear_color = value.into();
         unsafe {
             self.device.ash_handle().cmd_clear_color_image(
+                self.command_buffer.ash_handle(),
+                ash::vk::Image::from_raw(image_srr.image().native_handle()),
+                crate::ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &clear_color,
+                &[image_srr.clone().into()],
+            );
+        }
+    }
+
+    /// Place a command to clear the specified (depth) image and returns the `ImageSubresourceRange`
+    /// that has to be used for image barriers.
+    ///
+    /// WARNING: The image layout MUST be VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+    /// at the time of the transfer operation
+    pub fn clear_depth_image(&mut self, value: DepthClearValues, image_srr: ImageSubresourceRange) {
+        let aspects: crate::ash::vk::ImageAspectFlags = image_srr.aspects().clone().into();
+        assert!(aspects.contains(ash::vk::ImageAspectFlags::DEPTH));
+
+        self.used_resources
+            .insert(CommandBufferReferencedResource::Image(image_srr.image()));
+
+        let clear_color = value.into();
+        unsafe {
+            self.device.ash_handle().cmd_clear_depth_stencil_image(
                 self.command_buffer.ash_handle(),
                 ash::vk::Image::from_raw(image_srr.image().native_handle()),
                 crate::ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,

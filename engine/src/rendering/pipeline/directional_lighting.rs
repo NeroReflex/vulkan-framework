@@ -11,6 +11,7 @@ use vulkan_framework::{
         AllocatedBuffer, Buffer, BufferSubresourceRange, BufferTrait, BufferUseAs,
         ConcreteBufferDescriptor,
     },
+    clear_values::ColorClearValues,
     command_buffer::CommandBufferRecorder,
     descriptor_pool::{
         DescriptorPool, DescriptorPoolConcreteDescriptor,
@@ -20,9 +21,9 @@ use vulkan_framework::{
     descriptor_set_layout::DescriptorSetLayout,
     device::DeviceOwned,
     image::{
-        CommonImageFormat, ConcreteImageDescriptor, Image, Image1DTrait, Image2DTrait,
-        Image3DDimensions, ImageFlags, ImageFormat, ImageLayout, ImageMultisampling,
-        ImageSubresourceRange, ImageTiling, ImageUseAs,
+        CommonImageFormat, ConcreteImageDescriptor, Image, Image3DDimensions, ImageFlags,
+        ImageFormat, ImageLayout, ImageMultisampling, ImageSubresourceRange, ImageTiling,
+        ImageUseAs,
     },
     image_view::ImageView,
     memory_barriers::{BufferMemoryBarrier, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
@@ -87,10 +88,8 @@ void main() {
         hitValue = true;
 
         if (!(origin.x == 0 && origin.y == 0 && origin.z == 0)) {
-            traceRayEXT(topLevelAS, gl_RayFlagsNoneEXT, 0xff, 0, 0, 0, origin.xyz + (0.5 * direction.xyz), 0.001, direction.xyz, 10000.0, 0);
-            //traceRayEXT(topLevelAS, gl_RayFlagsSkipAABBEXT | gl_RayFlagsTerminateOnFirstHitEXT, 0xff, 0, 0, 0, origin.xyz, 0.001, -1.0 * direction.xyz, 100000.0, 0);
-            //                      gl_RayFlagsNoneEXT
-            //                      gl_RayFlagsSkipAABBEXT | gl_RayFlagsCullNoOpaqueEXT | 
+            // other flags: gl_RayFlagsCullNoOpaqueEXT gl_RayFlagsNoneEXT
+            traceRayEXT(topLevelAS, gl_RayFlagsSkipAABBEXT | gl_RayFlagsTerminateOnFirstHitEXT, 0xff, 0, 0, 0, origin.xyz + (0.5 * direction.xyz), 0.001, direction.xyz, 10000.0, 0);
         }
 
         const uint light_hit_bool = (!hitValue ? 1 : 0) << (32 - light_index);
@@ -566,7 +565,10 @@ impl DirectionalLighting {
                     .as_slice(),
                 );
 
-                recorder.clear_color_image(image_srr.clone());
+                recorder.clear_color_image(
+                    ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0),
+                    image_srr.clone(),
+                );
 
                 recorder.image_barriers(
                     [ImageMemoryBarrier::new(
