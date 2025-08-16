@@ -81,6 +81,7 @@ void main() {
     entry = "main"
 );
 
+/*
 const RENDERQUAD_FRAGMENT_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
@@ -96,8 +97,85 @@ layout(push_constant) uniform HDR {
     float exposure;
 } hdr;
 
+const mat3 aces_input_matrix =
+mat3(
+    vec3(0.59719f, 0.35458f, 0.04823f),
+    vec3(0.07600f, 0.90834f, 0.01566f),
+    vec3(0.02840f, 0.13383f, 0.83777f)
+);
+
+const mat3 aces_output_matrix =
+mat3(
+    vec3(1.60475f, -0.53108f, -0.07367f),
+    vec3(-0.10208f, 1.10813f, -0.00605f),
+    vec3(-0.00327f, -0.07276f,  1.07602f)
+);
+
+vec3 rtt_and_odt_fit(vec3 v)
+{
+    vec3 a = v * (v + 0.0245786f) - 0.000090537f;
+    vec3 b = v * (0.983729f * v + 0.4329510f) + 0.238081f;
+    return a / b;
+}
+
+vec3 aces_fitted(vec3 v)
+{
+    v = aces_input_matrix * v;
+    v = rtt_and_odt_fit(v);
+    return aces_output_matrix * v;
+}
+
 void main() {
-    outColor = texture(src, in_vTextureUV) /* * (hdr.gamma + hdr.exposure) */;
+    const vec3 input_color = texture(src, in_vTextureUV).xyz;
+    outColor = vec4(aces_fitted(input_color), 1.0) /* * (hdr.gamma + hdr.exposure) */;
+}
+"#,
+    glsl,
+    frag,
+    vulkan1_0,
+    entry = "main"
+);
+*/
+
+const RENDERQUAD_FRAGMENT_SPV: &[u32] = inline_spirv!(
+    r#"
+#version 460
+
+layout (location = 0) in vec2 in_vTextureUV;
+
+layout(binding = 0, set = 0) uniform sampler2D src;
+
+layout(location = 0) out vec4 outColor;
+
+layout(push_constant) uniform HDR {
+    float gamma;
+    float exposure;
+} hdr;
+
+vec3 uncharted2_tonemap_partial(vec3 x)
+{
+    float A = 0.15f;
+    float B = 0.50f;
+    float C = 0.10f;
+    float D = 0.20f;
+    float E = 0.02f;
+    float F = 0.30f;
+    return ((x*(A*x+C*B)+D*E)/(x*(A*x+B)+D*F))-E/F;
+}
+
+vec3 uncharted2_filmic(vec3 v)
+{
+    float exposure_bias = 2.0f;
+    vec3 curr = uncharted2_tonemap_partial(v * exposure_bias);
+
+    vec3 W = vec3(11.2f);
+    vec3 white_scale = vec3(1.0f) / uncharted2_tonemap_partial(W);
+    return curr * white_scale;
+}
+
+void main() {
+    const vec3 input_color = texture(src, in_vTextureUV).xyz;
+    outColor = vec4(uncharted2_tonemap_partial(input_color), 1.0) /* * (hdr.gamma + hdr.exposure) */;
 }
 "#,
     glsl,
