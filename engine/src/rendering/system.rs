@@ -42,9 +42,7 @@ use vulkan_framework::{
     shader_layout_binding::{
         AccelerationStructureBindingType, BindingDescriptor, BindingType, NativeBindingType,
     },
-    shader_stage_access::{
-        ShaderStageAccessIn, ShaderStageAccessInRayTracingKHR, ShaderStagesAccess,
-    },
+    shader_stage_access::{ShaderStageAccessIn, ShaderStageAccessInRayTracingKHR},
     swapchain::{
         CompositeAlphaSwapchainKHR, DeviceSurfaceInfo, PresentModeSwapchainKHR,
         SurfaceTransformSwapchainKHR, SwapchainKHR,

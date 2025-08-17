@@ -109,6 +109,12 @@ void main() {
             const vec3 intensity = vec3(light[dl_index].intensity_x, light[dl_index].intensity_y, light[dl_index].intensity_z);
             out_vDiffuseAlbedo += in_vDiffuseAlbedo.xyz * intensity * dl_diffuse_contribution;
         }
+
+        const float dl_specular_contribution = dl_contribution.g;
+        if (dl_specular_contribution > 0.00001) {
+            const vec3 intensity = vec3(light[dl_index].intensity_x, light[dl_index].intensity_y, light[dl_index].intensity_z);
+            out_vDiffuseAlbedo += in_vDiffuseAlbedo.xyz * intensity * dl_specular_contribution;
+        }
     }
 
     outColor = vec4(out_vDiffuseAlbedo.xyz, 1.0);
