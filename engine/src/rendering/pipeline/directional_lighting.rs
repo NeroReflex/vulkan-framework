@@ -530,7 +530,7 @@ impl DirectionalLighting {
                 ),
                 frames_in_flight,
             ),
-            Some(""),
+            Some("dlbuffer_descriptor_pool"),
         )?;
 
         let dlbuffer_sampler = Sampler::new(
