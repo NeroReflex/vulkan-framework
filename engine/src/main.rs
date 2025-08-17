@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         sdl_context.video().unwrap(),
         DEFAULT_WINDOW_WIDTH,
         DEFAULT_WINDOW_HEIGHT,
-        preferred_frames_in_flight
+        preferred_frames_in_flight,
     )
     .map_err(|err| panic!("{err}"))
     .unwrap();

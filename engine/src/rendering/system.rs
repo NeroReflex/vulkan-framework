@@ -79,7 +79,8 @@ type SwapchainImageViewsType = smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN
 pub struct System {
     swapchain: Option<(Arc<SwapchainKHR>, SwapchainImageViewsType)>,
 
-    queue: Arc<vulkan_framework::queue::Queue>,
+    queue_family: Arc<QueueFamily>,
+    queues: smallvec::SmallVec<[Arc<Queue>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
     rendering_fences: smallvec::SmallVec<[Arc<Fence>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
 
     current_frame: AtomicUsize,
@@ -158,11 +159,7 @@ impl System {
     }
 
     pub fn queue_family(&self) -> Arc<vulkan_framework::queue_family::QueueFamily> {
-        self.queue().get_parent_queue_family()
-    }
-
-    pub fn queue(&self) -> Arc<vulkan_framework::queue::Queue> {
-        self.queue.clone()
+        self.queue_family.clone()
     }
 
     pub fn test(&mut self) {
@@ -305,16 +302,18 @@ impl System {
 
         let queue_family = QueueFamily::new(device.clone(), 0)?;
 
-        let queue = Queue::new(queue_family.clone(), Some("Queue"))?;
-
         let device_swapchain_info = DeviceSurfaceInfo::new(device.clone(), surface)?;
 
         let (frames_in_flight, swapchain_images_count) =
-            SurfaceHelper::frames_in_flight(preferred_frames_in_flight, &device_swapchain_info).ok_or(
-                RenderingError::Unknown(String::from(
+            SurfaceHelper::frames_in_flight(preferred_frames_in_flight, &device_swapchain_info)
+                .ok_or(RenderingError::Unknown(String::from(
                     "Could not detect a compatible amount of swapchain images",
-                )),
-            )?;
+                )))?;
+
+        let mut queues = smallvec::smallvec![];
+        for index in 0..frames_in_flight {
+            queues.push(Queue::new(queue_family.clone(), Some("Queue"))?);
+        }
 
         let rendering_fences = (0..swapchain_images_count)
             .map(|idx| {
@@ -581,9 +580,11 @@ impl System {
         let frames_in_flight = (0..frames_in_flight).map(|_| Option::None).collect();
 
         Ok(Self {
+            queue_family,
+
             frames_in_flight,
             window,
-            queue,
+            queues,
             rendering_fences,
 
             image_available_semaphores,
@@ -880,9 +881,11 @@ impl System {
             })?
         };
 
+        let frame_queue = self.queues[current_frame].clone();
+
         let present_semaphore = self.present_ready[swapchain_index as usize].clone();
         let signal_semaphores = [present_semaphore.clone()];
-        self.frames_in_flight[current_frame] = Some(self.queue().submit(
+        self.frames_in_flight[current_frame] = Some(frame_queue.submit(
             &[self.present_command_buffers[current_frame].clone()],
             &[(
                 PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
@@ -892,7 +895,7 @@ impl System {
             self.rendering_fences[current_frame].clone(),
         )?);
 
-        swapchain.queue_present(self.queue().clone(), swapchain_index, &[present_semaphore])?;
+        swapchain.queue_present(frame_queue, swapchain_index, &[present_semaphore])?;
 
         // the swapchain is suboptimal: recreate a new one from the currently existing one!
         if !swapchain_optimal {
