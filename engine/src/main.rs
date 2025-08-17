@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
 use artrtic::{
-    core::camera::{spectator::SpectatorCamera, CameraTrait, HEAD_DOWN},
+    core::camera::{CameraTrait, HEAD_DOWN, spectator::SpectatorCamera},
     rendering::system::System,
 };
 use sdl2::keyboard::Scancode;
@@ -82,11 +82,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 if new_keyboard_state.is_scancode_pressed(Scancode::D) {
-                    camera.apply_movement(glm::normalize(glm::cross(glm::Vec3::new(0.0, 1.0, 0.0), camera.orientation())), move_quantity);
+                    camera.apply_movement(
+                        glm::normalize(glm::cross(
+                            glm::Vec3::new(0.0, 1.0, 0.0),
+                            camera.orientation(),
+                        )),
+                        move_quantity,
+                    );
                 }
 
                 if new_keyboard_state.is_scancode_pressed(Scancode::A) {
-                    camera.apply_movement(glm::normalize(glm::cross(glm::Vec3::new(0.0, 1.0, 0.0), camera.orientation())), -1.0 * move_quantity);
+                    camera.apply_movement(
+                        glm::normalize(glm::cross(
+                            glm::Vec3::new(0.0, 1.0, 0.0),
+                            camera.orientation(),
+                        )),
+                        -1.0 * move_quantity,
+                    );
                 }
             }
         }
