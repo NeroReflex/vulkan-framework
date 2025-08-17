@@ -13,7 +13,7 @@ use parking_lot::{const_mutex, Mutex};
 #[cfg(not(feature = "better_mutex"))]
 use std::sync::Mutex;
 
-use ash::vk::{ClearColorValue, Handle, Offset2D};
+use ash::vk::{Handle, Offset2D};
 
 use crate::{
     acceleration_structure::{

@@ -37,10 +37,7 @@ use vulkan_framework::{
     memory_pool::MemoryPoolFeatures,
     pipeline_stage::{PipelineStage, PipelineStageRayTracingPipelineKHR, PipelineStages},
     queue::Queue,
-    queue_family::{
-        ConcreteQueueFamilyDescriptor, QueueFamily, QueueFamilyOwned,
-        QueueFamilySupportedOperationType,
-    },
+    queue_family::{ConcreteQueueFamilyDescriptor, QueueFamily, QueueFamilySupportedOperationType},
     semaphore::Semaphore,
     shader_layout_binding::{
         AccelerationStructureBindingType, BindingDescriptor, BindingType, NativeBindingType,
@@ -312,7 +309,10 @@ impl System {
 
         let mut queues = smallvec::smallvec![];
         for index in 0..frames_in_flight {
-            queues.push(Queue::new(queue_family.clone(), Some("Queue"))?);
+            queues.push(Queue::new(
+                queue_family.clone(),
+                Some(format!("queues[{index}]").as_str()),
+            )?);
         }
 
         let rendering_fences = (0..swapchain_images_count)

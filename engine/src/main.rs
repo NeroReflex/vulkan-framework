@@ -9,23 +9,23 @@ use sdl2::keyboard::Scancode;
 const DEFAULT_WINDOW_WIDTH: u32 = 1280;
 const DEFAULT_WINDOW_HEIGHT: u32 = 720;
 
+#[cfg(debug_assertions)]
+const PREFERRED_FRAMES_IN_FLIGHT: u32 = 6u32;
+
+#[cfg(not(debug_assertions))]
+const PREFERRED_FRAMES_IN_FLIGHT: u32 = 1u32;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app_name = String::from("ArtRTic");
 
     let sdl_context = sdl2::init().unwrap();
-
-    let mut preferred_frames_in_flight = 1u32;
-    #[cfg(debug_assertions)]
-    {
-        preferred_frames_in_flight = 6;
-    }
 
     let mut renderer = System::new(
         app_name,
         sdl_context.video().unwrap(),
         DEFAULT_WINDOW_WIDTH,
         DEFAULT_WINDOW_HEIGHT,
-        preferred_frames_in_flight,
+        PREFERRED_FRAMES_IN_FLIGHT,
     )
     .map_err(|err| panic!("{err}"))
     .unwrap();
