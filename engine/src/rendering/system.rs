@@ -416,7 +416,12 @@ impl System {
         let view_projection_descriptor_set_layout = DescriptorSetLayout::new(
             device.clone(),
             [BindingDescriptor::new(
-                ShaderStagesAccess::graphics(),
+                [
+                    ShaderStageAccessIn::Vertex,
+                    ShaderStageAccessIn::RayTracing(ShaderStageAccessInRayTracingKHR::RayGen),
+                ]
+                .as_slice()
+                .into(),
                 BindingType::Native(NativeBindingType::UniformBuffer),
                 0,
                 1,
@@ -534,7 +539,7 @@ impl System {
             memory_manager.clone(),
             obj_manager.textures_descriptor_set_layout(),
             obj_manager.materials_descriptor_set_layout(),
-            view_projection_descriptor_set_layout,
+            view_projection_descriptor_set_layout.clone(),
             &render_area,
             frames_in_flight,
         )?);
@@ -545,6 +550,7 @@ impl System {
             memory_manager.clone(),
             rt_descriptor_set_layout.clone(),
             mesh_rendering.descriptor_set_layout(),
+            view_projection_descriptor_set_layout.clone(),
             frames_in_flight,
         )?);
 
@@ -763,6 +769,7 @@ impl System {
                 let dlbuffer_descriptor_set = self.directional_lighting.record_rendering_commands(
                     rt_descriptor_set.clone(),
                     gbuffer_descriptor_set.clone(),
+                    self.view_projection_descriptor_sets[current_frame].clone(),
                     directional_lighting_resources.deref(),
                     current_frame,
                     [PipelineStage::AllGraphics].as_slice().into(),

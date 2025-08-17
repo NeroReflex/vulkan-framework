@@ -86,6 +86,11 @@ layout(push_constant) uniform DirectionalLightingData {
     uint lights_count;
 } directional_lighting_data;
 
+layout(std140, set = 3, binding = 0) uniform camera_uniform {
+	mat4 viewMatrix;
+	mat4 projectionMatrix;
+} camera;
+
 layout(location = 0) rayPayloadEXT bool hitValue;
 
 void main() {
@@ -95,6 +100,9 @@ void main() {
 
     const vec3 origin = texture(gbuffer[0], position_xy).xyz;
     const vec3 normal = texture(gbuffer[1], position_xy).xyz;
+
+    const vec3 eye_position = vec3(camera.viewMatrix[3][0], camera.viewMatrix[3][1], camera.viewMatrix[3][2]);
+    const vec3 view_dir = normalize(eye_position - origin);
 
     for (uint light_index = 0; light_index < directional_lighting_data.lights_count; light_index++) {
         const vec3 light_dir = vec3(light[light_index].direction_x, light[light_index].direction_y, light[light_index].direction_z);
@@ -108,11 +116,15 @@ void main() {
         }
 
         float diffuse_contribution = 0.0;
+        float specular_contribution = 0.0;
         if (!hitValue) {
             diffuse_contribution = max(dot(normal, ray_dir), 0.0);
+
+            const vec3 reflect_dir = reflect(ray_dir, normal);
+            specular_contribution = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
         }
 
-        imageStore(outputImage[light_index], ivec2(gl_LaunchIDEXT.xy), vec4(diffuse_contribution, 0.0, 0.0, 0.0));
+        imageStore(outputImage[light_index], ivec2(gl_LaunchIDEXT.xy), vec4(diffuse_contribution, specular_contribution, 0.0, 0.0));
     }
 }
 "#,
@@ -249,6 +261,7 @@ impl DirectionalLighting {
         memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
         rt_descriptor_set_layout: Arc<DescriptorSetLayout>,
         gbuffer_descriptor_set_layout: Arc<DescriptorSetLayout>,
+        view_projection_descriptor_set_layout: Arc<DescriptorSetLayout>,
         frames_in_flight: u32,
     ) -> RenderingResult<Self> {
         let device = queue_family.get_parent_device();
@@ -288,6 +301,7 @@ impl DirectionalLighting {
                 rt_descriptor_set_layout.clone(),
                 gbuffer_descriptor_set_layout,
                 output_descriptor_set_layout.clone(),
+                view_projection_descriptor_set_layout,
             ]
             .as_slice(),
             &[PushConstanRange::new(
@@ -600,6 +614,7 @@ impl DirectionalLighting {
         &self,
         raytracing_descriptor_set: Arc<DescriptorSet>,
         gbuffer_descriptor_set: Arc<DescriptorSet>,
+        view_projection_descriptor_set: Arc<DescriptorSet>,
         directional_lights: &DirectionalLights,
         current_frame: usize,
         dlbuffer_stages: PipelineStages,
@@ -734,6 +749,7 @@ impl DirectionalLighting {
                 raytracing_descriptor_set,
                 gbuffer_descriptor_set,
                 self.output_descriptor_sets[current_frame].clone(),
+                view_projection_descriptor_set,
             ]
             .as_slice(),
         );
