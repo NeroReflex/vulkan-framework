@@ -107,12 +107,12 @@ void main() {
             traceRayEXT(topLevelAS, gl_RayFlagsSkipAABBEXT | gl_RayFlagsTerminateOnFirstHitEXT, 0xff, 0, 0, 0, origin.xyz, 0.1, ray_dir.xyz, 10000.0, 0);
         }
 
-        float contribution = 0.0;
+        float diffuse_contribution = 0.0;
         if (!hitValue) {
-            contribution = max(dot(normal, ray_dir), 0.0);
+            diffuse_contribution = max(dot(normal, ray_dir), 0.0);
         }
 
-        imageStore(outputImage[light_index], ivec2(gl_LaunchIDEXT.xy), vec4(contribution, 0.0, 0.0, 0.0));
+        imageStore(outputImage[light_index], ivec2(gl_LaunchIDEXT.xy), vec4(diffuse_contribution, 0.0, 0.0, 0.0));
     }
 }
 "#,
