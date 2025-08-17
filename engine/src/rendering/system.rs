@@ -624,7 +624,7 @@ impl System {
             static_meshes_resources.wait_nonblocking()?;
             directional_lighting_resources.wait_nonblocking()?;
 
-            let tlas = static_meshes_resources.tlas();
+            let tlas_data = static_meshes_resources.tlas();
 
             // here register the command buffer: command buffer at index i is associated with rendering_fences[i],
             // that I just awaited above, so thecommand buffer is surely NOT currently in use
@@ -658,7 +658,7 @@ impl System {
                 );
 
                 let dlbuffer_descriptor_set = self.directional_lighting.record_rendering_commands(
-                    tlas,
+                    tlas_data.clone(),
                     gbuffer_descriptor_set.clone(),
                     directional_lighting_resources.deref(),
                     current_frame,

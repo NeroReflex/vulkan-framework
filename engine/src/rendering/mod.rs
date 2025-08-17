@@ -35,8 +35,15 @@ pub enum RenderingError {
 
 pub type RenderingResult<T> = Result<T, RenderingError>;
 
+/// Maximum number of frames in flight that avoids having to allocate
+/// memory on the heap for frame-specific resources
 pub(crate) const MAX_FRAMES_IN_FLIGHT_NO_MALLOC: usize = 4;
+
 pub(crate) const MAX_TEXTURES: u32 = 256;
 pub(crate) const MAX_MATERIALS: u32 = 128;
-pub(crate) const MAX_MESHES: u32 = 1024;
+
+/// Max number of meshes in a scene: 4095 because it will fit 12 bits
+/// on the custom index field (that is 24 bits) leaving the others
+/// 12 bits for the instance ID
+pub(crate) const MAX_MESHES: u32 = 4095;
 pub(crate) const MAX_DIRECTIONAL_LIGHTS: u32 = 8;

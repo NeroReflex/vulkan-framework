@@ -128,6 +128,7 @@ impl TLASLoading {
 
 struct TLASStatus {
     tlas: Arc<TopLevelAccelerationStructure>,
+    tlas_descriptor: Arc<AllocatedBuffer>,
     loading: Option<TLASLoading>,
 }
 
@@ -137,21 +138,38 @@ pub enum TLASRebuildDevice {
 }
 
 impl TLASStatus {
-    pub fn new_gpu_loading(tlas: Arc<TopLevelAccelerationStructure>, loading: FenceWaiter) -> Self {
+    pub fn new_gpu_loading(
+        tlas: Arc<TopLevelAccelerationStructure>,
+        tlas_descriptor: Arc<AllocatedBuffer>,
+        loading: FenceWaiter,
+    ) -> Self {
         let loading = Some(loading.into());
-        Self { tlas, loading }
+        Self {
+            tlas,
+            tlas_descriptor,
+            loading,
+        }
     }
 
     pub fn new_cpu_loading(
         tlas: Arc<TopLevelAccelerationStructure>,
+        tlas_descriptor: Arc<AllocatedBuffer>,
         loading: Arc<DeferredHostOperationKHR>,
     ) -> Self {
         let loading = Some(loading.into());
-        Self { tlas, loading }
+        Self {
+            tlas,
+            tlas_descriptor,
+            loading,
+        }
     }
 
     pub fn tlas(&self) -> Arc<TopLevelAccelerationStructure> {
         self.tlas.clone()
+    }
+
+    pub fn tlas_def(&self) -> Arc<dyn BufferTrait> {
+        self.tlas_descriptor.clone() as Arc<dyn BufferTrait>
     }
 
     pub fn wait_nonblocking(&mut self) -> RenderingResult<()> {
@@ -175,8 +193,7 @@ impl TLASStatus {
     }
 }
 
-type LoadedMeshesType =
-    smallvec::SmallVec<[Option<(MeshDefinition, MeshInstances)>; MAX_MESHES as usize]>;
+type LoadedMeshesType = Vec<Option<(MeshDefinition, MeshInstances)>>;
 
 pub struct Manager {
     debug_name: String,
@@ -197,6 +214,14 @@ pub struct Manager {
     current_tlas: Option<TLASStatus>,
 
     objects: LoadedMeshesType,
+}
+
+struct TLASDescriptor {
+    index_buffer_addr: u64,
+    vertex_buffer_addr: u64,
+    transform_buffer_addr: u64,
+    instance_buffer_addr: u64,
+    instance_num: u64,
 }
 
 impl Manager {
@@ -1054,15 +1079,28 @@ impl Manager {
             Some("instance_buffer"),
         )?;
 
-        let tlas = {
+        let descriptors_unallocated_buffer = Buffer::new(
+            self.queue_family.get_parent_device(),
+            ConcreteBufferDescriptor::new(
+                [BufferUseAs::StorageBuffer].as_slice().into(),
+                (core::mem::size_of::<TLASDescriptor>() as u64) * (max_instances as u64),
+            ),
+            None,
+            Some("instance_buffer"),
+        )?;
+
+        let (tlas, descriptors_buffer) = {
             let mut mem_manager = self.memory_manager.lock().unwrap();
             let instance_allocated_data = mem_manager.allocate_resources(
                 &MemoryType::device_local_and_host_visible(),
                 &MemoryPoolFeatures::new(true),
-                vec![instance_unallocated_buffer.into()],
+                vec![
+                    instance_unallocated_buffer.into(),
+                    descriptors_unallocated_buffer.into(),
+                ],
                 MemoryManagementTags::default()
                     .with_name("temp".to_string())
-                    .with_size(MemoryManagementTagSize::MediumSmall),
+                    .with_size(MemoryManagementTagSize::Medium),
             )?;
 
             let tlas_buffer = TopLevelAccelerationStructureInstanceBuffer::new(
@@ -1071,17 +1109,22 @@ impl Manager {
                 instance_allocated_data[0].buffer(),
             )?;
 
-            TopLevelAccelerationStructure::new(
-                &mut *mem_manager,
-                AllowedBuildingDevice::DeviceOnly,
-                tlas_buffer,
-                MemoryManagementTags::default()
-                    .with_name("temp".to_string())
-                    .with_size(MemoryManagementTagSize::MediumSmall),
-                None,
-                Some("tlas"),
+            let descriptors_buffer = instance_allocated_data[1].buffer();
+
+            (
+                TopLevelAccelerationStructure::new(
+                    &mut *mem_manager,
+                    AllowedBuildingDevice::DeviceOnly,
+                    tlas_buffer,
+                    MemoryManagementTags::default()
+                        .with_name("temp".to_string())
+                        .with_size(MemoryManagementTagSize::MediumSmall),
+                    None,
+                    Some("tlas"),
+                )?,
+                descriptors_buffer,
             )
-        }?;
+        };
 
         let current_tlas_ref = tlas.as_ref();
 
@@ -1098,12 +1141,36 @@ impl Manager {
                     .buffer()
                     .get_backing_memory_pool(),
             )?;
-            let mut range = mem_map
-                .range::<vulkan_framework::ash::vk::AccelerationStructureInstanceKHR>(
-                    current_tlas_ref.instance_buffer().buffer() as Arc<dyn MemoryPoolBacked>,
-                )?;
 
-            let slice = range.as_mut_slice();
+            let mut descriptor_mem_map = None;
+            if descriptors_buffer.get_backing_memory_pool().native_handle()
+                != current_tlas_ref
+                    .instance_buffer()
+                    .buffer()
+                    .get_backing_memory_pool()
+                    .native_handle()
+            {
+                descriptor_mem_map = Some(MemoryMap::new(
+                    descriptors_buffer.get_backing_memory_pool(),
+                )?);
+            }
+
+            let mut descriptor_ranges = match &descriptor_mem_map {
+                Some(desc_mem_map) => desc_mem_map.range::<TLASDescriptor>(
+                    descriptors_buffer.clone() as Arc<dyn MemoryPoolBacked>,
+                ),
+                None => mem_map.range::<TLASDescriptor>(
+                    descriptors_buffer.clone() as Arc<dyn MemoryPoolBacked>
+                ),
+            }?;
+
+            let mut instances_range = mem_map
+                .range::<vulkan_framework::ash::vk::AccelerationStructureInstanceKHR>(
+                current_tlas_ref.instance_buffer().buffer() as Arc<dyn MemoryPoolBacked>,
+            )?;
+
+            let slice = instances_range.as_mut_slice();
+            let descriptor = descriptor_ranges.as_mut_slice();
 
             let mut instance_num = 0_usize;
             for obj in self.objects.iter() {
@@ -1119,18 +1186,30 @@ impl Manager {
                         .unwrap()
                         .clone();
                     for obj_instance in obj_instances.instances.iter() {
+                        let transform = *obj_instance;
                         slice[instance_num] =
                             vulkan_framework::ash::vk::AccelerationStructureInstanceKHR {
-                                transform: *obj_instance,
+                                transform: transform,
                                 instance_shader_binding_table_record_offset_and_flags:
                                     vulkan_framework::ash::vk::Packed24_8::new(0, 0x07), // VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
                                 instance_custom_index_and_mask:
-                                    vulkan_framework::ash::vk::Packed24_8::new(0x00, 0xFF),
+                                    vulkan_framework::ash::vk::Packed24_8::new(
+                                        mesh.mesh_index,
+                                        0xFF,
+                                    ),
                                 acceleration_structure_reference:
                                     vulkan_framework::ash::vk::AccelerationStructureReferenceKHR {
                                         device_handle: blas.device_addr(),
                                     },
                             };
+
+                        descriptor[instance_num] = TLASDescriptor {
+                            index_buffer_addr: blas.index_buffer().buffer_device_addr(),
+                            vertex_buffer_addr: blas.vertex_buffer().buffer_device_addr(),
+                            transform_buffer_addr: blas.transform_buffer().buffer_device_addr(),
+                            instance_buffer_addr: tlas.instance_buffer().buffer_device_addr(),
+                            instance_num: instance_num as u64,
+                        };
 
                         buffer_barriers.push(BufferMemoryBarrier::new(
                             [PipelineStage::TopOfPipe].as_slice().into(),
@@ -1202,6 +1281,25 @@ impl Manager {
                         .as_slice(),
                     );
 
+                    recorder.buffer_barriers(
+                        [BufferMemoryBarrier::new(
+                            [PipelineStage::Host].as_slice().into(),
+                            [MemoryAccessAs::HostWrite].as_slice().into(),
+                            [PipelineStage::AllCommands].as_slice().into(),
+                            [MemoryAccessAs::ShaderRead, MemoryAccessAs::MemoryRead]
+                                .as_slice()
+                                .into(),
+                            BufferSubresourceRange::new(
+                                descriptors_buffer.clone(),
+                                0,
+                                descriptors_buffer.size(),
+                            ),
+                            self.queue_family.clone(),
+                            self.queue_family.clone(),
+                        )]
+                        .as_slice(),
+                    );
+
                     recorder.buffer_barriers(buffer_barriers.as_slice());
 
                     recorder.build_tlas(tlas.clone(), 0, max_instances);
@@ -1243,10 +1341,15 @@ impl Manager {
                     fence,
                 )?;
 
-                Some(TLASStatus::new_gpu_loading(tlas, fence_waiter))
+                Some(TLASStatus::new_gpu_loading(
+                    tlas,
+                    descriptors_buffer,
+                    fence_waiter,
+                ))
             }
             TLASRebuildDevice::CPU => Some(TLASStatus::new_cpu_loading(
                 tlas.clone(),
+                descriptors_buffer,
                 DeferredHostOperationKHR::build_tlas(tlas, 0, max_instances)?,
             )),
         };
@@ -1470,7 +1573,8 @@ impl Manager {
     }
 
     #[inline]
-    pub fn tlas(&self) -> Arc<TopLevelAccelerationStructure> {
-        self.current_tlas.as_ref().unwrap().tlas()
+    pub fn tlas(&self) -> (Arc<TopLevelAccelerationStructure>, Arc<dyn BufferTrait>) {
+        let tlas_ref = self.current_tlas.as_ref().unwrap();
+        (tlas_ref.tlas(), tlas_ref.tlas_def())
     }
 }

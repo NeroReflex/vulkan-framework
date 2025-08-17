@@ -12,7 +12,7 @@ use vulkan_framework::{
 use crate::rendering::RenderingResult;
 
 enum LoadableResource<T> {
-    Free(Arc<Fence>, Arc<PrimaryCommandBuffer>),
+    Free,
     Loaded(T),
     Loading(T, FenceWaiter),
 }
@@ -20,7 +20,7 @@ enum LoadableResource<T> {
 impl<T> LoadableResource<T> {
     fn free(&self) -> bool {
         match self {
-            LoadableResource::Free(_, _) => true,
+            LoadableResource::Free => true,
             _ => false,
         }
     }
@@ -89,22 +89,10 @@ where
     }
 
     pub(crate) fn remove(&mut self, index: u32) -> RenderingResult<()> {
-        let device = self
-            .command_pool
-            .get_parent_queue_family()
-            .get_parent_device();
-        let fence_name = format!("{}.fence[{index}]", self.debug_name);
-        let command_buffer_name = format!("{}.command_buffer[{index}]", self.debug_name);
         if self.collection[index as usize].free() {
             self.status += 1;
         }
-        self.collection[index as usize] = LoadableResource::Free(
-            Fence::new(device, false, Some(fence_name.as_str()))?,
-            PrimaryCommandBuffer::new(
-                self.command_pool.clone(),
-                Some(command_buffer_name.as_str()),
-            )?,
-        );
+        self.collection[index as usize] = LoadableResource::Free;
 
         Ok(())
     }
@@ -170,7 +158,19 @@ where
         for index in 0..self.collection.len() {
             // ensure this is an available slot for the new texture
             let (fence, command_buffer) = match &self.collection[index] {
-                LoadableResource::Free(fence, command_buffer) => (fence, command_buffer),
+                LoadableResource::Free => (
+                    Fence::new(
+                        self.command_pool
+                            .get_parent_queue_family()
+                            .get_parent_device(),
+                        false,
+                        Some(format!("{}.fence[{index}]", self.debug_name).as_str()),
+                    )?,
+                    PrimaryCommandBuffer::new(
+                        self.command_pool.clone(),
+                        Some(format!("{}.command_buffer[{index}]", self.debug_name).as_str()),
+                    )?,
+                ),
                 _ => continue,
             };
 
@@ -196,8 +196,6 @@ where
         max_elements: u32,
         debug_name: String,
     ) -> RenderingResult<Self> {
-        let device = queue_family.get_parent_device();
-
         let command_pool = CommandPool::new(
             queue_family.clone(),
             Some(format!("{debug_name}.command_pool").as_str()),
@@ -205,14 +203,8 @@ where
 
         let mut collection: LoadableResourcesCollectionType<T> =
             smallvec::SmallVec::with_capacity(max_elements as usize);
-        for index in 0..max_elements as usize {
-            collection.push(LoadableResource::Free(
-                Fence::new(device.clone(), false, None)?,
-                PrimaryCommandBuffer::new(
-                    command_pool.clone(),
-                    Some(format!("{debug_name}.command_buffers[{index}]").as_str()),
-                )?,
-            ));
+        for _ in 0..max_elements as usize {
+            collection.push(LoadableResource::Free);
         }
 
         let status = 0u64;

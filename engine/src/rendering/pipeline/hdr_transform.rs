@@ -127,7 +127,8 @@ vec3 aces_fitted(vec3 v)
 
 void main() {
     const vec3 input_color = texture(src, in_vTextureUV).xyz;
-    outColor = vec4(aces_fitted(input_color), 1.0) /* * (hdr.gamma + hdr.exposure) */;
+    outColor = vec4(aces_fitted(input_color), 1.0) /* * (hdr.gamma + hdr.exposure) */
+;
 }
 "#,
     glsl,

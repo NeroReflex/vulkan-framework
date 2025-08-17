@@ -59,7 +59,12 @@ const RAYGEN_SPV: &[u32] = inline_spirv!(
 
 #define MAX_DIRECTIONAL_LIGHTS 8
 
-layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
+layout(std430, set = 0, binding = 0) readonly buffer tlas_instances
+{
+    uint data[];
+};
+
+layout(set = 0, binding = 1) uniform accelerationStructureEXT topLevelAS;
 
 struct light_t {
     float direction_x;
@@ -71,12 +76,12 @@ struct light_t {
     float intensity_z;
 };
 
-layout(std430, set = 0, binding = 1) readonly buffer directional_lights
+layout(std430, set = 0, binding = 2) readonly buffer directional_lights
 {
     light_t light[];
 };
 
-uniform layout(set = 0, binding = 2, r32f) image2D outputImage[MAX_DIRECTIONAL_LIGHTS];
+uniform layout(set = 0, binding = 3, r32f) image2D outputImage[MAX_DIRECTIONAL_LIGHTS];
 
 // gbuffer: 0 for position, 1 for normal, 2 for diffuse texture
 layout(set = 1, binding = 0) uniform sampler2D gbuffer[3];
@@ -125,7 +130,6 @@ const MISS_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
 #extension GL_EXT_ray_tracing : require
-#extension GL_EXT_nonuniform_qualifier : enable
 
 layout(location = 0) rayPayloadInEXT bool hitValue;
 
@@ -143,7 +147,11 @@ const CHIT_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
 #extension GL_EXT_ray_tracing : require
-#extension GL_EXT_nonuniform_qualifier : enable
+
+layout(std430, set = 0, binding = 0) readonly buffer tlas_instances
+{
+    uint data[];
+};
 
 layout(location = 0) rayPayloadInEXT bool hitValue;
 
@@ -209,43 +217,57 @@ impl DirectionalLighting {
     ) -> RenderingResult<Self> {
         let device = queue_family.get_parent_device();
 
-        let descriptors = [
-            BindingDescriptor::new(
-                [ShaderStageAccessIn::RayTracing(
-                    ShaderStageAccessInRayTracingKHR::RayGen,
-                )]
-                .as_slice()
-                .into(),
-                BindingType::AccelerationStructure(
-                    AccelerationStructureBindingType::AccelerationStructure,
+        let rt_descriptor_set_layout = DescriptorSetLayout::new(
+            device.clone(),
+            [
+                BindingDescriptor::new(
+                    [
+                        ShaderStageAccessIn::RayTracing(ShaderStageAccessInRayTracingKHR::RayGen),
+                        ShaderStageAccessIn::RayTracing(
+                            ShaderStageAccessInRayTracingKHR::ClosestHit,
+                        ),
+                    ]
+                    .as_slice()
+                    .into(),
+                    BindingType::Native(NativeBindingType::StorageBuffer),
+                    0,
+                    1,
                 ),
-                0,
-                1,
-            ),
-            BindingDescriptor::new(
-                [ShaderStageAccessIn::RayTracing(
-                    ShaderStageAccessInRayTracingKHR::RayGen,
-                )]
-                .as_slice()
-                .into(),
-                BindingType::Native(NativeBindingType::StorageBuffer),
-                1,
-                1,
-            ),
-            BindingDescriptor::new(
-                [ShaderStageAccessIn::RayTracing(
-                    ShaderStageAccessInRayTracingKHR::RayGen,
-                )]
-                .as_slice()
-                .into(),
-                BindingType::Native(NativeBindingType::StorageImage),
-                2,
-                MAX_DIRECTIONAL_LIGHTS,
-            ),
-        ];
-
-        let rt_descriptor_set_layout =
-            DescriptorSetLayout::new(device.clone(), descriptors.as_slice())?;
+                BindingDescriptor::new(
+                    [ShaderStageAccessIn::RayTracing(
+                        ShaderStageAccessInRayTracingKHR::RayGen,
+                    )]
+                    .as_slice()
+                    .into(),
+                    BindingType::AccelerationStructure(
+                        AccelerationStructureBindingType::AccelerationStructure,
+                    ),
+                    1,
+                    1,
+                ),
+                BindingDescriptor::new(
+                    [ShaderStageAccessIn::RayTracing(
+                        ShaderStageAccessInRayTracingKHR::RayGen,
+                    )]
+                    .as_slice()
+                    .into(),
+                    BindingType::Native(NativeBindingType::StorageBuffer),
+                    2,
+                    1,
+                ),
+                BindingDescriptor::new(
+                    [ShaderStageAccessIn::RayTracing(
+                        ShaderStageAccessInRayTracingKHR::RayGen,
+                    )]
+                    .as_slice()
+                    .into(),
+                    BindingType::Native(NativeBindingType::StorageImage),
+                    3,
+                    MAX_DIRECTIONAL_LIGHTS,
+                ),
+            ]
+            .as_slice(),
+        )?;
 
         let pipeline_layout = PipelineLayout::new(
             device.clone(),
@@ -410,7 +432,7 @@ impl DirectionalLighting {
                     MAX_DIRECTIONAL_LIGHTS * frames_in_flight,
                     0,
                     0,
-                    frames_in_flight,
+                    2 * frames_in_flight,
                     0,
                     0,
                     Some(DescriptorPoolSizesAcceletarionStructureKHR::new(
@@ -434,7 +456,7 @@ impl DirectionalLighting {
             descriptor_set.bind_resources(|binder| {
                 binder
                     .bind_storage_buffers(
-                        1,
+                        2,
                         [(
                             raytracing_directions[index].clone() as Arc<dyn BufferTrait>,
                             None,
@@ -446,7 +468,7 @@ impl DirectionalLighting {
 
                 binder
                     .bind_storage_images_with_same_layout(
-                        2,
+                        3,
                         ImageLayout::General,
                         raytracing_ldbuffer[index].as_slice(),
                     )
@@ -560,7 +582,7 @@ impl DirectionalLighting {
 
     pub fn record_rendering_commands(
         &self,
-        tlas: Arc<TopLevelAccelerationStructure>,
+        tlas_data: (Arc<TopLevelAccelerationStructure>, Arc<dyn BufferTrait>),
         gbuffer_descriptor_set: Arc<DescriptorSet>,
         directional_lights: &DirectionalLights,
         current_frame: usize,
@@ -570,6 +592,15 @@ impl DirectionalLighting {
     ) -> Arc<DescriptorSet> {
         // TODO: of all word positions from GBUFFER, (order them, maybe) and for each directional light
         // use those to decide the portion that has to be rendered as depth in the shadow map
+
+        self.raytracing_descriptor_sets[current_frame]
+            .bind_resources(|binder| {
+                binder
+                    .bind_storage_buffers(0, [(tlas_data.1, None, None)].as_slice())
+                    .unwrap();
+                binder.bind_tlas(1, [tlas_data.0].as_slice()).unwrap();
+            })
+            .unwrap();
 
         // Here clear the image and transition its layout for using it in the raytracing pipeline
         {
@@ -687,12 +718,6 @@ impl DirectionalLighting {
                 .as_slice(),
             );
         };
-
-        self.raytracing_descriptor_sets[current_frame]
-            .bind_resources(|binder| {
-                binder.bind_tlas(0, [tlas].as_slice()).unwrap();
-            })
-            .unwrap();
 
         recorder.bind_ray_tracing_pipeline(self.raytracing_pipeline.clone());
         recorder.bind_descriptor_sets_for_ray_tracing_pipeline(
