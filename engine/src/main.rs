@@ -14,11 +14,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let sdl_context = sdl2::init().unwrap();
 
+    let mut preferred_frames_in_flight = 1u32;
+    #[cfg(debug_assertions)]
+    {
+        preferred_frames_in_flight = 6;
+    }
+
     let mut renderer = System::new(
         app_name,
         sdl_context.video().unwrap(),
         DEFAULT_WINDOW_WIDTH,
         DEFAULT_WINDOW_HEIGHT,
+        preferred_frames_in_flight
     )
     .map_err(|err| panic!("{err}"))
     .unwrap();

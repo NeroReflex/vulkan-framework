@@ -46,7 +46,7 @@ impl SurfaceHelper {
         let mut swapchain_images_count = preferred_frames_in_flight + 1;
         let max_images = device_swapchain_info.max_image_count();
 
-        while frames_in_flight > 2 {
+        while frames_in_flight >= 1 {
             match max_images == 0 {
                 true => {
                     if swapchain_images_count <= frames_in_flight {
@@ -66,7 +66,7 @@ impl SurfaceHelper {
             }
         }
 
-        if frames_in_flight < 2 {
+        if frames_in_flight < 1 {
             return None;
         }
 

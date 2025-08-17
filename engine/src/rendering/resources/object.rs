@@ -216,12 +216,14 @@ pub struct Manager {
     objects: LoadedMeshesType,
 }
 
+/// This struct represents what the GPU has access to when indexing buffers
 struct TLASDescriptor {
-    index_buffer_addr: u64,
-    vertex_buffer_addr: u64,
-    transform_buffer_addr: u64,
-    instance_buffer_addr: u64,
-    instance_num: u64,
+    _index_buffer_addr: u64,
+    _vertex_buffer_addr: u64,
+    _transform_buffer_addr: u64,
+    _instance_buffer_addr: u64,
+    _instance_num: u32,
+    _padding: u32,
 }
 
 impl Manager {
@@ -1204,11 +1206,12 @@ impl Manager {
                             };
 
                         descriptor[instance_num] = TLASDescriptor {
-                            index_buffer_addr: blas.index_buffer().buffer_device_addr(),
-                            vertex_buffer_addr: blas.vertex_buffer().buffer_device_addr(),
-                            transform_buffer_addr: blas.transform_buffer().buffer_device_addr(),
-                            instance_buffer_addr: tlas.instance_buffer().buffer_device_addr(),
-                            instance_num: instance_num as u64,
+                            _index_buffer_addr: blas.index_buffer().buffer_device_addr(),
+                            _vertex_buffer_addr: blas.vertex_buffer().buffer_device_addr(),
+                            _transform_buffer_addr: blas.transform_buffer().buffer_device_addr(),
+                            _instance_buffer_addr: tlas.instance_buffer().buffer_device_addr(),
+                            _instance_num: instance_num as u32,
+                            _padding: 0xFFFFFFFFu32,
                         };
 
                         buffer_barriers.push(BufferMemoryBarrier::new(

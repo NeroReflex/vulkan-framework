@@ -18,7 +18,8 @@ use vulkan_framework::{
     command_buffer::PrimaryCommandBuffer,
     command_pool::CommandPool,
     descriptor_pool::{
-        DescriptorPool, DescriptorPoolConcreteDescriptor, DescriptorPoolSizesConcreteDescriptor,
+        DescriptorPool, DescriptorPoolConcreteDescriptor,
+        DescriptorPoolSizesAcceletarionStructureKHR, DescriptorPoolSizesConcreteDescriptor,
     },
     descriptor_set::{DescriptorSet, DescriptorSetWriter},
     descriptor_set_layout::DescriptorSetLayout,
@@ -41,8 +42,12 @@ use vulkan_framework::{
         QueueFamilySupportedOperationType,
     },
     semaphore::Semaphore,
-    shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType},
-    shader_stage_access::ShaderStagesAccess,
+    shader_layout_binding::{
+        AccelerationStructureBindingType, BindingDescriptor, BindingType, NativeBindingType,
+    },
+    shader_stage_access::{
+        ShaderStageAccessIn, ShaderStageAccessInRayTracingKHR, ShaderStagesAccess,
+    },
     swapchain::{
         CompositeAlphaSwapchainKHR, DeviceSurfaceInfo, PresentModeSwapchainKHR,
         SurfaceTransformSwapchainKHR, SwapchainKHR,
@@ -53,7 +58,7 @@ use vulkan_framework::{
 use crate::{
     core::{camera::CameraTrait, hdr::HDR, lights::directional::DirectionalLight},
     rendering::{
-        MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingError, RenderingResult,
+        MAX_DIRECTIONAL_LIGHTS, MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingError, RenderingResult,
         pipeline::{
             directional_lighting::DirectionalLighting, final_rendering::FinalRendering,
             hdr_transform::HDRTransform, mesh_rendering::MeshRendering, renderquad::RenderQuad,
@@ -94,6 +99,10 @@ pub struct System {
 
     view_projection_buffers:
         smallvec::SmallVec<[Arc<AllocatedBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
+
+    rt_descriptor_set_layout: Arc<DescriptorSetLayout>,
+    rt_descriptor_pool: Arc<DescriptorPool>,
+    rt_descriptor_set: Option<Arc<DescriptorSet>>,
 
     mesh_rendering: Arc<MeshRendering>,
     directional_lighting: Arc<DirectionalLighting>,
@@ -198,6 +207,31 @@ impl System {
                 glm::Vec3::new(10.2, 10.2, 10.2),
             ))
             .unwrap();
+
+        // Update the TLAS and create a descriptor set for it:
+        // this is very important as it define the geometry of the whole scene
+        {
+            let (tlas, tlas_data) = manager.tlas();
+
+            // create the new descriptor set for RT pipelines
+            let rt_descriptor_set = DescriptorSet::new(
+                self.rt_descriptor_pool.clone(),
+                self.rt_descriptor_set_layout.clone(),
+            )
+            .unwrap();
+
+            // bind TLAS data to the new descriptor set
+            rt_descriptor_set
+                .bind_resources(|binder| {
+                    binder
+                        .bind_storage_buffers(0, [(tlas_data, None, None)].as_slice())
+                        .unwrap();
+                    binder.bind_tlas(1, [tlas].as_slice()).unwrap();
+                })
+                .unwrap();
+
+            self.rt_descriptor_set = Some(rt_descriptor_set);
+        }
     }
 
     pub fn new(
@@ -205,6 +239,7 @@ impl System {
         video_subsystem: VideoSubsystem,
         initial_width: u32,
         initial_height: u32,
+        preferred_frames_in_flight: u32,
     ) -> RenderingResult<Self> {
         let mut instance_extensions = vec![];
         let mut instance_layers = vec![];
@@ -275,7 +310,7 @@ impl System {
         let device_swapchain_info = DeviceSurfaceInfo::new(device.clone(), surface)?;
 
         let (frames_in_flight, swapchain_images_count) =
-            SurfaceHelper::frames_in_flight(2, &device_swapchain_info).ok_or(
+            SurfaceHelper::frames_in_flight(preferred_frames_in_flight, &device_swapchain_info).ok_or(
                 RenderingError::Unknown(String::from(
                     "Could not detect a compatible amount of swapchain images",
                 )),
@@ -438,6 +473,64 @@ impl System {
             view_projection_descriptor_sets.push(view_proj_descriptor_set);
         }
 
+        let rt_descriptor_set_layout = DescriptorSetLayout::new(
+            device.clone(),
+            [
+                // Descriptor for the whole TLAS
+                BindingDescriptor::new(
+                    [
+                        ShaderStageAccessIn::RayTracing(ShaderStageAccessInRayTracingKHR::RayGen),
+                        ShaderStageAccessIn::RayTracing(
+                            ShaderStageAccessInRayTracingKHR::ClosestHit,
+                        ),
+                    ]
+                    .as_slice()
+                    .into(),
+                    BindingType::Native(NativeBindingType::StorageBuffer),
+                    0,
+                    1,
+                ),
+                // The TLAS itself
+                BindingDescriptor::new(
+                    [ShaderStageAccessIn::RayTracing(
+                        ShaderStageAccessInRayTracingKHR::RayGen,
+                    )]
+                    .as_slice()
+                    .into(),
+                    BindingType::AccelerationStructure(
+                        AccelerationStructureBindingType::AccelerationStructure,
+                    ),
+                    1,
+                    1,
+                ),
+            ]
+            .as_slice(),
+        )?;
+
+        let rt_descriptor_pool = DescriptorPool::new(
+            device.clone(),
+            DescriptorPoolConcreteDescriptor::new(
+                DescriptorPoolSizesConcreteDescriptor::new(
+                    0,
+                    0,
+                    0,
+                    MAX_DIRECTIONAL_LIGHTS * (frames_in_flight + 1),
+                    0,
+                    0,
+                    frames_in_flight + 1,
+                    0,
+                    0,
+                    Some(DescriptorPoolSizesAcceletarionStructureKHR::new(
+                        frames_in_flight + 1,
+                    )),
+                ),
+                frames_in_flight + 1,
+            ),
+            Some("rt_descriptor_pool"),
+        )?;
+
+        let rt_descriptor_set = None;
+
         let mesh_rendering = Arc::new(MeshRendering::new(
             memory_manager.clone(),
             obj_manager.textures_descriptor_set_layout(),
@@ -451,6 +544,7 @@ impl System {
             queue_family.clone(),
             &render_area,
             memory_manager.clone(),
+            rt_descriptor_set_layout.clone(),
             mesh_rendering.descriptor_set_layout(),
             frames_in_flight,
         )?);
@@ -506,6 +600,10 @@ impl System {
             view_projection_descriptor_sets,
 
             view_projection_buffers,
+
+            rt_descriptor_set_layout,
+            rt_descriptor_pool,
+            rt_descriptor_set,
 
             mesh_rendering,
             directional_lighting,
@@ -624,7 +722,11 @@ impl System {
             static_meshes_resources.wait_nonblocking()?;
             directional_lighting_resources.wait_nonblocking()?;
 
-            let tlas_data = static_meshes_resources.tlas();
+            // if there is no descriptor set then no element is on the scene, therefore there is
+            // simply nothing to be rendered.
+            let Some(rt_descriptor_set) = &self.rt_descriptor_set else {
+                return Ok(());
+            };
 
             // here register the command buffer: command buffer at index i is associated with rendering_fences[i],
             // that I just awaited above, so thecommand buffer is surely NOT currently in use
@@ -658,7 +760,7 @@ impl System {
                 );
 
                 let dlbuffer_descriptor_set = self.directional_lighting.record_rendering_commands(
-                    tlas_data.clone(),
+                    rt_descriptor_set.clone(),
                     gbuffer_descriptor_set.clone(),
                     directional_lighting_resources.deref(),
                     current_frame,
