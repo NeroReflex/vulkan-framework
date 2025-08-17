@@ -80,7 +80,7 @@ layout (set = 2, binding = 0, std430) readonly buffer directional_lights
     light_t light[];
 };
 
-uniform layout (set = 2, binding = 1, r32f) image2D outputImage[MAX_DIRECTIONAL_LIGHTS];
+uniform layout (set = 2, binding = 1, rg32f) image2D outputImage[MAX_DIRECTIONAL_LIGHTS];
 
 layout(push_constant) uniform DirectionalLightingData {
     uint lights_count;
@@ -338,7 +338,7 @@ impl DirectionalLighting {
                             ImageMultisampling::SamplesPerPixel1,
                             1,
                             1,
-                            ImageFormat::from(CommonImageFormat::r32_sfloat),
+                            ImageFormat::from(CommonImageFormat::r32g32_sfloat),
                             ImageFlags::empty(),
                             ImageTiling::Optimal,
                         ),

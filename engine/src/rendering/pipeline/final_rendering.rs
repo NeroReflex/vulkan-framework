@@ -103,10 +103,11 @@ void main() {
     vec3 out_vDiffuseAlbedo = vec3(0.0, 0.0, 0.0);
 
     for (uint dl_index = 0; dl_index < MAX_DIRECTIONAL_LIGHTS; dl_index++) {
-        const float dl_contribution = texture(dlbuffer[dl_index], in_vTextureUV).r;
-        if (dl_contribution > 0.00001) {
+        const vec4 dl_contribution = texture(dlbuffer[dl_index], in_vTextureUV);
+        const float dl_diffuse_contribution = dl_contribution.r;
+        if (dl_diffuse_contribution > 0.00001) {
             const vec3 intensity = vec3(light[dl_index].intensity_x, light[dl_index].intensity_y, light[dl_index].intensity_z);
-            out_vDiffuseAlbedo += in_vDiffuseAlbedo.xyz * intensity * dl_contribution;
+            out_vDiffuseAlbedo += in_vDiffuseAlbedo.xyz * intensity * dl_diffuse_contribution;
         }
     }
 
