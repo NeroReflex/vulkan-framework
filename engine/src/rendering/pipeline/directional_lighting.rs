@@ -488,13 +488,23 @@ impl DirectionalLighting {
             device.clone(),
             [
                 BindingDescriptor::new(
-                    [ShaderStageAccessIn::Fragment].as_slice().into(),
+                    [
+                        ShaderStageAccessIn::Fragment,
+                        ShaderStageAccessIn::RayTracing(ShaderStageAccessInRayTracingKHR::RayGen),
+                    ]
+                    .as_slice()
+                    .into(),
                     BindingType::Native(NativeBindingType::StorageBuffer),
                     0,
                     1,
                 ),
                 BindingDescriptor::new(
-                    [ShaderStageAccessIn::Fragment].as_slice().into(),
+                    [
+                        ShaderStageAccessIn::Fragment,
+                        ShaderStageAccessIn::RayTracing(ShaderStageAccessInRayTracingKHR::RayGen),
+                    ]
+                    .as_slice()
+                    .into(),
                     BindingType::Native(NativeBindingType::CombinedImageSampler),
                     1,
                     MAX_DIRECTIONAL_LIGHTS,
@@ -689,6 +699,15 @@ impl DirectionalLighting {
 
                 light_index += 1u64;
             });
+
+            let stub_buffer = (0..size_of_light).map(|_| 0u8).collect::<Vec<_>>();
+            for light_unused_index in light_index..(MAX_DIRECTIONAL_LIGHTS as u64) {
+                recorder.update_buffer(
+                    self.raytracing_directions[current_frame].clone(),
+                    (light_unused_index as u64) * size_of_light,
+                    stub_buffer.as_slice(),
+                );
+            }
 
             recorder.buffer_barriers(
                 [BufferMemoryBarrier::new(

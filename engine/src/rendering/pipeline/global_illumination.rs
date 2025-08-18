@@ -47,6 +47,9 @@ const RAYGEN_SPV: &[u32] = inline_spirv!(
 #extension GL_EXT_ray_flags_primitive_culling : require
 #extension GL_EXT_nonuniform_qualifier : enable
 
+// keep this in sync with the rust side
+#define MAX_DIRECTIONAL_LIGHTS 8
+
 // just a stub
 layout (set = 0, binding = 0, std430) readonly buffer tlas_instances
 {
@@ -58,14 +61,21 @@ layout (set = 0, binding = 1) uniform accelerationStructureEXT topLevelAS;
 // gbuffer: 0 for position, 1 for normal, 2 for diffuse texture
 layout (set = 1, binding = 0) uniform sampler2D gbuffer[3];
 
-layout(push_constant) uniform DirectionalLightingData {
-    uint lights_count;
-} directional_lighting_data;
+struct light_t {
+    float direction_x;
+    float direction_y;
+    float direction_z;
 
-layout(std140, set = 2, binding = 0) uniform camera_uniform {
-	mat4 viewMatrix;
-	mat4 projectionMatrix;
-} camera;
+    float intensity_x;
+    float intensity_y;
+    float intensity_z;
+};
+
+layout(set = 2, binding = 1) uniform sampler2D dlbuffer[MAX_DIRECTIONAL_LIGHTS];
+layout(std430, set = 2, binding = 0) readonly buffer directional_lights
+{
+    light_t light[];
+};
 
 uniform layout (set = 5, binding = 0, rgba32f) image2D outputImage;
 
@@ -78,6 +88,54 @@ struct hit_payload_t {
 
 layout(location = 0) rayPayloadEXT hit_payload_t payload;
 
+#define SPHERE_POINTS_FIRST 8
+const vec3 random_point_first[] = {
+    vec3(0.456, 0.789, 0.123),
+    vec3(-0.567, -0.678, 0.456),
+    vec3(0.678, 0.234, -0.567),
+    vec3(-0.789, 0.123, 0.890),
+    vec3(0.890, -0.456, 0.345),
+    vec3(-0.901, 0.678, -0.234),
+    vec3(0.012, -0.789, 0.567),
+    vec3(-0.123, 0.890, 0.678),
+};
+
+#define SPHERE_POINTS_SECOND 32
+const vec3 random_point[] = {
+    vec3(0.123, 0.456, 0.874),
+    vec3(-0.234, 0.678, 0.707),
+    vec3(0.345, -0.123, 0.935),
+    vec3(-0.456, -0.234, 0.861),
+    vec3(0.567, 0.789, -0.234),
+    vec3(-0.678, 0.345, 0.654),
+    vec3(0.789, -0.456, 0.123),
+    vec3(-0.890, 0.567, 0.456),
+    vec3(0.901, -0.678, -0.123),
+    vec3(-0.012, 0.789, 0.987),
+    vec3(0.123, -0.890, 0.654),
+    vec3(-0.234, 0.901, -0.345),
+    vec3(0.345, 0.012, 0.876),
+    vec3(-0.456, -0.123, 0.543),
+    vec3(0.567, 0.234, -0.678),
+    vec3(-0.678, 0.345, 0.789),
+    vec3(0.789, -0.456, -0.890),
+    vec3(-0.890, 0.567, 0.012),
+    vec3(0.901, -0.678, 0.123),
+    vec3(-0.012, 0.789, 0.234),
+    vec3(0.123, -0.890, 0.345),
+    vec3(-0.234, 0.901, 0.456),
+    vec3(0.345, 0.012, -0.567),
+    vec3(-0.456, -0.123, 0.678),
+    vec3(0.567, 0.234, 0.789),
+    vec3(-0.678, 0.345, -0.890),
+    vec3(0.789, -0.456, 0.901),
+    vec3(-0.890, 0.567, 0.012),
+    vec3(0.901, -0.678, 0.123),
+    vec3(-0.012, 0.789, -0.234),
+    vec3(0.123, -0.890, 0.345),
+    vec3(-0.234, 0.901, 0.456),
+};
+
 void main() {
     const ivec2 resolution = imageSize(outputImage);
 
@@ -86,12 +144,78 @@ void main() {
     const vec3 origin = texture(gbuffer[0], position_xy).xyz;
     const vec3 normal = texture(gbuffer[1], position_xy).xyz;
 
-    /*
-        // other flags: gl_RayFlagsCullNoOpaqueEXT gl_RayFlagsNoneEXT
-        traceRayEXT(topLevelAS, gl_RayFlagsSkipAABBEXT | gl_RayFlagsTerminateOnFirstHitEXT, 0xff, 0, 0, 0, origin.xyz, 0.1, ray_dir.xyz, 10000.0, 0);
-    */
+    vec3 contribution = vec3(0.0, 0.0, 0.0);
+    for (uint ray_index_1 = 0; ray_index_1 < SPHERE_POINTS_FIRST; ray_index_1++) {
+        const vec3 random_point_on_sphere = normalize(random_point_first[ray_index_1]);
+        vec3 ray_dir = reflect(normal, random_point_on_sphere);
+        const bool below_horizon = dot(normal, random_point_on_sphere) < 0;
+        ray_dir = below_horizon ? -ray_dir : ray_dir;
 
-    imageStore(outputImage, ivec2(gl_LaunchIDEXT.xy), vec4(0.7, 0.7, 0.7, 1.0));
+        traceRayEXT(
+            topLevelAS,
+            gl_RayFlagsNoneEXT,
+            0xff,
+            0,
+            0,
+            0,
+            origin.xyz,
+            0.1,
+            ray_dir.xyz,
+            10000.0,
+            0
+        );
+
+        if (!payload.hit) {
+            continue;
+        }
+
+        // store the first hit
+        hit_payload_t first_surface = payload;
+
+        for (uint dir_light = 0; dir_light < MAX_DIRECTIONAL_LIGHTS; dir_light++) {
+            const vec3 directional_light_dir = -1.0 * vec3(light[dir_light].direction_x, light[dir_light].direction_y, light[dir_light].direction_z);
+            const vec3 directional_light_intensity = vec3(light[dir_light].intensity_x, light[dir_light].intensity_y, light[dir_light].intensity_z);
+            if ((length(directional_light_dir) <= 0.1) || ((abs(directional_light_intensity.x) + abs(directional_light_intensity.y) + abs(directional_light_intensity.z)) <= 0.1)) {
+                continue;
+            }
+
+            // check for this directional light
+            traceRayEXT(
+                topLevelAS,
+                gl_RayFlagsNoneEXT,
+                0xff,
+                0,
+                0,
+                0,
+                first_surface.position.xyz,
+                0.1,
+                directional_light_dir.xyz,
+                10000.0,
+                0
+            );
+
+            if (payload.hit) {
+                continue;
+            }
+
+            // test for collisions (REMOVE ME)
+            {
+                contribution += vec3(0.1, 0.1, 0.1);
+                continue;
+            }
+
+            // shadow ray is not occluded: sum the contribution of this point
+            const float coeff_directional_light = /*max(dot(first_surface.triangle_normal, directional_light_dir.xyz), 0.0)*/ 1.0;
+            const vec3 directional_light_effective_intensity = coeff_directional_light * directional_light_intensity;
+            const vec3 diffuse_contibution = directional_light_effective_intensity * payload.diffuse;
+            contribution += diffuse_contibution;
+        }
+
+        const float first_hit_coefficient = max(dot(first_surface.triangle_normal, ray_dir), 0.0);
+        // from here one 
+    }
+
+    imageStore(outputImage, ivec2(gl_LaunchIDEXT.xy), vec4(contribution / float(SPHERE_POINTS_FIRST), 1.0));
 }
 "#,
     glsl,

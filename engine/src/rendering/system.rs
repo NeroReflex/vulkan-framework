@@ -789,7 +789,7 @@ impl System {
                     self.view_projection_descriptor_sets[current_frame].clone(),
                     directional_lighting_resources.deref(),
                     current_frame,
-                    [PipelineStage::AllGraphics].as_slice().into(),
+                    [PipelineStage::AllGraphics, PipelineStage::RayTracingPipelineKHR(PipelineStageRayTracingPipelineKHR::RayTracingShader)].as_slice().into(),
                     [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead].as_slice().into(),
                     recorder
                 );
