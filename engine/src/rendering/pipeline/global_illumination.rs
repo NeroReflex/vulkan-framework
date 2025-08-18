@@ -205,36 +205,42 @@ void main() {
         data[gl_InstanceID].ib.vertex_index[first_vertex_id + 1],
         data[gl_InstanceID].ib.vertex_index[first_vertex_id + 2]
     );
-    const vec3 v1_position = vec3(
+    const vec4 v1_position = vec4(
         data[gl_InstanceID].vb.vertex_data[vertex_index.x].position_x,
         data[gl_InstanceID].vb.vertex_data[vertex_index.x].position_y,
-        data[gl_InstanceID].vb.vertex_data[vertex_index.x].position_z
+        data[gl_InstanceID].vb.vertex_data[vertex_index.x].position_z,
+        1.0
     );
-    const vec3 v2_position = vec3(
+    const vec4 v2_position = vec4(
         data[gl_InstanceID].vb.vertex_data[vertex_index.y].position_x,
         data[gl_InstanceID].vb.vertex_data[vertex_index.y].position_y,
-        data[gl_InstanceID].vb.vertex_data[vertex_index.y].position_z
+        data[gl_InstanceID].vb.vertex_data[vertex_index.y].position_z,
+        1.0
     );
-    const vec3 v3_position = vec3(
+    const vec4 v3_position = vec4(
         data[gl_InstanceID].vb.vertex_data[vertex_index.z].position_x,
         data[gl_InstanceID].vb.vertex_data[vertex_index.z].position_y,
-        data[gl_InstanceID].vb.vertex_data[vertex_index.z].position_z
+        data[gl_InstanceID].vb.vertex_data[vertex_index.z].position_z,
+        1.0
     );
 
-    const vec3 v1_normal = vec3(
+    const vec4 v1_normal = vec4(
         data[gl_InstanceID].vb.vertex_data[vertex_index.x].normal_x,
         data[gl_InstanceID].vb.vertex_data[vertex_index.x].normal_y,
-        data[gl_InstanceID].vb.vertex_data[vertex_index.x].normal_z
+        data[gl_InstanceID].vb.vertex_data[vertex_index.x].normal_z,
+        0.0
     );
-    const vec3 v2_normal = vec3(
+    const vec4 v2_normal = vec4(
         data[gl_InstanceID].vb.vertex_data[vertex_index.y].normal_x,
         data[gl_InstanceID].vb.vertex_data[vertex_index.y].normal_y,
-        data[gl_InstanceID].vb.vertex_data[vertex_index.y].normal_z
+        data[gl_InstanceID].vb.vertex_data[vertex_index.y].normal_z,
+        0.0
     );
-    const vec3 v3_normal = vec3(
+    const vec4 v3_normal = vec4(
         data[gl_InstanceID].vb.vertex_data[vertex_index.z].normal_x,
         data[gl_InstanceID].vb.vertex_data[vertex_index.z].normal_y,
-        data[gl_InstanceID].vb.vertex_data[vertex_index.z].normal_z
+        data[gl_InstanceID].vb.vertex_data[vertex_index.z].normal_z,
+        0.0
     );
 
     const vec2 v1_uv = vec2(
@@ -251,9 +257,21 @@ void main() {
     );
 
     const mat3x4 load_matrix = data[gl_InstanceID].tb.transform[0];
-    const mat3x4 model_matrix = data[gl_InstanceID].instance.blas_ref[gl_InstanceID].model_matrix;
+    const mat3x4 transform_matrix = data[gl_InstanceID].instance.blas_ref[gl_InstanceID].model_matrix;
+
+    const mat4 model_matrix =
+        mat4(transform_matrix[0], transform_matrix[1], transform_matrix[2], vec4(0.0, 0.0, 0.0, 1.0)) *
+        mat4(load_matrix[0], load_matrix[1], load_matrix[2], vec4(0.0, 0.0, 0.0, 1.0));
 
     const uint mesh_id = gl_InstanceCustomIndexEXT;
+
+    const vec4 v1_world_position = model_matrix * v1_position;
+    const vec4 v2_world_position = model_matrix * v2_position;
+    const vec4 v3_world_position = model_matrix * v3_position;
+
+    const vec4 v1_world_normal = model_matrix * v1_normal;
+    const vec4 v2_world_normal = model_matrix * v2_normal;
+    const vec4 v3_world_normal = model_matrix * v3_normal;
 
     const vec3 barycentricCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
     //hitValue = barycentricCoords;
