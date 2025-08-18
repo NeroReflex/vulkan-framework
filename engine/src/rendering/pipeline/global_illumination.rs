@@ -71,6 +71,9 @@ uniform layout (set = 5, binding = 0, rgba32f) image2D outputImage;
 
 struct hit_payload_t {
     bool hit;
+    vec3 position;
+    vec3 triangle_normal;
+    vec3 diffuse;
 };
 
 layout(location = 0) rayPayloadEXT hit_payload_t payload;
@@ -104,6 +107,9 @@ const MISS_SPV: &[u32] = inline_spirv!(
 
 struct hit_payload_t {
     bool hit;
+    vec3 position;
+    vec3 triangle_normal;
+    vec3 diffuse;
 };
 
 layout(location = 0) rayPayloadEXT hit_payload_t payload;
@@ -205,7 +211,7 @@ layout(std430, set = 4, binding = 1) readonly buffer meshes
 struct hit_payload_t {
     bool hit;
     vec3 position;
-    vec3 normal;
+    vec3 triangle_normal;
     vec3 diffuse;
 };
 
@@ -218,6 +224,13 @@ hitAttributeEXT vec2 attribs;
  * gl_InstanceID => il numero della istanza: ogni istanza ha un numero progressivo che parte da 0
  * gl_PrimitiveID => l'indice del triangolo colpito
  */
+
+vec3 calculateNormal(vec3 A, vec3 B, vec3 C) {
+    vec3 edge1 = B - A;
+    vec3 edge2 = C - A;
+    vec3 normal = cross(edge1, edge2);
+    return normalize(normal);
+}
 
 void main() {
     const uint first_vertex_id = gl_PrimitiveID * 3;
@@ -299,15 +312,14 @@ void main() {
     const uint diffuse_texture_id = info[nonuniformEXT(material_index)].diffuse_texture_index;
 
     const vec3 barycentrics = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
-    //hitValue = barycentricCoords;
 
-    vec2 texture_uv = v3_uv * barycentrics.x + v2_uv * barycentrics.y + v3_uv * barycentrics.z;
+    vec2 texture_uv = v1_uv * barycentrics.x + v2_uv * barycentrics.y + v3_uv * barycentrics.z;
 
     const vec4 diffuse_surface_color = texture(textures[diffuse_texture_id], texture_uv);
 
     payload.hit = true;
-    payload.position = vec3(0.0, 0.0, 0.0);
-    payload.normal = vec3(0.0, 0.0, 0.0);
+    payload.position = v1_world_position.xyz * barycentrics.x + v2_world_position.xyz * barycentrics.y + v3_world_position.xyz * barycentrics.z;
+    payload.triangle_normal = calculateNormal(v1_world_normal.xyz, v2_world_normal.xyz, v3_world_normal.xyz);
     payload.diffuse = diffuse_surface_color.xyz;
 }
 "#,
