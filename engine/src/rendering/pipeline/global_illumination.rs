@@ -178,11 +178,35 @@ layout(std430, set = 0, binding = 0) readonly buffer tlas_instances
     tlas_instance_data_t data[ /* address by gl_InstanceID */ ];
 };
 
+// MUST match with MAX_TEXTURES on rust side
+layout(set = 3, binding = 0) uniform sampler2D textures[256];
+
+struct material_t {
+    uint diffuse_texture_index;
+    uint normal_texture_index;
+    uint reflection_texture_index;
+    uint displacement_texture_index;
+};
+
+layout(std430, set = 4, binding = 0) readonly buffer material
+{
+    material_t info[];
+};
+
+struct mesh_to_material_t {
+    uint material_index;
+};
+
+layout(std430, set = 4, binding = 1) readonly buffer meshes
+{
+    mesh_to_material_t material_for_mesh[];
+};
+
 struct hit_payload_t {
     bool hit;
     vec3 position;
     vec3 normal;
-    vec2 texture_uv;
+    vec3 diffuse;
 };
 
 layout(location = 0) rayPayloadEXT hit_payload_t payload;
@@ -196,8 +220,6 @@ hitAttributeEXT vec2 attribs;
  */
 
 void main() {
-    payload.hit = true;
-
     const uint first_vertex_id = gl_PrimitiveID * 3;
 
     const uvec3 vertex_index = uvec3(
@@ -273,8 +295,20 @@ void main() {
     const vec4 v2_world_normal = model_matrix * v2_normal;
     const vec4 v3_world_normal = model_matrix * v3_normal;
 
-    const vec3 barycentricCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
+    const uint material_index = material_for_mesh[nonuniformEXT(mesh_id)].material_index;
+    const uint diffuse_texture_id = info[nonuniformEXT(material_index)].diffuse_texture_index;
+
+    const vec3 barycentrics = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
     //hitValue = barycentricCoords;
+
+    vec2 texture_uv = v3_uv * barycentrics.x + v2_uv * barycentrics.y + v3_uv * barycentrics.z;
+
+    const vec4 diffuse_surface_color = texture(textures[diffuse_texture_id], texture_uv);
+
+    payload.hit = true;
+    payload.position = vec3(0.0, 0.0, 0.0);
+    payload.normal = vec3(0.0, 0.0, 0.0);
+    payload.diffuse = diffuse_surface_color.xyz;
 }
 "#,
     glsl,

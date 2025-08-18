@@ -31,7 +31,9 @@ use vulkan_framework::{
     queue_family::{QueueFamily, QueueFamilyOwned},
     sampler::{Filtering, MipmapMode, Sampler},
     shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType},
-    shader_stage_access::ShaderStagesAccess,
+    shader_stage_access::{
+        ShaderStageAccessIn, ShaderStageAccessInRayTracingKHR, ShaderStagesAccess,
+    },
 };
 
 use crate::rendering::{
@@ -175,7 +177,12 @@ impl TextureManager {
         let descriptor_set_layout = DescriptorSetLayout::new(
             device.clone(),
             [BindingDescriptor::new(
-                ShaderStagesAccess::graphics(),
+                [
+                    ShaderStageAccessIn::Fragment,
+                    ShaderStageAccessIn::RayTracing(ShaderStageAccessInRayTracingKHR::ClosestHit),
+                ]
+                .as_slice()
+                .into(),
                 BindingType::Native(NativeBindingType::CombinedImageSampler),
                 0,
                 MAX_TEXTURES,
