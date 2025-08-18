@@ -95,10 +95,14 @@ layout(std430, set = 1, binding = 0) readonly buffer directional_lights
     light_t light[];
 };
 
+layout(set = 2, binding = 0) uniform sampler2D gibuffer;
+
 void main() {
     const vec3 in_vPosition_worldspace = texture(gbuffer[0], in_vTextureUV).xyz;
     const vec3 in_vNormal_worldspace = texture(gbuffer[1], in_vTextureUV).xyz;
     const vec4 in_vDiffuseAlbedo = texture(gbuffer[2], in_vTextureUV);
+
+    const vec3 global_illumination_received = texture(gibuffer, in_vTextureUV).xyz;
 
     vec3 out_vDiffuseAlbedo = vec3(0.0, 0.0, 0.0);
 
@@ -117,7 +121,9 @@ void main() {
         }
     }
 
-    outColor = vec4(out_vDiffuseAlbedo.xyz, 1.0);
+    const vec3 global_illumination_contribution = in_vDiffuseAlbedo.xyz * global_illumination_received;
+
+    outColor = vec4(out_vDiffuseAlbedo.xyz + global_illumination_contribution, 1.0);
 }
 "#,
     frag
@@ -147,6 +153,7 @@ impl FinalRendering {
         memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
         gbuffer_descriptor_set_layout: Arc<DescriptorSetLayout>,
         dlbuffer_descriptor_set_layout: Arc<DescriptorSetLayout>,
+        gibuffer_descriptor_set_layout: Arc<DescriptorSetLayout>,
         render_area: &RenderingDimensions,
         frames_in_flight: u32,
     ) -> RenderingResult<Self> {
@@ -222,6 +229,7 @@ impl FinalRendering {
             &[
                 gbuffer_descriptor_set_layout,
                 dlbuffer_descriptor_set_layout,
+                gibuffer_descriptor_set_layout,
             ],
             &[],
             Some("final_rendering.pipeline_layout"),
@@ -271,6 +279,7 @@ impl FinalRendering {
         queue_family: Arc<QueueFamily>,
         gbuffer_descriptor_set: Arc<DescriptorSet>,
         dlbuffer_descriptor_set: Arc<DescriptorSet>,
+        gibuffer_descriptor_set: Arc<DescriptorSet>,
         current_frame: usize,
         recorder: &mut CommandBufferRecorder,
     ) -> (Arc<ImageView>, ImageSubresourceRange, ImageLayout) {
@@ -309,13 +318,12 @@ impl FinalRendering {
                 recorder.bind_descriptor_sets_for_graphics_pipeline(
                     self.graphics_pipeline.get_parent_pipeline_layout(),
                     0,
-                    [gbuffer_descriptor_set].as_slice(),
-                );
-
-                recorder.bind_descriptor_sets_for_graphics_pipeline(
-                    self.graphics_pipeline.get_parent_pipeline_layout(),
-                    1,
-                    [dlbuffer_descriptor_set].as_slice(),
+                    [
+                        gbuffer_descriptor_set,
+                        dlbuffer_descriptor_set,
+                        gibuffer_descriptor_set,
+                    ]
+                    .as_slice(),
                 );
 
                 recorder.draw(0, 6, 0, 1);

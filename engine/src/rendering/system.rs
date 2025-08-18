@@ -568,6 +568,7 @@ impl System {
             memory_manager.clone(),
             mesh_rendering.descriptor_set_layout(),
             directional_lighting.descriptor_set_layout(),
+            global_illumination_lighting.descriptor_set_layout(),
             &render_area,
             frames_in_flight,
         )?);
@@ -808,6 +809,7 @@ impl System {
                     self.queue_family(),
                     gbuffer_descriptor_set,
                     dlbuffer_descriptor_set,
+                    gibuffer_descriptor_set,
                     current_frame,
                     recorder,
                 );

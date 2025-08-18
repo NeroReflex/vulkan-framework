@@ -83,7 +83,7 @@ void main() {
         traceRayEXT(topLevelAS, gl_RayFlagsSkipAABBEXT | gl_RayFlagsTerminateOnFirstHitEXT, 0xff, 0, 0, 0, origin.xyz, 0.1, ray_dir.xyz, 10000.0, 0);
     */
 
-    imageStore(outputImage, ivec2(gl_LaunchIDEXT.xy), vec4(0.0, 0.0, 0.0, 0.0));
+    imageStore(outputImage, ivec2(gl_LaunchIDEXT.xy), vec4(0.7, 0.7, 0.7, 1.0));
 }
 "#,
     glsl,

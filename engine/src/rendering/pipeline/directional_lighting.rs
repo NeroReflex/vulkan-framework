@@ -113,7 +113,7 @@ void main() {
 
         if (!(origin.x == 0 && origin.y == 0 && origin.z == 0)) {
             // other flags: gl_RayFlagsCullNoOpaqueEXT gl_RayFlagsNoneEXT
-            traceRayEXT(topLevelAS, gl_RayFlagsSkipAABBEXT | gl_RayFlagsTerminateOnFirstHitEXT, 0xff, 0, 0, 0, origin.xyz, 0.1, ray_dir.xyz, 10000.0, 0);
+            traceRayEXT(topLevelAS, gl_RayFlagsSkipAABBEXT | gl_RayFlagsTerminateOnFirstHitEXT, 0xff, 0, 0, 0, origin.xyz, 1.0, ray_dir.xyz, 10000.0, 0);
         }
 
         float diffuse_contribution = 0.0;
@@ -121,7 +121,7 @@ void main() {
         if (!hitValue) {
             diffuse_contribution = max(dot(normal, ray_dir), 0.0);
 
-            const vec3 reflect_dir = reflect(ray_dir, normal);
+            const vec3 reflect_dir = reflect(light_dir, normal);
             specular_contribution = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
         }
 
