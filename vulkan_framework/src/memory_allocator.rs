@@ -82,10 +82,13 @@ pub struct DefaultAllocator {
 
 impl DefaultAllocator {
     pub fn with_blocksize(block_size: u64, number_of_blocks: u64) -> Self {
-        println!(
-            "Managing {} blocks of {} bytes each",
-            number_of_blocks, block_size
-        );
+        #[cfg(debug_assertions)]
+        {
+            println!(
+                "Managing {} blocks of {} bytes each",
+                number_of_blocks, block_size
+            );
+        }
 
         let protected_resource = (0..(((number_of_blocks / 64) + 1) as usize))
             .map(|_idx| 0u64)
@@ -108,10 +111,13 @@ impl DefaultAllocator {
         let block_size = 4096u64;
         let number_of_blocks = total_size / block_size;
 
-        println!(
-            "Managing {} blocks of {} bytes each",
-            number_of_blocks, block_size
-        );
+        #[cfg(debug_assertions)]
+        {
+            println!(
+                "Managing {} blocks of {} bytes each",
+                number_of_blocks, block_size
+            );
+        }
 
         Self::with_blocksize(block_size, number_of_blocks)
     }

@@ -56,7 +56,8 @@ use crate::{
         MAX_DIRECTIONAL_LIGHTS, MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingError, RenderingResult,
         pipeline::{
             directional_lighting::DirectionalLighting, final_rendering::FinalRendering,
-            hdr_transform::HDRTransform, mesh_rendering::MeshRendering, renderquad::RenderQuad,
+            global_illumination::GILighting, hdr_transform::HDRTransform,
+            mesh_rendering::MeshRendering, renderquad::RenderQuad,
         },
         rendering_dimensions::RenderingDimensions,
         resources::{
@@ -102,6 +103,7 @@ pub struct System {
 
     mesh_rendering: Arc<MeshRendering>,
     directional_lighting: Arc<DirectionalLighting>,
+    global_illumination_lighting: Arc<GILighting>,
     final_rendering: Arc<FinalRendering>,
     hdr: Arc<HDRTransform>,
     renderquad: Arc<RenderQuad>,
@@ -552,6 +554,16 @@ impl System {
             frames_in_flight,
         )?);
 
+        let global_illumination_lighting = Arc::new(GILighting::new(
+            queue_family.clone(),
+            &render_area,
+            memory_manager.clone(),
+            rt_descriptor_set_layout.clone(),
+            mesh_rendering.descriptor_set_layout(),
+            directional_lighting.descriptor_set_layout(),
+            frames_in_flight,
+        )?);
+
         let final_rendering = Arc::new(FinalRendering::new(
             memory_manager.clone(),
             mesh_rendering.descriptor_set_layout(),
@@ -612,6 +624,7 @@ impl System {
 
             mesh_rendering,
             directional_lighting,
+            global_illumination_lighting,
             final_rendering,
             hdr,
             renderquad,
@@ -769,6 +782,16 @@ impl System {
                     gbuffer_descriptor_set.clone(),
                     self.view_projection_descriptor_sets[current_frame].clone(),
                     directional_lighting_resources.deref(),
+                    current_frame,
+                    [PipelineStage::AllGraphics].as_slice().into(),
+                    [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead].as_slice().into(),
+                    recorder
+                );
+
+                let gibuffer_descriptor_set = self.global_illumination_lighting.record_rendering_commands(
+                    rt_descriptor_set.clone(),
+                    gbuffer_descriptor_set.clone(),
+                    dlbuffer_descriptor_set.clone(),
                     current_frame,
                     [PipelineStage::AllGraphics].as_slice().into(),
                     [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead].as_slice().into(),

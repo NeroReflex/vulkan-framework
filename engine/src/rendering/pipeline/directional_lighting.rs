@@ -55,7 +55,8 @@ const RAYGEN_SPV: &[u32] = inline_spirv!(
 
 #define MAX_DIRECTIONAL_LIGHTS 8
 
-layout (set = 0, binding = 0, std430) readonly buffer tlas_instances
+// just a stub
+layout(std430, set = 0, binding = 0) readonly buffer tlas_instances
 {
     uint data[];
 };
@@ -157,47 +158,10 @@ const CHIT_SPV: &[u32] = inline_spirv!(
 #extension GL_EXT_ray_tracing : require
 #extension GL_EXT_buffer_reference : require
 
-#define Buffer(Alignment) \
-  layout(buffer_reference, std430, buffer_reference_align = Alignment) buffer
-
-struct vertex_buffer_element_t {
-    vec3 position;
-    vec3 normal;
-    vec2 texture_uv;
-};
-
-Buffer(64) VertexBuffer {
-  vertex_buffer_element_t vertex_data[];
-};
-
-Buffer(64) IndexBuffer {
-  uint vertex_index[];
-};
-
-Buffer(64) TransformBuffer {
-  mat3x4 transform[];
-};
-
-struct instance_buffer_t {
-    mat3x4 model_matrix;
-};
-
-Buffer(64) InstanceBuffer {
-  instance_buffer_t transform[];
-};
-
-struct tlas_instance_data_t {
-    IndexBuffer ib;
-    VertexBuffer vb;
-    TransformBuffer tb;
-    InstanceBuffer instance;
-    uint instance_num;
-    uint padding;
-};
-
+// just a stub
 layout(std430, set = 0, binding = 0) readonly buffer tlas_instances
 {
-    tlas_instance_data_t data[];
+    uint data[];
 };
 
 layout(location = 0) rayPayloadInEXT bool hitValue;
