@@ -113,7 +113,19 @@ void main() {
 
         if (!(origin.x == 0 && origin.y == 0 && origin.z == 0)) {
             // other flags: gl_RayFlagsCullNoOpaqueEXT gl_RayFlagsNoneEXT
-            traceRayEXT(topLevelAS, gl_RayFlagsSkipAABBEXT | gl_RayFlagsTerminateOnFirstHitEXT, 0xff, 0, 0, 0, origin.xyz, 1.0, ray_dir.xyz, 10000.0, 0);
+            traceRayEXT(
+                topLevelAS,
+                gl_RayFlagsSkipAABBEXT | gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsCullNoOpaqueEXT,
+                0xff,
+                0,
+                0,
+                0,
+                origin.xyz,
+                1.0,
+                ray_dir.xyz,
+                10000.0,
+                0
+            );
         }
 
         float diffuse_contribution = 0.0;

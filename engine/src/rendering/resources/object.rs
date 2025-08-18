@@ -222,8 +222,6 @@ struct TLASDescriptor {
     _vertex_buffer_addr: u64,
     _transform_buffer_addr: u64,
     _instance_buffer_addr: u64,
-    _instance_num: u32,
-    _padding: u32,
 }
 
 impl Manager {
@@ -1210,8 +1208,6 @@ impl Manager {
                             _vertex_buffer_addr: blas.vertex_buffer().buffer_device_addr(),
                             _transform_buffer_addr: blas.transform_buffer().buffer_device_addr(),
                             _instance_buffer_addr: tlas.instance_buffer().buffer_device_addr(),
-                            _instance_num: instance_num as u32,
-                            _padding: 0xFFFFFFFFu32,
                         };
 
                         buffer_barriers.push(BufferMemoryBarrier::new(

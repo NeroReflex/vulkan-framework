@@ -68,7 +68,11 @@ layout(std140, set = 2, binding = 0) uniform camera_uniform {
 
 uniform layout (set = 3, binding = 0, rgba32f) image2D outputImage;
 
-layout(location = 0) rayPayloadEXT bool hitValue;
+struct hit_payload_t {
+    bool hit;
+};
+
+layout(location = 0) rayPayloadEXT hit_payload_t payload;
 
 void main() {
     const ivec2 resolution = imageSize(outputImage);
@@ -97,10 +101,14 @@ const MISS_SPV: &[u32] = inline_spirv!(
 #version 460
 #extension GL_EXT_ray_tracing : require
 
-layout(location = 0) rayPayloadInEXT bool hitValue;
+struct hit_payload_t {
+    bool hit;
+};
+
+layout(location = 0) rayPayloadEXT hit_payload_t payload;
 
 void main() {
-    hitValue = false;
+    payload.hit = false;
 }
 "#,
     glsl,
@@ -113,10 +121,13 @@ const CHIT_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
 #extension GL_EXT_ray_tracing : require
-#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_nonuniform_qualifier : enable
+#extension GL_EXT_scalar_block_layout : enable
+#extension GL_EXT_buffer_reference2 : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
 #define Buffer(Alignment) \
-  layout(buffer_reference, std430, buffer_reference_align = Alignment) buffer
+  layout(buffer_reference, scalar) buffer
 
 struct vertex_buffer_element_t {
     vec3 position;
@@ -125,15 +136,15 @@ struct vertex_buffer_element_t {
 };
 
 Buffer(64) VertexBuffer {
-  vertex_buffer_element_t vertex_data[];
+  vertex_buffer_element_t vertex_data[ /* address by IndexBuffer */ ];
 };
 
 Buffer(64) IndexBuffer {
-  uint vertex_index[];
+  uvec3 vertex_index[ /* address by gl_PrimitiveID */ ];
 };
 
 Buffer(64) TransformBuffer {
-  mat3x4 transform[];
+  mat3x4 transform[ /* address by  */ ];
 };
 
 struct instance_buffer_t {
@@ -141,7 +152,7 @@ struct instance_buffer_t {
 };
 
 Buffer(64) InstanceBuffer {
-  instance_buffer_t transform[];
+  instance_buffer_t transform[ /* address by gl_InstanceID */ ];
 };
 
 struct tlas_instance_data_t {
@@ -149,20 +160,29 @@ struct tlas_instance_data_t {
     VertexBuffer vb;
     TransformBuffer tb;
     InstanceBuffer instance;
-    uint instance_num;
-    uint padding;
 };
 
 layout(std430, set = 0, binding = 0) readonly buffer tlas_instances
 {
-    tlas_instance_data_t data[];
+    tlas_instance_data_t data[ /* address by gl_InstanceID */ ];
 };
 
-layout(location = 0) rayPayloadInEXT bool hitValue;
+struct hit_payload_t {
+    bool hit;
+};
 
-//hitAttributeEXT vec2 attribs;
+layout(location = 0) rayPayloadEXT hit_payload_t payload;
+
+hitAttributeEXT vec2 attribs;
+
+/*
+ * gl_CustomInstanceID => ci ho messo il numero della mesh per ricondurmi al materiale giusto
+ * gl_InstanceID => il numero della istanza: ogni istanza ha un numero progressivo che parte da 0
+ * gl_PrimitiveID => l'indice del triangolo colpito
+ */
 
 void main() {
+    payload.hit = true;
     //const vec3 barycentricCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
     //hitValue = barycentricCoords;
 }
