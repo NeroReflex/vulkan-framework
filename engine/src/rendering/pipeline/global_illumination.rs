@@ -47,6 +47,7 @@ const RAYGEN_SPV: &[u32] = inline_spirv!(
 #extension GL_EXT_ray_flags_primitive_culling : require
 #extension GL_EXT_nonuniform_qualifier : enable
 
+// just a stub
 layout (set = 0, binding = 0, std430) readonly buffer tlas_instances
 {
     uint data[];
@@ -66,7 +67,7 @@ layout(std140, set = 2, binding = 0) uniform camera_uniform {
 	mat4 projectionMatrix;
 } camera;
 
-uniform layout (set = 3, binding = 0, rgba32f) image2D outputImage;
+uniform layout (set = 5, binding = 0, rgba32f) image2D outputImage;
 
 struct hit_payload_t {
     bool hit;
@@ -123,16 +124,22 @@ const CHIT_SPV: &[u32] = inline_spirv!(
 #extension GL_EXT_ray_tracing : require
 #extension GL_EXT_nonuniform_qualifier : enable
 #extension GL_EXT_scalar_block_layout : enable
-#extension GL_EXT_buffer_reference2 : require
+#extension GL_EXT_buffer_reference : require
+//#extension GL_EXT_buffer_reference2 : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
 #define Buffer(Alignment) \
   layout(buffer_reference, scalar) buffer
 
 struct vertex_buffer_element_t {
-    vec3 position;
-    vec3 normal;
-    vec2 texture_uv;
+    float position_x;
+    float position_y;
+    float position_z;
+    float normal_x;
+    float normal_y;
+    float normal_z;
+    float texture_u;
+    float texture_v;
 };
 
 Buffer(64) VertexBuffer {
@@ -140,19 +147,23 @@ Buffer(64) VertexBuffer {
 };
 
 Buffer(64) IndexBuffer {
-  uvec3 vertex_index[ /* address by gl_PrimitiveID */ ];
+  uint vertex_index[ /* address by gl_PrimitiveID */ ];
 };
 
 Buffer(64) TransformBuffer {
-  mat3x4 transform[ /* address by  */ ];
+  mat3x4 transform[ /* only 0 is available */ ];
 };
 
-struct instance_buffer_t {
+struct blas_data_t {
     mat3x4 model_matrix;
+    uint instance_shader_binding_table_record_offset_and_flags;
+    uint instance_custom_index_and_mask;
+    uint acceleration_structure_reference_1;
+    uint acceleration_structure_reference_2;
 };
 
 Buffer(64) InstanceBuffer {
-  instance_buffer_t transform[ /* address by gl_InstanceID */ ];
+    blas_data_t blas_ref[];
 };
 
 struct tlas_instance_data_t {
@@ -169,6 +180,9 @@ layout(std430, set = 0, binding = 0) readonly buffer tlas_instances
 
 struct hit_payload_t {
     bool hit;
+    vec3 position;
+    vec3 normal;
+    vec2 texture_uv;
 };
 
 layout(location = 0) rayPayloadEXT hit_payload_t payload;
@@ -176,14 +190,72 @@ layout(location = 0) rayPayloadEXT hit_payload_t payload;
 hitAttributeEXT vec2 attribs;
 
 /*
- * gl_CustomInstanceID => ci ho messo il numero della mesh per ricondurmi al materiale giusto
+ * gl_InstanceCustomIndexEXT => ci ho messo il numero della mesh per ricondurmi al materiale giusto
  * gl_InstanceID => il numero della istanza: ogni istanza ha un numero progressivo che parte da 0
  * gl_PrimitiveID => l'indice del triangolo colpito
  */
 
 void main() {
     payload.hit = true;
-    //const vec3 barycentricCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
+
+    const uint first_vertex_id = gl_PrimitiveID * 3;
+
+    const uvec3 vertex_index = uvec3(
+        data[gl_InstanceID].ib.vertex_index[first_vertex_id + 0],
+        data[gl_InstanceID].ib.vertex_index[first_vertex_id + 1],
+        data[gl_InstanceID].ib.vertex_index[first_vertex_id + 2]
+    );
+    const vec3 v1_position = vec3(
+        data[gl_InstanceID].vb.vertex_data[vertex_index.x].position_x,
+        data[gl_InstanceID].vb.vertex_data[vertex_index.x].position_y,
+        data[gl_InstanceID].vb.vertex_data[vertex_index.x].position_z
+    );
+    const vec3 v2_position = vec3(
+        data[gl_InstanceID].vb.vertex_data[vertex_index.y].position_x,
+        data[gl_InstanceID].vb.vertex_data[vertex_index.y].position_y,
+        data[gl_InstanceID].vb.vertex_data[vertex_index.y].position_z
+    );
+    const vec3 v3_position = vec3(
+        data[gl_InstanceID].vb.vertex_data[vertex_index.z].position_x,
+        data[gl_InstanceID].vb.vertex_data[vertex_index.z].position_y,
+        data[gl_InstanceID].vb.vertex_data[vertex_index.z].position_z
+    );
+
+    const vec3 v1_normal = vec3(
+        data[gl_InstanceID].vb.vertex_data[vertex_index.x].normal_x,
+        data[gl_InstanceID].vb.vertex_data[vertex_index.x].normal_y,
+        data[gl_InstanceID].vb.vertex_data[vertex_index.x].normal_z
+    );
+    const vec3 v2_normal = vec3(
+        data[gl_InstanceID].vb.vertex_data[vertex_index.y].normal_x,
+        data[gl_InstanceID].vb.vertex_data[vertex_index.y].normal_y,
+        data[gl_InstanceID].vb.vertex_data[vertex_index.y].normal_z
+    );
+    const vec3 v3_normal = vec3(
+        data[gl_InstanceID].vb.vertex_data[vertex_index.z].normal_x,
+        data[gl_InstanceID].vb.vertex_data[vertex_index.z].normal_y,
+        data[gl_InstanceID].vb.vertex_data[vertex_index.z].normal_z
+    );
+
+    const vec2 v1_uv = vec2(
+        data[gl_InstanceID].vb.vertex_data[vertex_index.x].texture_u,
+        data[gl_InstanceID].vb.vertex_data[vertex_index.x].texture_v
+    );
+    const vec2 v2_uv = vec2(
+        data[gl_InstanceID].vb.vertex_data[vertex_index.y].texture_u,
+        data[gl_InstanceID].vb.vertex_data[vertex_index.y].texture_v
+    );
+    const vec2 v3_uv = vec2(
+        data[gl_InstanceID].vb.vertex_data[vertex_index.z].texture_u,
+        data[gl_InstanceID].vb.vertex_data[vertex_index.z].texture_v
+    );
+
+    const mat3x4 load_matrix = data[gl_InstanceID].tb.transform[0];
+    const mat3x4 model_matrix = data[gl_InstanceID].instance.blas_ref[gl_InstanceID].model_matrix;
+
+    const uint mesh_id = gl_InstanceCustomIndexEXT;
+
+    const vec3 barycentricCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
     //hitValue = barycentricCoords;
 }
 "#,
@@ -232,6 +304,8 @@ impl GILighting {
         rt_descriptor_set_layout: Arc<DescriptorSetLayout>,
         gbuffer_descriptor_set_layout: Arc<DescriptorSetLayout>,
         dlbuffer_descriptor_set_layout: Arc<DescriptorSetLayout>,
+        textures_descriptor_set_layout: Arc<DescriptorSetLayout>,
+        materials_descriptor_set_layout: Arc<DescriptorSetLayout>,
         frames_in_flight: u32,
     ) -> RenderingResult<Self> {
         let device = queue_family.get_parent_device();
@@ -260,6 +334,8 @@ impl GILighting {
                 rt_descriptor_set_layout,
                 gbuffer_descriptor_set_layout,
                 dlbuffer_descriptor_set_layout,
+                textures_descriptor_set_layout,
+                materials_descriptor_set_layout,
                 output_descriptor_set_layout.clone(),
             ]
             .as_slice(),
@@ -491,6 +567,8 @@ impl GILighting {
         raytracing_descriptor_set: Arc<DescriptorSet>,
         gbuffer_descriptor_set: Arc<DescriptorSet>,
         dlbuffer_descriptor_set: Arc<DescriptorSet>,
+        textures_descriptor_set: Arc<DescriptorSet>,
+        materials_descriptor_set: Arc<DescriptorSet>,
         current_frame: usize,
         gibuffer_stages: PipelineStages,
         gibuffer_access: MemoryAccess,
@@ -560,6 +638,8 @@ impl GILighting {
                 raytracing_descriptor_set,
                 gbuffer_descriptor_set,
                 dlbuffer_descriptor_set,
+                textures_descriptor_set,
+                materials_descriptor_set,
                 self.output_descriptor_sets[current_frame].clone(),
             ]
             .as_slice(),

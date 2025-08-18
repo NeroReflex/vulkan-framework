@@ -561,6 +561,8 @@ impl System {
             rt_descriptor_set_layout.clone(),
             mesh_rendering.descriptor_set_layout(),
             directional_lighting.descriptor_set_layout(),
+            obj_manager.textures_descriptor_set_layout(),
+            obj_manager.materials_descriptor_set_layout(),
             frames_in_flight,
         )?);
 
@@ -741,6 +743,9 @@ impl System {
             static_meshes_resources.wait_nonblocking()?;
             directional_lighting_resources.wait_nonblocking()?;
 
+            let (texture_descriptor_set, material_descriptor_set) =
+                static_meshes_resources.static_mesh_descriptor_sets(current_frame);
+
             // if there is no descriptor set then no element is on the scene, therefore there is
             // simply nothing to be rendered.
             let Some(rt_descriptor_set) = &self.rt_descriptor_set else {
@@ -793,6 +798,8 @@ impl System {
                     rt_descriptor_set.clone(),
                     gbuffer_descriptor_set.clone(),
                     dlbuffer_descriptor_set.clone(),
+                    texture_descriptor_set,
+                    material_descriptor_set,
                     current_frame,
                     [PipelineStage::AllGraphics].as_slice().into(),
                     [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead].as_slice().into(),

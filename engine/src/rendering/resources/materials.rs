@@ -25,7 +25,7 @@ use vulkan_framework::{
     queue::Queue,
     queue_family::{QueueFamily, QueueFamilyOwned},
     shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType},
-    shader_stage_access::ShaderStagesAccess,
+    shader_stage_access::{ShaderStageAccessIn, ShaderStageAccessInRayTracingKHR},
 };
 
 use crate::rendering::{
@@ -168,13 +168,27 @@ impl MaterialManager {
             device.clone(),
             [
                 BindingDescriptor::new(
-                    ShaderStagesAccess::graphics(),
+                    [
+                        ShaderStageAccessIn::Fragment,
+                        ShaderStageAccessIn::RayTracing(
+                            ShaderStageAccessInRayTracingKHR::ClosestHit,
+                        ),
+                    ]
+                    .as_slice()
+                    .into(),
                     BindingType::Native(NativeBindingType::StorageBuffer),
                     0,
                     1,
                 ),
                 BindingDescriptor::new(
-                    ShaderStagesAccess::graphics(),
+                    [
+                        ShaderStageAccessIn::Fragment,
+                        ShaderStageAccessIn::RayTracing(
+                            ShaderStageAccessInRayTracingKHR::ClosestHit,
+                        ),
+                    ]
+                    .as_slice()
+                    .into(),
                     BindingType::Native(NativeBindingType::StorageBuffer),
                     1,
                     1,

@@ -41,6 +41,7 @@ use vulkan_framework::{
     command_buffer::{CommandBufferRecorder, CommandBufferTrait, PrimaryCommandBuffer},
     command_pool::CommandPool,
     deferred_host_operations::DeferredHostOperationKHR,
+    descriptor_set::DescriptorSet,
     descriptor_set_layout::DescriptorSetLayout,
     device::DeviceOwned,
     fence::{Fence, FenceWaiter},
@@ -1368,6 +1369,16 @@ impl Manager {
             self.current_mesh_to_material_map.clone(),
             queue_family,
         );
+    }
+
+    pub(crate) fn static_mesh_descriptor_sets(
+        &self,
+        current_frame: usize,
+    ) -> (Arc<DescriptorSet>, Arc<DescriptorSet>) {
+        (
+            self.texture_manager.texture_descriptor_set(current_frame),
+            self.material_manager.material_descriptor_set(current_frame),
+        )
     }
 
     /// Performs a guided rendering.
