@@ -634,18 +634,13 @@ impl Device {
 
             // prepare the list of features that the driver will fill, declaring what features it supports
             let mut features2 = ash::vk::PhysicalDeviceFeatures2::default();
-            let mut get_synchronization2_features =
-                ash::vk::PhysicalDeviceSynchronization2Features::default().synchronization2(false);
-            let mut get_dynamic_rendering_features =
-                ash::vk::PhysicalDeviceDynamicRenderingFeatures::default().dynamic_rendering(false);
+            let mut get_vulkan11_features = ash::vk::PhysicalDeviceVulkan11Features::default();
+            let mut get_vulkan12_features = ash::vk::PhysicalDeviceVulkan12Features::default();
+            let mut get_vulkan13_features = ash::vk::PhysicalDeviceVulkan13Features::default();
             let mut accel_structure_features =
                 ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
             let mut ray_tracing_pipeline_features =
                 ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
-            let mut get_device_address_features =
-                ash::vk::PhysicalDeviceBufferDeviceAddressFeatures::default();
-            let mut get_imageless_framebuffer_features =
-                ash::vk::PhysicalDeviceImagelessFramebufferFeatures::default();
 
             let mut properties2 = ash::vk::PhysicalDeviceProperties2::default();
             let mut accel_structure_properties =
@@ -664,25 +659,18 @@ impl Device {
                     accel_structure_features.p_next = &mut ray_tracing_pipeline_features
                         as *mut ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR
                         as *mut std::ffi::c_void;
-
-                    ray_tracing_pipeline_features.p_next = &mut get_device_address_features
-                        as *mut ash::vk::PhysicalDeviceBufferDeviceAddressFeatures
-                        as *mut std::ffi::c_void;
                 }
                 features2.p_next = &mut accel_structure_features as *mut _ as *mut std::ffi::c_void;
             }
 
-            get_imageless_framebuffer_features.p_next = features2.p_next;
-            features2.p_next =
-                &mut get_imageless_framebuffer_features as *mut _ as *mut std::ffi::c_void;
+            get_vulkan13_features.p_next = features2.p_next;
+            features2.p_next = &mut get_vulkan13_features as *mut _ as *mut std::ffi::c_void;
 
-            get_synchronization2_features.p_next = features2.p_next;
-            features2.p_next =
-                &mut get_synchronization2_features as *mut _ as *mut std::ffi::c_void;
+            get_vulkan12_features.p_next = features2.p_next;
+            features2.p_next = &mut get_vulkan12_features as *mut _ as *mut std::ffi::c_void;
 
-            get_dynamic_rendering_features.p_next = get_synchronization2_features.p_next;
-            get_synchronization2_features.p_next =
-                &mut get_dynamic_rendering_features as *mut _ as *mut std::ffi::c_void;
+            get_vulkan11_features.p_next = features2.p_next;
+            features2.p_next = &mut get_vulkan11_features as *mut _ as *mut std::ffi::c_void;
 
             instance.ash_handle().get_physical_device_features2(
                 selected_device.selected_physical_device,
@@ -695,13 +683,19 @@ impl Device {
             device_create_info_builder = device_create_info_builder.push_next(&mut features2);
 
             // make sure synchronization2 features are enabled: it is required for the framework to work
-            assert!(get_synchronization2_features.synchronization2 != 0);
+            assert!(get_vulkan13_features.synchronization2 != 0);
 
             // make sure dynamic rendering is enbaled
-            assert!(get_dynamic_rendering_features.dynamic_rendering != 0);
+            assert!(get_vulkan13_features.dynamic_rendering != 0);
+
+            assert!(get_vulkan12_features.shader_sampled_image_array_non_uniform_indexing != 0);
 
             // nVidia cannot build the AS on the host
             //assert!(accel_structure_features.acceleration_structure_host_commands != 0);
+
+            if acceleration_structure_enabled {
+                assert!(get_vulkan12_features.buffer_device_address != 0);
+            }
 
             let mut raytracing_info: Option<RaytracingInfo> = Option::None;
 
