@@ -340,6 +340,17 @@ impl ImageSubresourceLayers {
     }
 }
 
+impl From<Arc<dyn ImageTrait>> for ImageSubresourceLayers {
+    fn from(image: Arc<dyn ImageTrait>) -> Self {
+        Self::new(
+            ImageAspects::from(image.as_ref().format()),
+            0,
+            0,
+            image.layers_count(),
+        )
+    }
+}
+
 #[derive(Clone)]
 pub struct ImageSubresourceRange {
     image: Arc<dyn ImageTrait>,
