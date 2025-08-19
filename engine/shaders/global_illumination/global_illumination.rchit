@@ -34,7 +34,7 @@ Buffer(4) IndexBuffer {
 };
 
 Buffer(32) TransformBuffer {
-  mat3x4 transform[ /* only 0 is available */ ];
+  mat3x4 transform;
 };
 
 struct blas_data_t {
@@ -190,14 +190,14 @@ void main() {
     const vec3 v2_world_normal = gl_ObjectToWorldEXT * v2_normal;
     const vec3 v3_world_normal = gl_ObjectToWorldEXT * v3_normal;
 
-    const uint material_index = material_for_mesh[mesh_id].material_index;
-    const uint diffuse_texture_id = info[material_index].diffuse_texture_index;
+    const uint material_index = material_for_mesh[nonuniformEXT(mesh_id)].material_index;
+    const uint diffuse_texture_id = info[nonuniformEXT(material_index)].diffuse_texture_index;
 
     const vec3 barycentrics = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
 
     vec2 texture_uv = v1_uv * barycentrics.x + v2_uv * barycentrics.y + v3_uv * barycentrics.z;
 
-    const vec4 diffuse_surface_color = texture(textures[diffuse_texture_id], texture_uv);
+    const vec4 diffuse_surface_color = texture(textures[nonuniformEXT(diffuse_texture_id)], texture_uv);
 
     payload.position = v1_world_position.xyz * barycentrics.x + v2_world_position.xyz * barycentrics.y + v3_world_position.xyz * barycentrics.z;
     payload.triangle_normal = calculateNormal(v1_world_normal.xyz, v2_world_normal.xyz, v3_world_normal.xyz);
