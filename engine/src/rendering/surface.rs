@@ -49,21 +49,20 @@ impl SurfaceHelper {
         while frames_in_flight >= 1 {
             match max_images == 0 {
                 true => {
-                    if swapchain_images_count <= frames_in_flight {
+                    if swapchain_images_count >= frames_in_flight {
                         break;
-                    } else {
-                        frames_in_flight -= 1;
                     }
                 }
                 false => {
-                    if max_images < swapchain_images_count {
-                        swapchain_images_count -= 1;
-                        frames_in_flight -= 1;
-                    } else {
+                    if max_images >= swapchain_images_count {
                         break;
                     }
                 }
             }
+
+            // decrease the amount of needed resources
+            swapchain_images_count -= 1;
+            frames_in_flight -= 1;
         }
 
         if frames_in_flight < 1 {
