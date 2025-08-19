@@ -31,9 +31,7 @@ use vulkan_framework::{
     queue_family::{QueueFamily, QueueFamilyOwned},
     sampler::{Filtering, MipmapMode, Sampler},
     shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType},
-    shader_stage_access::{
-        ShaderStageAccessIn, ShaderStageAccessInRayTracingKHR, ShaderStagesAccess,
-    },
+    shader_stage_access::{ShaderStageAccessIn, ShaderStageAccessInRayTracingKHR},
 };
 
 use crate::rendering::{
