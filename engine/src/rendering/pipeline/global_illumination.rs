@@ -471,14 +471,9 @@ impl GILighting {
                 )]
                 .as_slice()
                 .into(),
-                [
-                    MemoryAccessAs::MemoryWrite,
-                    MemoryAccessAs::MemoryRead,
-                    MemoryAccessAs::ShaderWrite,
-                    MemoryAccessAs::ShaderRead,
-                ]
-                .as_slice()
-                .into(),
+                [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
+                    .as_slice()
+                    .into(),
                 gibuffer_stages,
                 gibuffer_access,
                 image_srr,
