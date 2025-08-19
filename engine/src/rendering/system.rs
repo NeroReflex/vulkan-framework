@@ -761,8 +761,8 @@ impl System {
                     [BufferMemoryBarrier::new(
                         [PipelineStage::Transfer].as_slice().into(),
                         [MemoryAccessAs::TransferWrite].as_slice().into(),
-                        [PipelineStage::AllCommands].as_slice().into(),
-                        [MemoryAccessAs::ShaderRead, MemoryAccessAs::MemoryRead].as_slice().into(),
+                        [PipelineStage::AllGraphics, PipelineStage::RayTracingPipelineKHR(PipelineStageRayTracingPipelineKHR::RayTracingShader)].as_slice().into(),
+                        [MemoryAccessAs::ShaderRead, MemoryAccessAs::MemoryRead, MemoryAccessAs::UniformRead].as_slice().into(),
                         BufferSubresourceRange::new(self.view_projection_buffers[current_frame].clone(), 0u64, self.view_projection_buffers[current_frame].size()),
                         self.queue_family(),
                         self.queue_family(),

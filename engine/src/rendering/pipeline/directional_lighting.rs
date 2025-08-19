@@ -714,16 +714,20 @@ impl DirectionalLighting {
                     [PipelineStage::Transfer].as_slice().into(),
                     [MemoryAccessAs::TransferWrite].as_slice().into(),
                     [
+                        PipelineStage::AllGraphics,
                         PipelineStage::RayTracingPipelineKHR(
                             PipelineStageRayTracingPipelineKHR::RayTracingShader,
                         ),
-                        PipelineStage::AllGraphics,
                     ]
                     .as_slice()
                     .into(),
-                    [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead]
-                        .as_slice()
-                        .into(),
+                    [
+                        MemoryAccessAs::MemoryRead,
+                        MemoryAccessAs::ShaderRead,
+                        MemoryAccessAs::UniformRead,
+                    ]
+                    .as_slice()
+                    .into(),
                     BufferSubresourceRange::new(
                         self.raytracing_directions[current_frame].clone(),
                         0,

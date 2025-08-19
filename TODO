@@ -1,3 +1,7 @@
 - Review all TODO(s) in the code
 - Write documentation
 - implement swapchain recreate
+- use VkMapMemory2
+- use vkCmdBindIndexBuffer2
+- use vkBindMemor
+- https://registry.khronos.org/vulkan/specs/latest/man/html/VK_KHR_bind_memory2.html
