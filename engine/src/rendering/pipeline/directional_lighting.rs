@@ -802,6 +802,27 @@ impl DirectionalLighting {
 
         recorder.image_barriers(&image_barriers.as_slice());
 
+        recorder.buffer_barriers(
+            [BufferMemoryBarrier::new(
+                [PipelineStage::RayTracingPipelineKHR(
+                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                )]
+                .as_slice()
+                .into(),
+                [MemoryAccessAs::ShaderRead].as_slice().into(),
+                dlbuffer_stages,
+                dlbuffer_access,
+                BufferSubresourceRange::new(
+                    self.directional_lights[current_frame].clone(),
+                    0,
+                    self.directional_lights[current_frame].size(),
+                ),
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )]
+            .as_slice(),
+        );
+
         self.dlbuffer_descriptor_sets[current_frame].clone()
     }
 }
