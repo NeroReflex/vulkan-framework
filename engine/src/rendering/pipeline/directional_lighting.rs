@@ -208,7 +208,7 @@ pub struct DirectionalLighting {
 
     raytracing_pipeline: Arc<RaytracingPipeline>,
 
-    raytracing_directions: DirectionsBuffersType,
+    directional_lights: DirectionsBuffersType,
     raytracing_ldbuffer: LDBuffersType,
 
     raytracing_sbts: RaytracingSBTPerDLightType,
@@ -340,7 +340,7 @@ impl DirectionalLighting {
             }
         }
 
-        let raytracing_directions_unallocated = (0..frames_in_flight)
+        let directional_lights_unallocated = (0..frames_in_flight)
             .map(|index| {
                 Buffer::new(
                     device.clone(),
@@ -351,20 +351,20 @@ impl DirectionalLighting {
                         4u64 * 6u64 * (MAX_DIRECTIONAL_LIGHTS as u64),
                     ),
                     None,
-                    Some(format!("raytracing_directions[{index}]").as_str()),
+                    Some(format!("directional_lights[{index}]").as_str()),
                 )
                 .unwrap()
                 .into()
             })
             .collect::<Vec<_>>();
 
-        let (raytracing_directions, raytracing_ldbuffer, raytracing_sbts) = {
+        let (directional_lights, raytracing_ldbuffer, raytracing_sbts) = {
             let mut mem_manager = memory_manager.lock().unwrap();
 
-            let raytracing_directions_allocated = mem_manager.allocate_resources(
+            let directional_lights_allocated = mem_manager.allocate_resources(
                 &MemoryType::device_local(),
                 &MemoryPoolFeatures::new(false),
-                raytracing_directions_unallocated,
+                directional_lights_unallocated,
                 MemoryManagementTags::default()
                     .with_name("directional_lighting".to_string())
                     .with_size(MemoryManagementTagSize::MediumSmall),
@@ -379,7 +379,7 @@ impl DirectionalLighting {
                     .with_size(MemoryManagementTagSize::MediumSmall),
             )?;
 
-            let raytracing_directions = raytracing_directions_allocated
+            let directional_lights = directional_lights_allocated
                 .into_iter()
                 .map(|allocated| allocated.buffer())
                 .collect::<DirectionsBuffersType>();
@@ -424,7 +424,7 @@ impl DirectionalLighting {
                 raytracing_ldbuffer.push(raytracing_light_ldbuffer);
             }
 
-            (raytracing_directions, raytracing_ldbuffer, raytracing_sbts)
+            (directional_lights, raytracing_ldbuffer, raytracing_sbts)
         };
 
         let output_descriptor_pool = DescriptorPool::new(
@@ -462,7 +462,7 @@ impl DirectionalLighting {
                     .bind_storage_buffers(
                         0,
                         [(
-                            raytracing_directions[index].clone() as Arc<dyn BufferTrait>,
+                            directional_lights[index].clone() as Arc<dyn BufferTrait>,
                             None,
                             None,
                         )]
@@ -554,7 +554,7 @@ impl DirectionalLighting {
                     .bind_storage_buffers(
                         0,
                         [(
-                            raytracing_directions[index].clone() as Arc<dyn BufferTrait>,
+                            directional_lights[index].clone() as Arc<dyn BufferTrait>,
                             None,
                             None,
                         )]
@@ -582,7 +582,7 @@ impl DirectionalLighting {
 
             raytracing_pipeline,
 
-            raytracing_directions,
+            directional_lights,
             raytracing_ldbuffer,
             raytracing_sbts,
 
@@ -679,7 +679,7 @@ impl DirectionalLighting {
                     [PipelineStage::Transfer].as_slice().into(),
                     [MemoryAccessAs::TransferWrite].as_slice().into(),
                     BufferSubresourceRange::new(
-                        self.raytracing_directions[current_frame].clone(),
+                        self.directional_lights[current_frame].clone(),
                         0,
                         (lights_count as u64) * size_of_light,
                     ),
@@ -693,7 +693,7 @@ impl DirectionalLighting {
             directional_lights.foreach(|dir_light| {
                 recorder.copy_buffer(
                     dir_light.clone(),
-                    self.raytracing_directions[current_frame].clone(),
+                    self.directional_lights[current_frame].clone(),
                     [(0u64, (light_index as u64) * size_of_light, size_of_light)].as_slice(),
                 );
 
@@ -703,7 +703,7 @@ impl DirectionalLighting {
             let stub_buffer = (0..size_of_light).map(|_| 0u8).collect::<Vec<_>>();
             for light_unused_index in light_index..(MAX_DIRECTIONAL_LIGHTS as u64) {
                 recorder.update_buffer(
-                    self.raytracing_directions[current_frame].clone(),
+                    self.directional_lights[current_frame].clone(),
                     (light_unused_index as u64) * size_of_light,
                     stub_buffer.as_slice(),
                 );
@@ -729,7 +729,7 @@ impl DirectionalLighting {
                     .as_slice()
                     .into(),
                     BufferSubresourceRange::new(
-                        self.raytracing_directions[current_frame].clone(),
+                        self.directional_lights[current_frame].clone(),
                         0,
                         size_of_light * (lights_count as u64),
                     ),
