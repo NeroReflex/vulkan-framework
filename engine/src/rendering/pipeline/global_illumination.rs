@@ -397,14 +397,8 @@ impl GILighting {
                 [ImageMemoryBarrier::new(
                     [].as_slice().into(),
                     [].as_slice().into(),
-                    [PipelineStage::RayTracingPipelineKHR(
-                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                    )]
-                    .as_slice()
-                    .into(),
-                    [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
-                        .as_slice()
-                        .into(),
+                    [PipelineStage::Transfer].as_slice().into(),
+                    [MemoryAccessAs::TransferWrite].as_slice().into(),
                     image_srr.clone(),
                     ImageLayout::Undefined,
                     ImageLayout::TransferDstOptimal,
