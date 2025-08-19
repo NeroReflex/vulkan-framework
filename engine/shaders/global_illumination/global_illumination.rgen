@@ -77,62 +77,56 @@ void main() {
         );
 
         const hit_payload_t first_surface = payload;
-        if (!first_surface.hit) {
-            continue;
-        }
+        if (first_surface.hit) {
+            for (uint dir_light_index = 0; dir_light_index < MAX_DIRECTIONAL_LIGHTS; dir_light_index++) {
+                const vec3 directional_light_dir = -1.0 * vec3(light[nonuniformEXT(dir_light_index)].direction_x, light[nonuniformEXT(dir_light_index)].direction_y, light[nonuniformEXT(dir_light_index)].direction_z);
+                const vec3 directional_light_intensity = vec3(light[nonuniformEXT(dir_light_index)].intensity_x, light[nonuniformEXT(dir_light_index)].intensity_y, light[nonuniformEXT(dir_light_index)].intensity_z);
+                if (length(directional_light_dir) <= 0.1) {
+                    continue;
+                }
 
+                //if ((abs(directional_light_intensity.x) + abs(directional_light_intensity.y) + abs(directional_light_intensity.z)) <= 0.1)) {
+                //    continue;
+                //}
+
+                
+
+                // check for this directional light
+                traceRayEXT(
+                    topLevelAS,
+                    gl_RayFlagsNoneEXT,
+                    0xff,
+                    0,
+                    0,
+                    0,
+                    first_surface.position.xyz,
+                    0.1,
+                    directional_light_dir.xyz,
+                    10000.0,
+                    0
+                );
+
+                const hit_payload_t second_surface = payload;
+
+
+                if (!second_surface.hit) {
+                    // shadow ray is not occluded: sum the contribution of this point
+                    const float coeff_directional_light = max(dot(first_surface.triangle_normal, directional_light_dir.xyz), 0.0);
+                    const vec3 directional_light_effective_intensity = coeff_directional_light * directional_light_intensity;
+                    const vec3 diffuse_contibution = directional_light_effective_intensity * first_surface.diffuse;
+                    contribution += diffuse_contibution;
+                } else {
+                    // TODO: cast the final ray
+                }
+            }
+
+            const float first_hit_coefficient = max(dot(first_surface.triangle_normal, ray_dir), 0.0);
+            // from here one 
+        } else
         // test for collisions (REMOVE ME)
         {
             contribution += vec3(4.0, 4.0, 4.0);
-            continue;
         }
-
-        for (uint dir_light_index = 0; dir_light_index < MAX_DIRECTIONAL_LIGHTS; dir_light_index++) {
-            const vec3 directional_light_dir = -1.0 * vec3(light[dir_light_index].direction_x, light[dir_light_index].direction_y, light[dir_light_index].direction_z);
-            const vec3 directional_light_intensity = vec3(light[dir_light_index].intensity_x, light[dir_light_index].intensity_y, light[dir_light_index].intensity_z);
-            if (length(directional_light_dir) <= 0.1) {
-                continue;
-            }
-
-            //if ((abs(directional_light_intensity.x) + abs(directional_light_intensity.y) + abs(directional_light_intensity.z)) <= 0.1)) {
-            //    continue;
-            //}
-
-            
-
-            // check for this directional light
-            traceRayEXT(
-                topLevelAS,
-                gl_RayFlagsNoneEXT,
-                0xff,
-                0,
-                0,
-                0,
-                first_surface.position.xyz,
-                0.1,
-                directional_light_dir.xyz,
-                10000.0,
-                0
-            );
-
-            const hit_payload_t second_surface = payload;
-
-
-            if (second_surface.hit) {
-                continue;
-            }
-
-            
-
-            // shadow ray is not occluded: sum the contribution of this point
-            const float coeff_directional_light = max(dot(first_surface.triangle_normal, directional_light_dir.xyz), 0.0);
-            const vec3 directional_light_effective_intensity = coeff_directional_light * directional_light_intensity;
-            const vec3 diffuse_contibution = directional_light_effective_intensity * first_surface.diffuse;
-            contribution += diffuse_contibution;
-        }
-
-        const float first_hit_coefficient = max(dot(first_surface.triangle_normal, ray_dir), 0.0);
-        // from here one 
     }
 
     imageStore(outputImage, ivec2(gl_LaunchIDEXT.xy), vec4(old_data + (contribution / float(FIRST_PASS_RAYS)), 1.0));
