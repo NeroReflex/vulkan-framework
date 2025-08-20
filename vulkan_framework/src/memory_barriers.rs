@@ -30,6 +30,7 @@ pub enum MemoryAccessAs {
     MemoryWrite,
     AccelerationStructureRead,
     AccelerationStructureWrite,
+    ShaderBindingTableRead,
 }
 
 impl From<MemoryAccessAs> for ash::vk::AccessFlags2 {
@@ -53,6 +54,7 @@ impl From<MemoryAccessAs> for ash::vk::AccessFlags2 {
             MemoryAccessAs::HostWrite => AshFlags::HOST_WRITE,
             MemoryAccessAs::MemoryRead => AshFlags::MEMORY_READ,
             MemoryAccessAs::MemoryWrite => AshFlags::MEMORY_WRITE,
+            MemoryAccessAs::ShaderBindingTableRead => AshFlags::SHADER_BINDING_TABLE_READ_KHR,
             MemoryAccessAs::AccelerationStructureRead => AshFlags::ACCELERATION_STRUCTURE_READ_KHR,
             MemoryAccessAs::AccelerationStructureWrite => {
                 AshFlags::ACCELERATION_STRUCTURE_WRITE_KHR

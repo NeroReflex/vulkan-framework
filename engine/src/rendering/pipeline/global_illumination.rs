@@ -389,13 +389,12 @@ impl GILighting {
         // use those to decide the portion that has to be rendered as depth in the shadow map
 
         // Here clear the image and transition its layout for using it in the raytracing pipeline
-        {
-            let image_srr: ImageSubresourceRange =
+        let image_srr: ImageSubresourceRange =
                 self.raytracing_gibuffer[current_frame].image().into();
-
+        {
             recorder.image_barriers(
                 [ImageMemoryBarrier::new(
-                    [].as_slice().into(),
+                    [PipelineStage::TopOfPipe].as_slice().into(),
                     [].as_slice().into(),
                     [PipelineStage::Transfer].as_slice().into(),
                     [MemoryAccessAs::TransferWrite].as_slice().into(),
@@ -425,7 +424,7 @@ impl GILighting {
                     [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
                         .as_slice()
                         .into(),
-                    image_srr,
+                    image_srr.clone(),
                     ImageLayout::TransferDstOptimal,
                     ImageLayout::General,
                     self.queue_family.clone(),
@@ -454,9 +453,6 @@ impl GILighting {
             self.raytracing_sbts[current_frame].clone(),
             Image3DDimensions::new(self.renderarea_width, self.renderarea_height, 1),
         );
-
-        let image_srr: ImageSubresourceRange =
-            self.raytracing_gibuffer[current_frame].image().into();
 
         recorder.image_barriers(
             [ImageMemoryBarrier::new(

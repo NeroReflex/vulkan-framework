@@ -789,7 +789,7 @@ impl System {
                     self.view_projection_descriptor_sets[current_frame].clone(),
                     directional_lighting_resources.deref(),
                     current_frame,
-                    [PipelineStage::AllGraphics, PipelineStage::RayTracingPipelineKHR(PipelineStageRayTracingPipelineKHR::RayTracingShader)].as_slice().into(),
+                    [PipelineStage::FragmentShader, PipelineStage::RayTracingPipelineKHR(PipelineStageRayTracingPipelineKHR::RayTracingShader)].as_slice().into(),
                     [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead].as_slice().into(),
                     recorder
                 );
@@ -801,7 +801,7 @@ impl System {
                     texture_descriptor_set,
                     material_descriptor_set,
                     current_frame,
-                    [PipelineStage::AllGraphics].as_slice().into(),
+                    [PipelineStage::FragmentShader].as_slice().into(),
                     [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead].as_slice().into(),
                     recorder
                 );
@@ -902,7 +902,7 @@ impl System {
                 recorder.image_barriers(
                     [ImageMemoryBarrier::new(
                         PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
-                        MemoryAccess::from([MemoryAccessAs::ShaderWrite].as_slice()),
+                        MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
                         PipelineStages::from([PipelineStage::BottomOfPipe].as_slice()),
                         MemoryAccess::from([].as_slice()),
                         swapchain_imageviews[swapchain_index as usize]
