@@ -38,7 +38,7 @@ layout(std430, set = 2, binding = 0) readonly buffer directional_lights
     light_t light[];
 };
 
-coherent uniform layout (set = 5, binding = 0, rgba32f) image2D outputImage;
+coherent uniform layout (set = 5, binding = 0, rgba32f) writeonly image2D outputImage;
 
 layout(location = 0) rayPayloadEXT hit_payload_t payload;
 
@@ -49,10 +49,10 @@ void main() {
 
     const vec2 position_xy = vec2(float(gl_LaunchIDEXT.x) / float(resolution.x), float(gl_LaunchIDEXT.y) / float(resolution.y));
 
-    const vec3 old_data = imageLoad(outputImage, ivec2(gl_LaunchIDEXT.xy)).rgb;
+    const vec3 old_data = /*imageLoad(outputImage, ivec2(gl_LaunchIDEXT.xy)).rgb*/ vec3(0.0, 0.0, 0.0);
 
-    const vec3 origin = texture(gbuffer[0], position_xy).xyz;
-    const vec3 normal = texture(gbuffer[1], position_xy).xyz;
+    const vec3 origin = texelFetch(gbuffer[0], ivec2(gl_LaunchIDEXT.xy), 0).xyz;
+    const vec3 normal = texelFetch(gbuffer[0], ivec2(gl_LaunchIDEXT.xy), 0).xyz;
 
     vec3 contribution = vec3(0.0, 0.0, 0.0);
     for (uint ray_index_1 = 0; ray_index_1 < 1; ray_index_1++) {
