@@ -201,6 +201,13 @@ impl System {
             ))
             .unwrap();
 
+        lights
+            .load(DirectionalLight::new(
+                glm::Vec3::new(0.0, -0.98, 0.6),
+                glm::Vec3::new(4.0, 4.0, 4.90),
+            ))
+            .unwrap();
+
         // Update the TLAS and create a descriptor set for it:
         // this is very important as it define the geometry of the whole scene
         {

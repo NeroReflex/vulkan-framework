@@ -49,97 +49,8 @@ use crate::rendering::{
 const RAYGEN_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
-#extension GL_EXT_ray_tracing : require
-#extension GL_EXT_ray_flags_primitive_culling : require
-#extension GL_EXT_nonuniform_qualifier : enable
 
-#define MAX_DIRECTIONAL_LIGHTS 8
-
-// just a stub
-layout(std430, set = 0, binding = 0) readonly buffer tlas_instances
-{
-    uint data[];
-};
-
-layout (set = 0, binding = 1) uniform accelerationStructureEXT topLevelAS;
-
-// gbuffer: 0 for position, 1 for normal, 2 for diffuse texture
-layout (set = 1, binding = 0) uniform sampler2D gbuffer[3];
-
-struct light_t {
-    float direction_x;
-    float direction_y;
-    float direction_z;
-
-    float intensity_x;
-    float intensity_y;
-    float intensity_z;
-};
-
-layout (set = 2, binding = 0, std430) readonly buffer directional_lights
-{
-    light_t light[];
-};
-
-uniform layout (set = 2, binding = 1, rg32f) image2D outputImage[MAX_DIRECTIONAL_LIGHTS];
-
-layout(push_constant) uniform DirectionalLightingData {
-    uint lights_count;
-} directional_lighting_data;
-
-layout(std140, set = 3, binding = 0) uniform camera_uniform {
-	mat4 viewMatrix;
-	mat4 projectionMatrix;
-} camera;
-
-layout(location = 0) rayPayloadEXT bool hitValue;
-
-void main() {
-    const ivec2 resolution = imageSize(outputImage[0]);
-
-    const vec2 position_xy = vec2(float(gl_LaunchIDEXT.x) / float(resolution.x), float(gl_LaunchIDEXT.y) / float(resolution.y));
-
-    const vec3 origin = texture(gbuffer[0], position_xy).xyz;
-    const vec3 normal = texture(gbuffer[1], position_xy).xyz;
-
-    const vec3 eye_position = vec3(camera.viewMatrix[3][0], camera.viewMatrix[3][1], camera.viewMatrix[3][2]);
-    const vec3 view_dir = normalize(eye_position - origin);
-
-    for (uint light_index = 0; light_index < directional_lighting_data.lights_count; light_index++) {
-        const vec3 light_dir = vec3(light[light_index].direction_x, light[light_index].direction_y, light[light_index].direction_z);
-        const vec3 ray_dir = -1.0 * light_dir;
-
-        hitValue = true;
-
-        if (!(origin.x == 0 && origin.y == 0 && origin.z == 0)) {
-            // other flags: gl_RayFlagsCullNoOpaqueEXT gl_RayFlagsNoneEXT
-            traceRayEXT(
-                topLevelAS,
-                gl_RayFlagsSkipAABBEXT | gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsCullNoOpaqueEXT,
-                0xff,
-                0,
-                0,
-                0,
-                origin.xyz,
-                1.0,
-                ray_dir.xyz,
-                10000.0,
-                0
-            );
-        }
-
-        float diffuse_contribution = 0.0;
-        float specular_contribution = 0.0;
-        if (!hitValue) {
-            diffuse_contribution = max(dot(normal, ray_dir), 0.0);
-
-            const vec3 reflect_dir = reflect(light_dir, normal);
-            specular_contribution = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
-        }
-
-        imageStore(outputImage[light_index], ivec2(gl_LaunchIDEXT.xy), vec4(diffuse_contribution, specular_contribution, 0.0, 0.0));
-    }
-}
+#include "engine/shaders/directional_lights/directional_lights.rgen"
 "#,
     glsl,
     rgen,
@@ -150,13 +61,8 @@ void main() {
 const MISS_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
-#extension GL_EXT_ray_tracing : require
 
-layout(location = 0) rayPayloadInEXT bool hitValue;
-
-void main() {
-    hitValue = false;
-}
+#include "engine/shaders/directional_lights/directional_lights.rmiss"
 "#,
     glsl,
     rmiss,
@@ -167,23 +73,8 @@ void main() {
 const CHIT_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
-#extension GL_EXT_ray_tracing : require
-#extension GL_EXT_buffer_reference : require
 
-// just a stub
-layout(std430, set = 0, binding = 0) readonly buffer tlas_instances
-{
-    uint data[];
-};
-
-layout(location = 0) rayPayloadInEXT bool hitValue;
-
-//hitAttributeEXT vec2 attribs;
-
-void main() {
-    //const vec3 barycentricCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
-    //hitValue = barycentricCoords;
-}
+#include "engine/shaders/directional_lights/directional_lights.rchit"
 "#,
     glsl,
     rchit,
