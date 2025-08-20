@@ -21,8 +21,7 @@ use vulkan_framework::{
     },
     image::{
         CommonImageFormat, ConcreteImageDescriptor, Image, Image2DDimensions, ImageFlags,
-        ImageFormat, ImageLayout, ImageMultisampling, ImageSubresourceRange, ImageTiling,
-        ImageUseAs,
+        ImageFormat, ImageLayout, ImageMultisampling, ImageTiling, ImageUseAs,
     },
     image_view::{ImageView, ImageViewType},
     memory_barriers::{ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
@@ -193,6 +192,8 @@ pub struct HDRTransform {
     pipeline_layout: Arc<PipelineLayout>,
     graphics_pipeline: Arc<GraphicsPipeline>,
 
+    descriptor_set_layout: Arc<DescriptorSetLayout>,
+
     image_dimensions: Image2DDimensions,
     image_views: smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
 
@@ -203,19 +204,15 @@ pub struct HDRTransform {
 /// the one that transform the raw result into something that can be sampled
 /// to generate the image to be presented: applies tone mapping and/or hdr.
 impl HDRTransform {
-    /// Returns the format of the input 2D image MUST be in where the rendering operation starts.
-    #[inline]
-    pub fn image_input_format() -> ImageLayout {
-        ImageLayout::ShaderReadOnlyOptimal
-    }
-
-    fn output_image_layout() -> ImageLayout {
-        ImageLayout::ColorAttachmentOptimal
-    }
-
     #[inline]
     fn image_output_format() -> ImageFormat {
         CommonImageFormat::r32g32b32a32_sfloat.into()
+    }
+
+    /// Returns the descriptor set layout for the hdr image.
+    #[inline(always)]
+    pub fn descriptor_set_layout(&self) -> Arc<DescriptorSetLayout> {
+        self.descriptor_set_layout.clone()
     }
 
     pub fn new(
@@ -405,6 +402,8 @@ impl HDRTransform {
             pipeline_layout,
             graphics_pipeline,
 
+            descriptor_set_layout,
+
             image_dimensions,
             image_views,
 
@@ -419,14 +418,14 @@ impl HDRTransform {
         input_image_view: Arc<ImageView>,
         current_frame: usize,
         recorder: &mut CommandBufferRecorder,
-    ) -> (Arc<ImageView>, ImageSubresourceRange, ImageLayout) {
+    ) -> Arc<ImageView> {
         self.descriptor_sets[current_frame]
             .bind_resources(|binder| {
                 binder
                     .bind_combined_images_samplers(
                         0,
                         &[(
-                            Self::image_input_format(),
+                            ImageLayout::ShaderReadOnlyOptimal,
                             input_image_view,
                             self.sampler.clone(),
                         )],
@@ -439,20 +438,18 @@ impl HDRTransform {
 
         // Transition the framebuffer image into color attachment optimal layout,
         // so that the graphics pipeline has it in the best format
-        recorder.image_barriers(
-            [ImageMemoryBarrier::new(
-                PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
-                MemoryAccess::from([].as_slice()),
-                PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
-                MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
-                image_view.image().into(),
-                ImageLayout::Undefined,
-                Self::output_image_layout(),
-                queue_family.clone(),
-                queue_family.clone(),
-            )]
-            .as_slice(),
-        );
+        recorder.pipeline_barriers([ImageMemoryBarrier::new(
+            PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
+            MemoryAccess::from([].as_slice()),
+            PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
+            MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
+            image_view.image().into(),
+            ImageLayout::Undefined,
+            ImageLayout::ColorAttachmentOptimal,
+            queue_family.clone(),
+            queue_family.clone(),
+        )
+        .into()]);
 
         let rendering_color_attachments = [DynamicRenderingColorAttachment::new(
             self.image_views[current_frame].clone(),
@@ -494,10 +491,22 @@ impl HDRTransform {
             },
         );
 
-        (
-            self.image_views[current_frame].clone(),
-            ImageSubresourceRange::from(self.image_views[current_frame].image()),
-            Self::output_image_layout(),
+        // Insert a barrier to transition image layout from the final rendering output to renderquad input
+        // while also ensuring the rendering operation of final rendering pipeline has completed before initiating
+        // the final renderquad step.
+        recorder.pipeline_barriers([ImageMemoryBarrier::new(
+            PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
+            MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
+            PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
+            MemoryAccess::from([MemoryAccessAs::ShaderRead].as_slice()),
+            image_view.image().into(),
+            ImageLayout::ColorAttachmentOptimal,
+            ImageLayout::ShaderReadOnlyOptimal,
+            queue_family.clone(),
+            queue_family.clone(),
         )
+        .into()]);
+
+        image_view
     }
 }

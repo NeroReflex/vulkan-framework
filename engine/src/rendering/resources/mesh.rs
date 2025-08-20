@@ -289,88 +289,82 @@ impl MeshManager {
             },
             |recorder, _, blas| {
                 // Wait for the host to finsh transfer to vertex buffer and index buffer
-                recorder.buffer_barriers(
-                    [
-                        BufferMemoryBarrier::new(
-                            [PipelineStage::Host].as_slice().into(),
-                            [MemoryAccessAs::MemoryWrite].as_slice().into(),
-                            [PipelineStage::AccelerationStructureKHR(
-                                PipelineStageAccelerationStructureKHR::Build,
-                            )]
-                            .as_slice()
-                            .into(),
-                            [MemoryAccessAs::AccelerationStructureRead]
-                                .as_slice()
-                                .into(),
-                            BufferSubresourceRange::new(
-                                vertex_buffer_raw,
-                                0u64,
-                                vertex_buffer_size,
-                            ),
-                            queue_family.clone(),
-                            queue_family.clone(),
-                        ),
-                        BufferMemoryBarrier::new(
-                            [PipelineStage::Host].as_slice().into(),
-                            [MemoryAccessAs::MemoryWrite].as_slice().into(),
-                            [PipelineStage::AccelerationStructureKHR(
-                                PipelineStageAccelerationStructureKHR::Build,
-                            )]
-                            .as_slice()
-                            .into(),
-                            [MemoryAccessAs::AccelerationStructureRead]
-                                .as_slice()
-                                .into(),
-                            BufferSubresourceRange::new(index_buffer_raw, 0u64, index_buffer_size),
-                            queue_family.clone(),
-                            queue_family.clone(),
-                        ),
-                        BufferMemoryBarrier::new(
-                            [PipelineStage::Host].as_slice().into(),
-                            [MemoryAccessAs::MemoryWrite].as_slice().into(),
-                            [PipelineStage::AccelerationStructureKHR(
-                                PipelineStageAccelerationStructureKHR::Build,
-                            )]
-                            .as_slice()
-                            .into(),
-                            [MemoryAccessAs::AccelerationStructureRead]
-                                .as_slice()
-                                .into(),
-                            BufferSubresourceRange::new(
-                                transform_buffer_raw,
-                                0u64,
-                                transform_buffer_size,
-                            ),
-                            queue_family.clone(),
-                            queue_family.clone(),
-                        ),
-                    ]
-                    .as_slice(),
-                );
-
-                let primitives_count = blas.max_primitives_count();
-                recorder.build_blas(blas.clone(), 0, primitives_count, 0, 0);
-
-                recorder.buffer_barriers(
-                    [BufferMemoryBarrier::new(
+                recorder.pipeline_barriers([
+                    BufferMemoryBarrier::new(
+                        [PipelineStage::Host].as_slice().into(),
+                        [MemoryAccessAs::MemoryWrite].as_slice().into(),
                         [PipelineStage::AccelerationStructureKHR(
                             PipelineStageAccelerationStructureKHR::Build,
                         )]
                         .as_slice()
                         .into(),
-                        [MemoryAccessAs::AccelerationStructureWrite]
-                            .as_slice()
-                            .into(),
-                        [PipelineStage::AllCommands].as_slice().into(),
                         [MemoryAccessAs::AccelerationStructureRead]
                             .as_slice()
                             .into(),
-                        BufferSubresourceRange::new(blas.buffer(), 0u64, blas.buffer_size()),
+                        BufferSubresourceRange::new(vertex_buffer_raw, 0u64, vertex_buffer_size),
                         queue_family.clone(),
                         queue_family.clone(),
+                    )
+                    .into(),
+                    BufferMemoryBarrier::new(
+                        [PipelineStage::Host].as_slice().into(),
+                        [MemoryAccessAs::MemoryWrite].as_slice().into(),
+                        [PipelineStage::AccelerationStructureKHR(
+                            PipelineStageAccelerationStructureKHR::Build,
+                        )]
+                        .as_slice()
+                        .into(),
+                        [MemoryAccessAs::AccelerationStructureRead]
+                            .as_slice()
+                            .into(),
+                        BufferSubresourceRange::new(index_buffer_raw, 0u64, index_buffer_size),
+                        queue_family.clone(),
+                        queue_family.clone(),
+                    )
+                    .into(),
+                    BufferMemoryBarrier::new(
+                        [PipelineStage::Host].as_slice().into(),
+                        [MemoryAccessAs::MemoryWrite].as_slice().into(),
+                        [PipelineStage::AccelerationStructureKHR(
+                            PipelineStageAccelerationStructureKHR::Build,
+                        )]
+                        .as_slice()
+                        .into(),
+                        [MemoryAccessAs::AccelerationStructureRead]
+                            .as_slice()
+                            .into(),
+                        BufferSubresourceRange::new(
+                            transform_buffer_raw,
+                            0u64,
+                            transform_buffer_size,
+                        ),
+                        queue_family.clone(),
+                        queue_family.clone(),
+                    )
+                    .into(),
+                ]);
+
+                let primitives_count = blas.max_primitives_count();
+                recorder.build_blas(blas.clone(), 0, primitives_count, 0, 0);
+
+                recorder.pipeline_barriers([BufferMemoryBarrier::new(
+                    [PipelineStage::AccelerationStructureKHR(
+                        PipelineStageAccelerationStructureKHR::Build,
                     )]
-                    .as_slice(),
-                );
+                    .as_slice()
+                    .into(),
+                    [MemoryAccessAs::AccelerationStructureWrite]
+                        .as_slice()
+                        .into(),
+                    [PipelineStage::AllCommands].as_slice().into(),
+                    [MemoryAccessAs::AccelerationStructureRead]
+                        .as_slice()
+                        .into(),
+                    BufferSubresourceRange::new(blas.buffer(), 0u64, blas.buffer_size()),
+                    queue_family.clone(),
+                    queue_family.clone(),
+                )
+                .into()]);
 
                 Ok(())
             },

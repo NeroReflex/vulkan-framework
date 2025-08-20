@@ -141,11 +141,7 @@ pub struct FinalRendering {
 }
 
 impl FinalRendering {
-    fn output_image_layout() -> ImageLayout {
-        ImageLayout::ColorAttachmentOptimal
-    }
-
-    pub fn output_image_format() -> ImageFormat {
+    fn output_image_format() -> ImageFormat {
         ImageFormat::from(CommonImageFormat::r32g32b32a32_sfloat)
     }
 
@@ -282,25 +278,24 @@ impl FinalRendering {
         gibuffer_descriptor_set: Arc<DescriptorSet>,
         current_frame: usize,
         recorder: &mut CommandBufferRecorder,
-    ) -> (Arc<ImageView>, ImageSubresourceRange, ImageLayout) {
+    ) -> Arc<ImageView> {
         let image_view = self.image_views[current_frame].clone();
+        let image_srr: ImageSubresourceRange = image_view.image().into();
 
         // Transition the framebuffer image into color attachment optimal layout,
         // so that the graphics pipeline has it in the best format
-        recorder.image_barriers(
-            [ImageMemoryBarrier::new(
-                PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
-                MemoryAccess::from([].as_slice()),
-                PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
-                MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
-                image_view.image().into(),
-                ImageLayout::Undefined,
-                ImageLayout::ColorAttachmentOptimal,
-                queue_family.clone(),
-                queue_family.clone(),
-            )]
-            .as_slice(),
-        );
+        recorder.pipeline_barriers([ImageMemoryBarrier::new(
+            PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
+            MemoryAccess::from([].as_slice()),
+            PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
+            MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
+            image_srr.clone(),
+            ImageLayout::Undefined,
+            ImageLayout::ColorAttachmentOptimal,
+            queue_family.clone(),
+            queue_family.clone(),
+        )
+        .into()]);
 
         let rendering_color_attachments = [DynamicRenderingColorAttachment::new(
             image_view.clone(),
@@ -330,10 +325,22 @@ impl FinalRendering {
             },
         );
 
-        (
-            image_view.clone(),
-            ImageSubresourceRange::from(image_view.image()),
-            Self::output_image_layout(),
+        // Insert a barrier to transition image layout from the final rendering output to HDR input
+        // while also ensuring the rendering operation of final rendering pipeline has completed before initiating
+        // the final renderquad step.
+        recorder.pipeline_barriers([ImageMemoryBarrier::new(
+            PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
+            MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
+            PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
+            MemoryAccess::from([MemoryAccessAs::ShaderRead].as_slice()),
+            image_srr,
+            ImageLayout::ColorAttachmentOptimal,
+            ImageLayout::ShaderReadOnlyOptimal,
+            queue_family.clone(),
+            queue_family.clone(),
         )
+        .into()]);
+
+        image_view.clone()
     }
 }

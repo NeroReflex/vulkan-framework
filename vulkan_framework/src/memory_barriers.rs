@@ -140,6 +140,12 @@ impl BufferMemoryBarrier {
     }
 }
 
+impl<'a> From<BufferMemoryBarrier> for crate::ash::vk::BufferMemoryBarrier2<'a> {
+    fn from(val: BufferMemoryBarrier) -> Self {
+        (&val).into()
+    }
+}
+
 impl<'a> From<&BufferMemoryBarrier> for crate::ash::vk::BufferMemoryBarrier2<'a> {
     fn from(val: &BufferMemoryBarrier) -> Self {
         ash::vk::BufferMemoryBarrier2::default()
@@ -222,5 +228,69 @@ impl<'a> From<&ImageMemoryBarrier> for ash::vk::ImageMemoryBarrier2<'a> {
 impl<'a> From<ImageMemoryBarrier> for ash::vk::ImageMemoryBarrier2<'a> {
     fn from(val: ImageMemoryBarrier) -> Self {
         (&val).into()
+    }
+}
+
+pub struct MemoryBarrier {
+    src_stages: PipelineStages,
+    src_access: MemoryAccess,
+    dst_stages: PipelineStages,
+    dst_access: MemoryAccess,
+}
+
+impl MemoryBarrier {
+    #[inline]
+    pub fn new(
+        src_stages: PipelineStages,
+        src_access: MemoryAccess,
+        dst_stages: PipelineStages,
+        dst_access: MemoryAccess,
+    ) -> Self {
+        Self {
+            src_stages,
+            src_access,
+            dst_stages,
+            dst_access,
+        }
+    }
+}
+
+impl<'a> From<&MemoryBarrier> for ash::vk::MemoryBarrier2<'a> {
+    fn from(val: &MemoryBarrier) -> Self {
+        ash::vk::MemoryBarrier2::default()
+            .src_access_mask(val.src_access.into())
+            .src_stage_mask(val.src_stages.into())
+            .dst_access_mask(val.dst_access.into())
+            .dst_stage_mask(val.dst_stages.into())
+    }
+}
+
+impl<'a> From<MemoryBarrier> for ash::vk::MemoryBarrier2<'a> {
+    fn from(val: MemoryBarrier) -> Self {
+        (&val).into()
+    }
+}
+
+pub enum PipelineBarrier {
+    Buffer(BufferMemoryBarrier),
+    Image(ImageMemoryBarrier),
+    Global(MemoryBarrier),
+}
+
+impl From<BufferMemoryBarrier> for PipelineBarrier {
+    fn from(val: BufferMemoryBarrier) -> Self {
+        PipelineBarrier::Buffer(val)
+    }
+}
+
+impl From<ImageMemoryBarrier> for PipelineBarrier {
+    fn from(val: ImageMemoryBarrier) -> Self {
+        PipelineBarrier::Image(val)
+    }
+}
+
+impl From<MemoryBarrier> for PipelineBarrier {
+    fn from(val: MemoryBarrier) -> Self {
+        PipelineBarrier::Global(val)
     }
 }

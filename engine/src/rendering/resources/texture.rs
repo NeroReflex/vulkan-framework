@@ -348,20 +348,18 @@ impl TextureManager {
         let image = image_view.image();
 
         // Wait for host to finish writing the buffer
-        recorder.buffer_barriers(
-            [BufferMemoryBarrier::new(
-                [PipelineStage::Host].as_slice().into(),
-                [MemoryAccessAs::MemoryWrite].as_slice().into(),
-                [PipelineStage::Transfer].as_slice().into(),
-                [MemoryAccessAs::TransferRead].as_slice().into(),
-                BufferSubresourceRange::new(image_data.clone(), 0u64, image_data.size()),
-                queue_family.clone(),
-                queue_family.clone(),
-            )]
-            .as_slice(),
-        );
+        recorder.pipeline_barriers([BufferMemoryBarrier::new(
+            [PipelineStage::Host].as_slice().into(),
+            [MemoryAccessAs::MemoryWrite].as_slice().into(),
+            [PipelineStage::Transfer].as_slice().into(),
+            [MemoryAccessAs::TransferRead].as_slice().into(),
+            BufferSubresourceRange::new(image_data.clone(), 0u64, image_data.size()),
+            queue_family.clone(),
+            queue_family.clone(),
+        )
+        .into()]);
 
-        let before_transfer_barrier = ImageMemoryBarrier::new(
+        recorder.pipeline_barriers([ImageMemoryBarrier::new(
             PipelineStages::from([PipelineStage::TopOfPipe].as_ref()),
             MemoryAccess::default(),
             PipelineStages::from([PipelineStage::Transfer].as_ref()),
@@ -371,9 +369,8 @@ impl TextureManager {
             ImageLayout::TransferDstOptimal,
             queue_family.clone(),
             queue_family.clone(),
-        );
-
-        recorder.image_barriers([before_transfer_barrier].as_slice());
+        )
+        .into()]);
 
         recorder.copy_buffer_to_image(
             image_data,
@@ -383,7 +380,7 @@ impl TextureManager {
             image.dimensions(),
         );
 
-        let after_transfer_barrier = ImageMemoryBarrier::new(
+        recorder.pipeline_barriers([ImageMemoryBarrier::new(
             PipelineStages::from([PipelineStage::Transfer].as_ref()),
             MemoryAccess::from([MemoryAccessAs::MemoryWrite].as_slice()),
             PipelineStages::from([PipelineStage::BottomOfPipe].as_ref()),
@@ -393,9 +390,8 @@ impl TextureManager {
             ImageLayout::ShaderReadOnlyOptimal,
             queue_family.clone(),
             queue_family.clone(),
-        );
-
-        recorder.image_barriers([after_transfer_barrier].as_slice());
+        )
+        .into()]);
 
         Ok(())
     }

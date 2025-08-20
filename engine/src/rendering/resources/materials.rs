@@ -319,22 +319,20 @@ impl MaterialManager {
                 // Wait for host to finish writing the material into the buffer
                 let copy_size = SIZEOF_MATERIAL_DEFINITION as u64;
                 let copy_offset = (index as u64) * copy_size;
-                recorder.buffer_barriers(
-                    [BufferMemoryBarrier::new(
-                        [].as_slice().into(),
-                        [].as_slice().into(),
-                        [PipelineStage::Transfer].as_slice().into(),
-                        [MemoryAccessAs::TransferRead].as_slice().into(),
-                        BufferSubresourceRange::new(
-                            self.current_materials_buffer.clone(),
-                            copy_offset,
-                            copy_size,
-                        ),
-                        queue_family.clone(),
-                        queue_family.clone(),
-                    )]
-                    .as_slice(),
-                );
+                recorder.pipeline_barriers([BufferMemoryBarrier::new(
+                    [].as_slice().into(),
+                    [].as_slice().into(),
+                    [PipelineStage::Transfer].as_slice().into(),
+                    [MemoryAccessAs::TransferRead].as_slice().into(),
+                    BufferSubresourceRange::new(
+                        self.current_materials_buffer.clone(),
+                        copy_offset,
+                        copy_size,
+                    ),
+                    queue_family.clone(),
+                    queue_family.clone(),
+                )
+                .into()]);
 
                 // Copy the buffer in the correct slot
                 recorder.update_buffer(
@@ -344,24 +342,22 @@ impl MaterialManager {
                 );
 
                 // Place a memory barrier to wait for GPU to finish cloning the buffer
-                recorder.buffer_barriers(
-                    [BufferMemoryBarrier::new(
-                        [PipelineStage::Transfer].as_slice().into(),
-                        [MemoryAccessAs::TransferWrite].as_slice().into(),
-                        [PipelineStage::AllCommands].as_slice().into(),
-                        [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead]
-                            .as_slice()
-                            .into(),
-                        BufferSubresourceRange::new(
-                            self.current_materials_buffer.clone(),
-                            copy_offset,
-                            copy_size,
-                        ),
-                        queue_family.clone(),
-                        queue_family.clone(),
-                    )]
-                    .as_slice(),
-                );
+                recorder.pipeline_barriers([BufferMemoryBarrier::new(
+                    [PipelineStage::Transfer].as_slice().into(),
+                    [MemoryAccessAs::TransferWrite].as_slice().into(),
+                    [PipelineStage::AllCommands].as_slice().into(),
+                    [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead]
+                        .as_slice()
+                        .into(),
+                    BufferSubresourceRange::new(
+                        self.current_materials_buffer.clone(),
+                        copy_offset,
+                        copy_size,
+                    ),
+                    queue_family.clone(),
+                    queue_family.clone(),
+                )
+                .into()]);
 
                 Ok(())
             },
@@ -399,22 +395,20 @@ impl MaterialManager {
             [(0u64, 0u64, self.current_materials_buffer.size())].as_slice(),
         );
 
-        recorder.buffer_barriers(
-            [BufferMemoryBarrier::new(
-                [PipelineStage::Transfer].as_slice().into(),
-                [MemoryAccessAs::TransferWrite].as_slice().into(),
-                [PipelineStage::AllCommands].as_slice().into(),
-                [MemoryAccessAs::MemoryRead].as_slice().into(),
-                BufferSubresourceRange::new(
-                    self.material_buffers[current_frame].clone(),
-                    0u64,
-                    self.material_buffers[current_frame].size(),
-                ),
-                queue_family.clone(),
-                queue_family.clone(),
-            )]
-            .as_slice(),
-        );
+        recorder.pipeline_barriers([BufferMemoryBarrier::new(
+            [PipelineStage::Transfer].as_slice().into(),
+            [MemoryAccessAs::TransferWrite].as_slice().into(),
+            [PipelineStage::AllCommands].as_slice().into(),
+            [MemoryAccessAs::MemoryRead].as_slice().into(),
+            BufferSubresourceRange::new(
+                self.material_buffers[current_frame].clone(),
+                0u64,
+                self.material_buffers[current_frame].size(),
+            ),
+            queue_family.clone(),
+            queue_family.clone(),
+        )
+        .into()]);
 
         assert_eq!(
             self.mesh_to_material_map[current_frame].size(),
@@ -422,22 +416,16 @@ impl MaterialManager {
         );
 
         // Wait for host to finish writing the mesh to material buffer
-        recorder.buffer_barriers(
-            [BufferMemoryBarrier::new(
-                [PipelineStage::Host].as_slice().into(),
-                [MemoryAccessAs::MemoryWrite].as_slice().into(),
-                [PipelineStage::Transfer].as_slice().into(),
-                [MemoryAccessAs::TransferRead].as_slice().into(),
-                BufferSubresourceRange::new(
-                    mesh_to_material.clone(),
-                    0u64,
-                    mesh_to_material.size(),
-                ),
-                queue_family.clone(),
-                queue_family.clone(),
-            )]
-            .as_slice(),
-        );
+        recorder.pipeline_barriers([BufferMemoryBarrier::new(
+            [PipelineStage::Host].as_slice().into(),
+            [MemoryAccessAs::MemoryWrite].as_slice().into(),
+            [PipelineStage::Transfer].as_slice().into(),
+            [MemoryAccessAs::TransferRead].as_slice().into(),
+            BufferSubresourceRange::new(mesh_to_material.clone(), 0u64, mesh_to_material.size()),
+            queue_family.clone(),
+            queue_family.clone(),
+        )
+        .into()]);
 
         recorder.copy_buffer(
             mesh_to_material.clone(),
@@ -445,23 +433,21 @@ impl MaterialManager {
             &[(0, 0, mesh_to_material.size())],
         );
 
-        recorder.buffer_barriers(
-            [BufferMemoryBarrier::new(
-                [PipelineStage::Transfer].as_slice().into(),
-                [MemoryAccessAs::TransferWrite].as_slice().into(),
-                [PipelineStage::AllCommands].as_slice().into(),
-                [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead]
-                    .as_slice()
-                    .into(),
-                BufferSubresourceRange::new(
-                    self.mesh_to_material_map[current_frame].clone(),
-                    0u64,
-                    self.mesh_to_material_map[current_frame].size(),
-                ),
-                queue_family.clone(),
-                queue_family.clone(),
-            )]
-            .as_slice(),
-        );
+        recorder.pipeline_barriers([BufferMemoryBarrier::new(
+            [PipelineStage::Transfer].as_slice().into(),
+            [MemoryAccessAs::TransferWrite].as_slice().into(),
+            [PipelineStage::AllCommands].as_slice().into(),
+            [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead]
+                .as_slice()
+                .into(),
+            BufferSubresourceRange::new(
+                self.mesh_to_material_map[current_frame].clone(),
+                0u64,
+                self.mesh_to_material_map[current_frame].size(),
+            ),
+            queue_family.clone(),
+            queue_family.clone(),
+        )
+        .into()]);
     }
 }

@@ -390,48 +390,44 @@ impl GILighting {
 
         // Here clear the image and transition its layout for using it in the raytracing pipeline
         let image_srr: ImageSubresourceRange =
-                self.raytracing_gibuffer[current_frame].image().into();
+            self.raytracing_gibuffer[current_frame].image().into();
         {
-            recorder.image_barriers(
-                [ImageMemoryBarrier::new(
-                    [PipelineStage::TopOfPipe].as_slice().into(),
-                    [].as_slice().into(),
-                    [PipelineStage::Transfer].as_slice().into(),
-                    [MemoryAccessAs::TransferWrite].as_slice().into(),
-                    image_srr.clone(),
-                    ImageLayout::Undefined,
-                    ImageLayout::TransferDstOptimal,
-                    self.queue_family.clone(),
-                    self.queue_family.clone(),
-                )]
-                .as_slice(),
-            );
+            recorder.pipeline_barriers([ImageMemoryBarrier::new(
+                [PipelineStage::TopOfPipe].as_slice().into(),
+                [].as_slice().into(),
+                [PipelineStage::Transfer].as_slice().into(),
+                [MemoryAccessAs::TransferWrite].as_slice().into(),
+                image_srr.clone(),
+                ImageLayout::Undefined,
+                ImageLayout::TransferDstOptimal,
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into()]);
 
             recorder.clear_color_image(
                 ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0),
                 image_srr.clone(),
             );
 
-            recorder.image_barriers(
-                [ImageMemoryBarrier::new(
-                    [PipelineStage::Transfer].as_slice().into(),
-                    [MemoryAccessAs::TransferWrite].as_slice().into(),
-                    [PipelineStage::RayTracingPipelineKHR(
-                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                    )]
+            recorder.pipeline_barriers([ImageMemoryBarrier::new(
+                [PipelineStage::Transfer].as_slice().into(),
+                [MemoryAccessAs::TransferWrite].as_slice().into(),
+                [PipelineStage::RayTracingPipelineKHR(
+                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                )]
+                .as_slice()
+                .into(),
+                [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
                     .as_slice()
                     .into(),
-                    [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
-                        .as_slice()
-                        .into(),
-                    image_srr.clone(),
-                    ImageLayout::TransferDstOptimal,
-                    ImageLayout::General,
-                    self.queue_family.clone(),
-                    self.queue_family.clone(),
-                )]
-                .as_slice(),
-            );
+                image_srr.clone(),
+                ImageLayout::TransferDstOptimal,
+                ImageLayout::General,
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into()]);
         }
 
         recorder.bind_ray_tracing_pipeline(self.raytracing_pipeline.clone());
@@ -454,26 +450,24 @@ impl GILighting {
             Image3DDimensions::new(self.renderarea_width, self.renderarea_height, 1),
         );
 
-        recorder.image_barriers(
-            [ImageMemoryBarrier::new(
-                [PipelineStage::RayTracingPipelineKHR(
-                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                )]
+        recorder.pipeline_barriers([ImageMemoryBarrier::new(
+            [PipelineStage::RayTracingPipelineKHR(
+                PipelineStageRayTracingPipelineKHR::RayTracingShader,
+            )]
+            .as_slice()
+            .into(),
+            [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
                 .as_slice()
                 .into(),
-                [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
-                    .as_slice()
-                    .into(),
-                gibuffer_stages,
-                gibuffer_access,
-                image_srr,
-                ImageLayout::General,
-                ImageLayout::ShaderReadOnlyOptimal,
-                self.queue_family.clone(),
-                self.queue_family.clone(),
-            )]
-            .as_slice(),
-        );
+            gibuffer_stages,
+            gibuffer_access,
+            image_srr,
+            ImageLayout::General,
+            ImageLayout::ShaderReadOnlyOptimal,
+            self.queue_family.clone(),
+            self.queue_family.clone(),
+        )
+        .into()]);
 
         self.gibuffer_descriptor_sets[current_frame].clone()
     }

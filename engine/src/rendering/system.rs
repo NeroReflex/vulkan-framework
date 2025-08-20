@@ -10,7 +10,9 @@ use std::{
 
 use sdl2::VideoSubsystem;
 use vulkan_framework::{
-    acceleration_structure::bottom_level::IDENTITY_MATRIX,
+    acceleration_structure::{
+        bottom_level::IDENTITY_MATRIX, top_level::TopLevelAccelerationStructure,
+    },
     buffer::{
         AllocatedBuffer, Buffer, BufferSubresourceRange, BufferTrait, BufferUseAs,
         ConcreteBufferDescriptor,
@@ -25,13 +27,10 @@ use vulkan_framework::{
     descriptor_set_layout::DescriptorSetLayout,
     device::{Device, DeviceOwned},
     fence::{Fence, FenceWaiter},
-    image::{
-        Image1DTrait, Image2DDimensions, Image2DTrait, ImageLayout, ImageLayoutSwapchainKHR,
-        ImageUsage, ImageUseAs,
-    },
+    image::{Image1DTrait, Image2DDimensions, Image2DTrait, ImageUsage, ImageUseAs},
     image_view::ImageView,
     instance::InstanceOwned,
-    memory_barriers::{BufferMemoryBarrier, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
+    memory_barriers::{BufferMemoryBarrier, MemoryAccessAs, MemoryBarrier},
     memory_heap::MemoryType,
     memory_management::{DefaultMemoryManager, MemoryManagementTags, MemoryManagerTrait},
     memory_pool::MemoryPoolFeatures,
@@ -99,7 +98,11 @@ pub struct System {
 
     rt_descriptor_set_layout: Arc<DescriptorSetLayout>,
     rt_descriptor_pool: Arc<DescriptorPool>,
-    rt_descriptor_set: Option<Arc<DescriptorSet>>,
+    rt_descriptor_set: Option<(
+        Arc<TopLevelAccelerationStructure>,
+        Arc<dyn BufferTrait>,
+        Arc<DescriptorSet>,
+    )>,
 
     mesh_rendering: Arc<MeshRendering>,
     directional_lighting: Arc<DirectionalLighting>,
@@ -218,13 +221,13 @@ impl System {
             rt_descriptor_set
                 .bind_resources(|binder| {
                     binder
-                        .bind_storage_buffers(0, [(tlas_data, None, None)].as_slice())
+                        .bind_storage_buffers(0, [(tlas_data.clone(), None, None)].as_slice())
                         .unwrap();
-                    binder.bind_tlas(1, [tlas].as_slice()).unwrap();
+                    binder.bind_tlas(1, [tlas.clone()].as_slice()).unwrap();
                 })
                 .unwrap();
 
-            self.rt_descriptor_set = Some(rt_descriptor_set);
+            self.rt_descriptor_set = Some((tlas, tlas_data, rt_descriptor_set));
         }
     }
 
@@ -748,7 +751,7 @@ impl System {
 
             // if there is no descriptor set then no element is on the scene, therefore there is
             // simply nothing to be rendered.
-            let Some(rt_descriptor_set) = &self.rt_descriptor_set else {
+            let Some((rt_tlas, rt_tlas_data, rt_descriptor_set)) = &self.rt_descriptor_set else {
                 return Ok(());
             };
 
@@ -756,19 +759,48 @@ impl System {
             // that I just awaited above, so thecommand buffer is surely NOT currently in use
             self.present_command_buffers[current_frame].record_one_time_submit(|recorder| {
                 // Write view and projection matrices to GPU memory and wait for completion before using them to render the scene
-                recorder.update_buffer(self.view_projection_buffers[current_frame].clone(), 0, camera_matrices.as_slice());
-                recorder.buffer_barriers(
-                    [BufferMemoryBarrier::new(
+                {
+                    recorder.pipeline_barriers([BufferMemoryBarrier::new(
+                        [PipelineStage::TopOfPipe].as_slice().into(),
+                        [].as_slice().into(),
                         [PipelineStage::Transfer].as_slice().into(),
                         [MemoryAccessAs::TransferWrite].as_slice().into(),
-                        [PipelineStage::AllGraphics, PipelineStage::RayTracingPipelineKHR(PipelineStageRayTracingPipelineKHR::RayTracingShader)].as_slice().into(),
+                        BufferSubresourceRange::new(
+                            self.view_projection_buffers[current_frame].clone(),
+                            0u64,
+                            self.view_projection_buffers[current_frame].size(),
+                        ),
+                        self.queue_family(),
+                        self.queue_family(),
+                    )
+                    .into()]);
+                    recorder.update_buffer(
+                        self.view_projection_buffers[current_frame].clone(),
+                        0,
+                        camera_matrices.as_slice(),
+                    );
+                    recorder.pipeline_barriers([BufferMemoryBarrier::new(
+                        [PipelineStage::Transfer].as_slice().into(),
+                        [MemoryAccessAs::TransferWrite].as_slice().into(),
+                        [
+                            PipelineStage::AllGraphics,
+                            PipelineStage::RayTracingPipelineKHR(
+                                PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                            ),
+                        ]
+                        .as_slice()
+                        .into(),
                         [MemoryAccessAs::UniformRead].as_slice().into(),
-                        BufferSubresourceRange::new(self.view_projection_buffers[current_frame].clone(), 0u64, self.view_projection_buffers[current_frame].size()),
+                        BufferSubresourceRange::new(
+                            self.view_projection_buffers[current_frame].clone(),
+                            0u64,
+                            self.view_projection_buffers[current_frame].size(),
+                        ),
                         self.queue_family(),
                         self.queue_family(),
-                    )]
-                    .as_slice(),
-                );
+                    )
+                    .into()]);
+                }
 
                 // Record rendering commands to generate the gbuffer (position, normal and texture) for each
                 // pixel in the final image: this solves the visibility problem and provides data for later stager
@@ -776,12 +808,38 @@ impl System {
                 let gbuffer_descriptor_set = self.mesh_rendering.record_rendering_commands(
                     self.view_projection_descriptor_sets[current_frame].clone(),
                     self.queue_family(),
-                    [PipelineStage::FragmentShader, PipelineStage::RayTracingPipelineKHR(PipelineStageRayTracingPipelineKHR::RayTracingShader)].as_slice().into(),
+                    [
+                        PipelineStage::FragmentShader,
+                        PipelineStage::RayTracingPipelineKHR(
+                            PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                        ),
+                    ]
+                    .as_slice()
+                    .into(),
                     [MemoryAccessAs::ShaderRead].as_slice().into(),
                     current_frame,
                     static_meshes_resources,
-                    recorder
+                    recorder,
                 );
+
+                // make resources available for ray tracing pipeline(s)
+                recorder.pipeline_barriers([MemoryBarrier::new(
+                    [PipelineStage::TopOfPipe].as_slice().into(),
+                    [].as_slice().into(),
+                    [PipelineStage::RayTracingPipelineKHR(
+                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                    )]
+                    .as_slice()
+                    .into(),
+                    [
+                        MemoryAccessAs::MemoryRead,
+                        MemoryAccessAs::ShaderRead,
+                        MemoryAccessAs::AccelerationStructureRead,
+                    ]
+                    .as_slice()
+                    .into(),
+                )
+                .into()]);
 
                 let dlbuffer_descriptor_set = self.directional_lighting.record_rendering_commands(
                     rt_descriptor_set.clone(),
@@ -789,30 +847,53 @@ impl System {
                     self.view_projection_descriptor_sets[current_frame].clone(),
                     directional_lighting_resources.deref(),
                     current_frame,
-                    [PipelineStage::FragmentShader, PipelineStage::RayTracingPipelineKHR(PipelineStageRayTracingPipelineKHR::RayTracingShader)].as_slice().into(),
-                    [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead].as_slice().into(),
-                    recorder
+                    [
+                        PipelineStage::FragmentShader,
+                        PipelineStage::RayTracingPipelineKHR(
+                            PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                        ),
+                    ]
+                    .as_slice()
+                    .into(),
+                    [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead]
+                        .as_slice()
+                        .into(),
+                    recorder,
                 );
 
-                let gibuffer_descriptor_set = self.global_illumination_lighting.record_rendering_commands(
-                    rt_descriptor_set.clone(),
-                    gbuffer_descriptor_set.clone(),
-                    dlbuffer_descriptor_set.clone(),
-                    texture_descriptor_set,
-                    material_descriptor_set,
-                    current_frame,
-                    [PipelineStage::FragmentShader].as_slice().into(),
-                    [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead].as_slice().into(),
-                    recorder
-                );
+                let gibuffer_descriptor_set =
+                    self.global_illumination_lighting.record_rendering_commands(
+                        rt_descriptor_set.clone(),
+                        gbuffer_descriptor_set.clone(),
+                        dlbuffer_descriptor_set.clone(),
+                        texture_descriptor_set,
+                        material_descriptor_set,
+                        current_frame,
+                        [PipelineStage::FragmentShader].as_slice().into(),
+                        [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead]
+                            .as_slice()
+                            .into(),
+                        recorder,
+                    );
+
+                // make resources available for ray tracing pipeline(s)
+                recorder.pipeline_barriers([MemoryBarrier::new(
+                    [PipelineStage::RayTracingPipelineKHR(
+                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                    )]
+                    .as_slice()
+                    .into(),
+                    [MemoryAccessAs::MemoryWrite].as_slice().into(),
+                    [PipelineStage::AllGraphics].as_slice().into(),
+                    [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead]
+                        .as_slice()
+                        .into(),
+                )
+                .into()]);
 
                 // Record rendering commands to assemble the gbuffer and other resources into a an image
                 // ready to be post-processed to add effects
-                let (
-                    final_rendering_output_image,
-                    final_rendering_output_image_subresource_range,
-                    final_rendering_output_image_layout,
-                ) = self.final_rendering.record_rendering_commands(
+                let final_rendering_output_image = self.final_rendering.record_rendering_commands(
                     self.queue_family(),
                     gbuffer_descriptor_set,
                     dlbuffer_descriptor_set,
@@ -821,99 +902,22 @@ impl System {
                     recorder,
                 );
 
-                // Insert a barrier to transition image layout from the final rendering output to renderquad input
-                // while also ensuring the rendering operation of final rendering pipeline has completed before initiating
-                // the final renderquad step.
-                recorder.image_barriers(
-                    [ImageMemoryBarrier::new(
-                        PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
-                        MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
-                        PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
-                        MemoryAccess::from([MemoryAccessAs::ShaderRead].as_slice()),
-                        final_rendering_output_image_subresource_range,
-                        final_rendering_output_image_layout,
-                        RenderQuad::image_input_layout(),
-                        self.queue_family(),
-                        self.queue_family(),
-                    )]
-                    .as_slice(),
-                );
-
-                let (hdr_output_image, hdr_output_image_subresource_range, hdr_output_image_layout) =
-                    self.hdr.record_rendering_commands(
-                        self.queue_family(),
-                        hdr,
-                        final_rendering_output_image,
-                        current_frame,
-                        recorder,
-                    );
-
-                // Insert a barrier to transition image layout from the final rendering output to renderquad input
-                // while also ensuring the rendering operation of final rendering pipeline has completed before initiating
-                // the final renderquad step.
-                recorder.image_barriers(
-                    [ImageMemoryBarrier::new(
-                        PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
-                        MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
-                        PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
-                        MemoryAccess::from([MemoryAccessAs::ShaderRead].as_slice()),
-                        hdr_output_image_subresource_range,
-                        hdr_output_image_layout,
-                        RenderQuad::image_input_layout(),
-                        self.queue_family(),
-                        self.queue_family(),
-                    )]
-                    .as_slice(),
-                );
-
-                // Transition the final swapchain image into color attachment optimal layout,
-                // so that the graphics pipeline has it in the best format, and the final barrier (*1)
-                // can transition it from that layout to the one suitable for presentation on the
-                // swapchain
-                recorder.image_barriers(
-                    [ImageMemoryBarrier::new(
-                        PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
-                        MemoryAccess::from([].as_slice()),
-                        PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
-                        MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
-                        swapchain_imageviews[swapchain_index as usize]
-                            .image()
-                            .into(),
-                        ImageLayout::Undefined,
-                        ImageLayout::ColorAttachmentOptimal,
-                        self.queue_family(),
-                        self.queue_family(),
-                    )]
-                    .as_slice(),
+                let hdr_output_image = self.hdr.record_rendering_commands(
+                    self.queue_family(),
+                    hdr,
+                    final_rendering_output_image,
+                    current_frame,
+                    recorder,
                 );
 
                 // record commands to finalize the rendering image
                 self.renderquad.record_rendering_commands(
+                    self.queue_family(),
                     swapchain.images_extent(),
                     hdr_output_image,
                     swapchain_imageviews[swapchain_index as usize].clone(),
                     current_frame,
                     recorder,
-                );
-
-                // Final barrier (*1) for presentation:
-                // wait for the renderquad to complete the rendering so that we can then transition
-                // the swapchain image in a layout that is suitable for presentation on the swapchain.
-                recorder.image_barriers(
-                    [ImageMemoryBarrier::new(
-                        PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
-                        MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
-                        PipelineStages::from([PipelineStage::BottomOfPipe].as_slice()),
-                        MemoryAccess::from([].as_slice()),
-                        swapchain_imageviews[swapchain_index as usize]
-                            .image()
-                            .into(),
-                        ImageLayout::ColorAttachmentOptimal,
-                        ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
-                        self.queue_family(),
-                        self.queue_family(),
-                    )]
-                    .as_slice(),
                 );
             })?
         };

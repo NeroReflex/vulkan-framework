@@ -35,7 +35,7 @@ use crate::{
         ImageDimensions, ImageLayout, ImageSubresourceLayers, ImageSubresourceRange, ImageTrait,
     },
     image_view::ImageView,
-    memory_barriers::{BufferMemoryBarrier, ImageMemoryBarrier},
+    memory_barriers::{BufferMemoryBarrier, ImageMemoryBarrier, PipelineBarrier},
     pipeline_layout::PipelineLayout,
     prelude::{FrameworkError, VulkanError, VulkanResult},
     raytracing_pipeline::RaytracingPipeline,
@@ -614,25 +614,6 @@ impl<'a> CommandBufferRecorder<'a> {
         }
     }
 
-    pub fn buffer_barriers(&mut self, buffer_barrriers: &[BufferMemoryBarrier]) {
-        // TODO: check every resource is from the same device
-
-        let buffer_memory_barriers: smallvec::SmallVec<[ash::vk::BufferMemoryBarrier2; 8]> =
-            buffer_barrriers
-                .iter()
-                .map(|buf_barrier| buf_barrier.into())
-                .collect();
-
-        let dependency_info = ash::vk::DependencyInfo::default()
-            .buffer_memory_barriers(buffer_memory_barriers.as_slice());
-
-        unsafe {
-            self.device
-                .ash_handle()
-                .cmd_pipeline_barrier2(self.command_buffer.ash_handle(), &dependency_info);
-        }
-    }
-
     pub fn copy_buffer_to_image(
         &mut self,
         src: Arc<dyn BufferTrait>,
@@ -754,23 +735,59 @@ impl<'a> CommandBufferRecorder<'a> {
         }
     }
 
-    pub fn image_barriers(&mut self, image_mem_barriers: &[ImageMemoryBarrier]) {
+    /// Place a pipeline buffer into the command buffer.
+    pub fn pipeline_barriers(&mut self, barriers: impl IntoIterator<Item = PipelineBarrier>) {
         // TODO: check every resource is from the same device
 
-        for image_mem_barrier in image_mem_barriers {
-            self.used_resources
-                .insert(CommandBufferReferencedResource::Image(
-                    image_mem_barrier.subresource_range().image(),
-                ));
+        let mut image_memory_barriers =
+            smallvec::SmallVec::<[ash::vk::ImageMemoryBarrier2; 8]>::new();
+        let mut buffer_memory_barriers =
+            smallvec::SmallVec::<[ash::vk::BufferMemoryBarrier2; 4]>::new();
+        let mut memory_barriers = smallvec::SmallVec::<[ash::vk::MemoryBarrier2; 2]>::new();
+        for barrier in barriers.into_iter() {
+            match barrier {
+                PipelineBarrier::Buffer(buffer_memory_barrier) => {
+                    assert_eq!(
+                        self.device.native_handle(),
+                        buffer_memory_barrier
+                            .subresource_range()
+                            .buffer()
+                            .get_parent_device()
+                            .native_handle()
+                    );
+
+                    self.used_resources
+                        .insert(CommandBufferReferencedResource::Buffer(
+                            buffer_memory_barrier.subresource_range().buffer(),
+                        ));
+
+                    buffer_memory_barriers.push(buffer_memory_barrier.into())
+                }
+                PipelineBarrier::Image(image_mem_barrier) => {
+                    assert_eq!(
+                        self.device.native_handle(),
+                        image_mem_barrier
+                            .subresource_range()
+                            .image()
+                            .get_parent_device()
+                            .native_handle()
+                    );
+
+                    self.used_resources
+                        .insert(CommandBufferReferencedResource::Image(
+                            image_mem_barrier.subresource_range().image(),
+                        ));
+                    image_memory_barriers.push(image_mem_barrier.into());
+                }
+                PipelineBarrier::Global(memory_barrier) => {
+                    memory_barriers.push(memory_barrier.into());
+                }
+            }
         }
 
-        let image_memory_barriers: smallvec::SmallVec<[ash::vk::ImageMemoryBarrier2; 4]> =
-            image_mem_barriers
-                .iter()
-                .map(|image_mem_barrier| image_mem_barrier.into())
-                .collect();
-
         let dependency_info = ash::vk::DependencyInfo::default()
+            .memory_barriers(memory_barriers.as_slice())
+            .buffer_memory_barriers(buffer_memory_barriers.as_slice())
             .image_memory_barriers(image_memory_barriers.as_slice());
 
         unsafe {

@@ -1211,24 +1211,27 @@ impl Manager {
                             _instance_buffer_addr: tlas.instance_buffer().buffer_device_addr(),
                         };
 
-                        buffer_barriers.push(BufferMemoryBarrier::new(
-                            [PipelineStage::TopOfPipe].as_slice().into(),
-                            [].as_slice().into(),
-                            [PipelineStage::AccelerationStructureKHR(
-                                PipelineStageAccelerationStructureKHR::Build,
-                            )]
-                            .as_slice()
+                        buffer_barriers.push(
+                            BufferMemoryBarrier::new(
+                                [PipelineStage::TopOfPipe].as_slice().into(),
+                                [].as_slice().into(),
+                                [PipelineStage::AccelerationStructureKHR(
+                                    PipelineStageAccelerationStructureKHR::Build,
+                                )]
+                                .as_slice()
+                                .into(),
+                                [
+                                    MemoryAccessAs::AccelerationStructureRead,
+                                    MemoryAccessAs::MemoryRead,
+                                ]
+                                .as_slice()
+                                .into(),
+                                BufferSubresourceRange::new(blas.buffer(), 0, blas.buffer_size()),
+                                self.queue_family.clone(),
+                                self.queue_family.clone(),
+                            )
                             .into(),
-                            [
-                                MemoryAccessAs::AccelerationStructureRead,
-                                MemoryAccessAs::MemoryRead,
-                            ]
-                            .as_slice()
-                            .into(),
-                            BufferSubresourceRange::new(blas.buffer(), 0, blas.buffer_size()),
-                            self.queue_family.clone(),
-                            self.queue_family.clone(),
-                        ));
+                        );
 
                         instance_num += 1;
                     }
@@ -1255,83 +1258,77 @@ impl Manager {
                 )?;
 
                 command_buffer.record_one_time_submit(|recorder| {
-                    recorder.buffer_barriers(
-                        [BufferMemoryBarrier::new(
-                            [PipelineStage::Host].as_slice().into(),
-                            [MemoryAccessAs::HostWrite].as_slice().into(),
-                            [PipelineStage::AccelerationStructureKHR(
-                                PipelineStageAccelerationStructureKHR::Build,
-                            )]
+                    recorder.pipeline_barriers([BufferMemoryBarrier::new(
+                        [PipelineStage::Host].as_slice().into(),
+                        [MemoryAccessAs::HostWrite].as_slice().into(),
+                        [PipelineStage::AccelerationStructureKHR(
+                            PipelineStageAccelerationStructureKHR::Build,
+                        )]
+                        .as_slice()
+                        .into(),
+                        [
+                            MemoryAccessAs::AccelerationStructureRead,
+                            MemoryAccessAs::MemoryRead,
+                        ]
+                        .as_slice()
+                        .into(),
+                        BufferSubresourceRange::new(
+                            tlas.instance_buffer().buffer(),
+                            0,
+                            tlas.instance_buffer().buffer().size(),
+                        ),
+                        self.queue_family.clone(),
+                        self.queue_family.clone(),
+                    )
+                    .into()]);
+
+                    recorder.pipeline_barriers([BufferMemoryBarrier::new(
+                        [PipelineStage::Host].as_slice().into(),
+                        [MemoryAccessAs::HostWrite].as_slice().into(),
+                        [PipelineStage::AllCommands].as_slice().into(),
+                        [MemoryAccessAs::ShaderRead, MemoryAccessAs::MemoryRead]
                             .as_slice()
                             .into(),
-                            [
-                                MemoryAccessAs::AccelerationStructureRead,
-                                MemoryAccessAs::MemoryRead,
-                            ]
-                            .as_slice()
-                            .into(),
-                            BufferSubresourceRange::new(
-                                tlas.instance_buffer().buffer(),
-                                0,
-                                tlas.instance_buffer().buffer().size(),
-                            ),
-                            self.queue_family.clone(),
-                            self.queue_family.clone(),
-                        )]
-                        .as_slice(),
-                    );
+                        BufferSubresourceRange::new(
+                            descriptors_buffer.clone(),
+                            0,
+                            descriptors_buffer.size(),
+                        ),
+                        self.queue_family.clone(),
+                        self.queue_family.clone(),
+                    )
+                    .into()]);
 
-                    recorder.buffer_barriers(
-                        [BufferMemoryBarrier::new(
-                            [PipelineStage::Host].as_slice().into(),
-                            [MemoryAccessAs::HostWrite].as_slice().into(),
-                            [PipelineStage::AllCommands].as_slice().into(),
-                            [MemoryAccessAs::ShaderRead, MemoryAccessAs::MemoryRead]
-                                .as_slice()
-                                .into(),
-                            BufferSubresourceRange::new(
-                                descriptors_buffer.clone(),
-                                0,
-                                descriptors_buffer.size(),
-                            ),
-                            self.queue_family.clone(),
-                            self.queue_family.clone(),
-                        )]
-                        .as_slice(),
-                    );
-
-                    recorder.buffer_barriers(buffer_barriers.as_slice());
+                    recorder.pipeline_barriers(buffer_barriers);
 
                     recorder.build_tlas(tlas.clone(), 0, max_instances);
 
-                    recorder.buffer_barriers(
-                        [BufferMemoryBarrier::new(
-                            [PipelineStage::AccelerationStructureKHR(
-                                PipelineStageAccelerationStructureKHR::Build,
-                            )]
-                            .as_slice()
-                            .into(),
-                            [MemoryAccessAs::AccelerationStructureWrite]
-                                .as_slice()
-                                .into(),
-                            [PipelineStage::AllCommands].as_slice().into(),
-                            [
-                                MemoryAccessAs::AccelerationStructureRead,
-                                MemoryAccessAs::MemoryRead,
-                                MemoryAccessAs::ShaderRead,
-                            ]
-                            .as_slice()
-                            .into(),
-                            BufferSubresourceRange::new(
-                                tlas.instance_buffer().buffer(),
-                                0,
-                                tlas.instance_buffer().buffer().size(),
-                            ),
-                            self.queue_family.clone(),
-                            self.queue_family.clone(),
+                    recorder.pipeline_barriers([BufferMemoryBarrier::new(
+                        [PipelineStage::AccelerationStructureKHR(
+                            PipelineStageAccelerationStructureKHR::Build,
                         )]
-                        .as_slice(),
-                    );
+                        .as_slice()
+                        .into(),
+                        [MemoryAccessAs::AccelerationStructureWrite]
+                            .as_slice()
+                            .into(),
+                        [PipelineStage::AllCommands].as_slice().into(),
+                        [
+                            MemoryAccessAs::AccelerationStructureRead,
+                            MemoryAccessAs::MemoryRead,
+                            MemoryAccessAs::ShaderRead,
+                        ]
+                        .as_slice()
+                        .into(),
+                        BufferSubresourceRange::new(
+                            tlas.instance_buffer().buffer(),
+                            0,
+                            tlas.instance_buffer().buffer().size(),
+                        ),
+                        self.queue_family.clone(),
+                        self.queue_family.clone(),
+                    )
+                    .into()]);
                 })?;
 
                 let fence_waiter = self.tlas_loading_queue.submit(

@@ -90,22 +90,16 @@ impl DirectionalLights {
                     .map_err(|err| err.into())
             },
             |recorder, _, buffer| {
-                recorder.buffer_barriers(
-                    [BufferMemoryBarrier::new(
-                        [].as_slice().into(),
-                        [].as_slice().into(),
-                        [PipelineStage::Transfer].as_slice().into(),
-                        [MemoryAccessAs::TransferWrite].as_slice().into(),
-                        BufferSubresourceRange::new(
-                            buffer.clone() as Arc<dyn BufferTrait>,
-                            0,
-                            4 * 6,
-                        ),
-                        self.queue.get_parent_queue_family(),
-                        self.queue.get_parent_queue_family(),
-                    )]
-                    .as_slice(),
-                );
+                recorder.pipeline_barriers([BufferMemoryBarrier::new(
+                    [].as_slice().into(),
+                    [].as_slice().into(),
+                    [PipelineStage::Transfer].as_slice().into(),
+                    [MemoryAccessAs::TransferWrite].as_slice().into(),
+                    BufferSubresourceRange::new(buffer.clone() as Arc<dyn BufferTrait>, 0, 4 * 6),
+                    self.queue.get_parent_queue_family(),
+                    self.queue.get_parent_queue_family(),
+                )
+                .into()]);
 
                 recorder.update_buffer(
                     buffer.clone() as Arc<dyn BufferTrait>,
@@ -113,22 +107,16 @@ impl DirectionalLights {
                     [light.direction(), light.albedo()].as_slice(),
                 );
 
-                recorder.buffer_barriers(
-                    [BufferMemoryBarrier::new(
-                        [PipelineStage::Transfer].as_slice().into(),
-                        [MemoryAccessAs::TransferWrite].as_slice().into(),
-                        [PipelineStage::BottomOfPipe].as_slice().into(),
-                        [].as_slice().into(),
-                        BufferSubresourceRange::new(
-                            buffer.clone() as Arc<dyn BufferTrait>,
-                            0,
-                            4 * 6,
-                        ),
-                        self.queue.get_parent_queue_family(),
-                        self.queue.get_parent_queue_family(),
-                    )]
-                    .as_slice(),
-                );
+                recorder.pipeline_barriers([BufferMemoryBarrier::new(
+                    [PipelineStage::Transfer].as_slice().into(),
+                    [MemoryAccessAs::TransferWrite].as_slice().into(),
+                    [PipelineStage::BottomOfPipe].as_slice().into(),
+                    [].as_slice().into(),
+                    BufferSubresourceRange::new(buffer.clone() as Arc<dyn BufferTrait>, 0, 4 * 6),
+                    self.queue.get_parent_queue_family(),
+                    self.queue.get_parent_queue_family(),
+                )
+                .into()]);
 
                 Ok(())
             },

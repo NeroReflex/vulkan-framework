@@ -349,25 +349,21 @@ fn main() {
                         // so that the graphics pipeline has it in the best format, and the final barrier
                         // can transition it from that layout to the one suitable for presentation on the
                         // swapchain
-                        recorder.image_barriers(
-                            [ImageMemoryBarrier::new(
-                                PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
-                                MemoryAccess::from([].as_slice()),
-                                PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
-                                MemoryAccess::from(
-                                    [MemoryAccessAs::ColorAttachmentWrite].as_slice(),
-                                ),
-                                ImageSubresourceRange::from(
-                                    swapchain_images[swapchain_index as usize].clone()
-                                        as Arc<dyn ImageTrait>,
-                                ),
-                                ImageLayout::Undefined,
-                                ImageLayout::ColorAttachmentOptimal,
-                                queue_family.clone(),
-                                queue_family.clone(),
-                            )]
-                            .as_slice(),
-                        );
+                        recorder.pipeline_barriers([ImageMemoryBarrier::new(
+                            PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
+                            MemoryAccess::from([].as_slice()),
+                            PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
+                            MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
+                            ImageSubresourceRange::from(
+                                swapchain_images[swapchain_index as usize].clone()
+                                    as Arc<dyn ImageTrait>,
+                            ),
+                            ImageLayout::Undefined,
+                            ImageLayout::ColorAttachmentOptimal,
+                            queue_family.clone(),
+                            queue_family.clone(),
+                        )
+                        .into()]);
 
                         let rendering_color_attachments = [DynamicRenderingColorAttachment::new(
                             swapchain_image_views[swapchain_index as usize].clone(),
@@ -401,23 +397,21 @@ fn main() {
 
                         // Wait for the graphics pipeline to complete the rendering so that we can then transition the image
                         // in a layout that is suitable for presentation on the swapchain.
-                        recorder.image_barriers(
-                            [ImageMemoryBarrier::new(
-                                PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
-                                MemoryAccess::from([MemoryAccessAs::ShaderWrite].as_slice()),
-                                PipelineStages::from([PipelineStage::BottomOfPipe].as_slice()),
-                                MemoryAccess::from([].as_slice()),
-                                ImageSubresourceRange::from(
-                                    swapchain_images[swapchain_index as usize].clone()
-                                        as Arc<dyn ImageTrait>,
-                                ),
-                                ImageLayout::ColorAttachmentOptimal,
-                                ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
-                                queue_family.clone(),
-                                queue_family.clone(),
-                            )]
-                            .as_slice(),
-                        );
+                        recorder.pipeline_barriers([ImageMemoryBarrier::new(
+                            PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
+                            MemoryAccess::from([MemoryAccessAs::ShaderWrite].as_slice()),
+                            PipelineStages::from([PipelineStage::BottomOfPipe].as_slice()),
+                            MemoryAccess::from([].as_slice()),
+                            ImageSubresourceRange::from(
+                                swapchain_images[swapchain_index as usize].clone()
+                                    as Arc<dyn ImageTrait>,
+                            ),
+                            ImageLayout::ColorAttachmentOptimal,
+                            ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
+                            queue_family.clone(),
+                            queue_family.clone(),
+                        )
+                        .into()]);
                     })
                     .unwrap();
 

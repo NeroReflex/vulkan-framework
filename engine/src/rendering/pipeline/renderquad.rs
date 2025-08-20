@@ -20,9 +20,14 @@ use vulkan_framework::{
         CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline, PolygonMode,
         Rasterizer, Scissor, Viewport,
     },
-    image::{Image2DDimensions, ImageFormat, ImageLayout, ImageMultisampling},
+    image::{
+        Image2DDimensions, ImageFormat, ImageLayout, ImageLayoutSwapchainKHR, ImageMultisampling,
+    },
     image_view::ImageView,
+    memory_barriers::{ImageMemoryBarrier, MemoryAccessAs},
     pipeline_layout::PipelineLayout,
+    pipeline_stage::PipelineStage,
+    queue_family::QueueFamily,
     sampler::{Filtering, MipmapMode, Sampler},
     shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType},
     shader_stage_access::ShaderStagesAccess,
@@ -221,6 +226,7 @@ impl RenderQuad {
 
     pub fn record_rendering_commands(
         &self,
+        queue_family: Arc<QueueFamily>,
         draw_area: Image2DDimensions,
         input_image_view: Arc<ImageView>,
         output_image_view: Arc<ImageView>,
@@ -242,14 +248,31 @@ impl RenderQuad {
             })
             .unwrap();
 
-        let rendering_color_attachments = [DynamicRenderingColorAttachment::new(
-            output_image_view.clone(),
-            RenderingAttachmentSetup::clear(ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0)),
-            AttachmentStoreOp::Store,
-        )];
+        // Transition the final swapchain image into color attachment optimal layout,
+        // so that the graphics pipeline has it in the best format, and the final barrier (*1)
+        // can transition it from that layout to the one suitable for presentation on the
+        // swapchain
+        recorder.pipeline_barriers([ImageMemoryBarrier::new(
+            [PipelineStage::TopOfPipe].as_slice().into(),
+            [].as_slice().into(),
+            [PipelineStage::AllGraphics].as_slice().into(),
+            [MemoryAccessAs::ColorAttachmentWrite].as_slice().into(),
+            output_image_view.image().into(),
+            ImageLayout::Undefined,
+            ImageLayout::ColorAttachmentOptimal,
+            queue_family.clone(),
+            queue_family.clone(),
+        )
+        .into()]);
+
         recorder.graphics_rendering(
             draw_area,
-            rendering_color_attachments.as_slice(),
+            [DynamicRenderingColorAttachment::new(
+                output_image_view.clone(),
+                RenderingAttachmentSetup::clear(ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0)),
+                AttachmentStoreOp::Store,
+            )]
+            .as_slice(),
             None,
             None,
             |recorder| {
@@ -262,5 +285,21 @@ impl RenderQuad {
                 recorder.draw(0, 6, 0, 1);
             },
         );
+
+        // Final barrier (*1) for presentation:
+        // wait for the renderquad to complete the rendering so that we can then transition
+        // the swapchain image in a layout that is suitable for presentation on the swapchain.
+        recorder.pipeline_barriers([ImageMemoryBarrier::new(
+            [PipelineStage::AllGraphics].as_slice().into(),
+            [MemoryAccessAs::ColorAttachmentWrite].as_slice().into(),
+            [PipelineStage::BottomOfPipe].as_slice().into(),
+            [MemoryAccessAs::MemoryRead].as_slice().into(),
+            output_image_view.image().into(),
+            ImageLayout::ColorAttachmentOptimal,
+            ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
+            queue_family.clone(),
+            queue_family.clone(),
+        )
+        .into()]);
     }
 }

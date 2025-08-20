@@ -991,29 +991,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 present_command_buffers[swapchain_index as usize]
                     .record_one_time_submit(|recorder: &mut CommandBufferRecorder| {
-                        // TODO: HERE transition the image layout from UNDEFINED to GENERAL so that ray tracing pipeline can write to it
-                        recorder.image_barriers(
-                            [ImageMemoryBarrier::new(
-                                PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
-                                MemoryAccess::from([].as_slice()),
-                                PipelineStages::from(
-                                    [PipelineStage::RayTracingPipelineKHR(
-                                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                                    )]
-                                    .as_slice(),
-                                ),
-                                MemoryAccess::from([MemoryAccessAs::ShaderWrite].as_slice()),
-                                ImageSubresourceRange::from(
-                                    rt_images[swapchain_index as usize].clone()
-                                        as Arc<dyn ImageTrait>,
-                                ),
-                                ImageLayout::Undefined,
-                                rt_writer_img_layout,
-                                queue_family.clone(),
-                                queue_family.clone(),
-                            )]
-                            .as_slice(),
-                        );
+                        // HERE transition the image layout from UNDEFINED to GENERAL so that ray tracing pipeline can write to it
+                        recorder.pipeline_barriers([ImageMemoryBarrier::new(
+                            PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
+                            MemoryAccess::from([].as_slice()),
+                            PipelineStages::from(
+                                [PipelineStage::RayTracingPipelineKHR(
+                                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                                )]
+                                .as_slice(),
+                            ),
+                            MemoryAccess::from([MemoryAccessAs::ShaderWrite].as_slice()),
+                            ImageSubresourceRange::from(
+                                rt_images[swapchain_index as usize].clone() as Arc<dyn ImageTrait>,
+                            ),
+                            ImageLayout::Undefined,
+                            rt_writer_img_layout,
+                            queue_family.clone(),
+                            queue_family.clone(),
+                        )
+                        .into()]);
 
                         recorder.bind_ray_tracing_pipeline(pipeline.clone());
                         recorder.bind_descriptor_sets_for_ray_tracing_pipeline(
@@ -1029,52 +1026,45 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         // Wait for the ray tracing pipeline to transition the resulting image's layout
                         // from rt_writer_img_layout to renderquad_image_input_layout, so that the image can be used in a descriptor set,
                         // and sampled from there to write to the image in the swapchain (that is a different image)
-                        recorder.image_barriers(
-                            [ImageMemoryBarrier::new(
-                                PipelineStages::from(
-                                    [PipelineStage::RayTracingPipelineKHR(
-                                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                                    )]
-                                    .as_slice(),
-                                ),
-                                MemoryAccess::from([MemoryAccessAs::ShaderWrite].as_slice()),
-                                PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
-                                MemoryAccess::from([MemoryAccessAs::ShaderRead].as_slice()),
-                                ImageSubresourceRange::from(
-                                    rt_images[swapchain_index as usize].clone()
-                                        as Arc<dyn ImageTrait>,
-                                ),
-                                rt_writer_img_layout,
-                                renderquad_image_input_layout,
-                                queue_family.clone(),
-                                queue_family.clone(),
-                            )]
-                            .as_slice(),
-                        );
+                        recorder.pipeline_barriers([ImageMemoryBarrier::new(
+                            PipelineStages::from(
+                                [PipelineStage::RayTracingPipelineKHR(
+                                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                                )]
+                                .as_slice(),
+                            ),
+                            MemoryAccess::from([MemoryAccessAs::ShaderWrite].as_slice()),
+                            PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
+                            MemoryAccess::from([MemoryAccessAs::ShaderRead].as_slice()),
+                            ImageSubresourceRange::from(
+                                rt_images[swapchain_index as usize].clone() as Arc<dyn ImageTrait>,
+                            ),
+                            rt_writer_img_layout,
+                            renderquad_image_input_layout,
+                            queue_family.clone(),
+                            queue_family.clone(),
+                        )
+                        .into()]);
 
                         // Transition the final swapchain image into color attachment optimal layout,
                         // so that the graphics pipeline has it in the best format, and the final barrier
                         // can transition it from that layout to the one suitable for presentation on the
                         // swapchain
-                        recorder.image_barriers(
-                            [ImageMemoryBarrier::new(
-                                PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
-                                MemoryAccess::from([].as_slice()),
-                                PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
-                                MemoryAccess::from(
-                                    [MemoryAccessAs::ColorAttachmentWrite].as_slice(),
-                                ),
-                                ImageSubresourceRange::from(
-                                    swapchain_images[swapchain_index as usize].clone()
-                                        as Arc<dyn ImageTrait>,
-                                ),
-                                ImageLayout::Undefined,
-                                ImageLayout::ColorAttachmentOptimal,
-                                queue_family.clone(),
-                                queue_family.clone(),
-                            )]
-                            .as_slice(),
-                        );
+                        recorder.pipeline_barriers([ImageMemoryBarrier::new(
+                            PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
+                            MemoryAccess::from([].as_slice()),
+                            PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
+                            MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
+                            ImageSubresourceRange::from(
+                                swapchain_images[swapchain_index as usize].clone()
+                                    as Arc<dyn ImageTrait>,
+                            ),
+                            ImageLayout::Undefined,
+                            ImageLayout::ColorAttachmentOptimal,
+                            queue_family.clone(),
+                            queue_family.clone(),
+                        )
+                        .into()]);
 
                         let rendering_color_attachments = [DynamicRenderingColorAttachment::new(
                             swapchain_image_views[swapchain_index as usize].clone(),
@@ -1105,23 +1095,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         // Wait for the renderquad to complete the rendering so that we can then transition the image
                         // in a layout that is suitable for presentation on the swapchain.
-                        recorder.image_barriers(
-                            [ImageMemoryBarrier::new(
-                                PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
-                                MemoryAccess::from([MemoryAccessAs::ShaderWrite].as_slice()),
-                                PipelineStages::from([PipelineStage::BottomOfPipe].as_slice()),
-                                MemoryAccess::from([].as_slice()),
-                                ImageSubresourceRange::from(
-                                    swapchain_images[swapchain_index as usize].clone()
-                                        as Arc<dyn ImageTrait>,
-                                ),
-                                ImageLayout::ColorAttachmentOptimal,
-                                ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
-                                queue_family.clone(),
-                                queue_family.clone(),
-                            )]
-                            .as_slice(),
-                        );
+                        recorder.pipeline_barriers([ImageMemoryBarrier::new(
+                            PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
+                            MemoryAccess::from([MemoryAccessAs::ShaderWrite].as_slice()),
+                            PipelineStages::from([PipelineStage::BottomOfPipe].as_slice()),
+                            MemoryAccess::from([].as_slice()),
+                            ImageSubresourceRange::from(
+                                swapchain_images[swapchain_index as usize].clone()
+                                    as Arc<dyn ImageTrait>,
+                            ),
+                            ImageLayout::ColorAttachmentOptimal,
+                            ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
+                            queue_family.clone(),
+                            queue_family.clone(),
+                        )
+                        .into()]);
                     })
                     .unwrap();
 

@@ -618,52 +618,48 @@ impl DirectionalLighting {
                     .image()
                     .into();
 
-                recorder.image_barriers(
-                    [ImageMemoryBarrier::new(
-                        [].as_slice().into(),
-                        [].as_slice().into(),
-                        [PipelineStage::RayTracingPipelineKHR(
-                            PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                        )]
+                recorder.pipeline_barriers([ImageMemoryBarrier::new(
+                    [].as_slice().into(),
+                    [].as_slice().into(),
+                    [PipelineStage::RayTracingPipelineKHR(
+                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                    )]
+                    .as_slice()
+                    .into(),
+                    [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
                         .as_slice()
                         .into(),
-                        [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
-                            .as_slice()
-                            .into(),
-                        image_srr.clone(),
-                        ImageLayout::Undefined,
-                        ImageLayout::TransferDstOptimal,
-                        self.queue_family.clone(),
-                        self.queue_family.clone(),
-                    )]
-                    .as_slice(),
-                );
+                    image_srr.clone(),
+                    ImageLayout::Undefined,
+                    ImageLayout::TransferDstOptimal,
+                    self.queue_family.clone(),
+                    self.queue_family.clone(),
+                )
+                .into()]);
 
                 recorder.clear_color_image(
                     ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0),
                     image_srr.clone(),
                 );
 
-                recorder.image_barriers(
-                    [ImageMemoryBarrier::new(
-                        [PipelineStage::Transfer].as_slice().into(),
-                        [MemoryAccessAs::TransferWrite].as_slice().into(),
-                        [PipelineStage::RayTracingPipelineKHR(
-                            PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                        )]
+                recorder.pipeline_barriers([ImageMemoryBarrier::new(
+                    [PipelineStage::Transfer].as_slice().into(),
+                    [MemoryAccessAs::TransferWrite].as_slice().into(),
+                    [PipelineStage::RayTracingPipelineKHR(
+                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                    )]
+                    .as_slice()
+                    .into(),
+                    [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
                         .as_slice()
                         .into(),
-                        [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
-                            .as_slice()
-                            .into(),
-                        image_srr,
-                        ImageLayout::TransferDstOptimal,
-                        ImageLayout::General,
-                        self.queue_family.clone(),
-                        self.queue_family.clone(),
-                    )]
-                    .as_slice(),
-                );
+                    image_srr,
+                    ImageLayout::TransferDstOptimal,
+                    ImageLayout::General,
+                    self.queue_family.clone(),
+                    self.queue_family.clone(),
+                )
+                .into()]);
             }
         }
 
@@ -672,22 +668,20 @@ impl DirectionalLighting {
         let size_of_light = 4u64 * 6u64;
 
         if lights_count > 0 {
-            recorder.buffer_barriers(
-                [BufferMemoryBarrier::new(
-                    [].as_slice().into(),
-                    [].as_slice().into(),
-                    [PipelineStage::Transfer].as_slice().into(),
-                    [MemoryAccessAs::TransferWrite].as_slice().into(),
-                    BufferSubresourceRange::new(
-                        self.directional_lights[current_frame].clone(),
-                        0,
-                        (lights_count as u64) * size_of_light,
-                    ),
-                    self.queue_family.clone(),
-                    self.queue_family.clone(),
-                )]
-                .as_slice(),
-            );
+            recorder.pipeline_barriers([BufferMemoryBarrier::new(
+                [].as_slice().into(),
+                [].as_slice().into(),
+                [PipelineStage::Transfer].as_slice().into(),
+                [MemoryAccessAs::TransferWrite].as_slice().into(),
+                BufferSubresourceRange::new(
+                    self.directional_lights[current_frame].clone(),
+                    0,
+                    (lights_count as u64) * size_of_light,
+                ),
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into()]);
 
             let mut light_index = 0u64;
             directional_lights.foreach(|dir_light| {
@@ -709,35 +703,33 @@ impl DirectionalLighting {
                 );
             }
 
-            recorder.buffer_barriers(
-                [BufferMemoryBarrier::new(
-                    [PipelineStage::Transfer].as_slice().into(),
-                    [MemoryAccessAs::TransferWrite].as_slice().into(),
-                    [
-                        PipelineStage::AllGraphics,
-                        PipelineStage::RayTracingPipelineKHR(
-                            PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                        ),
-                    ]
-                    .as_slice()
-                    .into(),
-                    [
-                        MemoryAccessAs::MemoryRead,
-                        MemoryAccessAs::ShaderRead,
-                        MemoryAccessAs::UniformRead,
-                    ]
-                    .as_slice()
-                    .into(),
-                    BufferSubresourceRange::new(
-                        self.directional_lights[current_frame].clone(),
-                        0,
-                        size_of_light * (lights_count as u64),
+            recorder.pipeline_barriers([BufferMemoryBarrier::new(
+                [PipelineStage::Transfer].as_slice().into(),
+                [MemoryAccessAs::TransferWrite].as_slice().into(),
+                [
+                    PipelineStage::AllGraphics,
+                    PipelineStage::RayTracingPipelineKHR(
+                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
                     ),
-                    self.queue_family.clone(),
-                    self.queue_family.clone(),
-                )]
-                .as_slice(),
-            );
+                ]
+                .as_slice()
+                .into(),
+                [
+                    MemoryAccessAs::MemoryRead,
+                    MemoryAccessAs::ShaderRead,
+                    MemoryAccessAs::UniformRead,
+                ]
+                .as_slice()
+                .into(),
+                BufferSubresourceRange::new(
+                    self.directional_lights[current_frame].clone(),
+                    0,
+                    size_of_light * (lights_count as u64),
+                ),
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into()]);
         };
 
         recorder.bind_ray_tracing_pipeline(self.raytracing_pipeline.clone());
@@ -776,52 +768,53 @@ impl DirectionalLighting {
                 .image()
                 .into();
 
-            image_barriers.push(ImageMemoryBarrier::new(
-                [PipelineStage::RayTracingPipelineKHR(
-                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                )]
-                .as_slice()
+            image_barriers.push(
+                ImageMemoryBarrier::new(
+                    [PipelineStage::RayTracingPipelineKHR(
+                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                    )]
+                    .as_slice()
+                    .into(),
+                    [
+                        MemoryAccessAs::MemoryWrite,
+                        MemoryAccessAs::MemoryRead,
+                        MemoryAccessAs::ShaderWrite,
+                        MemoryAccessAs::ShaderRead,
+                    ]
+                    .as_slice()
+                    .into(),
+                    dlbuffer_stages,
+                    dlbuffer_access,
+                    image_srr,
+                    ImageLayout::General,
+                    ImageLayout::ShaderReadOnlyOptimal,
+                    self.queue_family.clone(),
+                    self.queue_family.clone(),
+                )
                 .into(),
-                [
-                    MemoryAccessAs::MemoryWrite,
-                    MemoryAccessAs::MemoryRead,
-                    MemoryAccessAs::ShaderWrite,
-                    MemoryAccessAs::ShaderRead,
-                ]
-                .as_slice()
-                .into(),
-                dlbuffer_stages,
-                dlbuffer_access,
-                image_srr,
-                ImageLayout::General,
-                ImageLayout::ShaderReadOnlyOptimal,
-                self.queue_family.clone(),
-                self.queue_family.clone(),
-            ));
+            );
         }
 
-        recorder.image_barriers(&image_barriers.as_slice());
+        recorder.pipeline_barriers(image_barriers);
 
-        recorder.buffer_barriers(
-            [BufferMemoryBarrier::new(
-                [PipelineStage::RayTracingPipelineKHR(
-                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                )]
-                .as_slice()
-                .into(),
-                [MemoryAccessAs::ShaderRead].as_slice().into(),
-                dlbuffer_stages,
-                dlbuffer_access,
-                BufferSubresourceRange::new(
-                    self.directional_lights[current_frame].clone(),
-                    0,
-                    self.directional_lights[current_frame].size(),
-                ),
-                self.queue_family.clone(),
-                self.queue_family.clone(),
+        recorder.pipeline_barriers([BufferMemoryBarrier::new(
+            [PipelineStage::RayTracingPipelineKHR(
+                PipelineStageRayTracingPipelineKHR::RayTracingShader,
             )]
-            .as_slice(),
-        );
+            .as_slice()
+            .into(),
+            [MemoryAccessAs::ShaderRead].as_slice().into(),
+            dlbuffer_stages,
+            dlbuffer_access,
+            BufferSubresourceRange::new(
+                self.directional_lights[current_frame].clone(),
+                0,
+                self.directional_lights[current_frame].size(),
+            ),
+            self.queue_family.clone(),
+            self.queue_family.clone(),
+        )
+        .into()]);
 
         self.dlbuffer_descriptor_sets[current_frame].clone()
     }
