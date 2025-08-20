@@ -130,4 +130,5 @@ void main() {
     }
 
     imageStore(outputImage, texel_position, vec4(old_data + (contribution / float(FIRST_PASS_RAYS)), 1.0));
+    //imageStore(outputImage, texel_position, vec4(float(texel_position.x)/resolution.x, float(texel_position.y)/resolution.y, 0.0, 1.0));
 }
