@@ -171,15 +171,7 @@ impl DirectionalLighting {
                 view_projection_descriptor_set_layout,
             ]
             .as_slice(),
-            &[PushConstanRange::new(
-                0,
-                std::mem::size_of::<u32>() as u32,
-                [ShaderStageAccessIn::RayTracing(
-                    ShaderStageAccessInRayTracingKHR::RayGen,
-                )]
-                .as_slice()
-                .into(),
-            )],
+            [].as_slice(),
             Some("directional_lighting_pipeline_layout"),
         )?;
 
@@ -634,17 +626,6 @@ impl DirectionalLighting {
                 view_projection_descriptor_set,
             ]
             .as_slice(),
-        );
-
-        recorder.push_constant(
-            self.raytracing_pipeline.get_parent_pipeline_layout(),
-            [ShaderStageAccessIn::RayTracing(
-                ShaderStageAccessInRayTracingKHR::RayGen,
-            )]
-            .as_slice()
-            .into(),
-            0,
-            unsafe { std::mem::transmute::<&u32, &[u8; 4]>(&lights_count) },
         );
 
         recorder.trace_rays(

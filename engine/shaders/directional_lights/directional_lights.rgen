@@ -26,9 +26,7 @@ layout (set = 2, binding = 0, std430) readonly buffer directional_lights
 
 uniform layout (set = 2, binding = 1, rg32f) image2D outputImage[MAX_DIRECTIONAL_LIGHTS];
 
-layout(push_constant) uniform DirectionalLightingData {
-    uint lights_count;
-} directional_lighting_data;
+#define MAX_DIRECTIONAL_LIGHTS 8
 
 layout(std140, set = 3, binding = 0) uniform camera_uniform {
 	mat4 viewMatrix;
@@ -48,36 +46,37 @@ void main() {
     const vec3 eye_position = vec3(camera.viewMatrix[3][0], camera.viewMatrix[3][1], camera.viewMatrix[3][2]);
     const vec3 view_dir = normalize(eye_position - origin);
 
-    for (uint light_index = 0; light_index < directional_lighting_data.lights_count; light_index++) {
+    for (uint light_index = 0; light_index < MAX_DIRECTIONAL_LIGHTS; light_index++) {
         const vec3 light_dir = vec3(light[light_index].direction_x, light[light_index].direction_y, light[light_index].direction_z);
         const vec3 ray_dir = -1.0 * light_dir;
 
-        hitValue = true;
-
-        if (!(origin.x == 0 && origin.y == 0 && origin.z == 0)) {
-            // other flags: gl_RayFlagsCullNoOpaqueEXT gl_RayFlagsNoneEXT
-            traceRayEXT(
-                topLevelAS,
-                gl_RayFlagsSkipAABBEXT | gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsCullNoOpaqueEXT,
-                0xff,
-                0,
-                0,
-                0,
-                origin.xyz,
-                1.0,
-                ray_dir.xyz,
-                10000.0,
-                0
-            );
-        }
-
         float diffuse_contribution = 0.0;
         float specular_contribution = 0.0;
-        if (!hitValue) {
-            diffuse_contribution = max(dot(normal, ray_dir), 0.0);
 
-            const vec3 reflect_dir = reflect(light_dir, normal);
-            specular_contribution = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
+        if (length(light_dir) > 0.1) {
+            if (!(origin.x == 0 && origin.y == 0 && origin.z == 0)) {
+                // other flags: gl_RayFlagsCullNoOpaqueEXT gl_RayFlagsNoneEXT
+                traceRayEXT(
+                    topLevelAS,
+                    gl_RayFlagsSkipAABBEXT | gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsCullNoOpaqueEXT,
+                    0xff,
+                    0,
+                    0,
+                    0,
+                    origin.xyz,
+                    1.0,
+                    ray_dir.xyz,
+                    10000.0,
+                    0
+                );
+            }
+
+            if (!hitValue) {
+                diffuse_contribution = max(dot(normal, ray_dir), 0.0);
+
+                const vec3 reflect_dir = reflect(-light_dir, normal);
+                specular_contribution = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
+            }
         }
 
         imageStore(outputImage[light_index], ivec2(gl_LaunchIDEXT.xy), vec4(diffuse_contribution, specular_contribution, 0.0, 0.0));
