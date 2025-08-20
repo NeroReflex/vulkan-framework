@@ -298,43 +298,60 @@ impl MeshManager {
                         )]
                         .as_slice()
                         .into(),
-                        [MemoryAccessAs::AccelerationStructureRead]
-                            .as_slice()
-                            .into(),
-                        BufferSubresourceRange::new(vertex_buffer_raw, 0u64, vertex_buffer_size),
-                        queue_family.clone(),
-                        queue_family.clone(),
-                    )
-                    .into(),
-                    BufferMemoryBarrier::new(
-                        [PipelineStage::Host].as_slice().into(),
-                        [MemoryAccessAs::MemoryWrite].as_slice().into(),
-                        [PipelineStage::AccelerationStructureKHR(
-                            PipelineStageAccelerationStructureKHR::Build,
-                        )]
+                        [
+                            MemoryAccessAs::AccelerationStructureRead,
+                            MemoryAccessAs::MemoryRead,
+                        ]
                         .as_slice()
                         .into(),
-                        [MemoryAccessAs::AccelerationStructureRead]
-                            .as_slice()
-                            .into(),
-                        BufferSubresourceRange::new(index_buffer_raw, 0u64, index_buffer_size),
-                        queue_family.clone(),
-                        queue_family.clone(),
-                    )
-                    .into(),
-                    BufferMemoryBarrier::new(
-                        [PipelineStage::Host].as_slice().into(),
-                        [MemoryAccessAs::MemoryWrite].as_slice().into(),
-                        [PipelineStage::AccelerationStructureKHR(
-                            PipelineStageAccelerationStructureKHR::Build,
-                        )]
-                        .as_slice()
-                        .into(),
-                        [MemoryAccessAs::AccelerationStructureRead]
-                            .as_slice()
-                            .into(),
                         BufferSubresourceRange::new(
-                            transform_buffer_raw,
+                            vertex_buffer_raw.clone(),
+                            0u64,
+                            vertex_buffer_size,
+                        ),
+                        queue_family.clone(),
+                        queue_family.clone(),
+                    )
+                    .into(),
+                    BufferMemoryBarrier::new(
+                        [PipelineStage::Host].as_slice().into(),
+                        [MemoryAccessAs::MemoryWrite].as_slice().into(),
+                        [PipelineStage::AccelerationStructureKHR(
+                            PipelineStageAccelerationStructureKHR::Build,
+                        )]
+                        .as_slice()
+                        .into(),
+                        [
+                            MemoryAccessAs::AccelerationStructureRead,
+                            MemoryAccessAs::MemoryRead,
+                        ]
+                        .as_slice()
+                        .into(),
+                        BufferSubresourceRange::new(
+                            index_buffer_raw.clone(),
+                            0u64,
+                            index_buffer_size,
+                        ),
+                        queue_family.clone(),
+                        queue_family.clone(),
+                    )
+                    .into(),
+                    BufferMemoryBarrier::new(
+                        [PipelineStage::Host].as_slice().into(),
+                        [MemoryAccessAs::MemoryWrite].as_slice().into(),
+                        [PipelineStage::AccelerationStructureKHR(
+                            PipelineStageAccelerationStructureKHR::Build,
+                        )]
+                        .as_slice()
+                        .into(),
+                        [
+                            MemoryAccessAs::AccelerationStructureRead,
+                            MemoryAccessAs::MemoryRead,
+                        ]
+                        .as_slice()
+                        .into(),
+                        BufferSubresourceRange::new(
+                            transform_buffer_raw.clone(),
                             0u64,
                             transform_buffer_size,
                         ),
@@ -347,24 +364,84 @@ impl MeshManager {
                 let primitives_count = blas.max_primitives_count();
                 recorder.build_blas(blas.clone(), 0, primitives_count, 0, 0);
 
-                recorder.pipeline_barriers([BufferMemoryBarrier::new(
-                    [PipelineStage::AccelerationStructureKHR(
-                        PipelineStageAccelerationStructureKHR::Build,
-                    )]
-                    .as_slice()
+                recorder.pipeline_barriers([
+                    BufferMemoryBarrier::new(
+                        [PipelineStage::AccelerationStructureKHR(
+                            PipelineStageAccelerationStructureKHR::Build,
+                        )]
+                        .as_slice()
+                        .into(),
+                        [MemoryAccessAs::AccelerationStructureWrite]
+                            .as_slice()
+                            .into(),
+                        [PipelineStage::BottomOfPipe].as_slice().into(),
+                        [MemoryAccessAs::MemoryRead].as_slice().into(),
+                        BufferSubresourceRange::new(blas.buffer(), 0u64, blas.buffer_size()),
+                        queue_family.clone(),
+                        queue_family.clone(),
+                    )
                     .into(),
-                    [MemoryAccessAs::AccelerationStructureWrite]
+                    BufferMemoryBarrier::new(
+                        [PipelineStage::AccelerationStructureKHR(
+                            PipelineStageAccelerationStructureKHR::Build,
+                        )]
                         .as_slice()
                         .into(),
-                    [PipelineStage::AllCommands].as_slice().into(),
-                    [MemoryAccessAs::AccelerationStructureRead]
+                        [MemoryAccessAs::AccelerationStructureRead]
+                            .as_slice()
+                            .into(),
+                        [PipelineStage::BottomOfPipe].as_slice().into(),
+                        [MemoryAccessAs::MemoryRead].as_slice().into(),
+                        BufferSubresourceRange::new(
+                            vertex_buffer_raw.clone(),
+                            0u64,
+                            vertex_buffer_size,
+                        ),
+                        queue_family.clone(),
+                        queue_family.clone(),
+                    )
+                    .into(),
+                    BufferMemoryBarrier::new(
+                        [PipelineStage::AccelerationStructureKHR(
+                            PipelineStageAccelerationStructureKHR::Build,
+                        )]
                         .as_slice()
                         .into(),
-                    BufferSubresourceRange::new(blas.buffer(), 0u64, blas.buffer_size()),
-                    queue_family.clone(),
-                    queue_family.clone(),
-                )
-                .into()]);
+                        [MemoryAccessAs::AccelerationStructureRead]
+                            .as_slice()
+                            .into(),
+                        [PipelineStage::BottomOfPipe].as_slice().into(),
+                        [MemoryAccessAs::MemoryRead].as_slice().into(),
+                        BufferSubresourceRange::new(
+                            index_buffer_raw.clone(),
+                            0u64,
+                            index_buffer_size,
+                        ),
+                        queue_family.clone(),
+                        queue_family.clone(),
+                    )
+                    .into(),
+                    BufferMemoryBarrier::new(
+                        [PipelineStage::AccelerationStructureKHR(
+                            PipelineStageAccelerationStructureKHR::Build,
+                        )]
+                        .as_slice()
+                        .into(),
+                        [MemoryAccessAs::AccelerationStructureRead]
+                            .as_slice()
+                            .into(),
+                        [PipelineStage::BottomOfPipe].as_slice().into(),
+                        [MemoryAccessAs::MemoryRead].as_slice().into(),
+                        BufferSubresourceRange::new(
+                            transform_buffer_raw.clone(),
+                            0u64,
+                            transform_buffer_size,
+                        ),
+                        queue_family.clone(),
+                        queue_family.clone(),
+                    )
+                    .into(),
+                ]);
 
                 Ok(())
             },
