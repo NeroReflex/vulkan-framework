@@ -98,11 +98,7 @@ pub struct System {
 
     rt_descriptor_set_layout: Arc<DescriptorSetLayout>,
     rt_descriptor_pool: Arc<DescriptorPool>,
-    rt_descriptor_set: Option<(
-        Arc<TopLevelAccelerationStructure>,
-        Arc<dyn BufferTrait>,
-        Arc<DescriptorSet>,
-    )>,
+    rt_descriptor_set: Option<Arc<DescriptorSet>>,
 
     mesh_rendering: Arc<MeshRendering>,
     directional_lighting: Arc<DirectionalLighting>,
@@ -227,7 +223,7 @@ impl System {
                 })
                 .unwrap();
 
-            self.rt_descriptor_set = Some((tlas, tlas_data, rt_descriptor_set));
+            self.rt_descriptor_set = Some(rt_descriptor_set);
         }
     }
 
@@ -751,7 +747,7 @@ impl System {
 
             // if there is no descriptor set then no element is on the scene, therefore there is
             // simply nothing to be rendered.
-            let Some((rt_tlas, rt_tlas_data, rt_descriptor_set)) = &self.rt_descriptor_set else {
+            let Some(rt_descriptor_set) = &self.rt_descriptor_set else {
                 return Ok(());
             };
 

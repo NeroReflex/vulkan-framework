@@ -47,7 +47,7 @@ use vulkan_framework::{
     fence::{Fence, FenceWaiter},
     graphics_pipeline::{AttributeType, IndexType},
     image::Image2DDimensions,
-    memory_barriers::{BufferMemoryBarrier, MemoryAccessAs},
+    memory_barriers::{BufferMemoryBarrier, MemoryAccessAs, MemoryBarrier},
     memory_heap::MemoryType,
     memory_management::{MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait},
     memory_pool::{MemoryMap, MemoryPoolBacked, MemoryPoolFeatures},
@@ -1303,32 +1303,47 @@ impl Manager {
 
                     recorder.build_tlas(tlas.clone(), 0, max_instances);
 
-                    recorder.pipeline_barriers([BufferMemoryBarrier::new(
-                        [PipelineStage::AccelerationStructureKHR(
-                            PipelineStageAccelerationStructureKHR::Build,
-                        )]
-                        .as_slice()
-                        .into(),
-                        [MemoryAccessAs::AccelerationStructureWrite]
+                    recorder.pipeline_barriers([
+                        BufferMemoryBarrier::new(
+                            [PipelineStage::AccelerationStructureKHR(
+                                PipelineStageAccelerationStructureKHR::Build,
+                            )]
                             .as_slice()
                             .into(),
-                        [PipelineStage::AllCommands].as_slice().into(),
-                        [
-                            MemoryAccessAs::AccelerationStructureRead,
-                            MemoryAccessAs::MemoryRead,
-                            MemoryAccessAs::ShaderRead,
-                        ]
-                        .as_slice()
+                            [MemoryAccessAs::AccelerationStructureWrite]
+                                .as_slice()
+                                .into(),
+                            [PipelineStage::BottomOfPipe, PipelineStage::AllCommands]
+                                .as_slice()
+                                .into(),
+                            [
+                                MemoryAccessAs::AccelerationStructureRead,
+                                MemoryAccessAs::MemoryRead,
+                                MemoryAccessAs::ShaderRead,
+                            ]
+                            .as_slice()
+                            .into(),
+                            BufferSubresourceRange::new(
+                                tlas.instance_buffer().buffer(),
+                                0,
+                                tlas.instance_buffer().buffer().size(),
+                            ),
+                            self.queue_family.clone(),
+                            self.queue_family.clone(),
+                        )
                         .into(),
-                        BufferSubresourceRange::new(
-                            tlas.instance_buffer().buffer(),
-                            0,
-                            tlas.instance_buffer().buffer().size(),
-                        ),
-                        self.queue_family.clone(),
-                        self.queue_family.clone(),
-                    )
-                    .into()]);
+                        MemoryBarrier::new(
+                            [PipelineStage::AccelerationStructureKHR(
+                                PipelineStageAccelerationStructureKHR::Build,
+                            )]
+                            .as_slice()
+                            .into(),
+                            [MemoryAccessAs::MemoryWrite].as_slice().into(),
+                            [PipelineStage::BottomOfPipe].as_slice().into(),
+                            [MemoryAccessAs::MemoryRead].as_slice().into(),
+                        )
+                        .into(),
+                    ]);
                 })?;
 
                 let fence_waiter = self.tlas_loading_queue.submit(
