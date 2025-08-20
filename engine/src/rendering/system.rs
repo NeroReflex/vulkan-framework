@@ -762,7 +762,7 @@ impl System {
                         [PipelineStage::Transfer].as_slice().into(),
                         [MemoryAccessAs::TransferWrite].as_slice().into(),
                         [PipelineStage::AllGraphics, PipelineStage::RayTracingPipelineKHR(PipelineStageRayTracingPipelineKHR::RayTracingShader)].as_slice().into(),
-                        [MemoryAccessAs::ShaderRead, MemoryAccessAs::MemoryRead, MemoryAccessAs::UniformRead].as_slice().into(),
+                        [MemoryAccessAs::UniformRead].as_slice().into(),
                         BufferSubresourceRange::new(self.view_projection_buffers[current_frame].clone(), 0u64, self.view_projection_buffers[current_frame].size()),
                         self.queue_family(),
                         self.queue_family(),
@@ -776,8 +776,8 @@ impl System {
                 let gbuffer_descriptor_set = self.mesh_rendering.record_rendering_commands(
                     self.view_projection_descriptor_sets[current_frame].clone(),
                     self.queue_family(),
-                    [PipelineStage::AllGraphics, PipelineStage::RayTracingPipelineKHR(PipelineStageRayTracingPipelineKHR::RayTracingShader)].as_slice().into(),
-                    [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead].as_slice().into(),
+                    [PipelineStage::FragmentShader, PipelineStage::RayTracingPipelineKHR(PipelineStageRayTracingPipelineKHR::RayTracingShader)].as_slice().into(),
+                    [MemoryAccessAs::ShaderRead].as_slice().into(),
                     current_frame,
                     static_meshes_resources,
                     recorder

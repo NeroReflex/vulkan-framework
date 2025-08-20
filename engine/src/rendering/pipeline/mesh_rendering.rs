@@ -695,7 +695,7 @@ impl MeshRendering {
         recorder.image_barriers(
             [
                 ImageMemoryBarrier::new(
-                    PipelineStages::from([].as_slice()),
+                    PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
                     MemoryAccess::from([].as_slice()),
                     PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
                     MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
@@ -706,7 +706,7 @@ impl MeshRendering {
                     queue_family.clone(),
                 ),
                 ImageMemoryBarrier::new(
-                    PipelineStages::from([].as_slice()),
+                    PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
                     MemoryAccess::from([].as_slice()),
                     PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
                     MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
@@ -717,7 +717,7 @@ impl MeshRendering {
                     queue_family.clone(),
                 ),
                 ImageMemoryBarrier::new(
-                    PipelineStages::from([].as_slice()),
+                    PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
                     MemoryAccess::from([].as_slice()),
                     PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
                     MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
@@ -728,7 +728,7 @@ impl MeshRendering {
                     queue_family.clone(),
                 ),
                 ImageMemoryBarrier::new(
-                    PipelineStages::from([].as_slice()),
+                    PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
                     MemoryAccess::from([].as_slice()),
                     PipelineStages::from(
                         [
