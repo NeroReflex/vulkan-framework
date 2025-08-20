@@ -56,11 +56,11 @@ void main() {
 
     vec3 contribution = vec3(0.0, 0.0, 0.0);
     for (uint ray_index_1 = 0; ray_index_1 < 1; ray_index_1++) {
-        const vec3 ray_dir = vec3(1.0, 0.0, 0.0);
-        //const vec3 random_point_on_sphere = vec3(-0.016828, 0.999740, -0.015416);
-        //vec3 ray_dir = reflect(normal, random_point_on_sphere);
-        //const bool below_horizon = dot(normal, random_point_on_sphere) < 0;
-        //ray_dir = below_horizon ? -ray_dir : ray_dir;
+        //const vec3 ray_dir = vec3(1.0, 0.0, 0.0);
+        const vec3 random_point_on_sphere = vec3(-0.016828, 0.999740, -0.015416);
+        vec3 ray_dir = reflect(normal, random_point_on_sphere);
+        const bool below_horizon = dot(normal, random_point_on_sphere) < 0;
+        ray_dir = below_horizon ? -ray_dir : ray_dir;
 
         traceRayEXT(
             topLevelAS,
@@ -89,8 +89,6 @@ void main() {
                 //    continue;
                 //}
 
-                
-
                 // check for this directional light
                 traceRayEXT(
                     topLevelAS,
@@ -107,7 +105,6 @@ void main() {
                 );
 
                 const hit_payload_t second_surface = payload;
-
 
                 if (!second_surface.hit) {
                     // shadow ray is not occluded: sum the contribution of this point
