@@ -10,9 +10,7 @@ use std::{
 
 use sdl2::VideoSubsystem;
 use vulkan_framework::{
-    acceleration_structure::{
-        bottom_level::IDENTITY_MATRIX, top_level::TopLevelAccelerationStructure,
-    },
+    acceleration_structure::bottom_level::IDENTITY_MATRIX,
     buffer::{
         AllocatedBuffer, Buffer, BufferSubresourceRange, BufferTrait, BufferUseAs,
         ConcreteBufferDescriptor,
@@ -90,10 +88,12 @@ pub struct System {
 
     surface: SurfaceHelper,
 
-    view_projection_descriptor_sets:
+    status_descriptor_sets:
         smallvec::SmallVec<[Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
 
     view_projection_buffers:
+        smallvec::SmallVec<[Arc<AllocatedBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
+    directional_light_buffers:
         smallvec::SmallVec<[Arc<AllocatedBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
 
     rt_descriptor_set_layout: Arc<DescriptorSetLayout>,
@@ -372,6 +372,7 @@ impl System {
         assert_eq!(std::mem::size_of::<[glm::Mat4; 2]>(), 4 * 4 * 4 * 2);
 
         let mut view_projection_unallocated_buffers = vec![];
+        let mut directional_lights_unallocated = vec![];
         for index in 0..frames_in_flight {
             view_projection_unallocated_buffers.push(
                 Buffer::new(
@@ -385,6 +386,21 @@ impl System {
                     ),
                     None,
                     Some(format!("view_projection_buffers[{index}]").as_str()),
+                )?
+                .into(),
+            );
+
+            directional_lights_unallocated.push(
+                Buffer::new(
+                    device.clone(),
+                    ConcreteBufferDescriptor::new(
+                        [BufferUseAs::TransferDst, BufferUseAs::StorageBuffer]
+                            .as_slice()
+                            .into(),
+                        4u64 * 6u64 * (MAX_DIRECTIONAL_LIGHTS as u64),
+                    ),
+                    None,
+                    Some(format!("directional_lights[{index}]").as_str()),
                 )?
                 .into(),
             );
@@ -406,6 +422,21 @@ impl System {
             .map(|r| r.buffer())
             .collect();
 
+        let directional_light_buffers: smallvec::SmallVec<
+            [Arc<AllocatedBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
+        > = memory_manager
+            .allocate_resources(
+                // I don't care if the memory is visible or not to the host:
+                // I will use vkCmdUpdateBuffer to change memory content
+                &MemoryType::device_local_and_host_visible(),
+                &MemoryPoolFeatures::default(),
+                directional_lights_unallocated,
+                MemoryManagementTags::default().with_exclusivity(true),
+            )?
+            .into_iter()
+            .map(|r| r.buffer())
+            .collect();
+
         let memory_manager = Arc::new(Mutex::new(memory_manager));
 
         let obj_manager = ResourceManager::new(
@@ -419,23 +450,35 @@ impl System {
 
         let render_area = RenderingDimensions::new(1920, 1080);
 
-        let view_projection_descriptor_set_layout = DescriptorSetLayout::new(
+        let status_descriptor_set_layout = DescriptorSetLayout::new(
             device.clone(),
-            [BindingDescriptor::new(
-                [
-                    ShaderStageAccessIn::Vertex,
-                    ShaderStageAccessIn::RayTracing(ShaderStageAccessInRayTracingKHR::RayGen),
-                ]
-                .as_slice()
-                .into(),
-                BindingType::Native(NativeBindingType::UniformBuffer),
-                0,
-                1,
-            )]
+            [
+                BindingDescriptor::new(
+                    [
+                        ShaderStageAccessIn::Vertex,
+                        ShaderStageAccessIn::RayTracing(ShaderStageAccessInRayTracingKHR::RayGen),
+                    ]
+                    .as_slice()
+                    .into(),
+                    BindingType::Native(NativeBindingType::UniformBuffer),
+                    0,
+                    1,
+                ),
+                BindingDescriptor::new(
+                    [ShaderStageAccessIn::RayTracing(
+                        ShaderStageAccessInRayTracingKHR::RayGen,
+                    )]
+                    .as_slice()
+                    .into(),
+                    BindingType::Native(NativeBindingType::StorageBuffer),
+                    1,
+                    1,
+                ),
+            ]
             .as_slice(),
         )?;
 
-        let view_projection_descriptors_pool = DescriptorPool::new(
+        let status_descriptors_pool = DescriptorPool::new(
             device.clone(),
             DescriptorPoolConcreteDescriptor::new(
                 DescriptorPoolSizesConcreteDescriptor::new(
@@ -445,7 +488,7 @@ impl System {
                     0,
                     0,
                     0,
-                    0,
+                    frames_in_flight,
                     frames_in_flight,
                     0,
                     None,
@@ -455,15 +498,13 @@ impl System {
             Some("view_projection_descriptors_pool"),
         )?;
 
-        let mut view_projection_descriptor_sets = smallvec::SmallVec::<
+        let mut status_descriptor_sets = smallvec::SmallVec::<
             [Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
-        >::with_capacity(
-            frames_in_flight as usize
-        );
+        >::with_capacity(frames_in_flight as usize);
         for index in 0..(frames_in_flight as usize) {
             let view_proj_descriptor_set = DescriptorSet::new(
-                view_projection_descriptors_pool.clone(),
-                view_projection_descriptor_set_layout.clone(),
+                status_descriptors_pool.clone(),
+                status_descriptor_set_layout.clone(),
             )?;
 
             view_proj_descriptor_set.bind_resources(|binder: &mut DescriptorSetWriter<'_>| {
@@ -478,9 +519,22 @@ impl System {
                         .as_slice(),
                     )
                     .unwrap();
+
+                // bind the directional lights buffer
+                binder
+                    .bind_storage_buffers(
+                        1,
+                        [(
+                            directional_light_buffers[index].clone() as Arc<dyn BufferTrait>,
+                            None,
+                            None,
+                        )]
+                        .as_slice(),
+                    )
+                    .unwrap();
             })?;
 
-            view_projection_descriptor_sets.push(view_proj_descriptor_set);
+            status_descriptor_sets.push(view_proj_descriptor_set);
         }
 
         let rt_descriptor_set_layout = DescriptorSetLayout::new(
@@ -545,7 +599,7 @@ impl System {
             memory_manager.clone(),
             obj_manager.textures_descriptor_set_layout(),
             obj_manager.materials_descriptor_set_layout(),
-            view_projection_descriptor_set_layout.clone(),
+            status_descriptor_set_layout.clone(),
             &render_area,
             frames_in_flight,
         )?);
@@ -556,7 +610,7 @@ impl System {
             memory_manager.clone(),
             rt_descriptor_set_layout.clone(),
             mesh_rendering.descriptor_set_layout(),
-            view_projection_descriptor_set_layout.clone(),
+            status_descriptor_set_layout.clone(),
             frames_in_flight,
         )?);
 
@@ -623,9 +677,10 @@ impl System {
 
             surface,
 
-            view_projection_descriptor_sets,
+            status_descriptor_sets,
 
             view_projection_buffers,
+            directional_light_buffers,
 
             rt_descriptor_set_layout,
             rt_descriptor_pool,
@@ -758,58 +813,133 @@ impl System {
                 return Ok(());
             };
 
+            let directional_lights = directional_lighting_resources.deref();
+
+            // get the number of directional lights to compute and transfer into the buffer theirs directions
+            let lights_count = directional_lights.count();
+            let size_of_light = 4u64 * 6u64;
+
             // here register the command buffer: command buffer at index i is associated with rendering_fences[i],
             // that I just awaited above, so thecommand buffer is surely NOT currently in use
             self.present_command_buffers[current_frame].record_one_time_submit(|recorder| {
-                // Write view and projection matrices to GPU memory and wait for completion before using them to render the scene
+                // Write status (view*projection matrix and directional lights) to GPU memory and
+                // wait for completion before using them to render the scene
                 {
-                    recorder.pipeline_barriers([BufferMemoryBarrier::new(
-                        [PipelineStage::TopOfPipe].as_slice().into(),
-                        [].as_slice().into(),
-                        [PipelineStage::Transfer].as_slice().into(),
-                        [MemoryAccessAs::TransferWrite].as_slice().into(),
-                        BufferSubresourceRange::new(
-                            self.view_projection_buffers[current_frame].clone(),
-                            0u64,
-                            self.view_projection_buffers[current_frame].size(),
-                        ),
-                        self.queue_family(),
-                        self.queue_family(),
-                    )
-                    .into()]);
+                    recorder.pipeline_barriers([
+                        BufferMemoryBarrier::new(
+                            [PipelineStage::TopOfPipe].as_slice().into(),
+                            [].as_slice().into(),
+                            [PipelineStage::Transfer].as_slice().into(),
+                            [MemoryAccessAs::TransferWrite].as_slice().into(),
+                            BufferSubresourceRange::new(
+                                self.view_projection_buffers[current_frame].clone(),
+                                0u64,
+                                self.view_projection_buffers[current_frame].size(),
+                            ),
+                            self.queue_family(),
+                            self.queue_family(),
+                        )
+                        .into(),
+                        BufferMemoryBarrier::new(
+                            [PipelineStage::TopOfPipe].as_slice().into(),
+                            [].as_slice().into(),
+                            [PipelineStage::Transfer].as_slice().into(),
+                            [MemoryAccessAs::TransferWrite].as_slice().into(),
+                            BufferSubresourceRange::new(
+                                self.directional_light_buffers[current_frame].clone(),
+                                0,
+                                (lights_count as u64) * size_of_light,
+                            ),
+                            self.queue_family.clone(),
+                            self.queue_family.clone(),
+                        )
+                        .into(),
+                    ]);
+
                     recorder.update_buffer(
                         self.view_projection_buffers[current_frame].clone(),
                         0,
                         camera_matrices.as_slice(),
                     );
-                    recorder.pipeline_barriers([BufferMemoryBarrier::new(
-                        [PipelineStage::Transfer].as_slice().into(),
-                        [MemoryAccessAs::TransferWrite].as_slice().into(),
-                        [
-                            PipelineStage::AllGraphics,
-                            PipelineStage::RayTracingPipelineKHR(
-                                PipelineStageRayTracingPipelineKHR::RayTracingShader,
+
+                    let mut light_index = 0u64;
+                    directional_lights.foreach(|dir_light| {
+                        recorder.copy_buffer(
+                            dir_light.clone(),
+                            self.directional_light_buffers[current_frame].clone(),
+                            [(0u64, (light_index as u64) * size_of_light, size_of_light)]
+                                .as_slice(),
+                        );
+
+                        light_index += 1u64;
+                    });
+
+                    let stub_buffer = (0..size_of_light).map(|_| 0u8).collect::<Vec<_>>();
+                    for light_unused_index in light_index..(MAX_DIRECTIONAL_LIGHTS as u64) {
+                        recorder.update_buffer(
+                            self.directional_light_buffers[current_frame].clone(),
+                            (light_unused_index as u64) * size_of_light,
+                            stub_buffer.as_slice(),
+                        );
+                    }
+
+                    recorder.pipeline_barriers([
+                        BufferMemoryBarrier::new(
+                            [PipelineStage::Transfer].as_slice().into(),
+                            [MemoryAccessAs::TransferWrite].as_slice().into(),
+                            [
+                                PipelineStage::AllGraphics,
+                                PipelineStage::RayTracingPipelineKHR(
+                                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                                ),
+                            ]
+                            .as_slice()
+                            .into(),
+                            [MemoryAccessAs::UniformRead].as_slice().into(),
+                            BufferSubresourceRange::new(
+                                self.view_projection_buffers[current_frame].clone(),
+                                0u64,
+                                self.view_projection_buffers[current_frame].size(),
                             ),
-                        ]
-                        .as_slice()
+                            self.queue_family(),
+                            self.queue_family(),
+                        )
                         .into(),
-                        [MemoryAccessAs::UniformRead].as_slice().into(),
-                        BufferSubresourceRange::new(
-                            self.view_projection_buffers[current_frame].clone(),
-                            0u64,
-                            self.view_projection_buffers[current_frame].size(),
-                        ),
-                        self.queue_family(),
-                        self.queue_family(),
-                    )
-                    .into()]);
+                        BufferMemoryBarrier::new(
+                            [PipelineStage::Transfer].as_slice().into(),
+                            [MemoryAccessAs::TransferWrite].as_slice().into(),
+                            [
+                                PipelineStage::AllGraphics,
+                                PipelineStage::RayTracingPipelineKHR(
+                                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                                ),
+                            ]
+                            .as_slice()
+                            .into(),
+                            [
+                                MemoryAccessAs::MemoryRead,
+                                MemoryAccessAs::ShaderRead,
+                                MemoryAccessAs::UniformRead,
+                            ]
+                            .as_slice()
+                            .into(),
+                            BufferSubresourceRange::new(
+                                self.directional_light_buffers[current_frame].clone(),
+                                0,
+                                size_of_light * (lights_count as u64),
+                            ),
+                            self.queue_family.clone(),
+                            self.queue_family.clone(),
+                        )
+                        .into(),
+                    ]);
                 }
 
                 // Record rendering commands to generate the gbuffer (position, normal and texture) for each
                 // pixel in the final image: this solves the visibility problem and provides data for later stager
                 // along the GPU pipeline
                 let gbuffer_descriptor_set = self.mesh_rendering.record_rendering_commands(
-                    self.view_projection_descriptor_sets[current_frame].clone(),
+                    self.status_descriptor_sets[current_frame].clone(),
                     self.queue_family(),
                     [
                         PipelineStage::FragmentShader,
@@ -847,8 +977,7 @@ impl System {
                 let dlbuffer_descriptor_set = self.directional_lighting.record_rendering_commands(
                     rt_descriptor_set.clone(),
                     gbuffer_descriptor_set.clone(),
-                    self.view_projection_descriptor_sets[current_frame].clone(),
-                    directional_lighting_resources.deref(),
+                    self.status_descriptor_sets[current_frame].clone(),
                     current_frame,
                     [
                         PipelineStage::FragmentShader,

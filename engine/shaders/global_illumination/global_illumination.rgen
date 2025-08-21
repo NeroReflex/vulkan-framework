@@ -11,12 +11,6 @@
 // keep this in sync with the rust side
 #define MAX_DIRECTIONAL_LIGHTS 8
 
-// just a stub
-layout (set = 0, binding = 0, std430) readonly buffer tlas_instances
-{
-    uint data[];
-};
-
 layout (set = 0, binding = 1) uniform accelerationStructureEXT topLevelAS;
 
 // gbuffer: 0 for position, 1 for normal, 2 for diffuse texture

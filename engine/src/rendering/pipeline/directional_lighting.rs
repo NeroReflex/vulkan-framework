@@ -30,7 +30,6 @@ use vulkan_framework::{
     memory_pool::MemoryPoolFeatures,
     pipeline_layout::{PipelineLayout, PipelineLayoutDependant},
     pipeline_stage::{PipelineStage, PipelineStageRayTracingPipelineKHR, PipelineStages},
-    push_constant_range::PushConstanRange,
     queue_family::QueueFamily,
     raytracing_pipeline::RaytracingPipeline,
     sampler::{Filtering, MipmapMode, Sampler},
@@ -128,7 +127,7 @@ impl DirectionalLighting {
         memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
         rt_descriptor_set_layout: Arc<DescriptorSetLayout>,
         gbuffer_descriptor_set_layout: Arc<DescriptorSetLayout>,
-        view_projection_descriptor_set_layout: Arc<DescriptorSetLayout>,
+        status_descriptor_set_layout: Arc<DescriptorSetLayout>,
         frames_in_flight: u32,
     ) -> RenderingResult<Self> {
         let device = queue_family.get_parent_device();
@@ -136,17 +135,6 @@ impl DirectionalLighting {
         let output_descriptor_set_layout = DescriptorSetLayout::new(
             device.clone(),
             [
-                // Directional lights buffer
-                BindingDescriptor::new(
-                    [ShaderStageAccessIn::RayTracing(
-                        ShaderStageAccessInRayTracingKHR::RayGen,
-                    )]
-                    .as_slice()
-                    .into(),
-                    BindingType::Native(NativeBindingType::StorageBuffer),
-                    0,
-                    1,
-                ),
                 // outputImage(s)
                 BindingDescriptor::new(
                     [ShaderStageAccessIn::RayTracing(
@@ -155,7 +143,7 @@ impl DirectionalLighting {
                     .as_slice()
                     .into(),
                     BindingType::Native(NativeBindingType::StorageImage),
-                    1,
+                    0,
                     MAX_DIRECTIONAL_LIGHTS,
                 ),
             ]
@@ -167,8 +155,8 @@ impl DirectionalLighting {
             [
                 rt_descriptor_set_layout.clone(),
                 gbuffer_descriptor_set_layout,
+                status_descriptor_set_layout,
                 output_descriptor_set_layout.clone(),
-                view_projection_descriptor_set_layout,
             ]
             .as_slice(),
             [].as_slice(),
@@ -211,7 +199,7 @@ impl DirectionalLighting {
                             ImageMultisampling::SamplesPerPixel1,
                             1,
                             1,
-                            ImageFormat::from(CommonImageFormat::r32g32_sfloat),
+                            ImageFormat::from(CommonImageFormat::r32g32b32a32_sfloat),
                             ImageFlags::empty(),
                             ImageTiling::Optimal,
                         ),
@@ -320,7 +308,7 @@ impl DirectionalLighting {
                     MAX_DIRECTIONAL_LIGHTS * frames_in_flight,
                     0,
                     0,
-                    frames_in_flight,
+                    0,
                     0,
                     0,
                     None,
@@ -340,23 +328,10 @@ impl DirectionalLighting {
             )?;
 
             descriptor_set.bind_resources(|binder| {
-                // bind the buffer with lights definitions
-                binder
-                    .bind_storage_buffers(
-                        0,
-                        [(
-                            directional_lights[index].clone() as Arc<dyn BufferTrait>,
-                            None,
-                            None,
-                        )]
-                        .as_slice(),
-                    )
-                    .unwrap();
-
                 // bind the output image(s)
                 binder
                     .bind_storage_images_with_same_layout(
-                        1,
+                        0,
                         ImageLayout::General,
                         raytracing_ldbuffer[index].as_slice(),
                     )
@@ -377,19 +352,8 @@ impl DirectionalLighting {
                     ]
                     .as_slice()
                     .into(),
-                    BindingType::Native(NativeBindingType::StorageBuffer),
-                    0,
-                    1,
-                ),
-                BindingDescriptor::new(
-                    [
-                        ShaderStageAccessIn::Fragment,
-                        ShaderStageAccessIn::RayTracing(ShaderStageAccessInRayTracingKHR::RayGen),
-                    ]
-                    .as_slice()
-                    .into(),
                     BindingType::Native(NativeBindingType::CombinedImageSampler),
-                    1,
+                    0,
                     MAX_DIRECTIONAL_LIGHTS,
                 ),
             ]
@@ -406,7 +370,7 @@ impl DirectionalLighting {
                     0,
                     0,
                     0,
-                    frames_in_flight,
+                    0,
                     0,
                     0,
                     None,
@@ -434,19 +398,8 @@ impl DirectionalLighting {
 
             descriptor_set.bind_resources(|binder| {
                 binder
-                    .bind_storage_buffers(
-                        0,
-                        [(
-                            directional_lights[index].clone() as Arc<dyn BufferTrait>,
-                            None,
-                            None,
-                        )]
-                        .as_slice(),
-                    )
-                    .unwrap();
-                binder
                     .bind_combined_images_samplers_with_same_layout_and_sampler(
-                        1,
+                        0,
                         ImageLayout::ShaderReadOnlyOptimal,
                         dlbuffer_sampler.clone(),
                         raytracing_ldbuffer[index].as_slice(),
@@ -483,8 +436,7 @@ impl DirectionalLighting {
         &self,
         raytracing_descriptor_set: Arc<DescriptorSet>,
         gbuffer_descriptor_set: Arc<DescriptorSet>,
-        view_projection_descriptor_set: Arc<DescriptorSet>,
-        directional_lights: &DirectionalLights,
+        status_descriptor_set: Arc<DescriptorSet>,
         current_frame: usize,
         dlbuffer_stages: PipelineStages,
         dlbuffer_access: MemoryAccess,
@@ -546,75 +498,6 @@ impl DirectionalLighting {
             }
         }
 
-        // get the number of directional lights to compute and transfer into the buffer theirs directions
-        let lights_count = directional_lights.count();
-        let size_of_light = 4u64 * 6u64;
-
-        if lights_count > 0 {
-            recorder.pipeline_barriers([BufferMemoryBarrier::new(
-                [].as_slice().into(),
-                [].as_slice().into(),
-                [PipelineStage::Transfer].as_slice().into(),
-                [MemoryAccessAs::TransferWrite].as_slice().into(),
-                BufferSubresourceRange::new(
-                    self.directional_lights[current_frame].clone(),
-                    0,
-                    (lights_count as u64) * size_of_light,
-                ),
-                self.queue_family.clone(),
-                self.queue_family.clone(),
-            )
-            .into()]);
-
-            let mut light_index = 0u64;
-            directional_lights.foreach(|dir_light| {
-                recorder.copy_buffer(
-                    dir_light.clone(),
-                    self.directional_lights[current_frame].clone(),
-                    [(0u64, (light_index as u64) * size_of_light, size_of_light)].as_slice(),
-                );
-
-                light_index += 1u64;
-            });
-
-            let stub_buffer = (0..size_of_light).map(|_| 0u8).collect::<Vec<_>>();
-            for light_unused_index in light_index..(MAX_DIRECTIONAL_LIGHTS as u64) {
-                recorder.update_buffer(
-                    self.directional_lights[current_frame].clone(),
-                    (light_unused_index as u64) * size_of_light,
-                    stub_buffer.as_slice(),
-                );
-            }
-
-            recorder.pipeline_barriers([BufferMemoryBarrier::new(
-                [PipelineStage::Transfer].as_slice().into(),
-                [MemoryAccessAs::TransferWrite].as_slice().into(),
-                [
-                    PipelineStage::AllGraphics,
-                    PipelineStage::RayTracingPipelineKHR(
-                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                    ),
-                ]
-                .as_slice()
-                .into(),
-                [
-                    MemoryAccessAs::MemoryRead,
-                    MemoryAccessAs::ShaderRead,
-                    MemoryAccessAs::UniformRead,
-                ]
-                .as_slice()
-                .into(),
-                BufferSubresourceRange::new(
-                    self.directional_lights[current_frame].clone(),
-                    0,
-                    size_of_light * (lights_count as u64),
-                ),
-                self.queue_family.clone(),
-                self.queue_family.clone(),
-            )
-            .into()]);
-        };
-
         recorder.bind_ray_tracing_pipeline(self.raytracing_pipeline.clone());
         recorder.bind_descriptor_sets_for_ray_tracing_pipeline(
             self.raytracing_pipeline.get_parent_pipeline_layout(),
@@ -622,8 +505,8 @@ impl DirectionalLighting {
             [
                 raytracing_descriptor_set,
                 gbuffer_descriptor_set,
+                status_descriptor_set,
                 self.output_descriptor_sets[current_frame].clone(),
-                view_projection_descriptor_set,
             ]
             .as_slice(),
         );

@@ -89,11 +89,7 @@ struct light_t {
 
 // gbuffer: 0 for position, 1 for normal, 2 for diffuse texture
 layout(set = 0, binding = 0) uniform sampler2D gbuffer[3];
-layout(set = 1, binding = 1) uniform sampler2D dlbuffer[MAX_DIRECTIONAL_LIGHTS];
-layout(std430, set = 1, binding = 0) readonly buffer directional_lights
-{
-    light_t light[];
-};
+layout(set = 1, binding = 0) uniform sampler2D dlbuffer[MAX_DIRECTIONAL_LIGHTS];
 
 layout(set = 2, binding = 0) uniform sampler2D gibuffer;
 
@@ -108,17 +104,7 @@ void main() {
 
     for (uint dl_index = 0; dl_index < MAX_DIRECTIONAL_LIGHTS; dl_index++) {
         const vec4 dl_contribution = texture(dlbuffer[dl_index], in_vTextureUV);
-        const float dl_diffuse_contribution = dl_contribution.r;
-        if (dl_diffuse_contribution > 0.00001) {
-            const vec3 intensity = vec3(light[dl_index].intensity_x, light[dl_index].intensity_y, light[dl_index].intensity_z);
-            out_vDiffuseAlbedo += in_vDiffuseAlbedo.xyz * intensity * dl_diffuse_contribution;
-        }
-
-        const float dl_specular_contribution = dl_contribution.g;
-        if (dl_specular_contribution > 0.00001) {
-            const vec3 intensity = vec3(light[dl_index].intensity_x, light[dl_index].intensity_y, light[dl_index].intensity_z);
-            out_vDiffuseAlbedo += in_vDiffuseAlbedo.xyz * intensity * dl_specular_contribution;
-        }
+        out_vDiffuseAlbedo += dl_contribution.rgb;
     }
 
     const vec3 global_illumination_contribution = in_vDiffuseAlbedo.xyz * global_illumination_received;
