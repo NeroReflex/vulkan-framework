@@ -205,14 +205,14 @@ impl System {
             lights
                 .load(DirectionalLight::new(
                     glm::Vec3::new(-0.6, -0.98, 0.00000001),
-                    glm::Vec3::new(10.2, 10.2, 10.2),
+                    glm::Vec3::new(80.2, 80.2, 80.2),
                 ))
                 .unwrap();
 
             lights
                 .load(DirectionalLight::new(
                     glm::Vec3::new(0.0, -0.98, 0.6),
-                    glm::Vec3::new(4.0, 4.0, 4.90),
+                    glm::Vec3::new(80.0, 80.0, 80.0),
                 ))
                 .unwrap();
 
