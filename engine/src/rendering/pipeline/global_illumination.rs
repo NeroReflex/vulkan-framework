@@ -294,7 +294,7 @@ impl GILighting {
                     0,
                     0,
                     0,
-                    frames_in_flight,
+                    2 * frames_in_flight,
                     0,
                     0,
                     0,
@@ -340,7 +340,7 @@ impl GILighting {
             DescriptorPoolConcreteDescriptor::new(
                 DescriptorPoolSizesConcreteDescriptor::new(
                     0,
-                    frames_in_flight,
+                    2 * frames_in_flight,
                     0,
                     0,
                     0,
