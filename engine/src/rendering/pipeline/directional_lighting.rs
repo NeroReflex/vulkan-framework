@@ -42,7 +42,7 @@ use vulkan_framework::{
 
 use crate::rendering::{
     MAX_DIRECTIONAL_LIGHTS, MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingResult,
-    rendering_dimensions::RenderingDimensions, resources::directional_lights::DirectionalLights,
+    rendering_dimensions::RenderingDimensions,
 };
 
 const RAYGEN_SPV: &[u32] = inline_spirv!(
@@ -153,7 +153,7 @@ impl DirectionalLighting {
         let pipeline_layout = PipelineLayout::new(
             device.clone(),
             [
-                rt_descriptor_set_layout.clone(),
+                rt_descriptor_set_layout,
                 gbuffer_descriptor_set_layout,
                 status_descriptor_set_layout,
                 output_descriptor_set_layout.clone(),
@@ -344,19 +344,17 @@ impl DirectionalLighting {
         // this is the descriptor set that is reserved for OTHER pipelines to use the data calculated in this one
         let dlbuffer_descriptor_set_layout = DescriptorSetLayout::new(
             device.clone(),
-            [
-                BindingDescriptor::new(
-                    [
-                        ShaderStageAccessIn::Fragment,
-                        ShaderStageAccessIn::RayTracing(ShaderStageAccessInRayTracingKHR::RayGen),
-                    ]
-                    .as_slice()
-                    .into(),
-                    BindingType::Native(NativeBindingType::CombinedImageSampler),
-                    0,
-                    MAX_DIRECTIONAL_LIGHTS,
-                ),
-            ]
+            [BindingDescriptor::new(
+                [
+                    ShaderStageAccessIn::Fragment,
+                    ShaderStageAccessIn::RayTracing(ShaderStageAccessInRayTracingKHR::RayGen),
+                ]
+                .as_slice()
+                .into(),
+                BindingType::Native(NativeBindingType::CombinedImageSampler),
+                0,
+                MAX_DIRECTIONAL_LIGHTS,
+            )]
             .as_slice(),
         )?;
 
@@ -447,7 +445,7 @@ impl DirectionalLighting {
 
         // Here clear the image and transition its layout for using it in the raytracing pipeline
         {
-            for light_index in 0..MAX_DIRECTIONAL_LIGHTS {
+            for light_index in 0..self.raytracing_ldbuffer[current_frame].len() {
                 let image_srr: ImageSubresourceRange = self.raytracing_ldbuffer[current_frame]
                     [light_index as usize]
                     .image()
