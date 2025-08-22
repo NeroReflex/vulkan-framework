@@ -4,7 +4,7 @@
 
 #include "payload.glsl"
 
-layout(location = 0) rayPayloadEXT hit_payload_t payload;
+layout(location = 0) rayPayloadInEXT hit_payload_t payload;
 
 void main() {
     payload.hit = false;

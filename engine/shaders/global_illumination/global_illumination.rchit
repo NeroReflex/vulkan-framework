@@ -85,7 +85,7 @@ layout(std430, set = 4, binding = 1) readonly buffer meshes
     mesh_to_material_t material_for_mesh[];
 };
 
-layout(location = 0) rayPayloadEXT hit_payload_t payload;
+layout(location = 0) rayPayloadInEXT hit_payload_t payload;
 
 hitAttributeEXT vec2 attribs;
 
