@@ -502,12 +502,12 @@ impl System {
             [Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
         >::with_capacity(frames_in_flight as usize);
         for index in 0..(frames_in_flight as usize) {
-            let view_proj_descriptor_set = DescriptorSet::new(
+            let status_descriptor_set = DescriptorSet::new(
                 status_descriptors_pool.clone(),
                 status_descriptor_set_layout.clone(),
             )?;
 
-            view_proj_descriptor_set.bind_resources(|binder: &mut DescriptorSetWriter<'_>| {
+            status_descriptor_set.bind_resources(|binder: &mut DescriptorSetWriter<'_>| {
                 binder
                     .bind_uniform_buffer(
                         0,
@@ -534,7 +534,7 @@ impl System {
                     .unwrap();
             })?;
 
-            status_descriptor_sets.push(view_proj_descriptor_set);
+            status_descriptor_sets.push(status_descriptor_set);
         }
 
         let rt_descriptor_set_layout = DescriptorSetLayout::new(
@@ -620,7 +620,7 @@ impl System {
             memory_manager.clone(),
             rt_descriptor_set_layout.clone(),
             mesh_rendering.descriptor_set_layout(),
-            directional_lighting.descriptor_set_layout(),
+            status_descriptor_set_layout.clone(),
             obj_manager.textures_descriptor_set_layout(),
             obj_manager.materials_descriptor_set_layout(),
             frames_in_flight,
@@ -629,7 +629,6 @@ impl System {
         let final_rendering = Arc::new(FinalRendering::new(
             memory_manager.clone(),
             mesh_rendering.descriptor_set_layout(),
-            directional_lighting.descriptor_set_layout(),
             global_illumination_lighting.descriptor_set_layout(),
             &render_area,
             frames_in_flight,
@@ -974,6 +973,7 @@ impl System {
                 )
                 .into()]);
 
+                /*
                 let dlbuffer_descriptor_set = self.directional_lighting.record_rendering_commands(
                     rt_descriptor_set.clone(),
                     gbuffer_descriptor_set.clone(),
@@ -992,12 +992,13 @@ impl System {
                         .into(),
                     recorder,
                 );
+                */
 
                 let gibuffer_descriptor_set =
                     self.global_illumination_lighting.record_rendering_commands(
                         rt_descriptor_set.clone(),
                         gbuffer_descriptor_set.clone(),
-                        dlbuffer_descriptor_set.clone(),
+                        self.status_descriptor_sets[current_frame].clone(),
                         texture_descriptor_set,
                         material_descriptor_set,
                         current_frame,
@@ -1028,7 +1029,6 @@ impl System {
                 let final_rendering_output_image = self.final_rendering.record_rendering_commands(
                     self.queue_family(),
                     gbuffer_descriptor_set,
-                    dlbuffer_descriptor_set,
                     gibuffer_descriptor_set,
                     current_frame,
                     recorder,

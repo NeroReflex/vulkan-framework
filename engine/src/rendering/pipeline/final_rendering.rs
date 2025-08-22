@@ -89,23 +89,17 @@ struct light_t {
 
 // gbuffer: 0 for position, 1 for normal, 2 for diffuse texture
 layout(set = 0, binding = 0) uniform sampler2D gbuffer[3];
-layout(set = 1, binding = 0) uniform sampler2D dlbuffer[MAX_DIRECTIONAL_LIGHTS];
-
-layout(set = 2, binding = 0) uniform sampler2D gibuffer;
+layout(set = 1, binding = 0) uniform sampler2D gibuffer[2];
 
 void main() {
     const vec3 in_vPosition_worldspace = texture(gbuffer[0], in_vTextureUV).xyz;
     const vec3 in_vNormal_worldspace = texture(gbuffer[1], in_vTextureUV).xyz;
     const vec4 in_vDiffuseAlbedo = texture(gbuffer[2], in_vTextureUV);
 
-    const vec3 global_illumination_received = texture(gibuffer, in_vTextureUV).xyz;
+    const vec3 global_illumination_received = texture(gibuffer[0], in_vTextureUV).xyz;
+    const vec3 directional_light_received = texture(gibuffer[1], in_vTextureUV).xyz;
 
-    vec3 out_vDiffuseAlbedo = vec3(0.0, 0.0, 0.0);
-
-    for (uint dl_index = 0; dl_index < MAX_DIRECTIONAL_LIGHTS; dl_index++) {
-        const vec4 dl_contribution = texture(dlbuffer[dl_index], in_vTextureUV);
-        out_vDiffuseAlbedo += dl_contribution.rgb;
-    }
+    vec3 out_vDiffuseAlbedo = directional_light_received;
 
     const vec3 global_illumination_contribution = in_vDiffuseAlbedo.xyz * global_illumination_received;
 
@@ -134,7 +128,6 @@ impl FinalRendering {
     pub fn new(
         memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
         gbuffer_descriptor_set_layout: Arc<DescriptorSetLayout>,
-        dlbuffer_descriptor_set_layout: Arc<DescriptorSetLayout>,
         gibuffer_descriptor_set_layout: Arc<DescriptorSetLayout>,
         render_area: &RenderingDimensions,
         frames_in_flight: u32,
@@ -210,7 +203,6 @@ impl FinalRendering {
             device.clone(),
             &[
                 gbuffer_descriptor_set_layout,
-                dlbuffer_descriptor_set_layout,
                 gibuffer_descriptor_set_layout,
             ],
             &[],
@@ -260,7 +252,6 @@ impl FinalRendering {
         &self,
         queue_family: Arc<QueueFamily>,
         gbuffer_descriptor_set: Arc<DescriptorSet>,
-        dlbuffer_descriptor_set: Arc<DescriptorSet>,
         gibuffer_descriptor_set: Arc<DescriptorSet>,
         current_frame: usize,
         recorder: &mut CommandBufferRecorder,
@@ -301,7 +292,6 @@ impl FinalRendering {
                     0,
                     [
                         gbuffer_descriptor_set,
-                        dlbuffer_descriptor_set,
                         gibuffer_descriptor_set,
                     ]
                     .as_slice(),

@@ -77,6 +77,7 @@ const CHIT_SPV: &[u32] = inline_spirv!(
 );
 
 type GIBuffersType = smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
+type DLBuffersType = smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
 
 type RaytracingSBTType =
     smallvec::SmallVec<[Arc<RaytracingBindingTables>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
@@ -87,6 +88,7 @@ pub struct GILighting {
     raytracing_pipeline: Arc<RaytracingPipeline>,
 
     raytracing_gibuffer: GIBuffersType,
+    raytracing_dlbuffer: DLBuffersType,
 
     raytracing_sbts: RaytracingSBTType,
 
@@ -114,7 +116,7 @@ impl GILighting {
         memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
         rt_descriptor_set_layout: Arc<DescriptorSetLayout>,
         gbuffer_descriptor_set_layout: Arc<DescriptorSetLayout>,
-        dlbuffer_descriptor_set_layout: Arc<DescriptorSetLayout>,
+        status_descriptor_set_layout: Arc<DescriptorSetLayout>,
         textures_descriptor_set_layout: Arc<DescriptorSetLayout>,
         materials_descriptor_set_layout: Arc<DescriptorSetLayout>,
         frames_in_flight: u32,
@@ -124,7 +126,7 @@ impl GILighting {
         let output_descriptor_set_layout = DescriptorSetLayout::new(
             device.clone(),
             [
-                // outputImage
+                // outputImages
                 BindingDescriptor::new(
                     [ShaderStageAccessIn::RayTracing(
                         ShaderStageAccessInRayTracingKHR::RayGen,
@@ -133,7 +135,7 @@ impl GILighting {
                     .into(),
                     BindingType::Native(NativeBindingType::StorageImage),
                     0,
-                    1,
+                    2,
                 ),
             ]
             .as_slice(),
@@ -144,7 +146,7 @@ impl GILighting {
             [
                 rt_descriptor_set_layout,
                 gbuffer_descriptor_set_layout,
-                dlbuffer_descriptor_set_layout,
+                status_descriptor_set_layout,
                 textures_descriptor_set_layout,
                 materials_descriptor_set_layout,
                 output_descriptor_set_layout.clone(),
@@ -172,9 +174,10 @@ impl GILighting {
             Some("gi_lighting_raytracing_pipeline!"),
         )?;
 
-        let mut raytracing_ldbuffer_unallocated = vec![];
+        let mut raytracing_gibuffer_unallocated = vec![];
+        let mut raytracing_dlbuffer_unallocated = vec![];
         for frame_index in 0..frames_in_flight {
-            raytracing_ldbuffer_unallocated.push(
+            raytracing_gibuffer_unallocated.push(
                 Image::new(
                     device.clone(),
                     ConcreteImageDescriptor::new(
@@ -198,17 +201,49 @@ impl GILighting {
                 )?
                 .into(),
             );
+            raytracing_dlbuffer_unallocated.push(
+                Image::new(
+                    device.clone(),
+                    ConcreteImageDescriptor::new(
+                        render_area.into(),
+                        [
+                            ImageUseAs::TransferDst,
+                            ImageUseAs::Storage,
+                            ImageUseAs::Sampled,
+                        ]
+                        .as_slice()
+                        .into(),
+                        ImageMultisampling::SamplesPerPixel1,
+                        1,
+                        1,
+                        ImageFormat::from(CommonImageFormat::r32g32b32a32_sfloat),
+                        ImageFlags::empty(),
+                        ImageTiling::Optimal,
+                    ),
+                    None,
+                    Some(format!("raytracing_global_dlbuffer_image[{frame_index}]").as_str()),
+                )?
+                .into(),
+            );
         }
 
-        let (raytracing_gibuffer, raytracing_sbts) = {
+        let (raytracing_gibuffer, raytracing_dlbuffer, raytracing_sbts) = {
             let mut mem_manager = memory_manager.lock().unwrap();
 
             let raytracing_gibuffer_allocated = mem_manager.allocate_resources(
                 &MemoryType::device_local(),
                 &MemoryPoolFeatures::new(false),
-                raytracing_ldbuffer_unallocated,
+                raytracing_gibuffer_unallocated,
                 MemoryManagementTags::default()
-                    .with_name("gi_lighting".to_string())
+                    .with_name("gi_lighting_gibuffer".to_string())
+                    .with_size(MemoryManagementTagSize::MediumSmall),
+            )?;
+            let raytracing_dlbuffer_allocated = mem_manager.allocate_resources(
+                &MemoryType::device_local(),
+                &MemoryPoolFeatures::new(false),
+                raytracing_dlbuffer_unallocated,
+                MemoryManagementTags::default()
+                    .with_name("gi_lighting_dlbuffer".to_string())
                     .with_size(MemoryManagementTagSize::MediumSmall),
             )?;
 
@@ -226,6 +261,7 @@ impl GILighting {
                 .collect::<RaytracingSBTType>();
 
             let mut raytracing_gibuffer = GIBuffersType::with_capacity(frames_in_flight as usize);
+            let mut raytracing_dlbuffer = DLBuffersType::with_capacity(frames_in_flight as usize);
             for frame_index in 0..(frames_in_flight as usize) {
                 raytracing_gibuffer.push(ImageView::new(
                     raytracing_gibuffer_allocated[frame_index].image(),
@@ -242,9 +278,24 @@ impl GILighting {
                             .as_str(),
                     ),
                 )?);
+                raytracing_dlbuffer.push(ImageView::new(
+                    raytracing_dlbuffer_allocated[frame_index].image(),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(
+                        format!("raytracing_global_dlbuffer_image_imageview[{frame_index}]")
+                            .as_str(),
+                    ),
+                )?);
             }
 
-            (raytracing_gibuffer, raytracing_sbts)
+            (raytracing_gibuffer, raytracing_dlbuffer, raytracing_sbts)
         };
 
         let output_descriptor_pool = DescriptorPool::new(
@@ -277,12 +328,16 @@ impl GILighting {
             )?;
 
             descriptor_set.bind_resources(|binder| {
-                // bind the output image(s)
+                // bind the output images
                 binder
                     .bind_storage_images_with_same_layout(
                         0,
                         ImageLayout::General,
-                        [raytracing_gibuffer[index].clone()].as_slice(),
+                        [
+                            raytracing_gibuffer[index].clone(),
+                            raytracing_dlbuffer[index].clone(),
+                        ]
+                        .as_slice(),
                     )
                     .unwrap();
             })?;
@@ -297,7 +352,7 @@ impl GILighting {
                 [ShaderStageAccessIn::Fragment].as_slice().into(),
                 BindingType::Native(NativeBindingType::CombinedImageSampler),
                 0,
-                1,
+                2,
             )]
             .as_slice(),
         )?;
@@ -344,7 +399,11 @@ impl GILighting {
                         0,
                         ImageLayout::ShaderReadOnlyOptimal,
                         dlbuffer_sampler.clone(),
-                        [raytracing_gibuffer[index].clone()].as_slice(),
+                        [
+                            raytracing_gibuffer[index].clone(),
+                            raytracing_dlbuffer[index].clone(),
+                        ]
+                        .as_slice(),
                     )
                     .unwrap();
             })?;
@@ -361,6 +420,7 @@ impl GILighting {
             raytracing_pipeline,
 
             raytracing_gibuffer,
+            raytracing_dlbuffer,
             raytracing_sbts,
 
             output_descriptor_sets,
@@ -377,7 +437,7 @@ impl GILighting {
         &self,
         raytracing_descriptor_set: Arc<DescriptorSet>,
         gbuffer_descriptor_set: Arc<DescriptorSet>,
-        dlbuffer_descriptor_set: Arc<DescriptorSet>,
+        status_descriptor_set: Arc<DescriptorSet>,
         textures_descriptor_set: Arc<DescriptorSet>,
         materials_descriptor_set: Arc<DescriptorSet>,
         current_frame: usize,
@@ -388,46 +448,86 @@ impl GILighting {
         // TODO: of all word positions from GBUFFER, (order them, maybe) and for each directional light
         // use those to decide the portion that has to be rendered as depth in the shadow map
 
-        // Here clear the image and transition its layout for using it in the raytracing pipeline
-        let image_srr: ImageSubresourceRange =
+        // Here clear image(s) and transition its layout for using it in the raytracing pipeline
+        let gibuffer_image_srr: ImageSubresourceRange =
             self.raytracing_gibuffer[current_frame].image().into();
+        let dlbuffer_image_srr: ImageSubresourceRange =
+            self.raytracing_dlbuffer[current_frame].image().into();
         {
-            recorder.pipeline_barriers([ImageMemoryBarrier::new(
-                [PipelineStage::TopOfPipe].as_slice().into(),
-                [].as_slice().into(),
-                [PipelineStage::Transfer].as_slice().into(),
-                [MemoryAccessAs::TransferWrite].as_slice().into(),
-                image_srr.clone(),
-                ImageLayout::Undefined,
-                ImageLayout::TransferDstOptimal,
-                self.queue_family.clone(),
-                self.queue_family.clone(),
-            )
-            .into()]);
+            recorder.pipeline_barriers([
+                ImageMemoryBarrier::new(
+                    [PipelineStage::TopOfPipe].as_slice().into(),
+                    [].as_slice().into(),
+                    [PipelineStage::Transfer].as_slice().into(),
+                    [MemoryAccessAs::TransferWrite].as_slice().into(),
+                    gibuffer_image_srr.clone(),
+                    ImageLayout::Undefined,
+                    ImageLayout::TransferDstOptimal,
+                    self.queue_family.clone(),
+                    self.queue_family.clone(),
+                )
+                .into(),
+                ImageMemoryBarrier::new(
+                    [PipelineStage::TopOfPipe].as_slice().into(),
+                    [].as_slice().into(),
+                    [PipelineStage::Transfer].as_slice().into(),
+                    [MemoryAccessAs::TransferWrite].as_slice().into(),
+                    dlbuffer_image_srr.clone(),
+                    ImageLayout::Undefined,
+                    ImageLayout::TransferDstOptimal,
+                    self.queue_family.clone(),
+                    self.queue_family.clone(),
+                )
+                .into(),
+            ]);
 
             recorder.clear_color_image(
                 ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0),
-                image_srr.clone(),
+                gibuffer_image_srr.clone(),
+            );
+            recorder.clear_color_image(
+                ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0),
+                dlbuffer_image_srr.clone(),
             );
 
-            recorder.pipeline_barriers([ImageMemoryBarrier::new(
-                [PipelineStage::Transfer].as_slice().into(),
-                [MemoryAccessAs::TransferWrite].as_slice().into(),
-                [PipelineStage::RayTracingPipelineKHR(
-                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                )]
-                .as_slice()
-                .into(),
-                [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
+            recorder.pipeline_barriers([
+                ImageMemoryBarrier::new(
+                    [PipelineStage::Transfer].as_slice().into(),
+                    [MemoryAccessAs::TransferWrite].as_slice().into(),
+                    [PipelineStage::RayTracingPipelineKHR(
+                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                    )]
                     .as_slice()
                     .into(),
-                image_srr.clone(),
-                ImageLayout::TransferDstOptimal,
-                ImageLayout::General,
-                self.queue_family.clone(),
-                self.queue_family.clone(),
-            )
-            .into()]);
+                    [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
+                        .as_slice()
+                        .into(),
+                    gibuffer_image_srr.clone(),
+                    ImageLayout::TransferDstOptimal,
+                    ImageLayout::General,
+                    self.queue_family.clone(),
+                    self.queue_family.clone(),
+                )
+                .into(),
+                ImageMemoryBarrier::new(
+                    [PipelineStage::Transfer].as_slice().into(),
+                    [MemoryAccessAs::TransferWrite].as_slice().into(),
+                    [PipelineStage::RayTracingPipelineKHR(
+                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                    )]
+                    .as_slice()
+                    .into(),
+                    [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
+                        .as_slice()
+                        .into(),
+                    dlbuffer_image_srr.clone(),
+                    ImageLayout::TransferDstOptimal,
+                    ImageLayout::General,
+                    self.queue_family.clone(),
+                    self.queue_family.clone(),
+                )
+                .into(),
+            ]);
         }
 
         recorder.bind_ray_tracing_pipeline(self.raytracing_pipeline.clone());
@@ -437,7 +537,7 @@ impl GILighting {
             [
                 raytracing_descriptor_set,
                 gbuffer_descriptor_set,
-                dlbuffer_descriptor_set,
+                status_descriptor_set,
                 textures_descriptor_set,
                 materials_descriptor_set,
                 self.output_descriptor_sets[current_frame].clone(),
@@ -450,24 +550,44 @@ impl GILighting {
             Image3DDimensions::new(self.renderarea_width, self.renderarea_height, 1),
         );
 
-        recorder.pipeline_barriers([ImageMemoryBarrier::new(
-            [PipelineStage::RayTracingPipelineKHR(
-                PipelineStageRayTracingPipelineKHR::RayTracingShader,
-            )]
-            .as_slice()
-            .into(),
-            [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
+        recorder.pipeline_barriers([
+            ImageMemoryBarrier::new(
+                [PipelineStage::RayTracingPipelineKHR(
+                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                )]
                 .as_slice()
                 .into(),
-            gibuffer_stages,
-            gibuffer_access,
-            image_srr,
-            ImageLayout::General,
-            ImageLayout::ShaderReadOnlyOptimal,
-            self.queue_family.clone(),
-            self.queue_family.clone(),
-        )
-        .into()]);
+                [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
+                    .as_slice()
+                    .into(),
+                gibuffer_stages,
+                gibuffer_access,
+                gibuffer_image_srr,
+                ImageLayout::General,
+                ImageLayout::ShaderReadOnlyOptimal,
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into(),
+            ImageMemoryBarrier::new(
+                [PipelineStage::RayTracingPipelineKHR(
+                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                )]
+                .as_slice()
+                .into(),
+                [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
+                    .as_slice()
+                    .into(),
+                gibuffer_stages,
+                gibuffer_access,
+                dlbuffer_image_srr,
+                ImageLayout::General,
+                ImageLayout::ShaderReadOnlyOptimal,
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into(),
+        ]);
 
         self.gibuffer_descriptor_sets[current_frame].clone()
     }

@@ -26,28 +26,75 @@ struct light_t {
     float intensity_z;
 };
 
-layout(set = 2, binding = 1) uniform sampler2D dlbuffer[MAX_DIRECTIONAL_LIGHTS];
-layout(std430, set = 2, binding = 0) readonly buffer directional_lights
+layout(std140, set = 2, binding = 0) uniform camera_uniform {
+	mat4 viewMatrix;
+	mat4 projectionMatrix;
+} camera;
+
+layout(std430, set = 2, binding = 1) readonly buffer directional_lights
 {
     light_t light[];
 };
 
-uniform layout (set = 5, binding = 0, rgba32f) image2D outputImage;
+uniform layout (set = 5, binding = 0, rgba32f) image2D outputImage[2];
 
 layout(location = 0) rayPayloadEXT hit_payload_t payload;
 
 #define FIRST_PASS_RAYS 12
 
 void main() {
-    const ivec2 resolution = imageSize(outputImage);
+    const ivec2 resolution = imageSize(outputImage[0]);
 
     const ivec2 texel_position = ivec2(gl_LaunchIDEXT.xy);
 
-    const vec3 old_data = /*imageLoad(outputImage, ivec2(gl_LaunchIDEXT.xy)).rgb*/ vec3(0.0, 0.0, 0.0);
+    const vec3 old_data = /*imageLoad(outputImage[0], ivec2(gl_LaunchIDEXT.xy)).rgb*/ vec3(0.0, 0.0, 0.0);
 
     const vec3 origin = texelFetch(gbuffer[0], texel_position, 0).xyz;
     const vec3 normal = texelFetch(gbuffer[1], texel_position, 0).xyz;
-    return;
+    const vec3 diffuse = texelFetch(gbuffer[2], texel_position, 0).xyz;
+
+    const vec3 eye_position = vec3(camera.viewMatrix[3][0], camera.viewMatrix[3][1], camera.viewMatrix[3][2]);
+    const vec3 view_dir = normalize(eye_position - origin);
+
+    vec3 lights_contribution = vec3(0.0, 0.0, 0.0);
+    for (uint light_index = 0; light_index < MAX_DIRECTIONAL_LIGHTS; light_index++) {
+        const vec3 light_intensity = vec3(light[light_index].intensity_x, light[light_index].intensity_y, light[light_index].intensity_z);
+        const vec3 light_dir = vec3(light[light_index].direction_x, light[light_index].direction_y, light[light_index].direction_z);
+        const vec3 ray_dir = -1.0 * light_dir;
+
+        float diffuse_contribution = 0.0;
+        float specular_contribution = 0.0;
+
+        if (length(light_dir) > 0.1) {
+            if (!(origin.x == 0 && origin.y == 0 && origin.z == 0)) {
+                // other flags: gl_RayFlagsCullNoOpaqueEXT gl_RayFlagsNoneEXT
+                traceRayEXT(
+                    topLevelAS,
+                    gl_RayFlagsSkipAABBEXT | gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsCullNoOpaqueEXT,
+                    0xff,
+                    0,
+                    0,
+                    0,
+                    origin.xyz,
+                    1.0,
+                    ray_dir.xyz,
+                    10000.0,
+                    0
+                );
+            }
+
+            if (!payload.hit) {
+                diffuse_contribution = max(dot(normal, ray_dir), 0.0);
+                const vec3 diffuse = diffuse_contribution * light_intensity * diffuse;
+
+                const vec3 reflect_dir = reflect(-light_dir, normal);
+                specular_contribution = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
+
+                lights_contribution += diffuse;
+            }
+        }
+    }
+
     vec3 contribution = vec3(0.0, 0.0, 0.0);
     for (uint ray_index_1 = 0; ray_index_1 < 1; ray_index_1++) {
         //const vec3 ray_dir = vec3(1.0, 0.0, 0.0);
@@ -123,6 +170,7 @@ void main() {
         }
     }
 
-    imageStore(outputImage, texel_position, vec4(old_data + (contribution / float(FIRST_PASS_RAYS)), 1.0));
+    imageStore(outputImage[0], texel_position, vec4(old_data + (contribution / float(FIRST_PASS_RAYS)), 1.0));
+    imageStore(outputImage[1], texel_position, vec4(lights_contribution, 1.0));
     //imageStore(outputImage, texel_position, vec4(float(texel_position.x)/resolution.x, float(texel_position.y)/resolution.y, 0.0, 1.0));
 }
