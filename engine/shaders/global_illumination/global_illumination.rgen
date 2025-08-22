@@ -6,7 +6,7 @@
 #extension GL_EXT_nonuniform_qualifier : enable
 
 #include "payload.glsl"
-#include "../sphere_points.glsl"
+#include "random.glsl"
 
 // keep this in sync with the rust side
 #define MAX_DIRECTIONAL_LIGHTS 8
@@ -40,11 +40,27 @@ uniform layout (set = 5, binding = 0, rgba32f) image2D outputImage[2];
 
 layout(location = 0) rayPayloadEXT hit_payload_t payload;
 
-#define FIRST_PASS_RAYS 12
+#define FIRST_PASS_RAYS 2
 
 layout(push_constant) uniform GIData {
     uint gi_reuse_frames;
 } gi_data;
+
+vec3 random_point_on_unit_sphere(inout uint state)
+{
+  float z = rnd(state) * 2.0 - 1.0;
+  float t = rnd(state) * 6.28318530718; // 2 * PI
+  float r = sqrt(1.0 - z * z);
+  return vec3(r * cos(t), r * sin(t), z);
+}
+
+vec3 contribution(in vec3 surface_color, in float light_intensity, in float diffuse_coefficient)
+{
+    return surface_color * light_intensity * diffuse_coefficient;
+
+}
+
+#define MAX_RAY_DEPTH 3
 
 void main() {
     const ivec2 resolution = imageSize(outputImage[0]);
@@ -59,6 +75,9 @@ void main() {
 
     const vec3 eye_position = vec3(camera.viewMatrix[3][0], camera.viewMatrix[3][1], camera.viewMatrix[3][2]);
     const vec3 view_dir = normalize(eye_position - origin);
+
+    // Initialize the random number
+    uint seed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, gi_data.gi_reuse_frames);
 
     // direct lighting: only compute it if the previous GI data cannot be reused
     if (gi_data.gi_reuse_frames == 0) {
@@ -107,13 +126,32 @@ void main() {
         imageStore(outputImage[1], texel_position, vec4(lights_contribution, 1.0));
     }
 
+
+    hit_payload_t collisions[MAX_RAY_DEPTH];
+    vec3 ray_directions[MAX_RAY_DEPTH];
+
     vec3 contribution = vec3(0.0, 0.0, 0.0);
-    for (uint ray_index_1 = 0; ray_index_1 < 1; ray_index_1++) {
-        //const vec3 ray_dir = vec3(1.0, 0.0, 0.0);
-        const vec3 random_point_on_sphere = vec3(-0.016828, 0.999740, -0.015416);
+
+    uint casted_primary_rays = 0;
+    uint ray_depth = 0;
+    while (ray_depth < MAX_RAY_DEPTH) {
+        // cast a ray in a random direction over the hemisphere oriented by the normal
+        // accumulate the contribution of the ray if it hits something
+        // if it hits nothing, stop
+        // if it hits something, repeat
+        if (casted_primary_rays == FIRST_PASS_RAYS) {
+            break;
+        }
+
+        const vec3 random_point_on_sphere = random_point_on_unit_sphere(seed);
         vec3 ray_dir = reflect(normal, random_point_on_sphere);
         const bool below_horizon = dot(normal, random_point_on_sphere) < 0;
         ray_dir = below_horizon ? -ray_dir : ray_dir;
+
+        ray_directions[ray_depth] = ray_dir;
+        if (ray_depth == 0) {
+            casted_primary_rays += 1;
+        }
 
         traceRayEXT(
             topLevelAS,
@@ -122,18 +160,18 @@ void main() {
             0,
             0,
             0,
-            origin.xyz,
-            1.1,
-            ray_dir.xyz,
+            ray_depth == 0 ? origin.xyz : collisions[ray_depth - 1].position.xyz,
+            0.1,
+            ray_directions[ray_depth].xyz,
             10000.0,
             0
         );
 
-        const hit_payload_t first_surface = payload;
-        if (first_surface.hit) {
-            contribution += vec3(0.0, 0.0, 10.0);
-            continue;
+        collisions[ray_depth] = payload;
 
+        // exclude the first ray since it was done in the directional lighting pass already
+        if (ray_depth > 0) {
+            // from the new point try to query all the directional lights
             for (uint dir_light_index = 0; dir_light_index < MAX_DIRECTIONAL_LIGHTS; dir_light_index++) {
                 const vec3 directional_light_dir = -1.0 * vec3(light[nonuniformEXT(dir_light_index)].direction_x, light[nonuniformEXT(dir_light_index)].direction_y, light[nonuniformEXT(dir_light_index)].direction_z);
                 const vec3 directional_light_intensity = vec3(light[nonuniformEXT(dir_light_index)].intensity_x, light[nonuniformEXT(dir_light_index)].intensity_y, light[nonuniformEXT(dir_light_index)].intensity_z);
@@ -153,35 +191,50 @@ void main() {
                     0,
                     0,
                     0,
-                    first_surface.position.xyz,
+                    collisions[ray_depth-1].position,
                     0.1,
-                    directional_light_dir.xyz,
+                    directional_light_dir,
                     10000.0,
                     0
                 );
 
-                const hit_payload_t second_surface = payload;
+                // shadow ray is not occluded: sum the contribution of this point
+                if (!payload.hit) {
+                    // when calculating directional light contribution, account for the entire path
+                    // the light has been reflected at each bounce according to the diffuse coefficient
+                    // (so the contribution is attenuated at each bounce)
+                    // also account for the angle of incidence of the light on each surface (Lambertian
+                    // reflectance):
+                    //
+                    // To do this associate the diffuse texture and normal of the last SURELY hit surface collisions[ray_depth-1]
+                    // (or "diffuse" and "normal" in case ray_depth is 0), and the ray_direction at that point collisions[ray_depth]
+                    // (or directional_light_dir if ray_depth is )
 
-                if (!second_surface.hit) {
-                    // shadow ray is not occluded: sum the contribution of this point
-                    const float coeff_directional_light = max(dot(first_surface.triangle_normal, directional_light_dir.xyz), 0.0);
-                    const vec3 directional_light_effective_intensity = coeff_directional_light * directional_light_intensity;
-                    const vec3 diffuse_contibution = directional_light_effective_intensity * first_surface.diffuse;
-                    contribution += diffuse_contibution;
-                } else {
-                    // TODO: cast the final ray
+                    vec3 incoming_diffuse_light = vec3(1.0, 1.0, 1.0);
+                    for (uint r = ray_depth; r > 0; r--) {
+                        vec3 surface_normal = r == 0 ? normal : collisions[r - 1].triangle_normal;
+                        vec3 surface_diffuse = r == 0 ? diffuse : collisions[r - 1].diffuse;
+                        vec3 surface_ray = r == ray_depth ? directional_light_dir : ray_directions[r];
+
+                        incoming_diffuse_light *= max(dot(surface_normal, surface_ray), 0.0) * surface_diffuse;
+                    }
+
+                    contribution += incoming_diffuse_light;
+                    //contribution += vec3(float(texel_position.x)/resolution.x, float(texel_position.y)/resolution.y, 0.0);
                 }
-            }
 
-            const float first_hit_coefficient = max(dot(first_surface.triangle_normal, ray_dir), 0.0);
-            // from here one 
-        } else
-        // test for collisions (REMOVE ME)
-        {
-            contribution += vec3(10.0, 0.0, 0.0);
+            }
+        }
+
+        // no surface hit: restart from the beginning
+        if (collisions[ray_depth].hit) {
+            ray_depth++;
+        } else {
+            ray_depth = 0;
         }
     }
 
-    imageStore(outputImage[0], texel_position, vec4(old_gi_data + (contribution / float(FIRST_PASS_RAYS)), 1.0));
+    const float reused_scale = gi_data.gi_reuse_frames > 0 ? 2.0 : 1.0;
+    imageStore(outputImage[0], texel_position, vec4((old_gi_data / 2.0) + (contribution / (float(FIRST_PASS_RAYS) * reused_scale)), 1.0));
     //imageStore(outputImage, texel_position, vec4(float(texel_position.x)/resolution.x, float(texel_position.y)/resolution.y, 0.0, 1.0));
 }
