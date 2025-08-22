@@ -52,9 +52,8 @@ use crate::{
     rendering::{
         MAX_DIRECTIONAL_LIGHTS, MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingError, RenderingResult,
         pipeline::{
-            directional_lighting::DirectionalLighting, final_rendering::FinalRendering,
-            global_illumination::GILighting, hdr_transform::HDRTransform,
-            mesh_rendering::MeshRendering, renderquad::RenderQuad,
+            final_rendering::FinalRendering, global_illumination::GILighting,
+            hdr_transform::HDRTransform, mesh_rendering::MeshRendering, renderquad::RenderQuad,
         },
         rendering_dimensions::RenderingDimensions,
         resources::{
@@ -101,14 +100,22 @@ pub struct System {
     rt_descriptor_set: Option<Arc<DescriptorSet>>,
 
     mesh_rendering: Arc<MeshRendering>,
-    directional_lighting: Arc<DirectionalLighting>,
     global_illumination_lighting: Arc<GILighting>,
     final_rendering: Arc<FinalRendering>,
     hdr: Arc<HDRTransform>,
     renderquad: Arc<RenderQuad>,
 
+    active_camera: Option<Arc<dyn CameraTrait>>,
     resources_manager: Arc<Mutex<ResourceManager>>,
     lights_manager: Arc<Mutex<DirectionalLights>>,
+
+    // if the previous frame used GI and can be reused for the current frame
+    // this value will be non-zero.
+    //
+    // this happens when the camera has not been moved and no other object
+    // has been moved/added/removed from the scene in addition to when
+    // no light has been changed/added/removed.
+    prev_frame_gi_reuse: u32,
 
     frames_in_flight: smallvec::SmallVec<[Option<FenceWaiter>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
 
@@ -194,19 +201,23 @@ impl System {
         */
 
         let mut lights = self.lights_manager.lock().unwrap();
-        lights
-            .load(DirectionalLight::new(
-                glm::Vec3::new(-0.6, -0.98, 0.00000001),
-                glm::Vec3::new(10.2, 10.2, 10.2),
-            ))
-            .unwrap();
+        {
+            lights
+                .load(DirectionalLight::new(
+                    glm::Vec3::new(-0.6, -0.98, 0.00000001),
+                    glm::Vec3::new(10.2, 10.2, 10.2),
+                ))
+                .unwrap();
 
-        lights
-            .load(DirectionalLight::new(
-                glm::Vec3::new(0.0, -0.98, 0.6),
-                glm::Vec3::new(4.0, 4.0, 4.90),
-            ))
-            .unwrap();
+            lights
+                .load(DirectionalLight::new(
+                    glm::Vec3::new(0.0, -0.98, 0.6),
+                    glm::Vec3::new(4.0, 4.0, 4.90),
+                ))
+                .unwrap();
+
+            self.prev_frame_gi_reuse = 0;
+        }
 
         // Update the TLAS and create a descriptor set for it:
         // this is very important as it define the geometry of the whole scene
@@ -231,7 +242,13 @@ impl System {
                 .unwrap();
 
             self.rt_descriptor_set = Some(rt_descriptor_set);
+            self.prev_frame_gi_reuse = 0;
         }
+    }
+
+    pub fn change_camera(&mut self, camera: Arc<dyn CameraTrait>) {
+        self.active_camera = Some(camera);
+        self.prev_frame_gi_reuse = 0;
     }
 
     pub fn new(
@@ -604,16 +621,6 @@ impl System {
             frames_in_flight,
         )?);
 
-        let directional_lighting = Arc::new(DirectionalLighting::new(
-            queue_family.clone(),
-            &render_area,
-            memory_manager.clone(),
-            rt_descriptor_set_layout.clone(),
-            mesh_rendering.descriptor_set_layout(),
-            status_descriptor_set_layout.clone(),
-            frames_in_flight,
-        )?);
-
         let global_illumination_lighting = Arc::new(GILighting::new(
             queue_family.clone(),
             &render_area,
@@ -655,7 +662,28 @@ impl System {
             String::from("directional_lights"),
         )?));
 
+        let init_fence = Fence::new(device.clone(), false, Some("init_fence")).unwrap();
+
+        let init_command_buffer =
+            PrimaryCommandBuffer::new(command_pool.clone(), Some("init_command_buffer"))?;
+
+        init_command_buffer.record_one_time_submit(|recorder| {
+            global_illumination_lighting.record_init_commands(recorder);
+        })?;
+
+        let init_queue = Queue::new(queue_family.clone(), Some("init_queue")).unwrap();
+        let init_waiter = init_queue.submit(
+            &[init_command_buffer.clone()],
+            &[],
+            &[global_illumination_lighting.signal_semaphores()],
+            init_fence.clone(),
+        )?;
+
         let frames_in_flight = (0..frames_in_flight).map(|_| Option::None).collect();
+        let prev_frame_gi_reuse = 0;
+        let active_camera = None;
+
+        drop(init_waiter);
 
         Ok(Self {
             queue_family,
@@ -686,7 +714,6 @@ impl System {
             rt_descriptor_set,
 
             mesh_rendering,
-            directional_lighting,
             global_illumination_lighting,
             final_rendering,
             hdr,
@@ -694,6 +721,9 @@ impl System {
 
             resources_manager,
             lights_manager,
+            active_camera,
+
+            prev_frame_gi_reuse,
         })
     }
 
@@ -763,7 +793,7 @@ impl System {
         Ok(())
     }
 
-    pub fn render(&mut self, camera: &dyn CameraTrait, hdr: &HDR) -> RenderingResult<()> {
+    pub fn render(&mut self, hdr: &HDR) -> RenderingResult<()> {
         // Ensure the swapchain is available and evey resource tied to is is usable
         // create the new swapchain if none is present
         if self.swapchain.is_none() {
@@ -787,6 +817,11 @@ impl System {
             Some(self.image_available_semaphores[current_frame].clone()),
             None,
         )?;
+
+        // if there is no camera (active viewport) then there is nothing to be rendered
+        let Some(camera) = &self.active_camera else {
+            return Ok(());
+        };
 
         let camera_matrices = [
             camera.view_matrix(),
@@ -973,35 +1008,14 @@ impl System {
                 )
                 .into()]);
 
-                /*
-                let dlbuffer_descriptor_set = self.directional_lighting.record_rendering_commands(
-                    rt_descriptor_set.clone(),
-                    gbuffer_descriptor_set.clone(),
-                    self.status_descriptor_sets[current_frame].clone(),
-                    current_frame,
-                    [
-                        PipelineStage::FragmentShader,
-                        PipelineStage::RayTracingPipelineKHR(
-                            PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                        ),
-                    ]
-                    .as_slice()
-                    .into(),
-                    [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead]
-                        .as_slice()
-                        .into(),
-                    recorder,
-                );
-                */
-
                 let gibuffer_descriptor_set =
                     self.global_illumination_lighting.record_rendering_commands(
+                        self.prev_frame_gi_reuse,
                         rt_descriptor_set.clone(),
                         gbuffer_descriptor_set.clone(),
                         self.status_descriptor_sets[current_frame].clone(),
                         texture_descriptor_set,
                         material_descriptor_set,
-                        current_frame,
                         [PipelineStage::FragmentShader].as_slice().into(),
                         [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead]
                             .as_slice()
@@ -1057,13 +1071,20 @@ impl System {
         let frame_queue = self.queues[current_frame].clone();
 
         let present_semaphore = self.present_ready[swapchain_index as usize].clone();
-        let signal_semaphores = [present_semaphore.clone()];
-        self.frames_in_flight[current_frame] = Some(frame_queue.submit(
-            &[self.present_command_buffers[current_frame].clone()],
-            &[(
+        let signal_semaphores = vec![
+            present_semaphore.clone(),
+            self.global_illumination_lighting.signal_semaphores(),
+        ];
+        let wait_semaphores = vec![
+            (
                 PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
                 self.image_available_semaphores[current_frame].clone(),
-            )],
+            ),
+            self.global_illumination_lighting.wait_semaphores(),
+        ];
+        self.frames_in_flight[current_frame] = Some(frame_queue.submit(
+            &[self.present_command_buffers[current_frame].clone()],
+            wait_semaphores.as_slice(),
             signal_semaphores.as_slice(),
             self.rendering_fences[current_frame].clone(),
         )?);
@@ -1079,6 +1100,11 @@ impl System {
 
             // Regenerate the swapchain
             Self::recreate_swapchain(self)?;
+        }
+
+        // The GI has been calculated for this frame: try to reuse it for the next frame
+        if self.prev_frame_gi_reuse < u32::MAX {
+            self.prev_frame_gi_reuse += 1;
         }
 
         Ok(())

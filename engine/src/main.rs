@@ -1,4 +1,7 @@
-use std::time::{Duration, Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use artrtic::{
     core::camera::{CameraTrait, HEAD_DOWN, spectator::SpectatorCamera},
@@ -49,6 +52,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         65.0,
     );
 
+    // set initial camera
+    renderer.change_camera(Arc::new(camera.clone()));
+
     //sdl_mouse.capture(true);
     let move_units_per_second = 275.0;
     let mouse_sensitivity_per_millisecond = 0.0015;
@@ -82,10 +88,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             {
                 if new_keyboard_state.is_scancode_pressed(Scancode::W) {
                     camera.apply_movement(camera.orientation(), move_quantity);
+
+                    renderer.change_camera(Arc::new(camera.clone()));
                 }
 
                 if new_keyboard_state.is_scancode_pressed(Scancode::S) {
                     camera.apply_movement(camera.orientation(), -1.0 * move_quantity);
+
+                    renderer.change_camera(Arc::new(camera.clone()));
                 }
 
                 if new_keyboard_state.is_scancode_pressed(Scancode::D) {
@@ -96,6 +106,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         )),
                         move_quantity,
                     );
+
+                    renderer.change_camera(Arc::new(camera.clone()));
                 }
 
                 if new_keyboard_state.is_scancode_pressed(Scancode::A) {
@@ -106,6 +118,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         )),
                         -1.0 * move_quantity,
                     );
+
+                    renderer.change_camera(Arc::new(camera.clone()));
                 }
             }
         }
@@ -116,11 +130,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let new_mouse_pos = glm::vec2(new_mouse_state.x() as f32, new_mouse_state.y() as f32);
             let orientation_change = (new_mouse_pos - mouse_pos) * mous_coeff;
             mouse_pos = new_mouse_pos;
-            camera.apply_horizontal_rotation(orientation_change.x);
-            camera.apply_vertical_rotation(orientation_change.y);
+
+            if orientation_change.x != 0.0 || orientation_change.y != 0.0 {
+                camera.apply_horizontal_rotation(orientation_change.x);
+                camera.apply_vertical_rotation(orientation_change.y);
+                renderer.change_camera(Arc::new(camera.clone()));
+            }
         }
 
-        renderer.render(&camera, &hdr).unwrap();
+        renderer.render(&hdr).unwrap();
         frame_count += 1;
 
         // Check if one second has passed

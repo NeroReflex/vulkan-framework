@@ -290,11 +290,7 @@ impl FinalRendering {
                 recorder.bind_descriptor_sets_for_graphics_pipeline(
                     self.graphics_pipeline.get_parent_pipeline_layout(),
                     0,
-                    [
-                        gbuffer_descriptor_set,
-                        gibuffer_descriptor_set,
-                    ]
-                    .as_slice(),
+                    [gbuffer_descriptor_set, gibuffer_descriptor_set].as_slice(),
                 );
 
                 recorder.draw(0, 6, 0, 1);

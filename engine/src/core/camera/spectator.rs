@@ -1,5 +1,6 @@
 use crate::core::camera::CameraTrait;
 
+#[derive(Debug, Clone)]
 pub struct SpectatorCamera {
     position: glm::Vec3,
 
