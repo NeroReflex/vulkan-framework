@@ -142,6 +142,8 @@ void main() {
             } else {
                 contribution = vec3(250.0, 0.0, 0.0);
             }
+
+            contribution *= vec3(surfels[surfel_id].contributions) * 1.0;
         }
     }
 
@@ -159,7 +161,7 @@ void main() {
 
             const vec3 random_point_on_sphere = random_point_on_unit_sphere(seed);
             vec3 ray_dir = reflect(normal, random_point_on_sphere);
-            const bool below_horizon = dot(normal, random_point_on_sphere) < 0;
+            const bool below_horizon = dot(normal, random_point_on_sphere) < 0.0;
             ray_dir = below_horizon ? -ray_dir : ray_dir;
 
             ray_directions[ray_depth] = ray_dir;
@@ -237,6 +239,14 @@ void main() {
                             } else {
                                 r -= 1;
                             }
+                        }
+
+                        if (
+                            incoming_diffuse_light.x > RADIANCE_THRESHOLD ||
+                            incoming_diffuse_light.y > RADIANCE_THRESHOLD ||
+                            incoming_diffuse_light.z > RADIANCE_THRESHOLD
+                        ) {
+
                         }
 
                         contribution += incoming_diffuse_light;

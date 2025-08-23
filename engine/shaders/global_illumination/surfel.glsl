@@ -12,6 +12,8 @@
 #define SURFEL_FLAG_LOCKED      (0x01u << 0u)
 #define SURFEL_FLAG_PRIMARY     (0x01u << 1u)
 
+#define RADIANCE_THRESHOLD 10.0f
+
 struct Surfel {
     uint instance_id;
 
@@ -23,12 +25,12 @@ struct Surfel {
     float normal_x;
     float normal_y;
     float normal_z;
-    uint normal_samples;
     
     float irradiance_r;
     float irradiance_g;
     float irradiance_b;
-    uint irradiance_samples;
+
+    uint contributions;
 
     uint flags;
 
@@ -109,11 +111,10 @@ void init_surfel(
     surfels[surfel_id].normal_x           = normal.x;
     surfels[surfel_id].normal_y           = normal.y;
     surfels[surfel_id].normal_z           = normal.z;
-    surfels[surfel_id].normal_samples     = 1u;
     surfels[surfel_id].irradiance_r       = irradiance.r;
     surfels[surfel_id].irradiance_g       = irradiance.g;
     surfels[surfel_id].irradiance_b       = irradiance.b;
-    surfels[surfel_id].irradiance_samples = 1u;
+    surfels[surfel_id].contributions      = 1u;
     surfels[surfel_id].morton             = morton_code;
 
     atomicAnd(surfels[surfel_id].flags, SURFEL_FLAG_LOCKED);
@@ -162,8 +163,10 @@ uint linear_search_surfel_ignore_instance_id(uint last_surfel_id, vec3 point) {
 #define REGISTER_SURFEL_FRAME_LIMIT 1
 #define REGISTER_SURFEL_FULL 2
 #define REGISTER_SURFEL_DENSITY 3
-#define REGISTER_SURFEL_OUT_OF_RANGE 4;
+#define REGISTER_SURFEL_OUT_OF_RANGE 4
 #define REGISTER_SURFEL_BUSY 5;
+#define REGISTER_SURFEL_BELOW_HORIZON 6
+#define REGISTER_SURFEL_DISABLED 7
 
 uint register_surfel(
     in const vec3 eye_position,
@@ -175,6 +178,7 @@ uint register_surfel(
     vec3 normal,
     vec3 irradiance
 ) {
+#if ENABLE_SURFELS
     uint flags = primary ? SURFEL_FLAG_PRIMARY : 0u;
 
     uint morton = morton3D(eye_position, position, clip_planes);
@@ -199,6 +203,24 @@ uint register_surfel(
             }
 
             // surfel is locked: update it
+            const vec3 current_normal = vec3(surfels[surfel_id].normal_x, surfels[surfel_id].normal_y, surfels[surfel_id].normal_z);
+            const vec3 current_irradiance = vec3(surfels[surfel_id].irradiance_r, surfels[surfel_id].irradiance_g, surfels[surfel_id].irradiance_b);
+            const vec3 new_normal = normalize(current_normal + normal);
+
+            if (dot(current_normal, normal) < 0.0) {
+                // surfel is below the horizon: ignore it
+                unlock_surfel(surfel_id);
+                memoryBarrierBuffer();
+                return REGISTER_SURFEL_BELOW_HORIZON;
+            }
+
+            surfels[surfel_id].normal_x = new_normal.x;
+            surfels[surfel_id].normal_y = new_normal.y;
+            surfels[surfel_id].normal_z = new_normal.z;
+            surfels[surfel_id].contributions += 1u;
+
+
+
             //const vec3 surfel_diffuse = vec3(surfels[surfel_search_res].irradiance_r, surfels[surfel_search_res].irradiance_g, surfels[surfel_search_res].irradiance_b) / float(surfels[surfel_search_res].irradiance_samples);
             //lights_contribution += contribution(surfel_diffuse, length(light_intensity), diffuse_contribution);
 
@@ -233,6 +255,9 @@ uint register_surfel(
             }
         }
     } while (1 == 1);
+#else
+    return REGISTER_SURFEL_DISABLED;
+#endif
 }
 
 bool surfel_is_primary(uint surfel_id) {
