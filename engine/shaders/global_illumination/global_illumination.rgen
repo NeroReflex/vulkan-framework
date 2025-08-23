@@ -115,7 +115,7 @@ void main() {
                 }
 
                 if (!payload.hit) {
-                    const float radius = 5.0;
+                    const float radius = 15.0;
 
                     diffuse_contribution = max(dot(normal, ray_dir), 0.0);
                     const vec3 diffuse = diffuse_contribution * light_intensity * diffuse;
@@ -135,6 +135,7 @@ void main() {
                         checked_surfels = allocated_surfels();
                         uint surfel_search_res = linear_search_surfel_for_allocation(checked_surfels, origin, radius);
                         if ((surfel_search_res != SURFELS_MISSED) && (surfel_search_res != SURFELS_TOO_CLOSE)) {
+                            //debugPrintfEXT("|REUSED(%u/%u)", surfel_search_res, checked_surfels);
                             const uint surfel_id = surfel_search_res;
 
                             /*
@@ -157,20 +158,27 @@ void main() {
                             done = true;
                         } else if (surfel_search_res == SURFELS_TOO_CLOSE) {
                             // we were too close to an existing surfel: do not allocate a new one
+                            //debugPrintfEXT("|TOO CLOSE");
                             done = true;
+                        } else if (!can_spawn_another_surfel()) {
+                            // we cannot allocate more surfels this frame
+                            // to avoid impacting too much on the frame time
+                            done = true;
+                            //debugPrintfEXT("|FULL");
                         } else {
                             // A matching surfel was not found: try to allocate a new one
                             uint surfel_id = allocate_surfel(checked_surfels);
                             if (surfel_id == SURFELS_FULL) {
+                                debugPrintfEXT("|FULL(%u)", surfel_id);
                                 done = true;
                             } else if (surfel_id == SURFELS_MISSED) {
                                 checked_surfels = allocated_surfels();
                             } else {
-                                init_surfel(surfel_id, payload.instance_id, origin, radius, normal, diffuse);
+                                //init_surfel(surfel_id, SURFEL_FLAG_PRIMARY, payload.instance_id, origin, radius, normal, diffuse);
                                 memoryBarrierBuffer();
                                 done = true;
 
-                                debugPrintfEXT("created surfel at position vec3(%f, %f, %f)", surfels[surfel_id].position_x, surfels[surfel_id].position_y, surfels[surfel_id].position_z);
+                                //debugPrintfEXT("\nCreated surfel %u at position vec3(%f, %f, %f)", surfel_id, surfels[surfel_id].position_x, surfels[surfel_id].position_y, surfels[surfel_id].position_z);
                             }
                         }
                     } while (!done);
@@ -189,10 +197,10 @@ void main() {
     if ((depth < DEPTH_IGNORE) && (SHOW_SURFELS)) {
         const uint search_surfels = allocated_surfels();
         const uint surfel_id = linear_search_surfel_ignore_instance_id(search_surfels, origin);
-        if (search_surfels > 322) {
+        /*if (search_surfels > 322) {
             contribution = vec3(0, 300.0, 0.0);
-        } else if (surfel_id == SURFELS_MISSED) {
-            contribution = vec3(300.0, 0.0, 0.0);
+        } else*/ if (surfel_id == SURFELS_MISSED) {
+            //contribution = vec3(300.0, 0.0, 0.0);
         } else {
             contribution = vec3(0.0, 0.0, 300.0);
         }

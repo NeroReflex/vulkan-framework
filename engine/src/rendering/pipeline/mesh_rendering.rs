@@ -24,9 +24,9 @@ use vulkan_framework::{
         VertexInputRate, Viewport,
     },
     image::{
-        AllocatedImage, CommonImageFormat, ConcreteImageDescriptor, Image, Image1DTrait,
-        Image2DDimensions, Image2DTrait, ImageDimensions, ImageFlags, ImageFormat, ImageLayout,
-        ImageMultisampling, ImageTiling, ImageUsage, ImageUseAs,
+        CommonImageFormat, ConcreteImageDescriptor, Image, Image1DTrait, Image2DDimensions,
+        Image2DTrait, ImageDimensions, ImageFlags, ImageFormat, ImageLayout, ImageMultisampling,
+        ImageTiling, ImageUsage, ImageUseAs,
     },
     image_view::{ImageView, ImageViewAspect, ImageViewType, RecognisedImageAspect},
     memory_barriers::{ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},

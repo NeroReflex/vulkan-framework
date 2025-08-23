@@ -24,9 +24,7 @@ use vulkan_framework::{
         ImageUseAs,
     },
     image_view::ImageView,
-    memory_barriers::{
-        BufferMemoryBarrier, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs, PipelineBarrier,
-    },
+    memory_barriers::{BufferMemoryBarrier, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
     memory_heap::MemoryType,
     memory_management::{MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait},
     memory_pool::MemoryPoolFeatures,
@@ -108,7 +106,7 @@ pub struct GILighting {
     renderarea_height: u32,
 }
 
-const MAX_SURFELS: u32 = 2 ^ 20 * 16;
+const MAX_SURFELS: u32 = u32::pow(2, 20) * 16;
 const SURFEL_SIZE: u32 = 16 * 4;
 
 impl GILighting {
@@ -143,7 +141,6 @@ impl GILighting {
         status_descriptor_set_layout: Arc<DescriptorSetLayout>,
         textures_descriptor_set_layout: Arc<DescriptorSetLayout>,
         materials_descriptor_set_layout: Arc<DescriptorSetLayout>,
-        frames_in_flight: u32,
     ) -> RenderingResult<Self> {
         let device = queue_family.get_parent_device();
 
@@ -276,7 +273,7 @@ impl GILighting {
                     [BufferUseAs::StorageBuffer, BufferUseAs::TransferDst]
                         .as_slice()
                         .into(),
-                    (MAX_SURFELS as u64) * (SURFEL_SIZE as u64),
+                    4u64 * 4u64,
                 ),
                 None,
                 Some("surfel_stats"),
@@ -362,19 +359,8 @@ impl GILighting {
         let output_descriptor_pool = DescriptorPool::new(
             device.clone(),
             DescriptorPoolConcreteDescriptor::new(
-                DescriptorPoolSizesConcreteDescriptor::new(
-                    0,
-                    0,
-                    0,
-                    2 * frames_in_flight,
-                    0,
-                    0,
-                    2 * frames_in_flight,
-                    0,
-                    0,
-                    None,
-                ),
-                frames_in_flight,
+                DescriptorPoolSizesConcreteDescriptor::new(0, 0, 0, 2, 0, 0, 2, 0, 0, None),
+                1,
             ),
             Some("gi_lighting_descriptor_pool"),
         )?;
@@ -434,19 +420,8 @@ impl GILighting {
         let gibuffer_descriptor_pool = DescriptorPool::new(
             device.clone(),
             DescriptorPoolConcreteDescriptor::new(
-                DescriptorPoolSizesConcreteDescriptor::new(
-                    0,
-                    2 * frames_in_flight,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    None,
-                ),
-                frames_in_flight,
+                DescriptorPoolSizesConcreteDescriptor::new(0, 2, 0, 0, 0, 0, 0, 0, 0, None),
+                1,
             ),
             Some("global_illumination_buffer_descriptor_pool"),
         )?;
@@ -522,7 +497,7 @@ impl GILighting {
         )
         .into()]);
 
-        let clear_val = [MAX_SURFELS, 0, MAX_SURFELS];
+        let clear_val = [MAX_SURFELS, 0, 0, 0];
         recorder.update_buffer(surfel_stats_srr.buffer(), 0, &clear_val);
 
         recorder.pipeline_barriers([BufferMemoryBarrier::new(
@@ -683,10 +658,23 @@ impl GILighting {
             ]);
         }
 
+        recorder.pipeline_barriers([BufferMemoryBarrier::new(
+            [PipelineStage::TopOfPipe].as_slice().into(),
+            [].as_slice().into(),
+            [PipelineStage::Transfer].as_slice().into(),
+            [MemoryAccessAs::TransferWrite].as_slice().into(),
+            surfel_stats_srr.clone(),
+            self.queue_family.clone(),
+            self.queue_family.clone(),
+        )
+        .into()]);
+
+        recorder.update_buffer(surfel_stats_srr.buffer(), 4u64 * 3u64, &[0]);
+
         recorder.pipeline_barriers([
             BufferMemoryBarrier::new(
-                [PipelineStage::TopOfPipe].as_slice().into(),
-                [].as_slice().into(),
+                [PipelineStage::Transfer].as_slice().into(),
+                [MemoryAccessAs::TransferWrite].as_slice().into(),
                 [PipelineStage::RayTracingPipelineKHR(
                     PipelineStageRayTracingPipelineKHR::RayTracingShader,
                 )]

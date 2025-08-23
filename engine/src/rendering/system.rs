@@ -629,7 +629,6 @@ impl System {
             status_descriptor_set_layout.clone(),
             obj_manager.textures_descriptor_set_layout(),
             obj_manager.materials_descriptor_set_layout(),
-            frames_in_flight,
         )?);
 
         let final_rendering = Arc::new(FinalRendering::new(
