@@ -1,6 +1,8 @@
 #ifndef _MORTON_
 #define _MORTON_ 1
 
+#define MORTON_OUT_OF_SCALE 0xFFFFFFFFu
+
 // Expands a 10-bit integer into 30 bits
 // by inserting 2 zeros after each bit.
 uint expandBits(uint v)
@@ -23,6 +25,22 @@ uint morton3D(in const vec3 v)
     const uint yy = expandBits(uint(y));
     const uint zz = expandBits(uint(z));
     return xx * 4 + yy * 2 + zz;
+}
+
+uint morton3D(in const vec3 eye_position, in const vec3 surfel_center, in const vec2 clip_space)
+{
+    /*
+    const vec3 center_min = eye_position + clip_space.x * normalize(surfel_center - eye_position);
+
+    if () {
+        return MORTON_OUT_OF_SCALE;
+    }
+    */
+
+    /*const vec3 normalized = (v - min) / (max - min);
+    return morton3D(normalized);*/
+
+    return 0;
 }
 
 #endif // _MORTON_

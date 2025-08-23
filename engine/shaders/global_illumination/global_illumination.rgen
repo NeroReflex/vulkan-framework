@@ -10,7 +10,7 @@
 #include "../config.glsl"
 #include "payload.glsl"
 #include "random.glsl"
-#include "morton.glsl"
+#include "../morton.glsl"
 #include "surfel.glsl"
 
 layout (set = 0, binding = 1) uniform accelerationStructureEXT topLevelAS;
@@ -28,15 +28,8 @@ struct light_t {
     float intensity_z;
 };
 
-layout(std140, set = 2, binding = 0) uniform camera_uniform {
-	mat4 viewMatrix;
-	mat4 projectionMatrix;
-} camera;
-
-layout(std430, set = 2, binding = 1) readonly buffer directional_lights
-{
-    light_t light[];
-};
+#define STATUS_DESCRIPTOR_SET 2
+#include "../status.glsl"
 
 uniform layout (set = 5, binding = 2, rgba32f) image2D outputImage[2];
 
@@ -59,7 +52,6 @@ vec3 random_point_on_unit_sphere(inout uint state)
 vec3 contribution(in vec3 surface_color, in float light_intensity, in float diffuse_coefficient)
 {
     return surface_color * light_intensity * diffuse_coefficient;
-
 }
 
 #define MAX_RAY_DEPTH 2
@@ -79,7 +71,8 @@ void main() {
     const vec3 specular = texelFetch(gbuffer[3], texel_position, 0).xyz;
     const float depth = texture(gbuffer_depth, vec3(float(texel_position.x) / float(resolution.x), float(texel_position.y) / float(resolution.y), 1.0));
 
-    const vec3 eye_position = vec3(camera.viewMatrix[3][0], camera.viewMatrix[3][1], camera.viewMatrix[3][2]);
+    const vec2 clip_planes = reconstructNearFarFromCamera();
+    const vec3 eye_position = get_eye_position();
     const vec3 view_dir = normalize(eye_position - origin);
 
     // Initialize the random number
@@ -122,66 +115,12 @@ void main() {
 
                     const vec3 reflect_dir = reflect(-light_dir, normal);
                     specular_contribution = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
-                    // TODO: here change diffuse texture with specular texture
-                    const vec3 specular = specular_contribution * light_intensity * diffuse;
+                    const vec3 specular = specular_contribution * light_intensity * specular;
 
                     // TODO: here sum specular
                     lights_contribution += diffuse;
 
-                    bool done = false;
-                    uint checked_surfels = 0;
-                    do {
-                        // try to reuse an existing surfel
-                        checked_surfels = allocated_surfels();
-                        uint surfel_search_res = linear_search_surfel_for_allocation(checked_surfels, origin, radius);
-                        if ((surfel_search_res != SURFELS_MISSED) && (surfel_search_res != SURFELS_TOO_CLOSE)) {
-                            //debugPrintfEXT("|REUSED(%u/%u)", surfel_search_res, checked_surfels);
-                            const uint surfel_id = surfel_search_res;
-
-                            /*
-                            // try locking the surfel
-                            while (!lock_surfel(surfel_id)) {
-                                // surfel is locked, try again
-                                continue;
-                            }
-                            */
-
-                            // surfel is locked: update it
-                            //const vec3 surfel_diffuse = vec3(surfels[surfel_search_res].irradiance_r, surfels[surfel_search_res].irradiance_g, surfels[surfel_search_res].irradiance_b) / float(surfels[surfel_search_res].irradiance_samples);
-                            //lights_contribution += contribution(surfel_diffuse, length(light_intensity), diffuse_contribution);
-
-                            /*
-                            // surfel is locked: unlock it for other instances
-                            unlock_surfel(surfel_id);
-                            memoryBarrierBuffer();
-                            */
-                            done = true;
-                        } else if (surfel_search_res == SURFELS_TOO_CLOSE) {
-                            // we were too close to an existing surfel: do not allocate a new one
-                            //debugPrintfEXT("|TOO CLOSE");
-                            done = true;
-                        } else if (!can_spawn_another_surfel()) {
-                            // we cannot allocate more surfels this frame
-                            // to avoid impacting too much on the frame time
-                            done = true;
-                            //debugPrintfEXT("|FULL");
-                        } else {
-                            // A matching surfel was not found: try to allocate a new one
-                            uint surfel_id = allocate_surfel(checked_surfels);
-                            if (surfel_id == SURFELS_FULL) {
-                                debugPrintfEXT("|FULL(%u)", surfel_id);
-                                done = true;
-                            } else if (surfel_id == SURFELS_MISSED) {
-                                checked_surfels = allocated_surfels();
-                            } else {
-                                //init_surfel(surfel_id, SURFEL_FLAG_PRIMARY, payload.instance_id, origin, radius, normal, diffuse);
-                                memoryBarrierBuffer();
-                                done = true;
-
-                                //debugPrintfEXT("\nCreated surfel %u at position vec3(%f, %f, %f)", surfel_id, surfels[surfel_id].position_x, surfels[surfel_id].position_y, surfels[surfel_id].position_z);
-                            }
-                        }
-                    } while (!done);
+                    register_surfel(eye_position, clip_planes, payload.instance_id, true, origin, radius, normal, diffuse_contribution * light_intensity);
                 }
             }
         }
@@ -197,19 +136,19 @@ void main() {
     if ((depth < DEPTH_IGNORE) && (SHOW_SURFELS)) {
         const uint search_surfels = allocated_surfels();
         const uint surfel_id = linear_search_surfel_ignore_instance_id(search_surfels, origin);
-        /*if (search_surfels > 322) {
-            contribution = vec3(0, 300.0, 0.0);
-        } else*/ if (surfel_id == SURFELS_MISSED) {
-            //contribution = vec3(300.0, 0.0, 0.0);
-        } else {
-            contribution = vec3(0.0, 0.0, 300.0);
+        if (surfel_id != SURFELS_MISSED) {
+            if (surfel_is_primary(surfel_id)) {
+                contribution = vec3(0.0, 0.0, 250.0);
+            } else {
+                contribution = vec3(250.0, 0.0, 0.0);
+            }
         }
     }
 
     uint casted_primary_rays = 0;
     uint ray_depth = 0;
     if (depth < DEPTH_IGNORE) {
-        while ((ray_depth < MAX_RAY_DEPTH) && (!SHOW_SURFELS)) {
+        while ((ray_depth < MAX_RAY_DEPTH) /*&& (!SHOW_SURFELS)*/) {
             // cast a ray in a random direction over the hemisphere oriented by the normal
             // accumulate the contribution of the ray if it hits something
             // if it hits nothing, stop
