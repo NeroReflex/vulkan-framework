@@ -119,9 +119,13 @@ impl GILighting {
     /// Returns the list of stages that has to wait on a specific semaphore
     pub fn wait_semaphores(&self) -> (PipelineStages, Arc<Semaphore>) {
         (
-            [PipelineStage::RayTracingPipelineKHR(
-                PipelineStageRayTracingPipelineKHR::RayTracingShader,
-            )]
+            [
+                PipelineStage::Transfer,
+                PipelineStage::ComputeShader,
+                PipelineStage::RayTracingPipelineKHR(
+                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                ),
+            ]
             .as_slice()
             .into(),
             self.raytracing_semaphore.clone(),
@@ -705,6 +709,9 @@ impl GILighting {
             )
             .into(),
         ]);
+
+        // TODO: here compact surfels if needed, update morton codes and sort surfels
+        // also remove surfels that are too old or too far away from the camera
 
         recorder.bind_ray_tracing_pipeline(self.raytracing_pipeline.clone());
         recorder.bind_descriptor_sets_for_ray_tracing_pipeline(

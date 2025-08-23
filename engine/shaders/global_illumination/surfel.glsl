@@ -37,14 +37,14 @@ struct Surfel {
     uint padding[1];
 };
 
-layout (set = 5, binding = 0, std430) coherent buffer surfel_stats {
+layout (set = 5, binding = 0, std430) /*coherent*/ buffer surfel_stats {
     uint total_surfels;
     uint free_surfels;
     uint busy_surfels;
     uint frame_spawned;
 };
 
-layout (set = 5, binding = 1, std430) coherent buffer surfel_buffer_data { 
+layout (set = 5, binding = 1, std430) /*coherent*/ buffer surfel_buffer_data { 
     Surfel surfels[];
 };
 

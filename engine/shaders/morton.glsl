@@ -29,18 +29,21 @@ uint morton3D(in const vec3 v)
 
 uint morton3D(in const vec3 eye_position, in const vec3 surfel_center, in const vec2 clip_space)
 {
-    /*
-    const vec3 center_min = eye_position + clip_space.x * normalize(surfel_center - eye_position);
+    const float range = abs(clip_space.y) - abs(clip_space.x);
+    
+    const vec3 min_allowed_position = eye_position - vec3(range);
+    const vec3 max_allowed_position = eye_position + vec3(range);
 
-    if () {
+    if (any(lessThan(surfel_center, min_allowed_position)) || any(greaterThan(surfel_center, max_allowed_position))) {
         return MORTON_OUT_OF_SCALE;
     }
-    */
 
-    /*const vec3 normalized = (v - min) / (max - min);
-    return morton3D(normalized);*/
+    const vec3 center_converted = (surfel_center - min_allowed_position) / (max_allowed_position - min_allowed_position);
+    //if (any(lessThan(center_converted, vec3(0.0))) || any(greaterThan(center_converted, vec3(1.0)))) {
+    //    return MORTON_OUT_OF_SCALE;
+    //}
 
-    return 0;
+    return morton3D(center_converted);
 }
 
 #endif // _MORTON_
