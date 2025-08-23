@@ -618,7 +618,6 @@ impl System {
             obj_manager.materials_descriptor_set_layout(),
             status_descriptor_set_layout.clone(),
             &render_area,
-            frames_in_flight,
         )?);
 
         let global_illumination_lighting = Arc::new(GILighting::new(
@@ -675,7 +674,10 @@ impl System {
         let init_waiter = init_queue.submit(
             &[init_command_buffer.clone()],
             &[],
-            &[global_illumination_lighting.signal_semaphores()],
+            &[
+                mesh_rendering.signal_semaphores(),
+                global_illumination_lighting.signal_semaphores(),
+            ],
             init_fence.clone(),
         )?;
 
@@ -1073,6 +1075,7 @@ impl System {
         let present_semaphore = self.present_ready[swapchain_index as usize].clone();
         let signal_semaphores = vec![
             present_semaphore.clone(),
+            self.mesh_rendering.signal_semaphores(),
             self.global_illumination_lighting.signal_semaphores(),
         ];
         let wait_semaphores = vec![
@@ -1080,6 +1083,7 @@ impl System {
                 PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
                 self.image_available_semaphores[current_frame].clone(),
             ),
+            self.mesh_rendering.wait_semaphores(),
             self.global_illumination_lighting.wait_semaphores(),
         ];
         self.frames_in_flight[current_frame] = Some(frame_queue.submit(

@@ -14,8 +14,9 @@ struct light_t {
     float intensity_z;
 };
 
-// gbuffer: 0 for position, 1 for normal, 2 for diffuse texture
-layout(set = 0, binding = 0) uniform sampler2D gbuffer[3];
+#define GBUFFER_DESCRIPTOR_SET 0
+#include "../gbuffer.glsl"
+
 layout(set = 1, binding = 0) uniform sampler2D gibuffer[2];
 
 void main() {

@@ -5,6 +5,7 @@
 
 #define SURFELS_FULL 0xFFFFFFFFu
 #define SURFELS_MISSED 0xFFFFFFFEu
+#define SURFELS_TOO_CLOSE 0xFFFFFFFDu
 
 struct SurfelStats {
     uint total_surfels;
@@ -97,6 +98,24 @@ void init_surfel(uint surfel_id, uint instance_id, vec3 position, float radius, 
     surfels[surfel_id].irradiance_b       = irradiance.b;
     surfels[surfel_id].irradiance_samples = 1u;
     unlock_surfel(surfel_id);
+}
+
+uint linear_search_surfel_for_allocation(uint last_surfel_id, vec3 point, float radius) {
+    bool too_close = false;
+    for (uint i = 0; i < last_surfel_id; i++) {
+        if ((is_point_in_surfel(i, point))) {
+            return i;
+        }
+
+        if (distance(point, vec3(surfels[i].position_x, surfels[i].position_y, surfels[i].position_z)) < (radius + surfels[i].radius)) {
+            too_close = true;
+            // do not break, we want to check all surfels for matches,
+            // but we also want to know if we were too close to any of them
+            // to avoid allocating new ones
+        }
+    }
+
+    return too_close ? SURFELS_TOO_CLOSE : SURFELS_MISSED;
 }
 
 uint linear_search_surfel(uint last_surfel_id, vec3 point, uint instance_id) {

@@ -4,6 +4,6 @@
 // keep in sync with sources
 #define MAX_DIRECTIONAL_LIGHTS 8
 
-#define SHOW_SURFELS true
+#define SHOW_SURFELS false
 
 #endif // _CONFIG_

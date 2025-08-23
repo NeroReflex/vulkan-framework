@@ -3,8 +3,7 @@ use std::sync::{Arc, Mutex};
 use inline_spirv::*;
 
 use crate::rendering::{
-    MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingResult, rendering_dimensions::RenderingDimensions,
-    resources::object::Manager,
+    RenderingResult, rendering_dimensions::RenderingDimensions, resources::object::Manager,
 };
 
 use vulkan_framework::{
@@ -29,7 +28,7 @@ use vulkan_framework::{
         Image2DDimensions, Image2DTrait, ImageDimensions, ImageFlags, ImageFormat, ImageLayout,
         ImageMultisampling, ImageTiling, ImageUsage, ImageUseAs,
     },
-    image_view::{ImageView, ImageViewType},
+    image_view::{ImageView, ImageViewAspect, ImageViewType, RecognisedImageAspect},
     memory_barriers::{ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
     memory_heap::MemoryType,
     memory_management::{MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait},
@@ -39,6 +38,7 @@ use vulkan_framework::{
     push_constant_range::PushConstanRange,
     queue_family::QueueFamily,
     sampler::{Filtering, MipmapMode, Sampler},
+    semaphore::Semaphore,
     shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType},
     shader_stage_access::{ShaderStageAccessIn, ShaderStagesAccess},
     shaders::{fragment_shader::FragmentShader, vertex_shader::VertexShader},
@@ -67,20 +67,19 @@ pub struct MeshRendering {
     image_dimensions: Image2DDimensions,
 
     gbuffer_descriptor_set_layout: Arc<DescriptorSetLayout>,
-    gbuffer_descriptor_sets:
-        smallvec::SmallVec<[Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
+    gbuffer_descriptor_set: Arc<DescriptorSet>,
 
     push_constants_stages: ShaderStagesAccess,
     graphics_pipeline: Arc<GraphicsPipeline>,
 
-    gbuffer_depth_stencil_image_views:
-        smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
-    gbuffer_position_image_views:
-        smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
-    gbuffer_normal_image_views:
-        smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
-    gbuffer_texture_image_views:
-        smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
+    semaphore: Arc<Semaphore>,
+
+    gbuffer_depth_stencil_image_view: Arc<ImageView>,
+    gbuffer_position_image_view: Arc<ImageView>,
+    gbuffer_normal_image_view: Arc<ImageView>,
+    gbuffer_diffuse_texture_image_view: Arc<ImageView>,
+    gbuffer_specular_texture_image_view: Arc<ImageView>,
+    gbuffer_instance_id_image_view: Arc<ImageView>,
 }
 
 impl MeshRendering {
@@ -92,6 +91,11 @@ impl MeshRendering {
     #[inline(always)]
     fn output_image_depth_stencil_layout() -> ImageLayout {
         ImageLayout::DepthStencilAttachmentOptimal
+    }
+
+    #[inline(always)]
+    fn output_instance_format() -> ImageFormat {
+        ImageFormat::from(CommonImageFormat::r32_sfloat)
     }
 
     #[inline(always)]
@@ -110,13 +114,32 @@ impl MeshRendering {
         self.gbuffer_descriptor_set_layout.clone()
     }
 
+    /// Returns the list of stages that has to wait on a specific semaphore
+    pub fn wait_semaphores(&self) -> (PipelineStages, Arc<Semaphore>) {
+        (
+            [
+                PipelineStage::EarlyFragmentTests,
+                PipelineStage::LateFragmentTests,
+                PipelineStage::FragmentShader,
+            ]
+            .as_slice()
+            .into(),
+            self.semaphore.clone(),
+        )
+    }
+
+    pub fn signal_semaphores(&self) -> Arc<Semaphore> {
+        self.semaphore.clone()
+    }
+
+    pub fn record_init_commands(&self, _recorder: &mut CommandBufferRecorder) {}
+
     pub fn new(
         memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
         textures_descriptor_set_layout: Arc<DescriptorSetLayout>,
         materials_descriptor_set_layout: Arc<DescriptorSetLayout>,
         view_projection_descriptor_set_layout: Arc<DescriptorSetLayout>,
         render_area: &RenderingDimensions,
-        frames_in_flight: u32,
     ) -> RenderingResult<Self> {
         let mut mem_manager = memory_manager.lock().unwrap();
 
@@ -124,10 +147,8 @@ impl MeshRendering {
 
         let image_dimensions = render_area.into();
 
-        let mut gbuffer_depth_stencil_image_handles = vec![];
-        for index in 0..(frames_in_flight as usize) {
-            let image_name = format!("mesh_rendering.gbuffer_depth_stencil_images[{index}]");
-            let image = Image::new(
+        let gbuffer_unallocated_handles = vec![
+            Image::new(
                 device.clone(),
                 ConcreteImageDescriptor::new(
                     ImageDimensions::Image2D {
@@ -144,16 +165,10 @@ impl MeshRendering {
                     ImageTiling::Optimal,
                 ),
                 None,
-                Some(image_name.as_str()),
-            )?;
-
-            gbuffer_depth_stencil_image_handles.push(image.into());
-        }
-
-        let mut gbuffer_position_image_handles = vec![];
-        for index in 0..(frames_in_flight as usize) {
-            let image_name = format!("mesh_rendering.gbuffer_position_images[{index}]");
-            let image = Image::new(
+                Some("mesh_rendering.gbuffer_depth_stencil_image"),
+            )?
+            .into(),
+            Image::new(
                 device.clone(),
                 ConcreteImageDescriptor::new(
                     ImageDimensions::Image2D {
@@ -168,16 +183,10 @@ impl MeshRendering {
                     ImageTiling::Optimal,
                 ),
                 None,
-                Some(image_name.as_str()),
-            )?;
-
-            gbuffer_position_image_handles.push(image.into());
-        }
-
-        let mut gbuffer_normal_image_handles = vec![];
-        for index in 0..(frames_in_flight as usize) {
-            let image_name = format!("mesh_rendering.gbuffer_normal_images[{index}]");
-            let image = Image::new(
+                Some("mesh_rendering.gbuffer_position_image"),
+            )?
+            .into(),
+            Image::new(
                 device.clone(),
                 ConcreteImageDescriptor::new(
                     ImageDimensions::Image2D {
@@ -192,16 +201,10 @@ impl MeshRendering {
                     ImageTiling::Optimal,
                 ),
                 None,
-                Some(image_name.as_str()),
-            )?;
-
-            gbuffer_normal_image_handles.push(image.into());
-        }
-
-        let mut gbuffer_texture_image_handles = vec![];
-        for index in 0..(frames_in_flight as usize) {
-            let image_name = format!("mesh_rendering.gbuffer_texture_images[{index}]");
-            let image = Image::new(
+                Some("mesh_rendering.gbuffer_normal_image"),
+            )?
+            .into(),
+            Image::new(
                 device.clone(),
                 ConcreteImageDescriptor::new(
                     ImageDimensions::Image2D {
@@ -216,167 +219,141 @@ impl MeshRendering {
                     ImageTiling::Optimal,
                 ),
                 None,
-                Some(image_name.as_str()),
-            )?;
-
-            gbuffer_texture_image_handles.push(image.into());
-        }
-
-        let mut gbuffer_depth_stencil_image_views: smallvec::SmallVec<
-            [Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
-        > = smallvec::smallvec![];
-        for (index, image) in mem_manager
-            .allocate_resources(
-                &MemoryType::device_local(),
-                &MemoryPoolFeatures::new(false),
-                gbuffer_depth_stencil_image_handles,
-                MemoryManagementTags::default()
-                    .with_name("mesh_rendering".to_string())
-                    .with_size(MemoryManagementTagSize::MediumSmall),
+                Some("mesh_rendering.gbuffer_diffuse_texture_image"),
             )?
-            .into_iter()
-            .enumerate()
-        {
-            let image_view_name =
-                format!("mesh_rendering.gbuffer_depth_stencil_image_views[{index}]");
-            gbuffer_depth_stencil_image_views.push(ImageView::new(
-                image.image(),
-                Some(ImageViewType::Image2D),
+            .into(),
+            Image::new(
+                device.clone(),
+                ConcreteImageDescriptor::new(
+                    ImageDimensions::Image2D {
+                        extent: image_dimensions,
+                    },
+                    ImageUsage::from([ImageUseAs::Sampled, ImageUseAs::ColorAttachment].as_slice()),
+                    ImageMultisampling::SamplesPerPixel1,
+                    1,
+                    1,
+                    Self::output_image_color_format(),
+                    ImageFlags::empty(),
+                    ImageTiling::Optimal,
+                ),
                 None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                Some(image_view_name.as_str()),
-            )?);
-        }
-
-        let mut gbuffer_position_image_views: smallvec::SmallVec<
-            [Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
-        > = smallvec::smallvec![];
-        let mut gbuffer_position_images: smallvec::SmallVec<
-            [Arc<AllocatedImage>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
-        > = smallvec::smallvec![];
-        for (index, image) in mem_manager
-            .allocate_resources(
-                &MemoryType::device_local(),
-                &MemoryPoolFeatures::new(false),
-                gbuffer_position_image_handles,
-                MemoryManagementTags::default()
-                    .with_name("mesh_rendering".to_string())
-                    .with_size(MemoryManagementTagSize::MediumSmall),
+                Some("mesh_rendering.gbuffer_specular_texture_image"),
             )?
-            .into_iter()
-            .enumerate()
-        {
-            let allocated_image = image.image();
-            gbuffer_position_images.push(allocated_image.clone());
-
-            let image_view_name = format!("mesh_rendering.gbuffer_position_image_views[{index}]");
-            gbuffer_position_image_views.push(ImageView::new(
-                allocated_image,
-                Some(ImageViewType::Image2D),
+            .into(),
+            Image::new(
+                device.clone(),
+                ConcreteImageDescriptor::new(
+                    ImageDimensions::Image2D {
+                        extent: image_dimensions,
+                    },
+                    ImageUsage::from([ImageUseAs::Sampled, ImageUseAs::ColorAttachment].as_slice()),
+                    ImageMultisampling::SamplesPerPixel1,
+                    1,
+                    1,
+                    Self::output_instance_format(),
+                    ImageFlags::empty(),
+                    ImageTiling::Optimal,
+                ),
                 None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                Some(image_view_name.as_str()),
-            )?);
-        }
-
-        let mut gbuffer_normal_image_views: smallvec::SmallVec<
-            [Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
-        > = smallvec::smallvec![];
-        let mut gbuffer_normal_images: smallvec::SmallVec<
-            [Arc<AllocatedImage>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
-        > = smallvec::smallvec![];
-        for (index, image) in mem_manager
-            .allocate_resources(
-                &MemoryType::device_local(),
-                &MemoryPoolFeatures::new(false),
-                gbuffer_normal_image_handles,
-                MemoryManagementTags::default()
-                    .with_name("mesh_rendering".to_string())
-                    .with_size(MemoryManagementTagSize::MediumSmall),
+                Some("mesh_rendering.gbuffer_instance_image"),
             )?
-            .into_iter()
-            .enumerate()
-        {
-            let allocated_image = image.image();
-            gbuffer_normal_images.push(allocated_image.clone());
+            .into(),
+        ];
 
-            let image_view_name = format!("mesh_rendering.gbuffer_normal_image_views[{index}]");
-            gbuffer_normal_image_views.push(ImageView::new(
-                allocated_image,
-                Some(ImageViewType::Image2D),
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                Some(image_view_name.as_str()),
-            )?);
-        }
+        let allocated_handles = mem_manager.allocate_resources(
+            &MemoryType::device_local(),
+            &MemoryPoolFeatures::new(false),
+            gbuffer_unallocated_handles,
+            MemoryManagementTags::default()
+                .with_name("mesh_rendering".to_string())
+                .with_size(MemoryManagementTagSize::MediumSmall),
+        )?;
 
-        let mut gbuffer_texture_image_views: smallvec::SmallVec<
-            [Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
-        > = smallvec::smallvec![];
-        let mut gbuffer_texture_images: smallvec::SmallVec<
-            [Arc<AllocatedImage>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
-        > = smallvec::smallvec![];
-        for (index, image) in mem_manager
-            .allocate_resources(
-                &MemoryType::device_local(),
-                &MemoryPoolFeatures::new(false),
-                gbuffer_texture_image_handles,
-                MemoryManagementTags::default()
-                    .with_name("mesh_rendering".to_string())
-                    .with_size(MemoryManagementTagSize::MediumSmall),
-            )?
-            .into_iter()
-            .enumerate()
-        {
-            let allocated_image = image.image();
-            gbuffer_texture_images.push(allocated_image.clone());
+        let gbuffer_depth_stencil_image_view = ImageView::new(
+            allocated_handles[0].image(),
+            Some(ImageViewType::Image2D),
+            None,
+            Some(ImageViewAspect::Recognised(RecognisedImageAspect::new(
+                false, true, false, false,
+            ))),
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some("gbuffer_depth_stencil_image_view"),
+        )?;
 
-            let image_view_name = format!("mesh_rendering.gbuffer_texture_image_views[{index}]");
-            gbuffer_texture_image_views.push(ImageView::new(
-                allocated_image,
-                Some(ImageViewType::Image2D),
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                Some(image_view_name.as_str()),
-            )?);
-        }
+        let gbuffer_position_image_view = ImageView::new(
+            allocated_handles[1].image(),
+            Some(ImageViewType::Image2D),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some("gbuffer_position_image_views"),
+        )?;
+
+        let gbuffer_normal_image_view = ImageView::new(
+            allocated_handles[2].image(),
+            Some(ImageViewType::Image2D),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some("gbuffer_normal_image_view"),
+        )?;
+
+        let gbuffer_diffuse_texture_image_view = ImageView::new(
+            allocated_handles[3].image(),
+            Some(ImageViewType::Image2D),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some("gbuffer_texture_image_view"),
+        )?;
+
+        let gbuffer_specular_texture_image_view = ImageView::new(
+            allocated_handles[4].image(),
+            Some(ImageViewType::Image2D),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some("gbuffer_texture_image_view"),
+        )?;
+
+        let gbuffer_instance_id_image_view = ImageView::new(
+            allocated_handles[5].image(),
+            Some(ImageViewType::Image2D),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some("gbuffer_instance_id_view"),
+        )?;
 
         let gbuffer_descriptor_pool = DescriptorPool::new(
             device.clone(),
             DescriptorPoolConcreteDescriptor::new(
-                DescriptorPoolSizesConcreteDescriptor::new(
-                    0,
-                    3u32 * frames_in_flight,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    None,
-                ),
-                frames_in_flight,
+                DescriptorPoolSizesConcreteDescriptor::new(0, 6u32, 0, 0, 0, 0, 0, 0, 0, None),
+                1,
             ),
             Some("mesh_rendering.gbuffer_descriptor_pool"),
         )?;
@@ -389,62 +366,76 @@ impl MeshRendering {
             1.0,
         )?;
 
-        let mut gbuffer_descriptor_sets =
-            smallvec::SmallVec::<_>::with_capacity(frames_in_flight as usize);
-        for frame_index in 0..(frames_in_flight as usize) {
-            let descriptor_set = DescriptorSet::new(
-                gbuffer_descriptor_pool.clone(),
-                DescriptorSetLayout::new(
-                    device.clone(),
-                    [BindingDescriptor::new(
-                        [ShaderStageAccessIn::RayTracing(vulkan_framework::shader_stage_access::ShaderStageAccessInRayTracingKHR::RayGen), ShaderStageAccessIn::Fragment].as_slice().into(),
-                        BindingType::Native(NativeBindingType::CombinedImageSampler),
-                        0,
-                        3u32,
-                    )]
-                    .as_slice(),
-                )?,
-            )?;
-
-            descriptor_set.bind_resources(|binder| {
-                binder
-                    .bind_combined_images_samplers(
-                        0,
-                        [
-                            (
-                                ImageLayout::ShaderReadOnlyOptimal,
-                                gbuffer_position_image_views[frame_index].clone(),
-                                gbuffer_sampler.clone(),
-                            ),
-                            (
-                                ImageLayout::ShaderReadOnlyOptimal,
-                                gbuffer_normal_image_views[frame_index].clone(),
-                                gbuffer_sampler.clone(),
-                            ),
-                            (
-                                ImageLayout::ShaderReadOnlyOptimal,
-                                gbuffer_texture_image_views[frame_index].clone(),
-                                gbuffer_sampler.clone(),
-                            ),
-                        ]
-                        .as_slice(),
-                    )
-                    .unwrap();
-            })?;
-
-            gbuffer_descriptor_sets.push(descriptor_set);
-        }
-
         let gbuffer_descriptor_set_layout = DescriptorSetLayout::new(
             device.clone(),
-            [BindingDescriptor::new(
-                [ShaderStageAccessIn::RayTracing(vulkan_framework::shader_stage_access::ShaderStageAccessInRayTracingKHR::RayGen), ShaderStageAccessIn::Fragment].as_slice().into(),
-                BindingType::Native(NativeBindingType::CombinedImageSampler),
-                0,
-                3,
-            )]
+            [
+                BindingDescriptor::new(
+                    [ShaderStageAccessIn::RayTracing(vulkan_framework::shader_stage_access::ShaderStageAccessInRayTracingKHR::RayGen), ShaderStageAccessIn::Fragment].as_slice().into(),
+                    BindingType::Native(NativeBindingType::CombinedImageSampler),
+                    0,
+                    1u32,
+                ),
+                BindingDescriptor::new(
+                    [ShaderStageAccessIn::RayTracing(vulkan_framework::shader_stage_access::ShaderStageAccessInRayTracingKHR::RayGen), ShaderStageAccessIn::Fragment].as_slice().into(),
+                    BindingType::Native(NativeBindingType::CombinedImageSampler),
+                    1,
+                    1u32,
+                ),
+                BindingDescriptor::new(
+                    [ShaderStageAccessIn::RayTracing(vulkan_framework::shader_stage_access::ShaderStageAccessInRayTracingKHR::RayGen), ShaderStageAccessIn::Fragment].as_slice().into(),
+                    BindingType::Native(NativeBindingType::CombinedImageSampler),
+                    2,
+                    4u32,
+                ),
+            ]
             .as_slice(),
         )?;
+
+        let gbuffer_descriptor_set = DescriptorSet::new(
+            gbuffer_descriptor_pool.clone(),
+            gbuffer_descriptor_set_layout.clone(),
+        )?;
+
+        gbuffer_descriptor_set.bind_resources(|binder| {
+            binder
+                .bind_combined_images_samplers(
+                    0,
+                    [(
+                        ImageLayout::ShaderReadOnlyOptimal,
+                        gbuffer_depth_stencil_image_view.clone(),
+                        gbuffer_sampler.clone(),
+                    )]
+                    .as_slice(),
+                )
+                .unwrap();
+
+            binder
+                .bind_combined_images_samplers(
+                    1,
+                    [(
+                        ImageLayout::ShaderReadOnlyOptimal,
+                        gbuffer_instance_id_image_view.clone(),
+                        gbuffer_sampler.clone(),
+                    )]
+                    .as_slice(),
+                )
+                .unwrap();
+
+            binder
+                .bind_combined_images_samplers_with_same_layout_and_sampler(
+                    2,
+                    ImageLayout::ShaderReadOnlyOptimal,
+                    gbuffer_sampler.clone(),
+                    [
+                        gbuffer_position_image_view.clone(),
+                        gbuffer_normal_image_view.clone(),
+                        gbuffer_diffuse_texture_image_view.clone(),
+                        gbuffer_specular_texture_image_view.clone(),
+                    ]
+                    .as_slice(),
+                )
+                .unwrap();
+        })?;
 
         let vertex_shader =
             VertexShader::new(device.clone(), &[], &[], MESH_RENDERING_VERTEX_SPV).unwrap();
@@ -475,6 +466,8 @@ impl MeshRendering {
                         Self::output_image_color_format(),
                         Self::output_image_color_format(),
                         Self::output_image_color_format(),
+                        Self::output_image_color_format(),
+                        Self::output_instance_format(),
                     ]
                     .as_slice(),
                     Some(Self::output_image_depth_stencil_format()),
@@ -539,19 +532,25 @@ impl MeshRendering {
                 Some("mesh_rendering.graphics_pipeline"),
             )?;
 
+        let semaphore = Semaphore::new(device.clone(), Some("mesh_rendering.semaphore"))?;
+
         Ok(Self {
             image_dimensions,
 
             gbuffer_descriptor_set_layout,
-            gbuffer_descriptor_sets,
+            gbuffer_descriptor_set,
 
             push_constants_stages,
             graphics_pipeline,
 
-            gbuffer_depth_stencil_image_views,
-            gbuffer_position_image_views,
-            gbuffer_normal_image_views,
-            gbuffer_texture_image_views,
+            semaphore,
+
+            gbuffer_depth_stencil_image_view,
+            gbuffer_position_image_view,
+            gbuffer_normal_image_view,
+            gbuffer_diffuse_texture_image_view,
+            gbuffer_specular_texture_image_view,
+            gbuffer_instance_id_image_view,
         })
     }
 
@@ -573,10 +572,12 @@ impl MeshRendering {
     where
         ManagerT: std::ops::Deref<Target = Manager>,
     {
-        let position_imageview = self.gbuffer_position_image_views[current_frame].clone();
-        let normal_imageview = self.gbuffer_normal_image_views[current_frame].clone();
-        let texture_imageview = self.gbuffer_texture_image_views[current_frame].clone();
-        let depth_stencil_imageview = self.gbuffer_depth_stencil_image_views[current_frame].clone();
+        let position_imageview = self.gbuffer_position_image_view.clone();
+        let normal_imageview = self.gbuffer_normal_image_view.clone();
+        let diffuse_texture_imageview = self.gbuffer_diffuse_texture_image_view.clone();
+        let specular_texture_imageview = self.gbuffer_specular_texture_image_view.clone();
+        let instance_id_imageview = self.gbuffer_instance_id_image_view.clone();
+        let depth_stencil_imageview = self.gbuffer_depth_stencil_image_view.clone();
 
         // update materials descriptor sets (to make them relevants to this frame)
         meshes.update_buffers(recorder, current_frame, queue_family.clone());
@@ -613,7 +614,31 @@ impl MeshRendering {
                 MemoryAccess::from([].as_slice()),
                 PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
                 MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
-                texture_imageview.image().into(),
+                diffuse_texture_imageview.image().into(),
+                ImageLayout::Undefined,
+                Self::output_image_color_layout(),
+                queue_family.clone(),
+                queue_family.clone(),
+            )
+            .into(),
+            ImageMemoryBarrier::new(
+                PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
+                MemoryAccess::from([].as_slice()),
+                PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
+                MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
+                specular_texture_imageview.image().into(),
+                ImageLayout::Undefined,
+                Self::output_image_color_layout(),
+                queue_family.clone(),
+                queue_family.clone(),
+            )
+            .into(),
+            ImageMemoryBarrier::new(
+                PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
+                MemoryAccess::from([].as_slice()),
+                PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
+                MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
+                instance_id_imageview.image().into(),
                 ImageLayout::Undefined,
                 Self::output_image_color_layout(),
                 queue_family.clone(),
@@ -658,8 +683,18 @@ impl MeshRendering {
                 AttachmentStoreOp::Store,
             ),
             DynamicRenderingColorAttachment::new(
-                texture_imageview.clone(),
+                diffuse_texture_imageview.clone(),
                 RenderingAttachmentSetup::clear(ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0)),
+                AttachmentStoreOp::Store,
+            ),
+            DynamicRenderingColorAttachment::new(
+                specular_texture_imageview.clone(),
+                RenderingAttachmentSetup::clear(ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0)),
+                AttachmentStoreOp::Store,
+            ),
+            DynamicRenderingColorAttachment::new(
+                instance_id_imageview.clone(),
+                RenderingAttachmentSetup::clear(ColorClearValues::UVec4(0, 0, 0, 0)),
                 AttachmentStoreOp::Store,
             ),
         ];
@@ -700,6 +735,30 @@ impl MeshRendering {
         // place image barriers to transition them to the right format
         recorder.pipeline_barriers([
             ImageMemoryBarrier::new(
+                PipelineStages::from(
+                    [
+                        PipelineStage::EarlyFragmentTests,
+                        PipelineStage::LateFragmentTests,
+                    ]
+                    .as_slice(),
+                ),
+                MemoryAccess::from(
+                    [
+                        MemoryAccessAs::DepthStencilAttachmentWrite,
+                        MemoryAccessAs::DepthStencilAttachmentRead,
+                    ]
+                    .as_slice(),
+                ),
+                gbuffer_stages,
+                gbuffer_access,
+                depth_stencil_imageview.image().into(),
+                Self::output_image_depth_stencil_layout(),
+                ImageLayout::ShaderReadOnlyOptimal,
+                queue_family.clone(),
+                queue_family.clone(),
+            )
+            .into(),
+            ImageMemoryBarrier::new(
                 PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
                 MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
                 gbuffer_stages,
@@ -728,7 +787,31 @@ impl MeshRendering {
                 MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
                 gbuffer_stages,
                 gbuffer_access,
-                texture_imageview.image().into(),
+                diffuse_texture_imageview.image().into(),
+                Self::output_image_color_layout(),
+                ImageLayout::ShaderReadOnlyOptimal,
+                queue_family.clone(),
+                queue_family.clone(),
+            )
+            .into(),
+            ImageMemoryBarrier::new(
+                PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
+                MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
+                gbuffer_stages,
+                gbuffer_access,
+                specular_texture_imageview.image().into(),
+                Self::output_image_color_layout(),
+                ImageLayout::ShaderReadOnlyOptimal,
+                queue_family.clone(),
+                queue_family.clone(),
+            )
+            .into(),
+            ImageMemoryBarrier::new(
+                PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
+                MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
+                gbuffer_stages,
+                gbuffer_access,
+                instance_id_imageview.image().into(),
                 Self::output_image_color_layout(),
                 ImageLayout::ShaderReadOnlyOptimal,
                 queue_family.clone(),
@@ -737,6 +820,6 @@ impl MeshRendering {
             .into(),
         ]);
 
-        self.gbuffer_descriptor_sets[current_frame].clone()
+        self.gbuffer_descriptor_set.clone()
     }
 }
