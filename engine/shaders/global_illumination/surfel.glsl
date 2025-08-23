@@ -101,6 +101,7 @@ void init_surfel(
     vec3 irradiance,
     uint morton_code
 ) {
+    // flag it as currently locked
     atomicOr(surfels[surfel_id].flags, SURFEL_FLAG_LOCKED);
 
     surfels[surfel_id].instance_id        = instance_id;
@@ -117,8 +118,13 @@ void init_surfel(
     surfels[surfel_id].contributions      = 1u;
     surfels[surfel_id].morton             = morton_code;
 
+    // set flags to 0 except the lock bit
     atomicAnd(surfels[surfel_id].flags, SURFEL_FLAG_LOCKED);
+    
+    // set all flags as requested except the lock bit
     atomicOr(surfels[surfel_id].flags, flags & ~SURFEL_FLAG_LOCKED);
+
+    // WARNING: exiting from this function, the surfel is still locked
 }
 
 uint linear_search_surfel_for_allocation(uint last_surfel_id, vec3 point, float radius) {
@@ -197,7 +203,7 @@ uint register_surfel(
             const uint surfel_id = surfel_search_res;
 
             // try locking the surfel
-            if (!lock_surfel(surfel_id)) {
+            while (!lock_surfel(surfel_id)) {
                 // surfel is locked, avoid wasting time and just return busy
                 return REGISTER_SURFEL_BUSY;
             }
@@ -217,9 +223,12 @@ uint register_surfel(
             surfels[surfel_id].normal_x = new_normal.x;
             surfels[surfel_id].normal_y = new_normal.y;
             surfels[surfel_id].normal_z = new_normal.z;
+
+            surfels[surfel_id].irradiance_r += irradiance.r;
+            surfels[surfel_id].irradiance_g += irradiance.g;
+            surfels[surfel_id].irradiance_b += irradiance.b;
+
             surfels[surfel_id].contributions += 1u;
-
-
 
             //const vec3 surfel_diffuse = vec3(surfels[surfel_search_res].irradiance_r, surfels[surfel_search_res].irradiance_g, surfels[surfel_search_res].irradiance_b) / float(surfels[surfel_search_res].irradiance_samples);
             //lights_contribution += contribution(surfel_diffuse, length(light_intensity), diffuse_contribution);
@@ -248,6 +257,7 @@ uint register_surfel(
                 checked_surfels = allocated_surfels();
             } else {
                 init_surfel(surfel_id, flags, instance_id, position, radius, normal, irradiance, morton);
+                unlock_surfel(surfel_id);
                 memoryBarrierBuffer();
                 return REGISTER_SURFEL_OK;
 

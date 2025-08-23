@@ -65,6 +65,8 @@ void main() {
 
     const vec3 old_gi_data = gi_data.gi_reuse_frames > 0 ? imageLoad(outputImage[0], ivec2(gl_LaunchIDEXT.xy)).rgb : vec3(0.0, 0.0, 0.0);
 
+    const float radius = 15.0;
+
     const vec3 origin = texelFetch(gbuffer[0], texel_position, 0).xyz;
     const vec3 normal = texelFetch(gbuffer[1], texel_position, 0).xyz;
     const vec3 diffuse = texelFetch(gbuffer[2], texel_position, 0).xyz;
@@ -108,8 +110,6 @@ void main() {
                 }
 
                 if (!payload.hit) {
-                    const float radius = 15.0;
-
                     diffuse_contribution = max(dot(normal, ray_dir), 0.0);
                     const vec3 diffuse = diffuse_contribution * light_intensity * diffuse;
 
@@ -120,7 +120,16 @@ void main() {
                     // TODO: here sum specular
                     lights_contribution += diffuse;
 
-                    register_surfel(eye_position, clip_planes, payload.instance_id, true, origin, radius, normal, diffuse_contribution * light_intensity);
+                    register_surfel(
+                        eye_position,
+                        clip_planes,
+                        payload.instance_id,
+                        true,
+                        origin,
+                        radius,
+                        normal,
+                        diffuse_contribution * light_intensity
+                    );
                 }
             }
         }
@@ -137,10 +146,14 @@ void main() {
         const uint search_surfels = allocated_surfels();
         const uint surfel_id = linear_search_surfel_ignore_instance_id(search_surfels, origin);
         if (surfel_id != SURFELS_MISSED) {
-            if (surfel_is_primary(surfel_id)) {
-                contribution = vec3(0.0, 0.0, 250.0);
+            if (surfels[surfel_id].contributions > 200u) {
+                contribution = vec3(0.0, 250.0, 0.0);
             } else {
-                contribution = vec3(250.0, 0.0, 0.0);
+                if (surfel_is_primary(surfel_id)) {
+                    contribution = vec3(0.0, 0.0, 250.0);
+                } else {
+                    contribution = vec3(250.0, 0.0, 0.0);
+                }
             }
 
             contribution *= vec3(surfels[surfel_id].contributions) * 1.0;
@@ -246,7 +259,16 @@ void main() {
                             incoming_diffuse_light.y > RADIANCE_THRESHOLD ||
                             incoming_diffuse_light.z > RADIANCE_THRESHOLD
                         ) {
-
+                            register_surfel(
+                                eye_position,
+                                clip_planes,
+                                payload.instance_id,
+                                false,
+                                collisions[ray_depth].position,
+                                radius,
+                                collisions[ray_depth].triangle_normal,
+                                incoming_diffuse_light
+                            );
                         }
 
                         contribution += incoming_diffuse_light;
