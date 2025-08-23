@@ -7,6 +7,31 @@
         {
             "type": "lldb",
             "request": "launch",
+            "name": "Debug engine 'artrtic' (with shader printf)",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=artrtic",
+                    "--package=artrtic"
+                ],
+                "filter": {
+                    "name": "artrtic",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_BACKTRACE": "full",
+                "VK_LAYER_PRINTF_ENABLE": "1",
+                "VK_LAYER_PRINTF_TO_STDOUT": "1",
+                "VK_LAYER_PRINTF_BUFFER_SIZE": "4096"
+                //"ENABLE_VULKAN_RENDERDOC_CAPTURE": "1",
+            }
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
             "name": "Debug engine 'artrtic'",
             "cargo": {
                 "args": [
