@@ -1,4 +1,4 @@
-#define MAX_DIRECTIONAL_LIGHTS 8
+#include "../config.glsl"
 
 layout (location = 0) out vec4 outColor;
 
@@ -26,9 +26,10 @@ void main() {
     const vec3 global_illumination_received = texture(gibuffer[0], in_vTextureUV).xyz;
     const vec3 directional_light_received = texture(gibuffer[1], in_vTextureUV).xyz;
 
-    vec3 out_vDiffuseAlbedo = directional_light_received;
+    vec3 out_vDiffuseAlbedo = directional_light_received + global_illumination_received;
+    if (SHOW_SURFELS) {
+        out_vDiffuseAlbedo = directional_light_received * 0.1 + global_illumination_received;
+    }
 
-    const vec3 global_illumination_contribution = in_vDiffuseAlbedo.xyz * global_illumination_received;
-
-    outColor = vec4(out_vDiffuseAlbedo.xyz + global_illumination_contribution, 1.0);
+    outColor = vec4(out_vDiffuseAlbedo.xyz, 1.0);
 }

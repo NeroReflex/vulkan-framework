@@ -1,6 +1,8 @@
 #ifndef _SURFEL_
 #define _SURFEL_
 
+#include "../config.glsl"
+
 #define SURFELS_FULL 0xFFFFFFFFu
 #define SURFELS_MISSED 0xFFFFFFFEu
 
@@ -34,20 +36,24 @@ struct Surfel {
     uint padding[2];
 };
 
-layout (set = 5, binding = 0, std430) buffer surfel_stats {
+layout (set = 5, binding = 0, std430) coherent buffer surfel_stats {
     SurfelStats stats;
 };
 
-layout (set = 5, binding = 1, std430) buffer surfel_buffer_data { 
+layout (set = 5, binding = 1, std430) coherent buffer surfel_buffer_data { 
     Surfel surfels[];
 };
 
-bool is_point_in_surfel(const in vec3 point, const in Surfel surfel) {
-    const vec3 center = vec3(surfel.position_x, surfel.position_y, surfel.position_z);
-    const float radius = surfel.radius;
-    const float r2 = radius * radius;
-    const float d2 = dot(point - center, point - center);
-    return d2 <= r2;
+bool is_point_in_surfel(uint surfel_id, const in vec3 point) {
+    const vec3 center = vec3(surfels[surfel_id].position_x, surfels[surfel_id].position_y, surfels[surfel_id].position_z);
+    const float radius = surfels[surfel_id].radius;
+
+    const vec3 direction = point - center;
+
+    return length(direction) <= radius;
+    
+    // this is supposed to be more efficient
+    //return dot(direction, direction) <= radius * radius;
 }
 
 // Given the number of surfels already checked (to see if it would have been fitted into any of them),
@@ -75,7 +81,7 @@ void unlock_surfel(uint surfel_id) {
     atomicAnd(surfels[surfel_id].lock, 0u);
 }
 
-void init_surfel(uint surfel_id, uint instance_id, vec3 position, float radius, vec3 normal, vec3 diffuse) {
+void init_surfel(uint surfel_id, uint instance_id, vec3 position, float radius, vec3 normal, vec3 irradiance) {
     atomicOr(surfels[surfel_id].lock, 1u);
     surfels[surfel_id].instance_id        = instance_id;
     surfels[surfel_id].position_x         = position.x;
@@ -86,16 +92,26 @@ void init_surfel(uint surfel_id, uint instance_id, vec3 position, float radius, 
     surfels[surfel_id].normal_y           = normal.y;
     surfels[surfel_id].normal_z           = normal.z;
     surfels[surfel_id].normal_samples     = 1u;
-    surfels[surfel_id].irradiance_r       = diffuse.r;
-    surfels[surfel_id].irradiance_g       = diffuse.g;
-    surfels[surfel_id].irradiance_b       = diffuse.b;
+    surfels[surfel_id].irradiance_r       = irradiance.r;
+    surfels[surfel_id].irradiance_g       = irradiance.g;
+    surfels[surfel_id].irradiance_b       = irradiance.b;
     surfels[surfel_id].irradiance_samples = 1u;
     unlock_surfel(surfel_id);
 }
 
 uint linear_search_surfel(uint last_surfel_id, vec3 point, uint instance_id) {
     for (uint i = 0; i < last_surfel_id; i++) {
-        if ((surfels[i].instance_id == instance_id) && (is_point_in_surfel(point, surfels[i]))) {
+        if ((surfels[i].instance_id == instance_id) && (is_point_in_surfel(i, point))) {
+            return i;
+        }
+    }
+
+    return SURFELS_MISSED;
+}
+
+uint linear_search_surfel_ignore_instance_id(uint last_surfel_id, vec3 point) {
+    for (uint i = 0; i < last_surfel_id; i++) {
+        if (is_point_in_surfel(i, point)) {
             return i;
         }
     }

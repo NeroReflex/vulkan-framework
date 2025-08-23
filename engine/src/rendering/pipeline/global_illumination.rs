@@ -505,34 +505,36 @@ impl GILighting {
     }
 
     pub fn record_init_commands(&self, recorder: &mut CommandBufferRecorder) {
-        let buffer_srr = BufferSubresourceRange::new(
+        let surfel_stats_srr = BufferSubresourceRange::new(
             self.raytracing_surfel_stats_buffer.clone(),
             0u64,
             self.raytracing_surfel_stats_buffer.size(),
         );
 
-        recorder.pipeline_barriers([PipelineBarrier::Buffer(BufferMemoryBarrier::new(
+        recorder.pipeline_barriers([BufferMemoryBarrier::new(
             [PipelineStage::TopOfPipe].as_slice().into(),
             [].as_slice().into(),
             [PipelineStage::Transfer].as_slice().into(),
             [MemoryAccessAs::TransferWrite].as_slice().into(),
-            buffer_srr.clone(),
+            surfel_stats_srr.clone(),
             self.queue_family.clone(),
             self.queue_family.clone(),
-        ))]);
+        )
+        .into()]);
 
         let clear_val = [MAX_SURFELS, 0, MAX_SURFELS];
-        recorder.update_buffer(buffer_srr.buffer(), 0, &clear_val);
+        recorder.update_buffer(surfel_stats_srr.buffer(), 0, &clear_val);
 
-        recorder.pipeline_barriers([PipelineBarrier::Buffer(BufferMemoryBarrier::new(
+        recorder.pipeline_barriers([BufferMemoryBarrier::new(
             [PipelineStage::Transfer].as_slice().into(),
             [MemoryAccessAs::TransferWrite].as_slice().into(),
             [PipelineStage::BottomOfPipe].as_slice().into(),
             [MemoryAccessAs::MemoryRead].as_slice().into(),
-            buffer_srr.clone(),
+            surfel_stats_srr.clone(),
             self.queue_family.clone(),
             self.queue_family.clone(),
-        ))]);
+        )
+        .into()]);
     }
 
     pub fn record_rendering_commands(
@@ -549,6 +551,18 @@ impl GILighting {
     ) -> Arc<DescriptorSet> {
         // TODO: of all word positions from GBUFFER, (order them, maybe) and for each directional light
         // use those to decide the portion that has to be rendered as depth in the shadow map
+
+        let surfel_stats_srr = BufferSubresourceRange::new(
+            self.raytracing_surfel_stats_buffer.clone(),
+            0u64,
+            self.raytracing_surfel_stats_buffer.size(),
+        );
+
+        let surfels_srr = BufferSubresourceRange::new(
+            self.raytracing_surfels.clone(),
+            0u64,
+            self.raytracing_surfels.size(),
+        );
 
         // Here clear image(s) and transition its layout for using it in the raytracing pipeline
         let gibuffer_image_srr: ImageSubresourceRange = self.raytracing_gibuffer.image().into();
@@ -669,6 +683,41 @@ impl GILighting {
             ]);
         }
 
+        recorder.pipeline_barriers([
+            BufferMemoryBarrier::new(
+                [PipelineStage::TopOfPipe].as_slice().into(),
+                [].as_slice().into(),
+                [PipelineStage::RayTracingPipelineKHR(
+                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                )]
+                .as_slice()
+                .into(),
+                [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
+                    .as_slice()
+                    .into(),
+                surfel_stats_srr.clone(),
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into(),
+            BufferMemoryBarrier::new(
+                [PipelineStage::TopOfPipe].as_slice().into(),
+                [].as_slice().into(),
+                [PipelineStage::RayTracingPipelineKHR(
+                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                )]
+                .as_slice()
+                .into(),
+                [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
+                    .as_slice()
+                    .into(),
+                surfels_srr.clone(),
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into(),
+        ]);
+
         recorder.bind_ray_tracing_pipeline(self.raytracing_pipeline.clone());
         recorder.bind_descriptor_sets_for_ray_tracing_pipeline(
             self.raytracing_pipeline.get_parent_pipeline_layout(),
@@ -736,6 +785,38 @@ impl GILighting {
                 dlbuffer_image_srr,
                 ImageLayout::General,
                 ImageLayout::ShaderReadOnlyOptimal,
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into(),
+            BufferMemoryBarrier::new(
+                [PipelineStage::RayTracingPipelineKHR(
+                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                )]
+                .as_slice()
+                .into(),
+                [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
+                    .as_slice()
+                    .into(),
+                [PipelineStage::BottomOfPipe].as_slice().into(),
+                [MemoryAccessAs::MemoryRead].as_slice().into(),
+                surfel_stats_srr.clone(),
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into(),
+            BufferMemoryBarrier::new(
+                [PipelineStage::RayTracingPipelineKHR(
+                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                )]
+                .as_slice()
+                .into(),
+                [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
+                    .as_slice()
+                    .into(),
+                [PipelineStage::BottomOfPipe].as_slice().into(),
+                [MemoryAccessAs::MemoryRead].as_slice().into(),
+                surfels_srr.clone(),
                 self.queue_family.clone(),
                 self.queue_family.clone(),
             )
