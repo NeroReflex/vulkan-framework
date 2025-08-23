@@ -22,6 +22,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app_name = String::from("ArtRTic");
 
     let sdl_context = sdl2::init().unwrap();
+    let sdl_mouse = sdl_context.mouse();
+    sdl_mouse.set_relative_mouse_mode(true);
 
     let mut renderer = System::new(
         app_name,
@@ -35,6 +37,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // a test call
     renderer.test();
+
+    let mut locked = false;
+
+    let mut prev_frame_lock_key_was_pressed = false;
 
     let mut start_time = Instant::now();
     let mut frame_count = 0;
@@ -55,7 +61,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // set initial camera
     renderer.change_camera(Arc::new(camera.clone()));
 
-    //sdl_mouse.capture(true);
     let move_units_per_second = 275.0;
     let mouse_sensitivity_per_millisecond = 0.0015;
 
@@ -85,7 +90,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         {
             let move_quantity = move_units_per_second * (coeff / 1000.0);
             let new_keyboard_state = event_pump.keyboard_state();
-            {
+            
+            if !prev_frame_lock_key_was_pressed && new_keyboard_state.is_scancode_pressed(Scancode::Space) {
+                locked = !locked;
+                prev_frame_lock_key_was_pressed = true;
+                //sdl_mouse.set_relative_mouse_mode(locked);
+            } else if !new_keyboard_state.is_scancode_pressed(Scancode::Space) {
+                prev_frame_lock_key_was_pressed = false;
+            }
+
+            if !locked {
                 if new_keyboard_state.is_scancode_pressed(Scancode::W) {
                     camera.apply_movement(camera.orientation(), move_quantity);
 
@@ -131,7 +145,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let orientation_change = (new_mouse_pos - mouse_pos) * mous_coeff;
             mouse_pos = new_mouse_pos;
 
-            if orientation_change.x != 0.0 || orientation_change.y != 0.0 {
+            if !locked && ((orientation_change.x != 0.0) || (orientation_change.y != 0.0)) {
                 camera.apply_horizontal_rotation(orientation_change.x);
                 camera.apply_vertical_rotation(orientation_change.y);
                 renderer.change_camera(Arc::new(camera.clone()));
