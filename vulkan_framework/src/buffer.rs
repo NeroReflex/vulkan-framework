@@ -433,6 +433,7 @@ impl BufferTrait for AllocatedBuffer {
     }
 }
 
+#[derive(Clone)]
 pub struct BufferSubresourceRange {
     buffer: Arc<dyn BufferTrait>,
     offset: u64,

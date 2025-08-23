@@ -90,8 +90,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         {
             let move_quantity = move_units_per_second * (coeff / 1000.0);
             let new_keyboard_state = event_pump.keyboard_state();
-            
-            if !prev_frame_lock_key_was_pressed && new_keyboard_state.is_scancode_pressed(Scancode::Space) {
+
+            if !prev_frame_lock_key_was_pressed
+                && new_keyboard_state.is_scancode_pressed(Scancode::Space)
+            {
                 locked = !locked;
                 prev_frame_lock_key_was_pressed = true;
                 //sdl_mouse.set_relative_mouse_mode(locked);

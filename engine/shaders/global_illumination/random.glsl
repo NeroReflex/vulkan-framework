@@ -17,6 +17,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#ifndef _RANDOM_
+#define _RANDOM_
+
 // Generate a random unsigned int from two unsigned int values, using 16 pairs
 // of rounds of the Tiny Encryption Algorithm. See Zafar, Olano, and Curtis,
 // "GPU Random Numbers via the Tiny Encryption Algorithm"
@@ -51,3 +54,5 @@ float rnd(inout uint prev)
 {
   return (float(lcg(prev)) / float(0x01000000));
 }
+
+#endif // _RANDOM_

@@ -163,32 +163,27 @@ void main() {
         data[gl_InstanceID].vb.vertex_data[vertex_index.z].texture_v
     );
 
-/*
-    const mat3x4 load_matrix = data[gl_InstanceID].tb.transform[0];
+    const mat3x4 load_matrix = data[gl_InstanceID].tb.transform;
     const mat3x4 transform_matrix = data[gl_InstanceID].instance.blas_ref[gl_InstanceID].model_matrix;
 
     const mat4 model_matrix =
         mat4(transform_matrix[0], transform_matrix[1], transform_matrix[2], vec4(0.0, 0.0, 0.0, 1.0)) *
         mat4(load_matrix[0], load_matrix[1], load_matrix[2], vec4(0.0, 0.0, 0.0, 1.0));
 
-    const vec4 v1_world_position = model_matrix * v1_position;
-    const vec4 v2_world_position = model_matrix * v2_position;
-    const vec4 v3_world_position = model_matrix * v3_position;
+    const uint mesh_id = gl_InstanceCustomIndexEXT;
+
+    //const mat4 model_matrix = mat4(gl_ObjectToWorldEXT[0], gl_ObjectToWorldEXT[1], gl_ObjectToWorldEXT[2], vec4(0.0, 0.0, 0.0, 1.0));
+
+    vec4 v1_world_position = model_matrix * v1_position;
+    v1_world_position /= v1_world_position.w;
+    vec4 v2_world_position = model_matrix * v2_position;
+    v2_world_position /= v2_world_position.w;
+    vec4 v3_world_position = model_matrix * v3_position;
+    v3_world_position /= v3_world_position.w;
 
     const vec4 v1_world_normal = model_matrix * v1_normal;
     const vec4 v2_world_normal = model_matrix * v2_normal;
     const vec4 v3_world_normal = model_matrix * v3_normal;
-*/
-
-    const uint mesh_id = gl_InstanceCustomIndexEXT;
-
-    const vec3 v1_world_position = gl_ObjectToWorldEXT * v1_position;
-    const vec3 v2_world_position = gl_ObjectToWorldEXT * v2_position;
-    const vec3 v3_world_position = gl_ObjectToWorldEXT * v3_position;
-
-    const vec3 v1_world_normal = gl_ObjectToWorldEXT * v1_normal;
-    const vec3 v2_world_normal = gl_ObjectToWorldEXT * v2_normal;
-    const vec3 v3_world_normal = gl_ObjectToWorldEXT * v3_normal;
 
     const uint material_index = material_for_mesh[nonuniformEXT(mesh_id)].material_index;
     const uint diffuse_texture_id = info[nonuniformEXT(material_index)].diffuse_texture_index;
@@ -202,4 +197,5 @@ void main() {
     payload.position = v1_world_position.xyz * barycentrics.x + v2_world_position.xyz * barycentrics.y + v3_world_position.xyz * barycentrics.z;
     payload.triangle_normal = calculateNormal(v1_world_normal.xyz, v2_world_normal.xyz, v3_world_normal.xyz);
     payload.diffuse = diffuse_surface_color.xyz;
+    payload.instance_id = gl_InstanceID;
 }

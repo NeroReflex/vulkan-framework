@@ -6,6 +6,10 @@ use std::{
 use inline_spirv::inline_spirv;
 use vulkan_framework::{
     binding_tables::RaytracingBindingTables,
+    buffer::{
+        AllocatedBuffer, Buffer, BufferSubresourceRange, BufferTrait, BufferUseAs,
+        ConcreteBufferDescriptor,
+    },
     clear_values::ColorClearValues,
     command_buffer::CommandBufferRecorder,
     descriptor_pool::{
@@ -20,7 +24,9 @@ use vulkan_framework::{
         ImageUseAs,
     },
     image_view::ImageView,
-    memory_barriers::{ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
+    memory_barriers::{
+        BufferMemoryBarrier, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs, PipelineBarrier,
+    },
     memory_heap::MemoryType,
     memory_management::{MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait},
     memory_pool::MemoryPoolFeatures,
@@ -85,6 +91,9 @@ pub struct GILighting {
 
     raytracing_pipeline: Arc<RaytracingPipeline>,
 
+    raytracing_surfel_stats_buffer: Arc<AllocatedBuffer>,
+    raytracing_surfels: Arc<AllocatedBuffer>,
+
     raytracing_gibuffer: Arc<ImageView>,
     raytracing_dlbuffer: Arc<ImageView>,
 
@@ -98,6 +107,9 @@ pub struct GILighting {
     renderarea_width: u32,
     renderarea_height: u32,
 }
+
+const MAX_SURFELS: u32 = 2 ^ 20 * 16;
+const SURFEL_SIZE: u32 = 16 * 4;
 
 impl GILighting {
     /// Returns the descriptor set layout for the gbuffer
@@ -138,6 +150,28 @@ impl GILighting {
         let output_descriptor_set_layout = DescriptorSetLayout::new(
             device.clone(),
             [
+                // surfel_stats
+                BindingDescriptor::new(
+                    [ShaderStageAccessIn::RayTracing(
+                        ShaderStageAccessInRayTracingKHR::RayGen,
+                    )]
+                    .as_slice()
+                    .into(),
+                    BindingType::Native(NativeBindingType::StorageBuffer),
+                    0,
+                    1,
+                ),
+                // surfels
+                BindingDescriptor::new(
+                    [ShaderStageAccessIn::RayTracing(
+                        ShaderStageAccessInRayTracingKHR::RayGen,
+                    )]
+                    .as_slice()
+                    .into(),
+                    BindingType::Native(NativeBindingType::StorageBuffer),
+                    1,
+                    1,
+                ),
                 // outputImages
                 BindingDescriptor::new(
                     [ShaderStageAccessIn::RayTracing(
@@ -146,7 +180,7 @@ impl GILighting {
                     .as_slice()
                     .into(),
                     BindingType::Native(NativeBindingType::StorageImage),
-                    0,
+                    2,
                     2,
                 ),
             ]
@@ -236,9 +270,37 @@ impl GILighting {
                 Some(format!("raytracing_global_dlbuffer_image").as_str()),
             )?
             .into(),
+            Buffer::new(
+                device.clone(),
+                ConcreteBufferDescriptor::new(
+                    [BufferUseAs::StorageBuffer, BufferUseAs::TransferDst]
+                        .as_slice()
+                        .into(),
+                    (MAX_SURFELS as u64) * (SURFEL_SIZE as u64),
+                ),
+                None,
+                Some("surfel_stats"),
+            )?
+            .into(),
+            Buffer::new(
+                device.clone(),
+                ConcreteBufferDescriptor::new(
+                    [BufferUseAs::StorageBuffer].as_slice().into(),
+                    (MAX_SURFELS as u64) * (SURFEL_SIZE as u64),
+                ),
+                None,
+                Some("surfel_pool"),
+            )?
+            .into(),
         ];
 
-        let (raytracing_gibuffer, raytracing_dlbuffer, raytracing_sbt) = {
+        let (
+            raytracing_surfel_stats_buffer,
+            raytracing_surfels,
+            raytracing_gibuffer,
+            raytracing_dlbuffer,
+            raytracing_sbt,
+        ) = {
             let mut mem_manager = memory_manager.lock().unwrap();
 
             let raytracing_buffers_allocated = mem_manager.allocate_resources(
@@ -276,6 +338,10 @@ impl GILighting {
                 Some(format!("raytracing_global_dlbuffer_image_imageview").as_str()),
             )?;
 
+            let raytracing_surfel_stats_buffer = raytracing_buffers_allocated[2].buffer();
+
+            let raytracing_surfels = raytracing_buffers_allocated[3].buffer();
+
             let raytracing_sbt = RaytracingBindingTables::new(
                 raytracing_pipeline.clone(),
                 mem_manager.deref_mut(),
@@ -284,7 +350,13 @@ impl GILighting {
                     .with_size(MemoryManagementTagSize::MediumSmall),
             )?;
 
-            (raytracing_gibuffer, raytracing_dlbuffer, raytracing_sbt)
+            (
+                raytracing_surfel_stats_buffer,
+                raytracing_surfels,
+                raytracing_gibuffer,
+                raytracing_dlbuffer,
+                raytracing_sbt,
+            )
         };
 
         let output_descriptor_pool = DescriptorPool::new(
@@ -297,7 +369,7 @@ impl GILighting {
                     2 * frames_in_flight,
                     0,
                     0,
-                    0,
+                    2 * frames_in_flight,
                     0,
                     0,
                     None,
@@ -313,10 +385,34 @@ impl GILighting {
         )?;
 
         output_descriptor_set.bind_resources(|binder| {
+            binder
+                .bind_storage_buffers(
+                    0,
+                    [(
+                        raytracing_surfel_stats_buffer.clone() as Arc<dyn BufferTrait>,
+                        None,
+                        None,
+                    )]
+                    .as_slice(),
+                )
+                .unwrap();
+
+            binder
+                .bind_storage_buffers(
+                    1,
+                    [(
+                        raytracing_surfels.clone() as Arc<dyn BufferTrait>,
+                        None,
+                        None,
+                    )]
+                    .as_slice(),
+                )
+                .unwrap();
+
             // bind the output images
             binder
                 .bind_storage_images_with_same_layout(
-                    0,
+                    2,
                     ImageLayout::General,
                     [raytracing_gibuffer.clone(), raytracing_dlbuffer.clone()].as_slice(),
                 )
@@ -389,8 +485,11 @@ impl GILighting {
 
             raytracing_pipeline,
 
+            raytracing_surfel_stats_buffer,
+            raytracing_surfels,
             raytracing_gibuffer,
             raytracing_dlbuffer,
+
             raytracing_sbt,
 
             output_descriptor_set,
@@ -405,7 +504,36 @@ impl GILighting {
         })
     }
 
-    pub fn record_init_commands(&self, _recorder: &mut CommandBufferRecorder) {}
+    pub fn record_init_commands(&self, recorder: &mut CommandBufferRecorder) {
+        let buffer_srr = BufferSubresourceRange::new(
+            self.raytracing_surfel_stats_buffer.clone(),
+            0u64,
+            self.raytracing_surfel_stats_buffer.size(),
+        );
+
+        recorder.pipeline_barriers([PipelineBarrier::Buffer(BufferMemoryBarrier::new(
+            [PipelineStage::TopOfPipe].as_slice().into(),
+            [].as_slice().into(),
+            [PipelineStage::Transfer].as_slice().into(),
+            [MemoryAccessAs::TransferWrite].as_slice().into(),
+            buffer_srr.clone(),
+            self.queue_family.clone(),
+            self.queue_family.clone(),
+        ))]);
+
+        let clear_val = [MAX_SURFELS, 0, MAX_SURFELS];
+        recorder.update_buffer(buffer_srr.buffer(), 0, &clear_val);
+
+        recorder.pipeline_barriers([PipelineBarrier::Buffer(BufferMemoryBarrier::new(
+            [PipelineStage::Transfer].as_slice().into(),
+            [MemoryAccessAs::TransferWrite].as_slice().into(),
+            [PipelineStage::BottomOfPipe].as_slice().into(),
+            [MemoryAccessAs::MemoryRead].as_slice().into(),
+            buffer_srr.clone(),
+            self.queue_family.clone(),
+            self.queue_family.clone(),
+        ))]);
+    }
 
     pub fn record_rendering_commands(
         &self,
