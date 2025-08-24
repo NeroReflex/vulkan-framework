@@ -67,10 +67,10 @@ bool is_point_in_surfel(uint surfel_id, const in vec3 point) {
 
     const vec3 direction = point - center;
 
-    return length(direction) <= radius;
+    //return length(direction) <= radius;
     
     // this is supposed to be more efficient
-    //return dot(direction, direction) <= radius * radius;
+    return dot(direction, direction) <= radius * radius;
 }
 
 // Given the number of surfels already checked (to see if it would have been fitted into any of them),
@@ -319,6 +319,7 @@ uint linear_search_surfel_ignore_instance_id(uint last_surfel_id, vec3 point) {
 #define REGISTER_SURFEL_BUSY 5;
 #define REGISTER_SURFEL_BELOW_HORIZON 6
 #define REGISTER_SURFEL_DISABLED 7
+#define REGISTER_SURFEL_IGNORED 8
 
 uint register_surfel(
     uint last_ordered_id,
@@ -341,7 +342,10 @@ uint register_surfel(
 
     bool done = false;
     uint checked_surfels = 0;
+
+#if FORCE_ALLOCATION
     do {
+#endif // FORCE_ALLOCATION
         // try to reuse an existing surfel
         checked_surfels = allocated_surfels();
         uint surfel_search_res = linear_search_surfel_for_allocation(
@@ -418,10 +422,15 @@ uint register_surfel(
                 //debugPrintfEXT("\nCreated surfel %u at position vec3(%f, %f, %f)", surfel_id, surfels[surfel_id].position_x, surfels[surfel_id].position_y, surfels[surfel_id].position_z);
             }
         }
+#if FORCE_ALLOCATION
     } while (1 == 1);
+#endif // FORCE_ALLOCATION
+
 #else
     return REGISTER_SURFEL_DISABLED;
 #endif
+
+    return REGISTER_SURFEL_IGNORED;
 }
 
 bool surfel_is_primary(uint surfel_id) {

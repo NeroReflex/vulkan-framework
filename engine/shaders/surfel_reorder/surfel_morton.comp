@@ -21,9 +21,11 @@ void main() {
     const vec2 clip_space = reconstructNearFarFromCamera();
     const vec3 eye_position = get_eye_position();
 
-    // The morton code can be MAX_UINT: these will be removed in the sorting step
+    // The morton code can be MORTON_OUT_OF_SCALE: these will be removed in the sorting step
     const vec3 surfel_center = vec3(surfels[surfel_id].position_x, surfels[surfel_id].position_y, surfels[surfel_id].position_z);
-    const uint morton = morton3D(eye_position, surfel_center, clip_space);
+    
+    // if previous morton was MORTON_OUT_OF_SCALE, keep it that way (so that surfels that were out of scale will get removed later)
+    const uint morton = surfels[surfel_id].morton == MORTON_OUT_OF_SCALE ? MORTON_OUT_OF_SCALE : morton3D(eye_position, surfel_center, clip_space);
 
     const uint new_surfel_id = half_size + surfel_id;
 
