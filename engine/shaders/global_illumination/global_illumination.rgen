@@ -138,7 +138,8 @@ void main() {
 
     vec3 contribution = vec3(0.0, 0.0, 0.0);
 
-    if ((depth < DEPTH_IGNORE) && (SHOW_SURFELS)) {
+#if SHOW_SURFELS
+    if (depth < DEPTH_IGNORE) {
         const uint search_surfels = allocated_surfels();
         const uint surfel_id = linear_search_surfel_ignore_instance_id(search_surfels, origin);
         if (surfel_id != SURFELS_MISSED) {
@@ -155,6 +156,7 @@ void main() {
             contribution *= vec3(surfels[surfel_id].contributions) * 1.0;
         }
     }
+#endif
 
     uint casted_primary_rays = 0;
     uint ray_depth = 0;

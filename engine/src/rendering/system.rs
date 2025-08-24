@@ -472,6 +472,7 @@ impl System {
             [
                 BindingDescriptor::new(
                     [
+                        ShaderStageAccessIn::Compute,
                         ShaderStageAccessIn::Vertex,
                         ShaderStageAccessIn::RayTracing(ShaderStageAccessInRayTracingKHR::RayGen),
                     ]
@@ -482,9 +483,10 @@ impl System {
                     1,
                 ),
                 BindingDescriptor::new(
-                    [ShaderStageAccessIn::RayTracing(
-                        ShaderStageAccessInRayTracingKHR::RayGen,
-                    )]
+                    [
+                        ShaderStageAccessIn::Compute,
+                        ShaderStageAccessIn::RayTracing(ShaderStageAccessInRayTracingKHR::RayGen),
+                    ]
                     .as_slice()
                     .into(),
                     BindingType::Native(NativeBindingType::StorageBuffer),

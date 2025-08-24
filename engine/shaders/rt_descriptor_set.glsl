@@ -11,7 +11,7 @@
 #endif
 
 #define Buffer(Alignment) \
-  layout(buffer_reference, std430, buffer_reference_align = Alignment) buffer
+  layout(buffer_reference, std430, buffer_reference_align = Alignment) readonly buffer
 
 struct vertex_buffer_element_t {
     float position_x;

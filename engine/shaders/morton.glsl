@@ -1,6 +1,9 @@
 #ifndef _MORTON_
 #define _MORTON_ 1
 
+// It is VERY important that this value is the maximum possible morton code
+// because this way out-of-scale surfels will be sorted to the end of the array
+// for easy removal in the sorting step.
 #define MORTON_OUT_OF_SCALE 0xFFFFFFFFu
 
 // Expands a 10-bit integer into 30 bits

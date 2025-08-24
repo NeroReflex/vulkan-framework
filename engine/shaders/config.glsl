@@ -10,6 +10,6 @@
 
 #define MAX_SURFEL_RADIUS 20.0
 
-#define SHOW_SURFELS true
+#define SHOW_SURFELS 0
 
 #endif // _CONFIG_

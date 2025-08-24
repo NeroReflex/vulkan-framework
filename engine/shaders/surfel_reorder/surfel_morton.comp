@@ -1,0 +1,35 @@
+#extension GL_EXT_debug_printf : enable
+
+layout (local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+#define STATUS_DESCRIPTOR_SET 0
+#include "../status.glsl"
+
+#define SURFELS_DESCRIPTOR_SET 1
+#include "../surfel.glsl"
+
+void main() {
+    const uint size = busy_surfels;
+    const uint half_size = total_surfels / 2;
+    const uint surfel_id = gl_GlobalInvocationID.x;
+
+    // I have nothing to do
+    if (surfel_id >= size) {
+        return;
+    }
+
+    const vec2 clip_space = reconstructNearFarFromCamera();
+    const vec3 eye_position = get_eye_position();
+
+    // The morton code can be MAX_UINT: these will be removed in the sorting step
+    const vec3 surfel_center = vec3(surfels[surfel_id].position_x, surfels[surfel_id].position_y, surfels[surfel_id].position_z);
+    const uint morton = morton3D(eye_position, surfel_center, clip_space);
+
+    const uint new_surfel_id = half_size + surfel_id;
+
+    // copy the surfel to the new location with updated morton code
+    surfels[new_surfel_id] = surfels[surfel_id];
+    surfels[new_surfel_id].morton = morton;
+
+    //memoryBarrierBuffer();
+}

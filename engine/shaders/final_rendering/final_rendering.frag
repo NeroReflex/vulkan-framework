@@ -18,9 +18,9 @@ void main() {
     const vec3 directional_light_received = texture(gibuffer[1], in_vTextureUV).xyz;
 
     vec3 out_vDiffuseAlbedo = directional_light_received + global_illumination_received;
-    if (SHOW_SURFELS) {
+    #if SHOW_SURFELS
         out_vDiffuseAlbedo = directional_light_received * 0.1 + global_illumination_received;
-    }
+    #endif
 
     outColor = vec4(out_vDiffuseAlbedo.xyz, 1.0);
 }

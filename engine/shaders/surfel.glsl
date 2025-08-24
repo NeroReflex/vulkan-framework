@@ -46,11 +46,11 @@ struct Surfel {
 };
 
 layout (set = SURFELS_DESCRIPTOR_SET, binding = 0, std430) /*coherent*/ buffer surfel_stats {
-    uint total_surfels;
-    uint free_surfels;
-    uint busy_surfels;
-    uint frame_spawned;
-    uint ordered_surfels;
+    int total_surfels;
+    int free_surfels;
+    int busy_surfels;
+    int frame_spawned;
+    int ordered_surfels;
 };
 
 layout (set = SURFELS_DESCRIPTOR_SET, binding = 1, std430) /*coherent*/ buffer surfel_buffer_data { 
@@ -76,12 +76,14 @@ bool is_point_in_surfel(uint surfel_id, const in vec3 point) {
 // Given the number of surfels already checked (to see if it would have been fitted into any of them),
 // allocate a new surfel and return its index. If no surfel is available, return MAX_U32.
 uint allocate_surfel(uint checked_surfels) {
-    // check for free surfels left
-    if (checked_surfels >= total_surfels) {
+    const int scanned = int(checked_surfels);
+
+    // check for free surfels left (leave the top-half untouched for reordering)
+    if (checked_surfels >= (total_surfels / 2)) {
         return SURFELS_FULL;
     }
 
-    uint prev_allocated = atomicCompSwap(busy_surfels, checked_surfels, checked_surfels + 1);
+    uint prev_allocated = atomicCompSwap(busy_surfels, scanned, scanned + 1);
 
     return prev_allocated == checked_surfels ? prev_allocated : SURFELS_MISSED;
 }
@@ -211,41 +213,43 @@ uint linear_search_surfel_for_allocation(
 
     const float search_radius = MAX_SURFEL_RADIUS + radius + 0.01; // add a bit of epsilon to avoid precision issues
     vec3 directions[] = {
-        search_radius * normalize(vec3(1.0, 0.0, 0.0)),
-        search_radius * normalize(vec3(-1.0, 0.0, 0.0)),
-        search_radius * normalize(vec3(0.0, 1.0, 0.0)),
-        search_radius * normalize(vec3(0.0, -1.0, 0.0)),
-        search_radius * normalize(vec3(0.0, 0.0, 1.0)),
-        search_radius * normalize(vec3(0.0, 0.0, -1.0)),
-        search_radius * normalize(vec3(1.0, 1.0, 0.0)),
-        search_radius * normalize(vec3(1.0, -1.0, 0.0)),
-        search_radius * normalize(vec3(-1.0, 1.0, 0.0)),
-        search_radius * normalize(vec3(-1.0, -1.0, 0.0)),
-        search_radius * normalize(vec3(1.0, 0.0, 1.0)),
-        search_radius * normalize(vec3(1.0, 0.0, -1.0)),
-        search_radius * normalize(vec3(-1.0, 0.0, 1.0)),
-        search_radius * normalize(vec3(-1.0, 0.0, -1.0)),
-        search_radius * normalize(vec3(0.0, 1.0, 1.0)),
-        search_radius * normalize(vec3(0.0, 1.0, -1.0)),
-        search_radius * normalize(vec3(0.0, -1.0, 1.0)),
-        search_radius * normalize(vec3(0.0, -1.0, -1.0)),
-        search_radius * normalize(vec3(1.0, 1.0, 1.0)),
-        search_radius * normalize(vec3(1.0, 1.0, -1.0)),
-        search_radius * normalize(vec3(1.0, -1.0, 1.0)),
-        search_radius * normalize(vec3(1.0, -1.0, -1.0)),
-        search_radius * normalize(vec3(-1.0, 1.0, 1.0)),
-        search_radius * normalize(vec3(-1.0, 1.0, -1.0)),
-        search_radius * normalize(vec3(-1.0, -1.0, 1.0)),
-        search_radius * normalize(vec3(-1.0, -1.0, -1.0)),
+        vec3(1.000000, 0.000000, 0.000000),
+        vec3(-1.000000, 0.000000, 0.000000),
+        vec3(0.000000, 1.000000, 0.000000),
+        vec3(0.000000, -1.000000, 0.000000),
+        vec3(0.000000, 0.000000, 1.000000),
+        vec3(0.000000, 0.000000, -1.000000),
+        vec3(0.707107, 0.707107, 0.000000),
+        vec3(0.707107, -0.707107, 0.000000),
+        vec3(-0.707107, 0.707107, 0.000000),
+        vec3(-0.707107, -0.707107, 0.000000),
+        vec3(0.707107, 0.000000, 0.707107),
+        vec3(0.707107, 0.000000, -0.707107),
+        vec3(-0.707107, 0.000000, 0.707107),
+        vec3(-0.707107, 0.000000, -0.707107),
+        vec3(0.000000, 0.707107, 0.707107),
+        vec3(0.000000, 0.707107, -0.707107),
+        vec3(0.000000, -0.707107, 0.707107),
+        vec3(0.000000, -0.707107, -0.707107),
+        vec3(0.577350, 0.577350, 0.577350),
+        vec3(0.577350, 0.577350, -0.577350),
+        vec3(0.577350, -0.577350, 0.577350),
+        vec3(0.577350, -0.577350, -0.577350),
+        vec3(-0.577350, 0.577350, 0.577350),
+        vec3(-0.577350, 0.577350, -0.577350),
+        vec3(-0.577350, -0.577350, 0.577350),
+        vec3(-0.577350, -0.577350, -0.577350),
     };
 
     uint min_morton = 0xFFFFFFFFu;
     uint max_morton = 0u;
-    for (uint i = 1; i < 26; i++) {
-        const vec3 edge_point = point + directions[i];
+    for (uint i = 0; i < 26; i++) {
+        const vec3 edge_point = point + (search_radius * directions[i]);
         const uint morton = morton3D(eye_position, edge_point, clip_planes);
         if (morton == MORTON_OUT_OF_SCALE) {
-            continue;
+            min_morton = 0;
+            max_morton = last_ordered_id;
+            break;
         }
 
         min_morton = min(min_morton, morton);
