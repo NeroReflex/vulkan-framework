@@ -7,6 +7,16 @@
     #define STATUS_DESCRIPTOR_SET 2
 #endif
 
+struct light_t {
+    float direction_x;
+    float direction_y;
+    float direction_z;
+
+    float intensity_x;
+    float intensity_y;
+    float intensity_z;
+};
+
 layout(std140, set = STATUS_DESCRIPTOR_SET, binding = 0) uniform camera_uniform {
 	mat4 viewMatrix;
 	mat4 projectionMatrix;

@@ -4,16 +4,6 @@ layout (location = 0) out vec4 outColor;
 
 layout (location = 0) in vec2 in_vTextureUV;
 
-struct light_t {
-    float direction_x;
-    float direction_y;
-    float direction_z;
-
-    float intensity_x;
-    float intensity_y;
-    float intensity_z;
-};
-
 #define GBUFFER_DESCRIPTOR_SET 0
 #include "../gbuffer.glsl"
 

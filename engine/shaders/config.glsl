@@ -8,6 +8,8 @@
 
 #define MAX_SURFELS_PER_FRAME 64
 
+#define MAX_SURFEL_RADIUS 20.0
+
 #define SHOW_SURFELS true
 
 #endif // _CONFIG_

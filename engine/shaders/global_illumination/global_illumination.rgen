@@ -11,27 +11,18 @@
 #include "payload.glsl"
 #include "random.glsl"
 #include "../morton.glsl"
+
+#define SURFELS_DESCRIPTOR_SET 5
 #include "../surfel.glsl"
 
-layout (set = 0, binding = 1) uniform accelerationStructureEXT topLevelAS;
+#define RT_DESCRIPTOR_SET 0
+#include "../rt_descriptor_set.glsl"
 
 #define GBUFFER_DESCRIPTOR_SET 1
 #include "../gbuffer.glsl"
 
-struct light_t {
-    float direction_x;
-    float direction_y;
-    float direction_z;
-
-    float intensity_x;
-    float intensity_y;
-    float intensity_z;
-};
-
 #define STATUS_DESCRIPTOR_SET 2
 #include "../status.glsl"
-
-uniform layout (set = 5, binding = 2, rgba32f) image2D outputImage[2];
 
 layout(location = 0) rayPayloadEXT hit_payload_t payload;
 
@@ -64,6 +55,10 @@ void main() {
     const ivec2 texel_position = ivec2(gl_LaunchIDEXT.xy);
 
     const vec3 old_gi_data = gi_data.gi_reuse_frames > 0 ? imageLoad(outputImage[0], ivec2(gl_LaunchIDEXT.xy)).rgb : vec3(0.0, 0.0, 0.0);
+
+    // the last surfel that is ordered: from here onward all surfels are unordered
+    // because we have created them this frame
+    const uint last_ordered_surfel_id = ordered_surfels;
 
     const float radius = 15.0;
 
@@ -121,6 +116,7 @@ void main() {
                     lights_contribution += diffuse;
 
                     register_surfel(
+                        last_ordered_surfel_id,
                         eye_position,
                         clip_planes,
                         payload.instance_id,
@@ -260,6 +256,7 @@ void main() {
                             incoming_diffuse_light.z > RADIANCE_THRESHOLD
                         ) {
                             register_surfel(
+                                last_ordered_surfel_id,
                                 eye_position,
                                 clip_planes,
                                 payload.instance_id,

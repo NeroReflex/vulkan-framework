@@ -12,6 +12,7 @@ use vulkan_framework::{
     },
     clear_values::ColorClearValues,
     command_buffer::CommandBufferRecorder,
+    compute_pipeline::ComputePipeline,
     descriptor_pool::{
         DescriptorPool, DescriptorPoolConcreteDescriptor, DescriptorPoolSizesConcreteDescriptor,
     },
@@ -40,11 +41,24 @@ use vulkan_framework::{
         ShaderStageAccessIn, ShaderStageAccessInRayTracingKHR, ShaderStagesAccess,
     },
     shaders::{
-        closest_hit_shader::ClosestHitShader, miss_shader::MissShader, raygen_shader::RaygenShader,
+        closest_hit_shader::ClosestHitShader, compute_shader::ComputeShader,
+        miss_shader::MissShader, raygen_shader::RaygenShader,
     },
 };
 
 use crate::rendering::{RenderingResult, rendering_dimensions::RenderingDimensions};
+
+const SURFELS_REORDER_SPV: &[u32] = inline_spirv!(
+    r#"
+#version 460
+
+#include "engine/shaders/surfel_reorder/surfel_reorder.comp"
+"#,
+    glsl,
+    comp,
+    vulkan1_2,
+    entry = "main"
+);
 
 const RAYGEN_SPV: &[u32] = inline_spirv!(
     r#"
@@ -86,6 +100,8 @@ pub struct GILighting {
     queue_family: Arc<QueueFamily>,
 
     raytracing_semaphore: Arc<Semaphore>,
+
+    surfel_reorder_pipeline: Arc<ComputePipeline>,
 
     raytracing_pipeline: Arc<RaytracingPipeline>,
 
@@ -188,6 +204,23 @@ impl GILighting {
             .as_slice(),
         )?;
 
+        let surfel_reorder_compute_shader =
+            ComputeShader::new(device.clone(), SURFELS_REORDER_SPV)?;
+        let surfel_reorder_pipeline = ComputePipeline::new(
+            None,
+            PipelineLayout::new(
+                device.clone(),
+                [
+                    status_descriptor_set_layout.clone(), //
+                ]
+                .as_slice(),
+                [].as_slice(),
+                Some("surfel_reorder_pipeline_layout"),
+            )?,
+            (surfel_reorder_compute_shader, None),
+            Some("surfel_reorder_pipeline"),
+        )?;
+
         let pipeline_layout = PipelineLayout::new(
             device.clone(),
             [
@@ -277,7 +310,7 @@ impl GILighting {
                     [BufferUseAs::StorageBuffer, BufferUseAs::TransferDst]
                         .as_slice()
                         .into(),
-                    4u64 * 4u64,
+                    4u64 * 5u64,
                 ),
                 None,
                 Some("surfel_stats"),
@@ -462,6 +495,7 @@ impl GILighting {
         Ok(Self {
             queue_family,
 
+            surfel_reorder_pipeline,
             raytracing_pipeline,
 
             raytracing_surfel_stats_buffer,
@@ -501,7 +535,7 @@ impl GILighting {
         )
         .into()]);
 
-        let clear_val = [MAX_SURFELS, 0, 0, 0];
+        let clear_val = [MAX_SURFELS, 0, 0, 0, 0];
         recorder.update_buffer(surfel_stats_srr.buffer(), 0, &clear_val);
 
         recorder.pipeline_barriers([BufferMemoryBarrier::new(

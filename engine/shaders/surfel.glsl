@@ -5,6 +5,12 @@
 
 #include "morton.glsl"
 
+#ifndef SURFELS_DESCRIPTOR_SET
+#define SURFELS_DESCRIPTOR_SET 5
+#endif
+
+uniform layout (set = SURFELS_DESCRIPTOR_SET, binding = 2, rgba32f) image2D outputImage[2];
+
 #define SURFELS_FULL        0xFFFFFFFFu
 #define SURFELS_MISSED      0xFFFFFFFEu
 #define SURFELS_TOO_CLOSE   0xFFFFFFFDu
@@ -39,14 +45,15 @@ struct Surfel {
     uint padding[1];
 };
 
-layout (set = 5, binding = 0, std430) /*coherent*/ buffer surfel_stats {
+layout (set = SURFELS_DESCRIPTOR_SET, binding = 0, std430) /*coherent*/ buffer surfel_stats {
     uint total_surfels;
     uint free_surfels;
     uint busy_surfels;
     uint frame_spawned;
+    uint ordered_surfels;
 };
 
-layout (set = 5, binding = 1, std430) /*coherent*/ buffer surfel_buffer_data { 
+layout (set = SURFELS_DESCRIPTOR_SET, binding = 1, std430) /*coherent*/ buffer surfel_buffer_data { 
     Surfel surfels[];
 };
 
@@ -127,9 +134,142 @@ void init_surfel(
     // WARNING: exiting from this function, the surfel is still locked
 }
 
-uint linear_search_surfel_for_allocation(uint last_surfel_id, vec3 point, float radius) {
+/* Returns index i such that:
+   - surfels[i].morton == key if present
+   - otherwise the largest index j < n with surfels[j].morton < key
+   - returns 0 if key <= surfels[0].morton
+*/
+uint find_morton_or_prev(uint n, uint key) {
+    if (n == 0) return 0;
+    uint lo = 0, hi = n - 1;
+    while (lo <= hi) {
+        uint mid = lo + (hi - lo) / 2;
+        uint m = surfels[mid].morton;
+        if (m == key) return mid;
+        if (m < key) {
+            lo = mid + 1;
+        } else {
+            if (mid == 0) {
+                return 0;
+            }
+            hi = mid - 1;
+        }
+    }
+    if (lo == 0) return 0;
+    return lo - 1;
+}
+
+/* Returns index i such that:
+   - surfels[i].morton == key if present
+   - otherwise the smallest index j > 0 with surfels[j].morton > key
+   - returns 0 if key < surfels[0].morton
+   - returns n if key > all morton values (insert-at-end)
+*/
+uint find_morton_or_next(uint n, uint key) {
+    if (n == 0) return 0;
+    uint lo = 0, hi = n;
+    while (lo < hi) {
+        uint mid = lo + (hi - lo) / 2;
+        if (surfels[mid].morton < key) {
+            lo = mid + 1;
+        } else if (surfels[mid].morton > key) {
+            hi = mid;
+        } else {
+            return mid; /* exact match */
+        }
+    }
+    /* lo is the first index with morton >= key; if morton != key,
+       we want the next element, i.e., lo (the insert position).
+       If key < first element lo==0; if key > all elements lo==n.
+    */
+    return lo;
+}
+
+// This is the fast version to search surfels: take advantage of the fact that surfels are
+// partially ordered by morton code, and only newer surfels are unordered
+uint linear_search_surfel_for_allocation(
+    uint last_ordered_id,
+    uint last_surfel_id,
+    in const vec3 eye_position,
+    in const vec2 clip_planes,
+    vec3 point,
+    float radius
+) {
     bool too_close = false;
-    for (uint i = 0; i < last_surfel_id; i++) {
+
+    // the new surfel can only be allocated if it is distant at least radius
+    // from the edge of another surfel. Se we have to search all surfels
+    // between begin_colliding_surfel_id and end_colliding_surfel_id and
+    // everything in the middle.
+    //
+    // To do this we calculate morton code of the set of points (called SP) that are
+    // "edge-most" of the sphere surfel.origin -> MAX_SURFEL_RADIUS + radius
+    // and the search range is min(SP) .. max(SP).
+    //
+    // This hopefully limits the number of surfels we have to check
+    // enough for the algorithm to be very fast.
+
+    const float search_radius = MAX_SURFEL_RADIUS + radius + 0.01; // add a bit of epsilon to avoid precision issues
+    vec3 directions[] = {
+        search_radius * normalize(vec3(1.0, 0.0, 0.0)),
+        search_radius * normalize(vec3(-1.0, 0.0, 0.0)),
+        search_radius * normalize(vec3(0.0, 1.0, 0.0)),
+        search_radius * normalize(vec3(0.0, -1.0, 0.0)),
+        search_radius * normalize(vec3(0.0, 0.0, 1.0)),
+        search_radius * normalize(vec3(0.0, 0.0, -1.0)),
+        search_radius * normalize(vec3(1.0, 1.0, 0.0)),
+        search_radius * normalize(vec3(1.0, -1.0, 0.0)),
+        search_radius * normalize(vec3(-1.0, 1.0, 0.0)),
+        search_radius * normalize(vec3(-1.0, -1.0, 0.0)),
+        search_radius * normalize(vec3(1.0, 0.0, 1.0)),
+        search_radius * normalize(vec3(1.0, 0.0, -1.0)),
+        search_radius * normalize(vec3(-1.0, 0.0, 1.0)),
+        search_radius * normalize(vec3(-1.0, 0.0, -1.0)),
+        search_radius * normalize(vec3(0.0, 1.0, 1.0)),
+        search_radius * normalize(vec3(0.0, 1.0, -1.0)),
+        search_radius * normalize(vec3(0.0, -1.0, 1.0)),
+        search_radius * normalize(vec3(0.0, -1.0, -1.0)),
+        search_radius * normalize(vec3(1.0, 1.0, 1.0)),
+        search_radius * normalize(vec3(1.0, 1.0, -1.0)),
+        search_radius * normalize(vec3(1.0, -1.0, 1.0)),
+        search_radius * normalize(vec3(1.0, -1.0, -1.0)),
+        search_radius * normalize(vec3(-1.0, 1.0, 1.0)),
+        search_radius * normalize(vec3(-1.0, 1.0, -1.0)),
+        search_radius * normalize(vec3(-1.0, -1.0, 1.0)),
+        search_radius * normalize(vec3(-1.0, -1.0, -1.0)),
+    };
+
+    uint min_morton = 0xFFFFFFFFu;
+    uint max_morton = 0u;
+    for (uint i = 1; i < 26; i++) {
+        const vec3 edge_point = point + directions[i];
+        const uint morton = morton3D(eye_position, edge_point, clip_planes);
+        if (morton == MORTON_OUT_OF_SCALE) {
+            continue;
+        }
+
+        min_morton = min(min_morton, morton);
+        max_morton = max(max_morton, morton);
+    }
+
+    const uint begin_colliding_surfel_id = find_morton_or_prev(last_ordered_id + 1u, min_morton);
+    const uint end_colliding_surfel_id = find_morton_or_next(last_ordered_id + 1u, max_morton);
+    if (begin_colliding_surfel_id <= end_colliding_surfel_id) {
+        for (uint i = begin_colliding_surfel_id; i <= end_colliding_surfel_id; i++) {
+            if ((is_point_in_surfel(i, point))) {
+                return i;
+            }
+
+            if (distance(point, vec3(surfels[i].position_x, surfels[i].position_y, surfels[i].position_z)) < (radius + surfels[i].radius)) {
+                too_close = true;
+                // do not break, we want to check all surfels for matches,
+                // but we also want to know if we were too close to any of them
+                // to avoid allocating new ones
+            }
+        }
+    }
+
+    for (uint i = last_ordered_id; i < last_surfel_id; i++) {
         if ((is_point_in_surfel(i, point))) {
             return i;
         }
@@ -145,6 +285,7 @@ uint linear_search_surfel_for_allocation(uint last_surfel_id, vec3 point, float 
     return too_close ? SURFELS_TOO_CLOSE : SURFELS_MISSED;
 }
 
+/*
 uint linear_search_surfel(uint last_surfel_id, vec3 point, uint instance_id) {
     for (uint i = 0; i < last_surfel_id; i++) {
         if ((surfels[i].instance_id == instance_id) && (is_point_in_surfel(i, point))) {
@@ -154,6 +295,7 @@ uint linear_search_surfel(uint last_surfel_id, vec3 point, uint instance_id) {
 
     return SURFELS_MISSED;
 }
+*/
 
 uint linear_search_surfel_ignore_instance_id(uint last_surfel_id, vec3 point) {
     for (uint i = 0; i < last_surfel_id; i++) {
@@ -175,6 +317,7 @@ uint linear_search_surfel_ignore_instance_id(uint last_surfel_id, vec3 point) {
 #define REGISTER_SURFEL_DISABLED 7
 
 uint register_surfel(
+    uint last_ordered_id,
     in const vec3 eye_position,
     in const vec2 clip_planes,
     uint instance_id,
@@ -197,7 +340,14 @@ uint register_surfel(
     do {
         // try to reuse an existing surfel
         checked_surfels = allocated_surfels();
-        uint surfel_search_res = linear_search_surfel_for_allocation(checked_surfels, position, radius);
+        uint surfel_search_res = linear_search_surfel_for_allocation(
+            last_ordered_id,
+            checked_surfels,
+            eye_position,
+            clip_planes,
+            position,
+            radius
+        );
         if ((surfel_search_res != SURFELS_MISSED) && (surfel_search_res != SURFELS_TOO_CLOSE)) {
             //debugPrintfEXT("|REUSED(%u/%u)", surfel_search_res, checked_surfels);
             const uint surfel_id = surfel_search_res;
