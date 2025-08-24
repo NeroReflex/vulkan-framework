@@ -1,9 +1,9 @@
 #ifndef _SURFEL_
 #define _SURFEL_
 
-#include "../config.glsl"
+#include "config.glsl"
 
-#include "../morton.glsl"
+#include "morton.glsl"
 
 #define SURFELS_FULL        0xFFFFFFFFu
 #define SURFELS_MISSED      0xFFFFFFFEu

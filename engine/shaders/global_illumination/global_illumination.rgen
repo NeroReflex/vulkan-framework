@@ -11,7 +11,7 @@
 #include "payload.glsl"
 #include "random.glsl"
 #include "../morton.glsl"
-#include "surfel.glsl"
+#include "../surfel.glsl"
 
 layout (set = 0, binding = 1) uniform accelerationStructureEXT topLevelAS;
 
