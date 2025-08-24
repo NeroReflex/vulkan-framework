@@ -438,10 +438,10 @@ impl MeshRendering {
         })?;
 
         let vertex_shader =
-            VertexShader::new(device.clone(), &[], &[], MESH_RENDERING_VERTEX_SPV).unwrap();
+            VertexShader::new(device.clone(), MESH_RENDERING_VERTEX_SPV).unwrap();
 
         let fragment_shader =
-            FragmentShader::new(device.clone(), &[], &[], MESH_RENDERING_FRAGMENT_SPV).unwrap();
+            FragmentShader::new(device.clone(), MESH_RENDERING_FRAGMENT_SPV).unwrap();
 
         let push_constants_stages = [ShaderStageAccessIn::Vertex, ShaderStageAccessIn::Fragment]
             .as_slice()

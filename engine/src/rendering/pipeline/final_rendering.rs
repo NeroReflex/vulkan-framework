@@ -137,11 +137,10 @@ impl FinalRendering {
             image_views.push(image_view);
         }
 
-        let vertex_shader =
-            VertexShader::new(device.clone(), &[], &[], FINAL_RENDERING_VERTEX_SPV).unwrap();
+        let vertex_shader = VertexShader::new(device.clone(), FINAL_RENDERING_VERTEX_SPV).unwrap();
 
         let fragment_shader =
-            FragmentShader::new(device.clone(), &[], &[], FINAL_RENDERING_FRAGMENT_SPV).unwrap();
+            FragmentShader::new(device.clone(), FINAL_RENDERING_FRAGMENT_SPV).unwrap();
 
         let pipeline_layout = PipelineLayout::new(
             device.clone(),

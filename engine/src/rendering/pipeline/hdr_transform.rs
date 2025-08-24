@@ -281,23 +281,9 @@ impl HDRTransform {
             Some("hdr_transform.pipeline_layout"),
         )?;
 
-        let vertex_shader = VertexShader::new(
-            device.clone(),
-            &[],
-            binding_descriptors.as_slice(),
-            RENDERQUAD_VERTEX_SPV,
-        )?;
+        let vertex_shader = VertexShader::new(device.clone(), RENDERQUAD_VERTEX_SPV)?;
 
-        let fragment_shader = FragmentShader::new(
-            device.clone(),
-            &[PushConstanRange::new(
-                0,
-                (std::mem::size_of::<u32>() as u32) * 2u32,
-                push_constant_access,
-            )],
-            binding_descriptors.as_slice(),
-            RENDERQUAD_FRAGMENT_SPV,
-        )?;
+        let fragment_shader = FragmentShader::new(device.clone(), RENDERQUAD_FRAGMENT_SPV)?;
 
         let graphics_pipeline = GraphicsPipeline::new(
             None,

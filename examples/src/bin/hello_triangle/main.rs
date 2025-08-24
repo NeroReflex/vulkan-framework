@@ -249,9 +249,9 @@ fn main() {
         .unwrap();
         println!("Pipeline layout created!");
 
-        let vertex_shader = VertexShader::new(dev.clone(), &[], &[], VERTEX_SPV).unwrap();
+        let vertex_shader = VertexShader::new(dev.clone(), VERTEX_SPV).unwrap();
 
-        let fragment_shader = FragmentShader::new(dev.clone(), &[], &[], FRAGMENT_SPV).unwrap();
+        let fragment_shader = FragmentShader::new(dev.clone(), FRAGMENT_SPV).unwrap();
 
         let graphics_pipeline = GraphicsPipeline::new(
             None,

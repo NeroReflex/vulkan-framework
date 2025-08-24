@@ -164,15 +164,11 @@ impl RenderQuad {
 
         let vertex_shader = VertexShader::new(
             device.clone(),
-            &[],
-            binding_descriptors.as_slice(),
             RENDERQUAD_VERTEX_SPV,
         )?;
 
         let fragment_shader = FragmentShader::new(
             device.clone(),
-            &[],
-            binding_descriptors.as_slice(),
             RENDERQUAD_FRAGMENT_SPV,
         )?;
 

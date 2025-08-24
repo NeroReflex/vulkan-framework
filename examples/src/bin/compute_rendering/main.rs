@@ -405,16 +405,12 @@ fn main() {
 
     let renderquad_vertex_shader = VertexShader::new(
         device.clone(),
-        &[],
-        &[renderquad_texture_binding_descriptor.clone()],
         RENDERQUAD_VERTEX_SPV,
     )
     .unwrap();
 
     let renderquad_fragment_shader = FragmentShader::new(
         device.clone(),
-        &[],
-        &[renderquad_texture_binding_descriptor],
         RENDERQUAD_FRAGMENT_SPV,
     )
     .unwrap();

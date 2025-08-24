@@ -52,24 +52,7 @@ impl PrivateShaderTrait for FragmentShader {
 }
 
 impl FragmentShader {
-    pub fn new(
-        device: Arc<Device>,
-        push_constant_ranges: &[Arc<PushConstanRange>],
-        descriptor_bindings: &[Arc<BindingDescriptor>],
-        code: &[u32],
-    ) -> VulkanResult<Arc<Self>> {
-        for push_constant_range in push_constant_ranges.iter() {
-            assert!(push_constant_range
-                .shader_access()
-                .is_accessible_by(&ShaderType::Fragment));
-        }
-
-        for descriptor_set_layout_binding in descriptor_bindings.iter() {
-            assert!(descriptor_set_layout_binding
-                .shader_access()
-                .is_accessible_by(&ShaderType::Fragment));
-        }
-
+    pub fn new(device: Arc<Device>, code: &[u32]) -> VulkanResult<Arc<Self>> {
         let create_info = ash::vk::ShaderModuleCreateInfo::default().code(code);
 
         let module = unsafe {
@@ -79,11 +62,6 @@ impl FragmentShader {
             )
         }?;
 
-        Ok(Arc::new(Self {
-            device,
-            //push_constant_ranges: push_constant_ranges.iter().map(|cr| cr.clone()).collect(),
-            //descriptor_bindings: descriptor_bindings.to_vec(),
-            module,
-        }))
+        Ok(Arc::new(Self { device, module }))
     }
 }
