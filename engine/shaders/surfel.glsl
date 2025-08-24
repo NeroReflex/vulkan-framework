@@ -47,9 +47,7 @@ struct Surfel {
 
 layout (set = SURFELS_DESCRIPTOR_SET, binding = 0, std430) /*coherent*/ buffer surfel_stats {
     int total_surfels;
-    int free_surfels;
-    int busy_surfels;
-    int frame_spawned;
+    int unordered_surfels;
     int ordered_surfels;
 };
 
@@ -58,7 +56,7 @@ layout (set = SURFELS_DESCRIPTOR_SET, binding = 1, std430) /*coherent*/ buffer s
 };
 
 bool can_spawn_another_surfel() {
-    return atomicMax(frame_spawned, 0) < MAX_SURFELS_PER_FRAME;
+    return atomicMax(unordered_surfels, 0) < MAX_SURFELS_PER_FRAME;
 }
 
 bool is_point_in_surfel(uint surfel_id, const in vec3 point) {
@@ -73,7 +71,7 @@ bool is_point_in_surfel(uint surfel_id, const in vec3 point) {
     return dot(direction, direction) <= radius * radius;
 }
 
-// Given the number of surfels already checked (to see if it would have been fitted into any of them),
+// Given the number of UNORDERED surfels already checked (to see if it would have been fitted into any of them),
 // allocate a new surfel and return its index. If no surfel is available, return MAX_U32.
 uint allocate_surfel(uint checked_surfels) {
     const int scanned = int(checked_surfels);
@@ -83,13 +81,19 @@ uint allocate_surfel(uint checked_surfels) {
         return SURFELS_FULL;
     }
 
-    uint prev_allocated = atomicCompSwap(busy_surfels, scanned, scanned + 1);
+    uint prev_allocated = atomicCompSwap(unordered_surfels, scanned, scanned + 1);
 
     return prev_allocated == checked_surfels ? prev_allocated : SURFELS_MISSED;
 }
 
-uint allocated_surfels() {
-    return atomicMax(busy_surfels, 0);
+uint count_ordered_surfels() {
+    // ordered_surfels is never modified in raytrace shader,
+    // so avoid the expensive atomic read
+    return ordered_surfels;
+}
+
+uint count_unordered_surfels() {
+    return atomicMax(unordered_surfels, 0);
 }
 
 bool lock_surfel(uint surfel_id) {
@@ -188,10 +192,8 @@ uint find_morton_or_next(uint n, uint key) {
 }
 
 // This is the fast version to search surfels: take advantage of the fact that surfels are
-// partially ordered by morton code, and only newer surfels are unordered
-uint linear_search_surfel_for_allocation(
-    uint last_ordered_id,
-    uint last_surfel_id,
+// partially ordered by morton code, and only newer surfels are unordered.
+uint linear_search_ordered_surfel_for_allocation(
     in const vec3 eye_position,
     in const vec2 clip_planes,
     vec3 point,
@@ -241,6 +243,8 @@ uint linear_search_surfel_for_allocation(
         vec3(-0.577350, -0.577350, -0.577350),
     };
 
+    const uint last_ordered_id = count_ordered_surfels();
+
     uint min_morton = 0xFFFFFFFFu;
     uint max_morton = 0u;
     for (uint i = 0; i < 26; i++) {
@@ -273,7 +277,22 @@ uint linear_search_surfel_for_allocation(
         }
     }
 
-    for (uint i = last_ordered_id; i < last_surfel_id; i++) {
+    return too_close ? SURFELS_TOO_CLOSE : SURFELS_MISSED;
+}
+
+// This is the fast version to search surfels: take advantage of the fact that surfels are
+// partially ordered by morton code, and only newer surfels are unordered.
+uint linear_search_unordered_surfel_for_allocation(
+    inout uint checked_surfels,
+    vec3 point,
+    float radius
+) {
+    bool too_close = false;
+
+    checked_surfels = count_unordered_surfels();
+    const uint first_unordered_surfel_id = total_surfels / 2;
+    const uint last_unordered_surfel_id = first_unordered_surfel_id + checked_surfels;
+    for (uint i = first_unordered_surfel_id; i < last_unordered_surfel_id; i++) {
         if ((is_point_in_surfel(i, point))) {
             return i;
         }
@@ -343,16 +362,69 @@ uint register_surfel(
     bool done = false;
     uint checked_surfels = 0;
 
+    // first: do the fast search in the set of ordered surfels set.
+    // the ordered set won't change during this shader invocation,
+    // so it's safe to do this work only once.
+    const uint ordered_surfel_id_search_res = linear_search_ordered_surfel_for_allocation(
+        eye_position,
+        clip_planes,
+        position,
+        radius
+    );
+
+    if ((ordered_surfel_id_search_res != SURFELS_MISSED) && (ordered_surfel_id_search_res != SURFELS_TOO_CLOSE)) {
+        //debugPrintfEXT("|REUSED-ORDERED(%u)", ordered_surfel_id_search_res);
+        const uint surfel_id = ordered_surfel_id_search_res;
+
+        // try locking the surfel
+        if (!lock_surfel(surfel_id)) {
+            // surfel is locked, avoid wasting time and just return busy
+            return REGISTER_SURFEL_BUSY;
+        }
+
+        // surfel is locked: update it
+        const vec3 current_normal = vec3(surfels[surfel_id].normal_x, surfels[surfel_id].normal_y, surfels[surfel_id].normal_z);
+        const vec3 current_irradiance = vec3(surfels[surfel_id].irradiance_r, surfels[surfel_id].irradiance_g, surfels[surfel_id].irradiance_b);
+        const vec3 new_normal = normalize(current_normal + normal);
+
+        if (dot(current_normal, normal) < 0.0) {
+            // surfel is below the horizon: ignore it
+            unlock_surfel(surfel_id);
+            memoryBarrierBuffer();
+            return REGISTER_SURFEL_BELOW_HORIZON;
+        }
+
+        surfels[surfel_id].normal_x = new_normal.x;
+        surfels[surfel_id].normal_y = new_normal.y;
+        surfels[surfel_id].normal_z = new_normal.z;
+
+        surfels[surfel_id].irradiance_r += irradiance.r;
+        surfels[surfel_id].irradiance_g += irradiance.g;
+        surfels[surfel_id].irradiance_b += irradiance.b;
+
+        surfels[surfel_id].contributions += 1u;
+
+        //const vec3 surfel_diffuse = vec3(surfels[surfel_search_res].irradiance_r, surfels[surfel_search_res].irradiance_g, surfels[surfel_search_res].irradiance_b) / float(surfels[surfel_search_res].irradiance_samples);
+        //lights_contribution += contribution(surfel_diffuse, length(light_intensity), diffuse_contribution);
+
+        // surfel is locked: unlock it for other instances
+        unlock_surfel(surfel_id);
+        memoryBarrierBuffer();
+
+        return REGISTER_SURFEL_OK;
+    }
+
 #if FORCE_ALLOCATION
     do {
 #endif // FORCE_ALLOCATION
-        // try to reuse an existing surfel
-        checked_surfels = allocated_surfels();
-        uint surfel_search_res = linear_search_surfel_for_allocation(
-            last_ordered_id,
+        // try to reuse an existing surfel from the unordered set
+        // since the unordered set can change during this shader invocation,
+        // I have to either:
+        //   - repeat the search until I have searched all surfels that are available at the moment of allocation
+        //   - if the allocation fails, because I have missed surfels allocated by parallel shader invocations,
+        //     repeat the search with the new number of surfels
+        const uint surfel_search_res = linear_search_unordered_surfel_for_allocation(
             checked_surfels,
-            eye_position,
-            clip_planes,
             position,
             radius
         );
@@ -412,7 +484,11 @@ uint register_surfel(
                 debugPrintfEXT("|FULL(%u)", surfel_id);
                 return REGISTER_SURFEL_FULL;
             } else if (surfel_id == SURFELS_MISSED) {
-                checked_surfels = allocated_surfels();
+                // here we continue the loop to search again
+                // since surfels were allocated by other shader invocations meanwhile
+                //debugPrintfEXT("|MISSED(%u)", checked_surfels);
+
+                // or, if not forcing allocation, just return REGISTER_SURFEL_IGNORED
             } else {
                 init_surfel(surfel_id, flags, instance_id, position, radius, normal, irradiance, morton);
                 unlock_surfel(surfel_id);

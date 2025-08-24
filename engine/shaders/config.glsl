@@ -14,10 +14,11 @@
 // memory area, accessed with atomic updates: a very expensive operation.
 #define FORCE_ALLOCATION 0
 
-#define MAX_SURFELS_PER_FRAME 64
+// Keep in sync wit rust side
+#define MAX_SURFELS_PER_FRAME 2048
 
 #define MAX_SURFEL_RADIUS 20.0
 
-#define SHOW_SURFELS 0
+#define SHOW_SURFELS 1
 
 #endif // _CONFIG_

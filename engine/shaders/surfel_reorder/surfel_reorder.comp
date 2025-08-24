@@ -1,6 +1,8 @@
 #extension GL_EXT_debug_printf : enable
 
-layout (local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+#include "../config.glsl"
+
+layout (local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
 #define STATUS_DESCRIPTOR_SET 0
 #include "../status.glsl"
@@ -10,15 +12,27 @@ layout (local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 // Basically a counting sort: each surfel computes its new index by counting how many surfels
 // have a smaller morton code than itself.
+//
+// In this context ordered surfels are not yet ordered: they are just in the second half of the buffer.
+// This shader MUST NOT rely on the correctness of unordered_surfels, as it will be updated by the current shader.
 void main() {
-    const uint size = busy_surfels;
+    const uint size = count_ordered_surfels();
     const uint half_size = total_surfels / 2;
     const uint surfel_id = gl_GlobalInvocationID.x;
+
+    // This is a bit of a hack to clear unordered_surfels,
+    // but if it works it works.
+    if (gl_GlobalInvocationID.x == 0) {
+        // clearing unordered_surfels has the effect of allowing new surfels to be allocated
+        // since unordered_surfels is used by the raytracing pipeline to track how many surfels
+        // have been allocated on a single frame.
+        atomicAnd(unordered_surfels, 0);
+    }
 
     // avoid out-of-bounds access
     if (surfel_id >= size) {
         return;
-    }
+    } 
 
     const uint surfel_morton = surfels[half_size + surfel_id].morton;
 
@@ -40,12 +54,6 @@ void main() {
         }
     }
 
-    // just abandon the surfel if it is out of scale
-    if (surfels[half_size + surfel_id].morton != MORTON_OUT_OF_SCALE) {
-        // copy the surfel to the new location
-        surfels[ordered_surfel_id] = surfels[half_size + surfel_id];
-
-        // sum 1 to ordered_surfels unless morton == MAX_UINT
-        atomicAdd(ordered_surfels, 1);
-    }
+    // copy the surfel to the new location
+    surfels[ordered_surfel_id] = surfels[half_size + surfel_id];
 }
