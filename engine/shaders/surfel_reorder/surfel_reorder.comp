@@ -8,7 +8,7 @@ layout (local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 #define SURFELS_DESCRIPTOR_SET 1
 #include "../surfel.glsl"
 
-// Basically acounting sort: each surfel computes its new index by counting how many surfels
+// Basically a counting sort: each surfel computes its new index by counting how many surfels
 // have a smaller morton code than itself.
 void main() {
     const uint size = busy_surfels;
@@ -22,7 +22,7 @@ void main() {
 
     const uint surfel_morton = surfels[half_size + surfel_id].morton;
 
-    // This CANNOT be done here
+    // TODO: This CANNOT be done here
     //if (surfels[half_size + surfel_id].morton == MORTON_OUT_OF_SCALE) {
     //    // atomically decrement busy_surfels
     //    return;
@@ -40,8 +40,12 @@ void main() {
         }
     }
 
-    // copy the surfel to the new location
-    surfels[ordered_surfel_id] = surfels[half_size + surfel_id];
+    // just abandon the surfel if it is out of scale
+    if (surfels[half_size + surfel_id].morton != MORTON_OUT_OF_SCALE) {
+        // copy the surfel to the new location
+        surfels[ordered_surfel_id] = surfels[half_size + surfel_id];
 
-    // TODO: sum 1 to ordered_surfels unless morton == MAX_UINT
+        // sum 1 to ordered_surfels unless morton == MAX_UINT
+        atomicAdd(ordered_surfels, 1);
+    }
 }
