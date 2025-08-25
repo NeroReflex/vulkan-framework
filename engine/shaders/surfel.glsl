@@ -55,10 +55,6 @@ layout (set = SURFELS_DESCRIPTOR_SET, binding = 1, std430) /*coherent*/ buffer s
     Surfel surfels[];
 };
 
-bool can_spawn_another_surfel() {
-    return atomicMax(unordered_surfels, 0) < MAX_SURFELS_PER_FRAME;
-}
-
 bool is_point_in_surfel(uint surfel_id, const in vec3 point) {
     const vec3 center = vec3(surfels[surfel_id].position_x, surfels[surfel_id].position_y, surfels[surfel_id].position_z);
     const float radius = surfels[surfel_id].radius;
@@ -71,21 +67,6 @@ bool is_point_in_surfel(uint surfel_id, const in vec3 point) {
     return dot(direction, direction) <= radius * radius;
 }
 
-// Given the number of UNORDERED surfels already checked (to see if it would have been fitted into any of them),
-// allocate a new surfel and return its index. If no surfel is available, return MAX_U32.
-uint allocate_surfel(uint checked_surfels) {
-    const int scanned = int(checked_surfels);
-
-    // check for free surfels left (leave the top-half untouched for reordering)
-    if (checked_surfels >= (total_surfels / 2)) {
-        return SURFELS_FULL;
-    }
-
-    uint prev_allocated = atomicCompSwap(unordered_surfels, scanned, scanned + 1);
-
-    return prev_allocated == checked_surfels ? prev_allocated : SURFELS_MISSED;
-}
-
 uint count_ordered_surfels() {
     // ordered_surfels is never modified in raytrace shader,
     // so avoid the expensive atomic read
@@ -95,6 +76,26 @@ uint count_ordered_surfels() {
 uint count_unordered_surfels() {
     return atomicMax(unordered_surfels, 0);
 }
+
+// Given the number of UNORDERED surfels already checked (to see if it would have been fitted into any of them),
+// allocate a new surfel and return its index. If no surfel is available, return MAX_U32.
+uint allocate_surfel(uint checked_surfels) {
+    const int scanned = int(checked_surfels);
+
+    // check for free surfels left (leave the top-half untouched for reordering)
+    if ((count_ordered_surfels() + checked_surfels) >= (total_surfels / 2)) {
+        return SURFELS_FULL;
+    }
+
+    uint prev_allocated = atomicCompSwap(unordered_surfels, scanned, scanned + 1);
+
+    return prev_allocated == checked_surfels ? prev_allocated : SURFELS_MISSED;
+}
+
+bool can_spawn_another_surfel() {
+    return atomicMax(unordered_surfels, 0) < MAX_SURFELS_PER_FRAME;
+}
+
 
 bool lock_surfel(uint surfel_id) {
     return (atomicOr(surfels[surfel_id].flags, SURFEL_FLAG_LOCKED) & SURFEL_FLAG_LOCKED) == 0u;
@@ -140,55 +141,22 @@ void init_surfel(
     // WARNING: exiting from this function, the surfel is still locked
 }
 
-/* Returns index i such that:
-   - surfels[i].morton == key if present
-   - otherwise the largest index j < n with surfels[j].morton < key
-   - returns 0 if key <= surfels[0].morton
-*/
-uint find_morton_or_prev(uint n, uint key) {
-    if (n == 0) return 0;
-    uint lo = 0, hi = n - 1;
-    while (lo <= hi) {
-        uint mid = lo + (hi - lo) / 2;
-        uint m = surfels[mid].morton;
-        if (m == key) return mid;
-        if (m < key) {
-            lo = mid + 1;
-        } else {
-            if (mid == 0) {
-                return 0;
-            }
-            hi = mid - 1;
-        }
-    }
-    if (lo == 0) return 0;
-    return lo - 1;
-}
+uint binary_search_morton(uint start, uint size, uint key, bool excess) {
+    // Non ho voglia di implementarlo bene.
 
-/* Returns index i such that:
-   - surfels[i].morton == key if present
-   - otherwise the smallest index j > 0 with surfels[j].morton > key
-   - returns 0 if key < surfels[0].morton
-   - returns n if key > all morton values (insert-at-end)
-*/
-uint find_morton_or_next(uint n, uint key) {
-    if (n == 0) return 0;
-    uint lo = 0, hi = n;
-    while (lo < hi) {
-        uint mid = lo + (hi - lo) / 2;
-        if (surfels[mid].morton < key) {
-            lo = mid + 1;
-        } else if (surfels[mid].morton > key) {
-            hi = mid;
-        } else {
-            return mid; /* exact match */
+    const uint max_el = start + size;
+    uint result = 0;
+    for (uint i = start; i < max_el; i++) {
+        if ((excess) && (surfels[i].morton > key)) {
+            return i;
+        } else if ((!excess) && (surfels[i].morton >= key)) {
+            return result;
         }
+        
+        result = i;
     }
-    /* lo is the first index with morton >= key; if morton != key,
-       we want the next element, i.e., lo (the insert position).
-       If key < first element lo==0; if key > all elements lo==n.
-    */
-    return lo;
+
+    return result;
 }
 
 // This is the fast version to search surfels: take advantage of the fact that surfels are
@@ -260,20 +228,18 @@ uint linear_search_ordered_surfel_for_allocation(
         max_morton = max(max_morton, morton);
     }
 
-    const uint begin_colliding_surfel_id = find_morton_or_prev(last_ordered_id + 1u, min_morton);
-    const uint end_colliding_surfel_id = find_morton_or_next(last_ordered_id + 1u, max_morton);
-    if (begin_colliding_surfel_id <= end_colliding_surfel_id) {
-        for (uint i = begin_colliding_surfel_id; i <= end_colliding_surfel_id; i++) {
-            if ((is_point_in_surfel(i, point))) {
-                return i;
-            }
+    const uint begin_colliding_surfel_id = binary_search_morton(0, last_ordered_id, min_morton, false);
+    const uint end_colliding_surfel_id = binary_search_morton(0, last_ordered_id, max_morton, true);
+    for (uint i = begin_colliding_surfel_id; i <= end_colliding_surfel_id; i++) {
+        if ((is_point_in_surfel(i, point))) {
+            return i;
+        }
 
-            if (distance(point, vec3(surfels[i].position_x, surfels[i].position_y, surfels[i].position_z)) < (radius + surfels[i].radius)) {
-                too_close = true;
-                // do not break, we want to check all surfels for matches,
-                // but we also want to know if we were too close to any of them
-                // to avoid allocating new ones
-            }
+        if (distance(point, vec3(surfels[i].position_x, surfels[i].position_y, surfels[i].position_z)) < (radius + surfels[i].radius)) {
+            too_close = true;
+            // do not break, we want to check all surfels for matches,
+            // but we also want to know if we were too close to any of them
+            // to avoid allocating new ones
         }
     }
 
@@ -319,16 +285,6 @@ uint linear_search_surfel(uint last_surfel_id, vec3 point, uint instance_id) {
     return SURFELS_MISSED;
 }
 */
-
-uint linear_search_surfel_ignore_instance_id(uint last_surfel_id, vec3 point) {
-    for (uint i = 0; i < last_surfel_id; i++) {
-        if (is_point_in_surfel(i, point)) {
-            return i;
-        }
-    }
-
-    return SURFELS_MISSED;
-}
 
 #define REGISTER_SURFEL_OK 0
 #define REGISTER_SURFEL_FRAME_LIMIT 1

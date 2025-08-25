@@ -140,10 +140,32 @@ void main() {
 
 #if SHOW_SURFELS
     if (depth < DEPTH_IGNORE) {
-        const uint search_surfels = count_ordered_surfels();
-        const uint surfel_id = linear_search_surfel_ignore_instance_id(search_surfels, origin);
-        /*
+        
+        // ================================
+        // Low level debug visualization of surfels
+        const uint available_surfels = count_ordered_surfels();
+        if (available_surfels == 0) {
+            contribution = vec3(2500.0, 2500.0, 2500.0);
+        }
 
+        uint surfel_id = SURFELS_MISSED;
+        uint last_morton = 0;
+        for (uint i = 0; i < available_surfels; i++) {
+            if (last_morton > surfels[i].morton) {
+                // this should never happen
+                debugPrintfEXT("MORTON SORT ERROR AT SURFEL %u %u > %u\n", i, last_morton, surfels[i].morton);
+                contribution = vec3(2500.0, 2500.0, 2500.0);
+            }
+
+            if (is_point_in_surfel(i, origin)) {
+                surfel_id = i;
+                break;
+            }
+        }
+        // ================================
+        
+        
+        /*
         // BROKEN
         // this function only searches for surfels that were allocated before this frame
         const uint surfel_id = linear_search_ordered_surfel_for_allocation(
@@ -154,6 +176,7 @@ void main() {
             0.0001
         );
         */
+
         if (surfel_id != SURFELS_MISSED) {
             if (surfels[surfel_id].contributions > 200u) {
                 contribution = vec3(0.0, 250.0, 0.0);
@@ -285,7 +308,6 @@ void main() {
                         contribution += incoming_diffuse_light;
                         //contribution += vec3(float(texel_position.x)/resolution.x, float(texel_position.y)/resolution.y, 0.0);
                     }
-
                 }
             }
 
