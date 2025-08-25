@@ -389,6 +389,10 @@ uint register_surfel(
         memoryBarrierBuffer();
 
         return REGISTER_SURFEL_OK;
+    } else if (ordered_surfel_id_search_res == SURFELS_TOO_CLOSE) {
+        // we were too close to an existing surfel: do not allocate a new one
+        //debugPrintfEXT("|TOO CLOSE");
+        return REGISTER_SURFEL_DENSITY;
     }
 
 #if FORCE_ALLOCATION
@@ -452,9 +456,9 @@ uint register_surfel(
         } else if (!can_spawn_another_surfel()) {
             // we cannot allocate more surfels this frame
             // to avoid impacting too much on the frame time
-            debugPrintfEXT("|FRAME_LIMIT");
+            //debugPrintfEXT("|FRAME_LIMIT");
             return REGISTER_SURFEL_FRAME_LIMIT;
-        } else {
+        } else if (surfel_search_res == SURFELS_MISSED) {
             // A matching surfel was not found: try to allocate a new one
             uint surfel_id = allocate_surfel(checked_surfels);
             if (surfel_id == SURFELS_FULL) {
@@ -470,10 +474,13 @@ uint register_surfel(
                 init_surfel(surfel_id, flags, instance_id, position, radius, normal, irradiance, morton);
                 unlock_surfel(surfel_id);
                 memoryBarrierBuffer();
-                return REGISTER_SURFEL_OK;
 
                 //debugPrintfEXT("\nCreated surfel %u at position vec3(%f, %f, %f)", surfel_id, surfels[surfel_id].position_x, surfels[surfel_id].position_y, surfels[surfel_id].position_z);
+
+                return REGISTER_SURFEL_OK;
             }
+        } else {
+            debugPrintfEXT("\nNICE FUCKUP");
         }
 #if FORCE_ALLOCATION
     } while (1 == 1);
