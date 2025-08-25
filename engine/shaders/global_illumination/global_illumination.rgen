@@ -134,11 +134,14 @@ void main() {
     vec3 contribution = vec3(0.0, 0.0, 0.0);
 
 #if SHOW_SURFELS
+    if (texel_position == ivec2(0 ,0)) {
+        debugPrintfEXT("SURFELS %u %u\n", count_unordered_surfels(), count_ordered_surfels());
+    }
     if (depth < DEPTH_IGNORE) {
         
         // ================================
-        // Low level debug visualization of surfels
-        const uint available_surfels = count_ordered_surfels();
+        // Low level debug visualization of (old) surfels
+        const uint available_surfels = count_unordered_surfels();
         if (available_surfels == 0) {
             contribution = vec3(2500.0, 2500.0, 2500.0);
         }

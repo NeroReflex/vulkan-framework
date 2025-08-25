@@ -74,7 +74,9 @@ uint count_ordered_surfels() {
 }
 
 uint count_unordered_surfels() {
-    return atomicMax(unordered_surfels, 0);
+    return unordered_surfels;
+    
+    //return atomicMax(unordered_surfels, 0);
 }
 
 // Given the number of UNORDERED surfels already checked (to see if it would have been fitted into any of them),
