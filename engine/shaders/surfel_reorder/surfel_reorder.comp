@@ -22,12 +22,12 @@ void main() {
 
     // This is a bit of a hack to clear unordered_surfels,
     // but if it works it works.
-    //if (gl_GlobalInvocationID.x == 0) {
+    if (gl_GlobalInvocationID.x == 0) {
         // clearing unordered_surfels has the effect of allowing new surfels to be allocated
         // since unordered_surfels is used by the raytracing pipeline to track how many surfels
         // have been allocated on a single frame.
         atomicAnd(unordered_surfels, 0);
-    //}
+    }
 
     // avoid out-of-bounds access
     if (surfel_id >= size) {
