@@ -318,7 +318,6 @@ uint linear_search_surfel(uint last_surfel_id, vec3 point, uint instance_id) {
 #define REGISTER_SURFEL_IGNORED 8
 
 uint register_surfel(
-    uint last_ordered_id,
     in const vec3 eye_position,
     in const vec2 clip_planes,
     uint instance_id,
@@ -328,13 +327,13 @@ uint register_surfel(
     vec3 normal,
     vec3 irradiance
 ) {
-#if ENABLE_SURFELS
-    uint flags = primary ? SURFEL_FLAG_PRIMARY : 0u;
-
-    uint morton = morton3D(eye_position, position, clip_planes);
+    const uint morton = morton3D(eye_position, position, clip_planes);
     if (morton == MORTON_OUT_OF_SCALE) {
         return REGISTER_SURFEL_OUT_OF_RANGE;
     }
+
+#if ENABLE_SURFELS
+    uint flags = primary ? SURFEL_FLAG_PRIMARY : 0u;
 
     bool done = false;
     uint checked_surfels = 0;

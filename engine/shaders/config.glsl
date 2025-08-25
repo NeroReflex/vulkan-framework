@@ -15,7 +15,7 @@
 #define FORCE_ALLOCATION 0
 
 // Keep in sync wit rust side
-#define MAX_SURFELS_PER_FRAME 2048
+#define MAX_SURFELS_PER_FRAME 128
 
 #define MAX_SURFEL_RADIUS 20.0
 

@@ -56,10 +56,6 @@ void main() {
 
     const vec3 old_gi_data = gi_data.gi_reuse_frames > 0 ? imageLoad(outputImage[0], ivec2(gl_LaunchIDEXT.xy)).rgb : vec3(0.0, 0.0, 0.0);
 
-    // the last surfel that is ordered: from here onward all surfels are unordered
-    // because we have created them this frame
-    const uint last_ordered_surfel_id = ordered_surfels;
-
     const float radius = 15.0;
 
     const vec3 origin = texelFetch(gbuffer[0], texel_position, 0).xyz;
@@ -116,7 +112,6 @@ void main() {
                     lights_contribution += diffuse;
 
                     register_surfel(
-                        last_ordered_surfel_id,
                         eye_position,
                         clip_planes,
                         payload.instance_id,
@@ -293,7 +288,6 @@ void main() {
                             incoming_diffuse_light.z > RADIANCE_THRESHOLD
                         ) {
                             register_surfel(
-                                last_ordered_surfel_id,
                                 eye_position,
                                 clip_planes,
                                 payload.instance_id,

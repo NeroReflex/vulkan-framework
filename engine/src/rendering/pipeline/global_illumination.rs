@@ -153,11 +153,11 @@ impl GILighting {
     pub fn wait_semaphores(&self) -> (PipelineStages, Arc<Semaphore>) {
         (
             [
-                PipelineStage::Transfer,
+                //PipelineStage::Transfer,
                 PipelineStage::ComputeShader,
-                PipelineStage::RayTracingPipelineKHR(
-                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                ),
+                //PipelineStage::RayTracingPipelineKHR(
+                //    PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                //),
             ]
             .as_slice()
             .into(),
