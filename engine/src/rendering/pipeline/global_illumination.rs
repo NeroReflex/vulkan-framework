@@ -935,38 +935,6 @@ impl GILighting {
                 self.queue_family.clone(),
             )
             .into(),
-            BufferMemoryBarrier::new(
-                [PipelineStage::RayTracingPipelineKHR(
-                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                )]
-                .as_slice()
-                .into(),
-                [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
-                    .as_slice()
-                    .into(),
-                [PipelineStage::BottomOfPipe].as_slice().into(),
-                [MemoryAccessAs::MemoryRead].as_slice().into(),
-                surfel_stats_srr.clone(),
-                self.queue_family.clone(),
-                self.queue_family.clone(),
-            )
-            .into(),
-            BufferMemoryBarrier::new(
-                [PipelineStage::RayTracingPipelineKHR(
-                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                )]
-                .as_slice()
-                .into(),
-                [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
-                    .as_slice()
-                    .into(),
-                [PipelineStage::BottomOfPipe].as_slice().into(),
-                [MemoryAccessAs::MemoryRead].as_slice().into(),
-                surfels_srr.clone(),
-                self.queue_family.clone(),
-                self.queue_family.clone(),
-            )
-            .into(),
         ]);
 
         self.gibuffer_descriptor_set.clone()
