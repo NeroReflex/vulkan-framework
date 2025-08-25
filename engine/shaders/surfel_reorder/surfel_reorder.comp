@@ -34,7 +34,9 @@ void main() {
         return;
     } 
 
-    const uint surfel_morton = surfels[half_size + surfel_id].morton;
+    const uint src_surfel_id = half_size + surfel_id;
+    const uint surfel_morton = surfels[src_surfel_id].morton;
+    //debugPrintfEXT("reorder.comp: surfel_id=%u morton=%u\n", surfel_id, surfel_morton);
 
     // TODO: This CANNOT be done here
     //if (surfels[half_size + surfel_id].morton == MORTON_OUT_OF_SCALE) {
@@ -48,13 +50,16 @@ void main() {
         const uint current_surfel_morton = surfels[i].morton;
         if (current_surfel_morton < surfel_morton) {
             ordered_surfel_id += 1;
-        } else if ((current_surfel_morton == surfel_morton) && (i < (half_size + surfel_id))) {
+        } else if ((current_surfel_morton == surfel_morton) && (i < src_surfel_id)) {
             // this is to ensure a stable sort: surfels with the same morton code keep their relative order
             ordered_surfel_id += 1;
         }
     }
 
     // copy the surfel to the new location
-    surfels[ordered_surfel_id] = surfels[half_size + surfel_id];
-    memoryBarrierBuffer();
+    surfels[ordered_surfel_id] = surfels[src_surfel_id];
+    //memoryBarrierBuffer();
+    //if (gl_GlobalInvocationID.x < 8) {
+    //    debugPrintfEXT("reorder.comp: src_id=%u ordered_id=%u morton=%u\n", src_surfel_id, ordered_surfel_id, surfel_morton);
+    //}
 }

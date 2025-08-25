@@ -461,17 +461,18 @@ uint register_surfel(
             return REGISTER_SURFEL_FRAME_LIMIT;
         } else if (surfel_search_res == SURFELS_MISSED) {
             // A matching surfel was not found: try to allocate a new one
-            uint surfel_id = allocate_surfel(checked_surfels);
-            if (surfel_id == SURFELS_FULL) {
-                debugPrintfEXT("|FULL(%u)", surfel_id);
+            uint surfel_allocation_id = allocate_surfel(checked_surfels);
+            if (surfel_allocation_id == SURFELS_FULL) {
+                debugPrintfEXT("|FULL(%u)", surfel_allocation_id);
                 return REGISTER_SURFEL_FULL;
-            } else if (surfel_id == SURFELS_MISSED) {
+            } else if (surfel_allocation_id == SURFELS_MISSED) {
                 // here we continue the loop to search again
                 // since surfels were allocated by other shader invocations meanwhile
                 //debugPrintfEXT("|MISSED(%u)", checked_surfels);
 
                 // or, if not forcing allocation, just return REGISTER_SURFEL_IGNORED
             } else {
+                const uint surfel_id = (total_surfels / 2) + surfel_allocation_id;
                 init_surfel(surfel_id, flags, instance_id, position, radius, normal, irradiance, morton);
                 unlock_surfel(surfel_id);
                 memoryBarrierBuffer();
