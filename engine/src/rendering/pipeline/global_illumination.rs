@@ -809,7 +809,7 @@ impl GILighting {
         ]);
 
         // this step will reorder surfels by morton code and also update the number of unallocated_surfels
-        recorder.bind_compute_pipeline(self.surfel_morton_pipeline.clone());
+        recorder.bind_compute_pipeline(self.surfel_reorder_pipeline.clone());
         recorder.bind_descriptor_sets_for_compute_pipeline(
             self.surfel_reorder_pipeline.get_parent_pipeline_layout(),
             0,

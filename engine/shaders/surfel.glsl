@@ -457,7 +457,7 @@ uint register_surfel(
         } else if (!can_spawn_another_surfel()) {
             // we cannot allocate more surfels this frame
             // to avoid impacting too much on the frame time
-            //debugPrintfEXT("|FRAME_LIMIT");
+            //debugPrintfEXT("|FRAME_LIMIT(1)");
             return REGISTER_SURFEL_FRAME_LIMIT;
         } else if (surfel_search_res == SURFELS_MISSED) {
             // A matching surfel was not found: try to allocate a new one
