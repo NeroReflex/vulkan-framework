@@ -149,7 +149,7 @@ void main() {
             if (last_morton > surfels[i].morton) {
                 // this should never happen
                 debugPrintfEXT("MORTON SORT ERROR AT SURFEL %u %u > %u\n", i, last_morton, surfels[i].morton);
-                contribution = vec3(2500.0, 2500.0, 2500.0);
+                //contribution = vec3(2500.0, 2500.0, 2500.0);
             }
 
             last_morton = surfels[i].morton;
