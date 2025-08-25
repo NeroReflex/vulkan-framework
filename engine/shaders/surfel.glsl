@@ -169,6 +169,27 @@ uint linear_search_ordered_surfel_for_allocation(
 ) {
     bool too_close = false;
 
+    // Cut (veins) here
+    // ==========================================================================
+    uint checked_surfels = count_ordered_surfels();
+    const uint first_ordered_surfel_id = 0;
+    const uint last_ordered_surfel_id = first_ordered_surfel_id + checked_surfels;
+    for (uint i = first_ordered_surfel_id; i < last_ordered_surfel_id; i++) {
+        if ((is_point_in_surfel(i, point))) {
+            return i;
+        }
+
+        if (distance(point, vec3(surfels[i].position_x, surfels[i].position_y, surfels[i].position_z)) < (radius + surfels[i].radius)) {
+            too_close = true;
+            // do not break, we want to check all surfels for matches,
+            // but we also want to know if we were too close to any of them
+            // to avoid allocating new ones
+        }
+    }
+
+    return too_close ? SURFELS_TOO_CLOSE : SURFELS_MISSED;
+    // ==========================================================================
+
     // the new surfel can only be allocated if it is distant at least radius
     // from the edge of another surfel. Se we have to search all surfels
     // between begin_colliding_surfel_id and end_colliding_surfel_id and
