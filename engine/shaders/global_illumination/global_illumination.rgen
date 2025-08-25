@@ -134,14 +134,11 @@ void main() {
     vec3 contribution = vec3(0.0, 0.0, 0.0);
 
 #if SHOW_SURFELS
-    if (texel_position == ivec2(0 ,0)) {
-        debugPrintfEXT("SURFELS %u %u\n", count_unordered_surfels(), count_ordered_surfels());
-    }
     if (depth < DEPTH_IGNORE) {
         
         // ================================
         // Low level debug visualization of (old) surfels
-        const uint available_surfels = count_unordered_surfels();
+        const uint available_surfels = count_ordered_surfels();
         if (available_surfels == 0) {
             contribution = vec3(2500.0, 2500.0, 2500.0);
         }
@@ -154,6 +151,8 @@ void main() {
                 debugPrintfEXT("MORTON SORT ERROR AT SURFEL %u %u > %u\n", i, last_morton, surfels[i].morton);
                 contribution = vec3(2500.0, 2500.0, 2500.0);
             }
+
+            last_morton = surfels[i].morton;
 
             if (is_point_in_surfel(i, origin)) {
                 surfel_id = i;
