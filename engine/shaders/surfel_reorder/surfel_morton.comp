@@ -43,6 +43,11 @@ void main() {
         const vec3 surfel_center = vec3(surfels[src_surfel_id].position_x, surfels[src_surfel_id].position_y, surfels[src_surfel_id].position_z);
         const uint morton = surfels[src_surfel_id].morton == MORTON_OUT_OF_SCALE ? MORTON_OUT_OF_SCALE : morton3D(eye_position, surfel_center, clip_space);
         surfels[src_surfel_id].morton = morton;
+
+        // this is a just spawned surfel: it hasn't contributed yet
+        // to the final image, so reset its contribution counter
+        // (it will be incremented later if it contributes)
+        surfels[src_surfel_id].latest_contribution = 0;
         uint old_value = atomicAdd(ordered_surfels, 1);
         //debugPrintfEXT("updated %u pos=(%f,%f,%f) increment ordered_surfels from %u in shader %u/%u\n", src_surfel_id, surfel_center.x, surfel_center.y, surfel_center.z, old_value, gl_GlobalInvocationID.x, unordered_size);
     }
@@ -64,7 +69,16 @@ void main() {
     // copy the surfel to the new location with updated morton code
     surfels[dst_surfel_id] = surfels[src_surfel_id];
     surfels[dst_surfel_id].morton = morton;
-    
+    surfels[src_surfel_id].latest_contribution += 1;
+
+#if DELETE_NOT_CONTRIBUTING_SURFELS
+    if (surfels[src_surfel_id].latest_contribution == DELETE_NOT_CONTRIBUTING_SURFELS) {
+        // this surfel hasn't contributed to the final image in a while: delete it
+        surfels[dst_surfel_id].morton = MORTON_OUT_OF_SCALE;
+        //debugPrintfEXT("morton.comp: deleting surfel %u\n", src_surfel_id);
+    }
+#endif
+
     //if (src_surfel_id < 8) {
     //    debugPrintfEXT("morton.comp: src_id=%u dst_id=%u pos=(%f,%f,%f) morton=%u\n", src_surfel_id, dst_surfel_id, surfel_center.x, surfel_center.y, surfel_center.z, morton);
     //}
