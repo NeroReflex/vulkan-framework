@@ -139,7 +139,9 @@ pub struct GILighting {
 const SURFELS_MORTON_GROUP_SIZE_X: u32 = 256;
 const SURFELS_REORDER_GROUP_SIZE_X: u32 = 256;
 
-const MAX_SURFELS: u32 = u32::pow(2, 20) * 16;
+// This MUST be a power of two an a multiple of TWICE:
+// SURFELS_MORTON_GROUP_SIZE_X and SURFELS_REORDER_GROUP_SIZE_X
+const MAX_SURFELS: u32 = u32::pow(2, 14);
 const SURFEL_SIZE: u32 = 16 * 4;
 
 impl GILighting {
@@ -775,11 +777,7 @@ impl GILighting {
             .as_slice(),
         );
 
-        let half_size = MAX_SURFELS / 2;
-        let group_count_x = (half_size / SURFELS_MORTON_GROUP_SIZE_X) + 1;
-        let group_count_y = 1;
-        let group_count_z = 1;
-        recorder.dispatch(group_count_x, group_count_y, group_count_z);
+        recorder.dispatch((MAX_SURFELS >> 1) / SURFELS_MORTON_GROUP_SIZE_X, 1, 1);
 
         recorder.pipeline_barriers([
             BufferMemoryBarrier::new(
@@ -820,11 +818,7 @@ impl GILighting {
             .as_slice(),
         );
 
-        let half_size = MAX_SURFELS / 2;
-        let group_count_x = (half_size / SURFELS_REORDER_GROUP_SIZE_X) + 1;
-        let group_count_y = 1;
-        let group_count_z = 1;
-        recorder.dispatch(group_count_x, group_count_y, group_count_z);
+        recorder.dispatch((MAX_SURFELS >> 1) / SURFELS_REORDER_GROUP_SIZE_X, 1, 1);
 
         // prepare surfel(s) buffer(s) for use within the raytracing shader
         recorder.pipeline_barriers([
