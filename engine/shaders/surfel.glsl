@@ -365,6 +365,15 @@ uint update_surfel(
     return REGISTER_SURFEL_OK;
 }
 
+bool is_out_of_range(in const vec3 eye_position, in const vec3 surfel_center, in const vec2 clip_space) {
+    const float range = abs(clip_space.y) - abs(clip_space.x);
+    
+    const vec3 min_allowed_position = eye_position - vec3(range);
+    const vec3 max_allowed_position = eye_position + vec3(range);
+
+    return any(lessThan(surfel_center, min_allowed_position)) || any(greaterThan(surfel_center, max_allowed_position));
+}
+
 uint register_surfel(
     in const vec3 eye_position,
     in const vec2 clip_planes,
@@ -375,8 +384,7 @@ uint register_surfel(
     vec3 normal,
     vec3 irradiance
 ) {
-    const uint morton = morton3D(eye_position, position, clip_planes);
-    if (morton == MORTON_OUT_OF_SCALE) {
+    if (is_out_of_range(eye_position, position, clip_planes)) {
         return REGISTER_SURFEL_OUT_OF_RANGE;
     }
 
