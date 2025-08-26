@@ -95,7 +95,12 @@ uint allocate_surfel(uint checked_surfels) {
 }
 
 bool can_spawn_another_surfel() {
-    return atomicMax(unordered_surfels, 0) < MAX_SURFELS_PER_FRAME;
+    // it's not THAT much important to be exact here, so avoid the expensive atomic read
+    // since the allocation will fail if we ran out of space anyway, the only downside
+    // is that we might ends up allocating more surfels than the allowed maximum per frame,
+    // but not more than what shader(s) can handle 
+    //return atomicMax(unordered_surfels, 0) < MAX_SURFELS_PER_FRAME;
+    return count_unordered_surfels() < MAX_SURFELS_PER_FRAME;
 }
 
 
@@ -236,11 +241,13 @@ uint linear_search_ordered_surfel_for_allocation(
     const uint begin_colliding_surfel_id = binary_search_morton(0, last_ordered_id, min_morton, false);
     const uint end_colliding_surfel_id = binary_search_morton(0, last_ordered_id, max_morton, true);
     for (uint i = begin_colliding_surfel_id; i <= end_colliding_surfel_id; i++) {
-        if ((is_point_in_surfel(i, point))) {
+        if (surfels[i].morton == MORTON_OUT_OF_SCALE) {
+            // this is an ordered set and MORTON_OUT_OF_SCALE is both invalid and the highest possible value,
+            // so when the first one is found, we can stop searching
+            break;
+        } else if ((is_point_in_surfel(i, point))) {
             return i;
-        }
-
-        if (distance(point, vec3(surfels[i].position_x, surfels[i].position_y, surfels[i].position_z)) < (radius + surfels[i].radius)) {
+        } else if (distance(point, vec3(surfels[i].position_x, surfels[i].position_y, surfels[i].position_z)) < (radius + surfels[i].radius)) {
             too_close = true;
             // do not break, we want to check all surfels for matches,
             // but we also want to know if we were too close to any of them
@@ -264,6 +271,9 @@ uint linear_search_unordered_surfel_for_allocation(
     const uint first_unordered_surfel_id = total_surfels / 2;
     const uint last_unordered_surfel_id = first_unordered_surfel_id + checked_surfels;
     for (uint i = first_unordered_surfel_id; i < last_unordered_surfel_id; i++) {
+        // WARNING: here MORTON_OUT_OF_SCALE is not checked for
+        // because it's not something we could have allocated this frame
+
         if ((is_point_in_surfel(i, point))) {
             return i;
         }
