@@ -2,7 +2,7 @@
 
 #include "../config.glsl"
 
-layout (local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+layout (local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 #define STATUS_DESCRIPTOR_SET 0
 #include "../status.glsl"
@@ -27,6 +27,17 @@ void main() {
         // since unordered_surfels is used by the raytracing pipeline to track how many surfels
         // have been allocated on a single frame.
         atomicAnd(unordered_surfels, 0);
+
+        // DEBUG OUTPUT
+        // =========================================
+        //int merda = atomicMax(ordered_surfels, 0);
+        //if (merda <= 0) {
+        //    // no surfels to reorder
+        //    debugPrintfEXT("reorder.comp: no surfels to reorder: %d\n", merda);
+        //} else {
+        //    debugPrintfEXT("reorder.comp: reordering %d surfels\n", merda);
+        //}
+        // =========================================
     }
 
     // avoid out-of-bounds access
@@ -37,12 +48,6 @@ void main() {
     const uint src_surfel_id = half_size + surfel_id;
     const uint surfel_morton = surfels[src_surfel_id].morton;
     //debugPrintfEXT("reorder.comp: surfel_id=%u morton=%u\n", surfel_id, surfel_morton);
-
-    // TODO: This CANNOT be done here
-    //if (surfels[half_size + surfel_id].morton == MORTON_OUT_OF_SCALE) {
-    //    // atomically decrement busy_surfels
-    //    return;
-    //}
 
     // compute the new offset for the surfel
     uint ordered_surfel_id = 0;
