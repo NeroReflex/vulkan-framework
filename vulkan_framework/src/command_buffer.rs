@@ -586,6 +586,9 @@ impl<'a> CommandBufferRecorder<'a> {
         dst: Arc<dyn BufferTrait>,
         regions: &[(u64, u64, u64)],
     ) {
+        assert!(!regions.is_empty());
+        assert!(src.native_handle() != dst.native_handle());
+
         self.used_resources
             .insert(CommandBufferReferencedResource::Buffer(src.clone()));
 
