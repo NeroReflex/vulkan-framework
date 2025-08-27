@@ -25,9 +25,9 @@ void main() {
     // In contrast, unordered_surfels is a constant (readonly) in this pass.
     const uint unordered_size = count_unordered_surfels();
 
-    //if (gl_GlobalInvocationID.x == 0) {
-    //    debugPrintfEXT("morton.comp: allocated=%u, already_there=%u\n", unordered_size, ordered_surfels);
-    //}
+    if (gl_GlobalInvocationID.x == 0) {
+        debugPrintfEXT("morton.comp: allocated=%u, already_there=%u\n", unordered_size, ordered_surfels);
+    }
 
     // Avoid overwriting surfels that have been written in the previous frame:
     // Those that are called "unordered"
@@ -35,6 +35,8 @@ void main() {
 
     const vec2 clip_space = reconstructNearFarFromCamera();
     const vec3 eye_position = get_eye_position();
+
+    int delta_surfels = 0;
 
     // Increment the number of ordered surfels: those were allocated the previous frame
     // and will be left in place for the reordering shader.
@@ -51,8 +53,8 @@ void main() {
         // to the final image, so reset its contribution counter
         // (it will be incremented later if it contributes)
         surfels[src_surfel_id].latest_contribution = 0;
-        int old_value = atomicAdd(ordered_surfels, 1);
-        //debugPrintfEXT("updated %u pos=(%f,%f,%f) increment ordered_surfels from %d in shader %u/%u\n", src_surfel_id, surfel_center.x, surfel_center.y, surfel_center.z, old_value, gl_GlobalInvocationID.x, unordered_size);
+
+        delta_surfels += 1;
     }
 
     // I have nothing to do: if The following code would execute I would copy
@@ -94,7 +96,7 @@ void main() {
     } else {
         // decrement the number of ordered surfels: the next shader will use this
         // number as the number of surfels to reorder
-        int previous_value = atomicAdd(ordered_surfels, -1);
+        delta_surfels -= 1;
 
         //debugPrintfEXT("morton.comp: DELETE: surfel[%u].morton=%u, invocation=%u, ordered_surfels(before)=%d, how_many_out_of_scale_before_me=%u\n",
         //    src_surfel_id,
@@ -103,13 +105,11 @@ void main() {
         //    previous_value,
         //    how_many_out_of_scale_before_me
         //);
+    }
 
-        if (previous_value == 0) {
-            // this should never happen
-            //debugPrintfEXT("morton.comp: ERROR: trying to delete surfel %u but ordered_surfels is already %d\n", src_surfel_id, previous_value);
-            // restore the value
-            //atomicAdd(ordered_surfels, 1);
-        }
+    if (delta_surfels != 0) {
+        int old_value = atomicAdd(ordered_surfels, delta_surfels);
+        debugPrintfEXT("morton.comp: delta %d surfels from %d\n", delta_surfels, old_value);
     }
 
     //if (src_surfel_id < 8) {

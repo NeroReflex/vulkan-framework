@@ -15,11 +15,11 @@
 #define FORCE_ALLOCATION 0
 
 // Keep in sync wit rust side
-#define MAX_SURFELS_PER_FRAME 8
+#define MAX_SURFELS_PER_FRAME 256
 
 // If this is enabled surfel that haven't contributed to the final image
 // in N frames are deleted
-#define DELETE_NOT_CONTRIBUTING_SURFELS 2
+#define DELETE_NOT_CONTRIBUTING_SURFELS 32
 
 #define MAX_SURFEL_RADIUS 20.0
 
