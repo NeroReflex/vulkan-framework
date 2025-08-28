@@ -736,17 +736,7 @@ impl GraphicsPipeline {
         > = dynamic_rendering
             .color_attachments
             .iter()
-            .map(|_| {
-                ash::vk::PipelineColorBlendAttachmentState::default()
-                    .color_write_mask(ash::vk::ColorComponentFlags::RGBA)
-                    .blend_enable(false)
-                    .src_color_blend_factor(ash::vk::BlendFactor::ONE)
-                    .dst_color_blend_factor(ash::vk::BlendFactor::ZERO)
-                    .color_blend_op(ash::vk::BlendOp::ADD)
-                    .src_alpha_blend_factor(ash::vk::BlendFactor::ONE)
-                    .dst_alpha_blend_factor(ash::vk::BlendFactor::ONE)
-                    .alpha_blend_op(ash::vk::BlendOp::ADD)
-            })
+            .map(|color_attachment| color_attachment.into())
             .collect();
 
         let color_blend_state_create_info = ash::vk::PipelineColorBlendStateCreateInfo::default()

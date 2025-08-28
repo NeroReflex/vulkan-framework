@@ -27,7 +27,7 @@ use vulkan_framework::{
     device::*,
     dynamic_rendering::{
         AttachmentStoreOp, DynamicRendering, DynamicRenderingColorAttachment,
-        RenderingAttachmentSetup,
+        DynamicRenderingColorDefinition, RenderingAttachmentSetup,
     },
     fence::Fence,
     graphics_pipeline::{
@@ -620,21 +620,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             })
             .collect::<Vec<_>>();
 
-        let renderquad_vertex_shader = VertexShader::new(
-            dev.clone(),
-            RENDERQUAD_VERTEX_SPV,
-        )
-        .unwrap();
+        let renderquad_vertex_shader =
+            VertexShader::new(dev.clone(), RENDERQUAD_VERTEX_SPV).unwrap();
 
-        let renderquad_fragment_shader = FragmentShader::new(
-            dev.clone(),
-            RENDERQUAD_FRAGMENT_SPV,
-        )
-        .unwrap();
+        let renderquad_fragment_shader =
+            FragmentShader::new(dev.clone(), RENDERQUAD_FRAGMENT_SPV).unwrap();
 
         let renderquad_graphics_pipeline = GraphicsPipeline::new(
             None,
-            DynamicRendering::new([swapchain.images_format()].as_slice(), None, None),
+            DynamicRendering::new(
+                [DynamicRenderingColorDefinition::new(
+                    swapchain.images_format(),
+                )]
+                .as_slice(),
+                None,
+                None,
+            ),
             ImageMultisampling::SamplesPerPixel1,
             Some(DepthConfiguration::new(
                 true,

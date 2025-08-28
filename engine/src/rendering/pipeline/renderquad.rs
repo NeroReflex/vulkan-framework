@@ -14,7 +14,7 @@ use vulkan_framework::{
     device::Device,
     dynamic_rendering::{
         AttachmentStoreOp, DynamicRendering, DynamicRenderingColorAttachment,
-        RenderingAttachmentSetup,
+        DynamicRenderingColorDefinition, RenderingAttachmentSetup,
     },
     graphics_pipeline::{
         CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline, PolygonMode,
@@ -162,19 +162,17 @@ impl RenderQuad {
             Some("renderquad.pipeline_layout"),
         )?;
 
-        let vertex_shader = VertexShader::new(
-            device.clone(),
-            RENDERQUAD_VERTEX_SPV,
-        )?;
+        let vertex_shader = VertexShader::new(device.clone(), RENDERQUAD_VERTEX_SPV)?;
 
-        let fragment_shader = FragmentShader::new(
-            device.clone(),
-            RENDERQUAD_FRAGMENT_SPV,
-        )?;
+        let fragment_shader = FragmentShader::new(device.clone(), RENDERQUAD_FRAGMENT_SPV)?;
 
         let graphics_pipeline = GraphicsPipeline::new(
             None,
-            DynamicRendering::new([final_format].as_slice(), None, None),
+            DynamicRendering::new(
+                [DynamicRenderingColorDefinition::new(final_format)].as_slice(),
+                None,
+                None,
+            ),
             ImageMultisampling::SamplesPerPixel1,
             Some(DepthConfiguration::new(
                 true,

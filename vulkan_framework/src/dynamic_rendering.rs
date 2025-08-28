@@ -52,16 +52,51 @@ impl From<AttachmentStoreOp> for crate::ash::vk::AttachmentStoreOp {
     }
 }
 
+#[derive(Clone, PartialEq, Eq)]
+pub struct DynamicRenderingColorDefinition {
+    format: ImageFormat,
+}
+
+impl DynamicRenderingColorDefinition {
+    pub fn new(format: ImageFormat) -> Self {
+        Self { format }
+    }
+
+    pub fn format(&self) -> ImageFormat {
+        self.format
+    }
+}
+
+impl Into<crate::ash::vk::Format> for &DynamicRenderingColorDefinition {
+    fn into(self) -> crate::ash::vk::Format {
+        self.format.into()
+    }
+}
+
+impl Into<crate::ash::vk::PipelineColorBlendAttachmentState> for &DynamicRenderingColorDefinition {
+    fn into(self) -> crate::ash::vk::PipelineColorBlendAttachmentState {
+        ash::vk::PipelineColorBlendAttachmentState::default()
+            .color_write_mask(ash::vk::ColorComponentFlags::RGBA)
+            .blend_enable(false)
+            .src_color_blend_factor(ash::vk::BlendFactor::ONE)
+            .dst_color_blend_factor(ash::vk::BlendFactor::ZERO)
+            .color_blend_op(ash::vk::BlendOp::ADD)
+            .src_alpha_blend_factor(ash::vk::BlendFactor::ONE)
+            .dst_alpha_blend_factor(ash::vk::BlendFactor::ONE)
+            .alpha_blend_op(ash::vk::BlendOp::ADD)
+    }
+}
+
 #[derive(Default, Clone, PartialEq, Eq)]
 pub struct DynamicRendering {
-    pub(crate) color_attachments: smallvec::SmallVec<[ImageFormat; 8]>,
+    pub(crate) color_attachments: smallvec::SmallVec<[DynamicRenderingColorDefinition; 8]>,
     pub(crate) depth_attachment: Option<ImageFormat>,
     pub(crate) stencil_attachment: Option<ImageFormat>,
 }
 
 impl DynamicRendering {
     pub fn new(
-        color_attachments: &[ImageFormat],
+        color_attachments: &[DynamicRenderingColorDefinition],
         depth_attachment: Option<ImageFormat>,
         stencil_attachment: Option<ImageFormat>,
     ) -> Self {

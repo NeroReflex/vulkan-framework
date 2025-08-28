@@ -13,7 +13,7 @@ use vulkan_framework::{
     descriptor_set_layout::DescriptorSetLayout,
     dynamic_rendering::{
         AttachmentStoreOp, DynamicRendering, DynamicRenderingColorAttachment,
-        RenderingAttachmentSetup,
+        DynamicRenderingColorDefinition, RenderingAttachmentSetup,
     },
     graphics_pipeline::{
         CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline, PolygonMode,
@@ -287,7 +287,14 @@ impl HDRTransform {
 
         let graphics_pipeline = GraphicsPipeline::new(
             None,
-            DynamicRendering::new([Self::image_output_format()].as_slice(), None, None),
+            DynamicRendering::new(
+                [DynamicRenderingColorDefinition::new(
+                    Self::image_output_format(),
+                )]
+                .as_slice(),
+                None,
+                None,
+            ),
             ImageMultisampling::SamplesPerPixel1,
             Some(DepthConfiguration::new(
                 true,

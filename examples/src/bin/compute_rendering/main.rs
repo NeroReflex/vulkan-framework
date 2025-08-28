@@ -13,7 +13,8 @@ use vulkan_framework::descriptor_set::DescriptorSet;
 use vulkan_framework::descriptor_set_layout::DescriptorSetLayout;
 use vulkan_framework::device::*;
 use vulkan_framework::dynamic_rendering::{
-    AttachmentStoreOp, DynamicRendering, DynamicRenderingColorAttachment, RenderingAttachmentSetup,
+    AttachmentStoreOp, DynamicRendering, DynamicRenderingColorAttachment,
+    DynamicRenderingColorDefinition, RenderingAttachmentSetup,
 };
 use vulkan_framework::fence::Fence;
 use vulkan_framework::graphics_pipeline::{
@@ -403,24 +404,25 @@ fn main() {
         })
         .unwrap();
 
-    let renderquad_vertex_shader = VertexShader::new(
-        device.clone(),
-        RENDERQUAD_VERTEX_SPV,
-    )
-    .unwrap();
+    let renderquad_vertex_shader =
+        VertexShader::new(device.clone(), RENDERQUAD_VERTEX_SPV).unwrap();
 
-    let renderquad_fragment_shader = FragmentShader::new(
-        device.clone(),
-        RENDERQUAD_FRAGMENT_SPV,
-    )
-    .unwrap();
+    let renderquad_fragment_shader =
+        FragmentShader::new(device.clone(), RENDERQUAD_FRAGMENT_SPV).unwrap();
 
     //&[swapchain_images_imageview[idx as usize].clone()],
     //            swapchain_extent,
 
     let renderquad_graphics_pipeline = GraphicsPipeline::new(
         None,
-        DynamicRendering::new([swapchain.images_format()].as_slice(), None, None),
+        DynamicRendering::new(
+            [DynamicRenderingColorDefinition::new(
+                swapchain.images_format(),
+            )]
+            .as_slice(),
+            None,
+            None,
+        ),
         ImageMultisampling::SamplesPerPixel1,
         Some(DepthConfiguration::new(
             true,

@@ -16,7 +16,7 @@ use vulkan_framework::{
     descriptor_set_layout::DescriptorSetLayout,
     dynamic_rendering::{
         AttachmentStoreOp, DynamicRendering, DynamicRenderingColorAttachment,
-        DynamicRenderingDepthAttachment, RenderingAttachmentSetup,
+        DynamicRenderingColorDefinition, DynamicRenderingDepthAttachment, RenderingAttachmentSetup,
     },
     graphics_pipeline::{
         AttributeType, CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline,
@@ -437,8 +437,7 @@ impl MeshRendering {
                 .unwrap();
         })?;
 
-        let vertex_shader =
-            VertexShader::new(device.clone(), MESH_RENDERING_VERTEX_SPV).unwrap();
+        let vertex_shader = VertexShader::new(device.clone(), MESH_RENDERING_VERTEX_SPV).unwrap();
 
         let fragment_shader =
             FragmentShader::new(device.clone(), MESH_RENDERING_FRAGMENT_SPV).unwrap();
@@ -463,11 +462,11 @@ impl MeshRendering {
                 None,
                 DynamicRendering::new(
                     [
-                        Self::output_image_color_format(),
-                        Self::output_image_color_format(),
-                        Self::output_image_color_format(),
-                        Self::output_image_color_format(),
-                        Self::output_instance_format(),
+                        DynamicRenderingColorDefinition::new(Self::output_image_color_format()),
+                        DynamicRenderingColorDefinition::new(Self::output_image_color_format()),
+                        DynamicRenderingColorDefinition::new(Self::output_image_color_format()),
+                        DynamicRenderingColorDefinition::new(Self::output_image_color_format()),
+                        DynamicRenderingColorDefinition::new(Self::output_instance_format()),
                     ]
                     .as_slice(),
                     Some(Self::output_image_depth_stencil_format()),

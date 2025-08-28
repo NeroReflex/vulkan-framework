@@ -9,7 +9,7 @@ use vulkan_framework::{
     device::*,
     dynamic_rendering::{
         AttachmentStoreOp, DynamicRendering, DynamicRenderingColorAttachment,
-        RenderingAttachmentSetup,
+        DynamicRenderingColorDefinition, RenderingAttachmentSetup,
     },
     fence::Fence,
     graphics_pipeline::{
@@ -255,7 +255,14 @@ fn main() {
 
         let graphics_pipeline = GraphicsPipeline::new(
             None,
-            DynamicRendering::new([swapchain.images_format()].as_slice(), None, None),
+            DynamicRendering::new(
+                [DynamicRenderingColorDefinition::new(
+                    swapchain.images_format(),
+                )]
+                .as_slice(),
+                None,
+                None,
+            ),
             ImageMultisampling::SamplesPerPixel1,
             Some(DepthConfiguration::new(
                 true,
