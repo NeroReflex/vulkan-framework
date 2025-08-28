@@ -1,0 +1,311 @@
+#extension GL_EXT_debug_printf : enable
+
+#include "../config.glsl"
+
+layout (local_size_x = SURFELS_PER_LEAF, local_size_y = 1, local_size_z = 1) in;
+
+#define STATUS_DESCRIPTOR_SET 0
+#include "../status.glsl"
+
+#define SURFELS_DESCRIPTOR_SET 1
+#include "../surfel.glsl"
+
+// low is x, high is y
+#define uint64_t uvec2
+#define new_uint64_from_uint(u) uint64_t(u, 0)
+#define new_uint64(low, high) uint64_t(low, high)
+
+#define float2 vec2
+
+uint64_t rightShift(uint64_t value, uint shift) {
+    if (shift >= 64) {
+        return new_uint64_from_uint(0); // Shift out all bits
+    } else if (shift >= 32) {
+        // Shift high part into low part
+        return new_uint64_from_uint(value.x >> (shift - 32));
+    } else {
+        // Shift low part and combine with high part
+        uint newLow = (value.x >> shift) | (value.x << (32 - shift));
+        uint newHigh = value.x >> shift;
+        return new_uint64(newLow, newHigh);
+    }
+}
+
+uint64_t leftShift(uint64_t value, uint shift) {
+    if (shift >= 64) {
+        return new_uint64_from_uint(0); // Shift out all bits
+    } else if (shift >= 32) {
+        return new_uint64(0, value.x << (shift - 32));
+    } else {
+        uint newLow = value.x << shift;
+        uint newHigh = (value.y << shift) | (value.x >> (32 - shift));
+        return new_uint64(newLow, newHigh);
+    }
+}
+
+uint64_t bitwiseAnd(uint64_t a, uint64_t b) {
+    return new_uint64(a.x & b.x, a.y & b.y);
+}
+
+uint64_t bitwiseXor(uint64_t a, uint64_t b) {
+    return new_uint64(a.x ^ b.x, a.y ^ b.y);
+}
+
+uint64_t bitwiseOr(uint64_t a, uint64_t b) {
+    return new_uint64(a.x | b.x, a.y | b.y);
+}
+
+// Fetch the number of splits in a given range of surfels:
+// split happens when the next surfel changes a bit higher
+int fetch_splits(uint start, uint size) {
+    uint first_index = start;
+    uint last_index = start + size - 1;
+
+    uint morton_of_first = surfels[first_index].morton;
+    uint morton_of_last = surfels[last_index].morton;
+
+    uint morton_xor = morton_of_first ^ morton_of_last;
+    if (morton_xor == 0) {
+        return -1;
+    }
+
+    uint bit_changed = 0;
+    for (uint b = 1u << 31; b != 0; b >>= 1) {
+        if ((morton_xor & b) != 0) {
+            bit_changed = b;
+            break;
+        }
+    }
+
+    uint lo = start;
+    uint hi = start + size; // one-past-end
+    uint tmp = (morton_of_first & bit_changed);
+    while (lo < hi) {
+        uint mid = lo + ((hi - lo) >> 1);
+        uint v = surfels[mid].morton;
+
+        bool diff = (v & bit_changed) != tmp;
+        if (!diff) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+
+/*
+    // linar search of the first surfel that changes the interesting bit
+    for (uint i = 0; i <= last_index; i++) {
+        if ((surfels[i].morton & bit_changed) != (morton_of_first & bit_changed)) {
+            return i;
+        }
+    }
+*/
+    return int(lo);
+}
+
+int delta(int i, int j, const uint surfels_count)
+{
+    if (((j < 0) || (j > surfels_count - 1)) || ((i < 0) || (i > surfels_count - 1)))
+    {
+        return -1;
+    }
+
+    const uint64_t key_i = new_uint64_from_uint(surfels[i].morton);
+    const uint64_t key_j = new_uint64_from_uint(surfels[j].morton);
+
+    const uint64_t composed_key_i = bitwiseOr(leftShift(key_i, 32), new_uint64_from_uint(i));
+    const uint64_t composed_key_j = bitwiseOr(leftShift(key_j, 32), new_uint64_from_uint(j));
+
+    const uint64_t x = bitwiseXor(composed_key_i, composed_key_j);
+
+    int leading_zeroes = 0;
+    for (int k = 63; k >= 0; --k) {
+        if (bitwiseAnd(x, new_uint64_from_uint(0x01 << k)) == uint64_t(0)) {
+            ++leading_zeroes;
+        } else {
+            return leading_zeroes;
+        }
+    }
+
+    return leading_zeroes;
+}
+
+float2 determineRange(const int index_internal_nodes, const uint numberOfTriangles)
+{
+    const int dleft = delta(index_internal_nodes, index_internal_nodes - 1, numberOfTriangles);
+    const int dright = delta(index_internal_nodes, index_internal_nodes + 1, numberOfTriangles);
+
+    // Determine direction of the range (+1 or -1)
+    const int direction = sign(dright - dleft);
+
+    // Compute upper bound for the length of the range
+    const int delta_min = (direction == 1) ? dleft : dright;
+
+    int l_max = 2;
+
+    while (delta(index_internal_nodes, index_internal_nodes + l_max * direction, numberOfTriangles) > delta_min)
+    {
+        l_max *= 2;
+    }
+
+    int l = 0;
+
+    // Find the other end using binary search
+    for (int t = l_max / 2; t >= 1; t /= 2)
+    {
+        if (delta(index_internal_nodes, index_internal_nodes + (l + t) * direction, numberOfTriangles) > delta_min)
+        {
+            l += t;
+        }
+    }
+
+    int j = index_internal_nodes + l * direction;
+
+    return float2(
+        min(index_internal_nodes, j),
+        max(index_internal_nodes, j)
+    );
+}
+
+int findSplit(const int first, const int last, const uint count)
+{
+    const int commonPrefix = delta(first, last, count);
+
+    int split = first;
+    int step = last - first;
+
+    do
+    {
+        step = (step + 1) >> 1;      // exponential decrease
+        int newSplit = split + step; // proposed new position
+
+        if (newSplit < last)
+        {
+            int splitPrefix = delta(first, newSplit, count);
+            if (splitPrefix > commonPrefix)
+                split = newSplit; // accept proposal
+        }
+    } while (step > 1);
+
+    return split;
+}
+
+void main() {
+    const uint half_size = total_surfels / 2;
+
+    // I have nothing to do: I do not correspond to a valid surfel
+    if (gl_GlobalInvocationID.x >= ordered_surfels) {
+        return;
+    }
+
+    uint depth = 0;
+    int last_split = -1;
+    do {
+        last_split = fetch_splits(gl_GlobalInvocationID.x, ordered_surfels - gl_GlobalInvocationID.x);
+    } while (last_split != -1);
+
+    uvec3 ranges_and_splits[] = uvec3[](
+        uvec3(0, 0, 0), // placeholder for surfel 0
+        uvec3(1, 1, 0)  // placeholder for surfel 1
+    );
+}
+
+/*
+[numthreads(TLAS_CONSTRUCTION_LOCAL_SIZE_X, 1, 1)]
+void main(uint3 gl_GlobalInvocationID : SV_DispatchThreadID)
+{
+    const uint index_internal_nodes = gl_GlobalInvocationID.x;
+
+    uint tmp = 0;
+
+    // prepare the synchronization structure for the next step
+    InterlockedMin(sync[index_internal_nodes], 0, tmp);
+
+    if (index_internal_nodes >= (push_constants.meshInstancesCount - 1)) {
+        return;
+    }
+
+    const float2 range = determineRange(int(index_internal_nodes), push_constants.meshInstancesCount);
+
+    const int first_without_offset = range.x;
+    const int last_without_offset = range.y;
+
+    const int split_without_offset = findSplit(first_without_offset, last_without_offset, push_constants.meshInstancesCount);
+
+    const uint split = split_without_offset;
+    const uint first = uint(first_without_offset);
+    const uint last = uint(last_without_offset);
+
+    tree[index_internal_nodes].left = split;
+    tree[index_internal_nodes].right = split + 1;
+    
+    // make sure the parent of a root node is the root node itself!
+    if (index_internal_nodes == 0) {
+        tree[index_internal_nodes].parent = index_internal_nodes;
+    }
+
+    AABB leftAABB = compatAABB(
+        float3(POSITIVE_INF, POSITIVE_INF, POSITIVE_INF),
+        float3(NEGATIVE_INF, NEGATIVE_INF, NEGATIVE_INF)
+    );
+
+    AABB rightAABB = compatAABB(
+        float3(POSITIVE_INF, POSITIVE_INF, POSITIVE_INF),
+        float3(NEGATIVE_INF, NEGATIVE_INF, NEGATIVE_INF)
+    );
+
+    // Output child pointers
+    if (split != first)
+    {
+        // Update the parent node
+        tree[split].parent = index_internal_nodes;
+    } else {
+        const float aabb_vMin[3] = meshes[refs[split].meshReferenceIndex].aabb_vMin;
+        const float aabb_vMax[3] = meshes[refs[split].meshReferenceIndex].aabb_vMax;
+        const float4x4 modelMatrix = instances[refs[split].instanceReferenceIndex];
+
+        leftAABB = combineAABBs(
+            leftAABB,
+            compatAABB(
+                modelMatrix,
+                float3(aabb_vMin[0], aabb_vMin[1], aabb_vMin[2]),
+                float3(aabb_vMax[0], aabb_vMax[1], aabb_vMax[2])
+            )
+        );
+
+        tree[index_internal_nodes].left |= 0b10000000000000000000000000000000u; 
+    }
+
+    if ((split + 1) != last)
+    {
+        // Update the parent node
+        tree[split + 1].parent = index_internal_nodes;
+    } else {
+        const float aabb_vMin[3] = meshes[refs[split + 1].meshReferenceIndex].aabb_vMin;
+        const float aabb_vMax[3] = meshes[refs[split + 1].meshReferenceIndex].aabb_vMax;
+        const float4x4 modelMatrix = instances[refs[split + 1].instanceReferenceIndex];
+
+        rightAABB = combineAABBs(
+            rightAABB,
+            compatAABB(
+                modelMatrix,
+                float3(aabb_vMin[0], aabb_vMin[1], aabb_vMin[2]),
+                float3(aabb_vMax[0], aabb_vMax[1], aabb_vMax[2])
+            )
+        );
+
+        tree[index_internal_nodes].right |= 0b10000000000000000000000000000000u;
+    }
+
+    const AABB combinedAABB = combineAABBs(leftAABB, rightAABB);
+
+    tree[index_internal_nodes].aabb_vMin[0] = combinedAABB.vMin.x;
+    tree[index_internal_nodes].aabb_vMin[1] = combinedAABB.vMin.y;
+    tree[index_internal_nodes].aabb_vMin[2] = combinedAABB.vMin.z;
+    tree[index_internal_nodes].aabb_vMax[0] = combinedAABB.vMax.x;
+    tree[index_internal_nodes].aabb_vMax[1] = combinedAABB.vMax.y;
+    tree[index_internal_nodes].aabb_vMax[2] = combinedAABB.vMax.z;
+
+    AllMemoryBarrier();
+}
+*/

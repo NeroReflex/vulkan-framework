@@ -1,4 +1,7 @@
-use std::{sync::{Arc, Mutex}, u32};
+use std::{
+    sync::{Arc, Mutex},
+    u32,
+};
 
 use inline_spirv::*;
 
@@ -693,7 +696,12 @@ impl MeshRendering {
             ),
             DynamicRenderingColorAttachment::new(
                 instance_id_imageview.clone(),
-                RenderingAttachmentSetup::clear(ColorClearValues::UVec4(u32::MAX, u32::MAX, u32::MAX, u32::MAX)),
+                RenderingAttachmentSetup::clear(ColorClearValues::UVec4(
+                    u32::MAX,
+                    u32::MAX,
+                    u32::MAX,
+                    u32::MAX,
+                )),
                 AttachmentStoreOp::Store,
             ),
         ];

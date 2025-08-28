@@ -1,6 +1,8 @@
 #ifndef _MORTON_
 #define _MORTON_ 1
 
+// Functions taken from https://developer.nvidia.com/blog/thinking-parallel-part-iii-tree-construction-gpu/
+
 // It is VERY important that this value is the maximum possible morton code
 // because this way out-of-scale surfels will be sorted to the end of the array
 // for easy removal in the sorting step.

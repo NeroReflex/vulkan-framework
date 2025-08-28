@@ -9,7 +9,7 @@
 #define SURFELS_DESCRIPTOR_SET 5
 #endif
 
-uniform layout (set = SURFELS_DESCRIPTOR_SET, binding = 2, rgba32f) image2D outputImage[2];
+uniform layout (set = SURFELS_DESCRIPTOR_SET, binding = 3, rgba32f) image2D outputImage[2];
 
 #define SURFELS_FULL        0xFFFFFFFFu
 #define SURFELS_MISSED      0xFFFFFFFEu
@@ -35,7 +35,12 @@ struct Surfel {
     float irradiance_r;
     float irradiance_g;
     float irradiance_b;
-
+/*
+    float direct_light_r;
+    float direct_light_g;
+    float direct_light_b;
+    uint direct_light_contributions;
+*/
     uint contributions;
 
     uint flags;
@@ -43,6 +48,19 @@ struct Surfel {
     uint morton;
 
     uint latest_contribution;
+};
+
+struct BVHNode {
+    // these are world positions
+    float min_x;
+    float min_y;
+    float min_z;
+    float max_x;
+    float max_y;
+    float max_z;
+
+    uint range_start;
+    uint range_size;
 };
 
 layout (set = SURFELS_DESCRIPTOR_SET, binding = 0, std430) /*coherent*/ buffer surfel_stats {
@@ -54,6 +72,10 @@ layout (set = SURFELS_DESCRIPTOR_SET, binding = 0, std430) /*coherent*/ buffer s
 
 layout (set = SURFELS_DESCRIPTOR_SET, binding = 1, std430) /*coherent*/ buffer surfel_buffer_data {
     Surfel surfels[];
+};
+
+layout (set = SURFELS_DESCRIPTOR_SET, binding = 2, std430) /*coherent*/ buffer surfel_bvh {
+    BVHNode node[];
 };
 
 bool is_point_in_surfel(uint surfel_id, const in vec3 point) {
@@ -389,7 +411,7 @@ uint update_surfel(
 
 bool is_out_of_range(in const vec3 eye_position, in const vec3 surfel_center, in const vec2 clip_space) {
     const float range = abs(clip_space.y) - abs(clip_space.x);
-    
+
     const vec3 min_allowed_position = eye_position - vec3(range);
     const vec3 max_allowed_position = eye_position + vec3(range);
 
@@ -497,6 +519,14 @@ uint register_surfel(
 
 bool surfel_is_primary(uint surfel_id) {
     return (surfels[surfel_id].flags & SURFEL_FLAG_PRIMARY) != 0u;
+}
+
+// read surfel helpers
+vec3 surfelPosition(in Surfel s) {
+    return vec3(s.position_x, s.position_y, s.position_z);
+}
+vec3 surfelNormal(in Surfel s) {
+    return normalize(vec3(s.normal_x, s.normal_y, s.normal_z));
 }
 
 #endif // _SURFEL_

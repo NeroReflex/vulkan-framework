@@ -72,6 +72,18 @@ const SURFELS_REORDER_SPV: &[u32] = inline_spirv!(
     entry = "main"
 );
 
+const SURFELS_BVH_SPV: &[u32] = inline_spirv!(
+    r#"
+#version 460
+
+#include "engine/shaders/surfel_reorder/surfel_bvh.comp"
+"#,
+    glsl,
+    comp,
+    vulkan1_2,
+    entry = "main"
+);
+
 const RAYGEN_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
@@ -115,11 +127,13 @@ pub struct GILighting {
 
     surfel_morton_pipeline: Arc<ComputePipeline>,
     surfel_reorder_pipeline: Arc<ComputePipeline>,
+    surfel_bvh_pipeline: Arc<ComputePipeline>,
 
     raytracing_pipeline: Arc<RaytracingPipeline>,
 
     raytracing_surfel_stats_buffer: Arc<AllocatedBuffer>,
     raytracing_surfels: Arc<AllocatedBuffer>,
+    raytracing_bvh: Arc<AllocatedBuffer>,
 
     raytracing_gibuffer: Arc<ImageView>,
     raytracing_dlbuffer: Arc<ImageView>,
@@ -143,6 +157,8 @@ const SURFELS_REORDER_GROUP_SIZE_X: u32 = 64;
 // SURFELS_MORTON_GROUP_SIZE_X and SURFELS_REORDER_GROUP_SIZE_X
 const MAX_SURFELS: u32 = u32::pow(2, 14);
 const SURFEL_SIZE: u32 = 16 * 4;
+
+const BVH_NODE_SIZE: u32 = 8 * 4;
 
 impl GILighting {
     /// Returns the descriptor set layout for the gbuffer
@@ -210,6 +226,18 @@ impl GILighting {
                     1,
                     1,
                 ),
+                // surfels
+                BindingDescriptor::new(
+                    [
+                        ShaderStageAccessIn::Compute,
+                        ShaderStageAccessIn::RayTracing(ShaderStageAccessInRayTracingKHR::RayGen),
+                    ]
+                    .as_slice()
+                    .into(),
+                    BindingType::Native(NativeBindingType::StorageBuffer),
+                    2,
+                    1,
+                ),
                 // outputImages
                 BindingDescriptor::new(
                     [
@@ -219,47 +247,71 @@ impl GILighting {
                     .as_slice()
                     .into(),
                     BindingType::Native(NativeBindingType::StorageImage),
-                    2,
+                    3,
                     2,
                 ),
             ]
             .as_slice(),
         )?;
 
-        let surfel_morton_compute_shader = ComputeShader::new(device.clone(), SURFELS_MORTON_SPV)?;
-        let surfel_morton_pipeline = ComputePipeline::new(
-            None,
-            PipelineLayout::new(
-                device.clone(),
-                [
-                    status_descriptor_set_layout.clone(),
-                    output_descriptor_set_layout.clone(),
-                ]
-                .as_slice(),
-                [].as_slice(),
-                Some("surfel_morton_pipeline_layout"),
-            )?,
-            (surfel_morton_compute_shader, None),
-            Some("surfel_morton_pipeline"),
-        )?;
+        let surfel_morton_pipeline = {
+            let surfel_morton_compute_shader =
+                ComputeShader::new(device.clone(), SURFELS_MORTON_SPV)?;
+            ComputePipeline::new(
+                None,
+                PipelineLayout::new(
+                    device.clone(),
+                    [
+                        status_descriptor_set_layout.clone(),
+                        output_descriptor_set_layout.clone(),
+                    ]
+                    .as_slice(),
+                    [].as_slice(),
+                    Some("surfel_morton_pipeline_layout"),
+                )?,
+                (surfel_morton_compute_shader, None),
+                Some("surfel_morton_pipeline"),
+            )?
+        };
 
-        let surfel_reorder_compute_shader =
-            ComputeShader::new(device.clone(), SURFELS_REORDER_SPV)?;
-        let surfel_reorder_pipeline = ComputePipeline::new(
-            None,
-            PipelineLayout::new(
-                device.clone(),
-                [
-                    status_descriptor_set_layout.clone(),
-                    output_descriptor_set_layout.clone(),
-                ]
-                .as_slice(),
-                [].as_slice(),
-                Some("surfel_reorder_pipeline_layout"),
-            )?,
-            (surfel_reorder_compute_shader, None),
-            Some("surfel_reorder_pipeline"),
-        )?;
+        let surfel_reorder_pipeline = {
+            let surfel_reorder_compute_shader =
+                ComputeShader::new(device.clone(), SURFELS_REORDER_SPV)?;
+            ComputePipeline::new(
+                None,
+                PipelineLayout::new(
+                    device.clone(),
+                    [
+                        status_descriptor_set_layout.clone(),
+                        output_descriptor_set_layout.clone(),
+                    ]
+                    .as_slice(),
+                    [].as_slice(),
+                    Some("surfel_reorder_pipeline_layout"),
+                )?,
+                (surfel_reorder_compute_shader, None),
+                Some("surfel_reorder_pipeline"),
+            )?
+        };
+
+        let surfel_bvh_pipeline = {
+            let surfel_bvh_compute_shader = ComputeShader::new(device.clone(), SURFELS_BVH_SPV)?;
+            ComputePipeline::new(
+                None,
+                PipelineLayout::new(
+                    device.clone(),
+                    [
+                        status_descriptor_set_layout.clone(),
+                        output_descriptor_set_layout.clone(),
+                    ]
+                    .as_slice(),
+                    [].as_slice(),
+                    Some("surfel_bvh_pipeline_layout"),
+                )?,
+                (surfel_bvh_compute_shader, None),
+                Some("surfel_bvh_pipeline"),
+            )?
+        };
 
         let pipeline_layout = PipelineLayout::new(
             device.clone(),
@@ -366,11 +418,22 @@ impl GILighting {
                 Some("surfel_pool"),
             )?
             .into(),
+            Buffer::new(
+                device.clone(),
+                ConcreteBufferDescriptor::new(
+                    [BufferUseAs::StorageBuffer].as_slice().into(),
+                    (BVH_NODE_SIZE as u64) * ((MAX_SURFELS as u64) * 3u64),
+                ),
+                None,
+                Some("bvh_pool"),
+            )?
+            .into(),
         ];
 
         let (
             raytracing_surfel_stats_buffer,
             raytracing_surfels,
+            raytracing_bvh,
             raytracing_gibuffer,
             raytracing_dlbuffer,
             raytracing_sbt,
@@ -416,6 +479,8 @@ impl GILighting {
 
             let raytracing_surfels = raytracing_buffers_allocated[3].buffer();
 
+            let raytracing_bvh = raytracing_buffers_allocated[4].buffer();
+
             let raytracing_sbt = RaytracingBindingTables::new(
                 raytracing_pipeline.clone(),
                 mem_manager.deref_mut(),
@@ -427,6 +492,7 @@ impl GILighting {
             (
                 raytracing_surfel_stats_buffer,
                 raytracing_surfels,
+                raytracing_bvh,
                 raytracing_gibuffer,
                 raytracing_dlbuffer,
                 raytracing_sbt,
@@ -436,7 +502,7 @@ impl GILighting {
         let output_descriptor_pool = DescriptorPool::new(
             device.clone(),
             DescriptorPoolConcreteDescriptor::new(
-                DescriptorPoolSizesConcreteDescriptor::new(0, 0, 0, 2, 0, 0, 2, 0, 0, None),
+                DescriptorPoolSizesConcreteDescriptor::new(0, 0, 0, 2, 0, 0, 3, 0, 0, None),
                 1,
             ),
             Some("gi_lighting_descriptor_pool"),
@@ -472,10 +538,22 @@ impl GILighting {
                 )
                 .unwrap();
 
+            binder
+                .bind_storage_buffers(
+                    2,
+                    [(
+                        raytracing_bvh.clone() as Arc<dyn BufferTrait>,
+                        None,
+                        None,
+                    )]
+                    .as_slice(),
+                )
+                .unwrap();
+
             // bind the output images
             binder
                 .bind_storage_images_with_same_layout(
-                    2,
+                    3,
                     ImageLayout::General,
                     [raytracing_gibuffer.clone(), raytracing_dlbuffer.clone()].as_slice(),
                 )
@@ -537,10 +615,12 @@ impl GILighting {
 
             surfel_morton_pipeline,
             surfel_reorder_pipeline,
+            surfel_bvh_pipeline,
             raytracing_pipeline,
 
             raytracing_surfel_stats_buffer,
             raytracing_surfels,
+            raytracing_bvh,
             raytracing_gibuffer,
             raytracing_dlbuffer,
 
@@ -759,29 +839,6 @@ impl GILighting {
             BufferMemoryBarrier::new(
                 [PipelineStage::TopOfPipe].as_slice().into(),
                 [].as_slice().into(),
-                [PipelineStage::Transfer].as_slice().into(),
-                [MemoryAccessAs::TransferWrite].as_slice().into(),
-                surfel_stats_active.clone(),
-                self.queue_family.clone(),
-                self.queue_family.clone(),
-            )
-            .into(),
-        ]);
-        /*
-                recorder.copy_buffer(
-                    self.raytracing_surfel_stats_buffer.clone(),
-                    self.raytracing_surfel_stats_buffer.clone(),
-                    [
-                        (
-                            12u64, 8u64, 4u64
-                        ),
-                    ].as_slice()
-                );
-        */
-        recorder.pipeline_barriers([
-            BufferMemoryBarrier::new(
-                [PipelineStage::Transfer].as_slice().into(),
-                [MemoryAccessAs::TransferRead].as_slice().into(),
                 [PipelineStage::ComputeShader].as_slice().into(),
                 [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
                     .as_slice()
@@ -792,8 +849,8 @@ impl GILighting {
             )
             .into(),
             BufferMemoryBarrier::new(
-                [PipelineStage::Transfer].as_slice().into(),
-                [MemoryAccessAs::TransferWrite].as_slice().into(),
+                [PipelineStage::TopOfPipe].as_slice().into(),
+                [].as_slice().into(),
                 [PipelineStage::ComputeShader].as_slice().into(),
                 [MemoryAccessAs::ShaderRead].as_slice().into(),
                 surfel_stats_active.clone(),
