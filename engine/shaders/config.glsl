@@ -21,7 +21,8 @@
 // in N frames are deleted
 #define DELETE_NOT_CONTRIBUTING_SURFELS 32
 
-#define MAX_SURFEL_RADIUS 20.0
+#define MIN_SURFEL_RADIUS 10.0
+#define MAX_SURFEL_RADIUS 60.0
 
 #define SHOW_SURFELS 1
 

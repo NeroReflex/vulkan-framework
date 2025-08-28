@@ -27,11 +27,11 @@ struct Surfel {
     float position_y;
     float position_z;
     float radius;
-    
+
     float normal_x;
     float normal_y;
     float normal_z;
-    
+
     float irradiance_r;
     float irradiance_g;
     float irradiance_b;
@@ -75,6 +75,9 @@ uint count_ordered_surfels() {
 }
 
 uint count_unordered_surfels() {
+    // Once a new surfel is allocated, unordered_surfels is incremented,
+    // and a memoryBufferBarrier() is issued: making this value coherent again:
+    // avoid an expensive atomic read.
     return unordered_surfels;
     
     //return atomicMax(unordered_surfels, 0);
@@ -193,7 +196,12 @@ uvec2 binary_search_range(const uint start, const uint size, uint min_key, uint 
     const uint ub = binary_search_bound(start, size, max_key, true);
 
     return uvec2(lb, ub);
+}
 
+bool is_too_close(vec3 point, float radius, uint surfel_id) {
+    const vec3 surfel_center = vec3(surfels[surfel_id].position_x, surfels[surfel_id].position_y, surfels[surfel_id].position_z);
+    const float surfel_radius = surfels[surfel_id].radius;
+    return distance(point, surfel_center) < (radius + surfel_radius);
 }
 
 // This is the fast version to search surfels: take advantage of the fact that surfels are
@@ -265,7 +273,6 @@ uint linear_search_ordered_surfel_for_allocation(
         max_morton = max(max_morton, morton);
     }
 
-
     const uvec2 selected_range = binary_search_range(0, last_ordered_id, min_morton, max_morton);
     const uint begin_colliding_surfel_id = selected_range.x;
     const uint end_colliding_surfel_id = selected_range.y;
@@ -276,7 +283,7 @@ uint linear_search_ordered_surfel_for_allocation(
             break;
         } else if ((is_point_in_surfel(i, point))) {
             return i;
-        } else if (distance(point, vec3(surfels[i].position_x, surfels[i].position_y, surfels[i].position_z)) < (radius + surfels[i].radius)) {
+        } else if (is_too_close(point, radius, i)) {
             too_close = true;
             // do not break, we want to check all surfels for matches,
             // but we also want to know if we were too close to any of them
