@@ -926,6 +926,7 @@ impl System {
                             [MemoryAccessAs::TransferWrite].as_slice().into(),
                             [
                                 PipelineStage::AllGraphics,
+                                PipelineStage::ComputeShader,
                                 PipelineStage::RayTracingPipelineKHR(
                                     PipelineStageRayTracingPipelineKHR::RayTracingShader,
                                 ),

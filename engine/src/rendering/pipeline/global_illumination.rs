@@ -350,7 +350,7 @@ impl GILighting {
                     [BufferUseAs::StorageBuffer, BufferUseAs::TransferDst]
                         .as_slice()
                         .into(),
-                    4u64 * 3u64,
+                    4u64 * 4u64,
                 ),
                 None,
                 Some("surfel_stats"),
@@ -578,7 +578,7 @@ impl GILighting {
 
         assert!(MAX_SURFELS <= i32::MAX as u32);
 
-        let clear_val = [MAX_SURFELS as i32, 0i32, 0i32];
+        let clear_val = [MAX_SURFELS as i32, 0i32, 0i32, 0i32];
         recorder.update_buffer(surfel_stats_srr.buffer(), 0, &clear_val);
 
         recorder.pipeline_barriers([BufferMemoryBarrier::new(
@@ -608,10 +608,28 @@ impl GILighting {
         // TODO: of all word positions from GBUFFER, (order them, maybe) and for each directional light
         // use those to decide the portion that has to be rendered as depth in the shadow map
 
-        let surfel_stats_srr = BufferSubresourceRange::new(
+        let surfel_stats_total = BufferSubresourceRange::new(
             self.raytracing_surfel_stats_buffer.clone(),
             0u64,
-            self.raytracing_surfel_stats_buffer.size(),
+            4u64,
+        );
+
+        let surfel_stats_unordered = BufferSubresourceRange::new(
+            self.raytracing_surfel_stats_buffer.clone(),
+            4u64,
+            4u64,
+        );
+
+        let surfel_stats_ordered = BufferSubresourceRange::new(
+            self.raytracing_surfel_stats_buffer.clone(),
+            8u64,
+            4u64,
+        );
+
+        let surfel_stats_active = BufferSubresourceRange::new(
+            self.raytracing_surfel_stats_buffer.clone(),
+            12u64,
+            4u64,
         );
 
         let surfels_srr = BufferSubresourceRange::new(
@@ -742,12 +760,90 @@ impl GILighting {
         recorder.pipeline_barriers([
             BufferMemoryBarrier::new(
                 [PipelineStage::TopOfPipe].as_slice().into(),
-            [].as_slice().into(),
+                [].as_slice().into(),
+                [PipelineStage::Transfer].as_slice().into(),
+                [MemoryAccessAs::TransferRead]
+                    .as_slice()
+                    .into(),
+                surfel_stats_ordered.clone(),
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into(),
+            BufferMemoryBarrier::new(
+                [PipelineStage::TopOfPipe].as_slice().into(),
+                [].as_slice().into(),
+                [PipelineStage::Transfer].as_slice().into(),
+                [MemoryAccessAs::TransferWrite]
+                    .as_slice()
+                    .into(),
+                surfel_stats_active.clone(),
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into(),
+        ]);
+/*
+        recorder.copy_buffer(
+            self.raytracing_surfel_stats_buffer.clone(),
+            self.raytracing_surfel_stats_buffer.clone(),
+            [
+                (
+                    12u64, 8u64, 4u64
+                ),
+            ].as_slice()
+        );
+*/
+        recorder.pipeline_barriers([
+            BufferMemoryBarrier::new(
+                [PipelineStage::Transfer].as_slice().into(),
+                [MemoryAccessAs::TransferRead]
+                    .as_slice()
+                    .into(),
                 [PipelineStage::ComputeShader].as_slice().into(),
                 [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
                     .as_slice()
                     .into(),
-                surfel_stats_srr.clone(),
+                surfel_stats_ordered.clone(),
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into(),
+            BufferMemoryBarrier::new(
+                [PipelineStage::Transfer].as_slice().into(),
+                [MemoryAccessAs::TransferWrite]
+                    .as_slice()
+                    .into(),
+                [PipelineStage::ComputeShader].as_slice().into(),
+                [MemoryAccessAs::ShaderRead]
+                    .as_slice()
+                    .into(),
+                surfel_stats_active.clone(),
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into(),
+        ]);
+
+        recorder.pipeline_barriers([
+            BufferMemoryBarrier::new(
+                [PipelineStage::TopOfPipe].as_slice().into(),
+                [].as_slice().into(),
+                [PipelineStage::ComputeShader].as_slice().into(),
+                [MemoryAccessAs::ShaderRead]
+                    .as_slice()
+                    .into(),
+                surfel_stats_total.clone(),
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into(),
+            BufferMemoryBarrier::new(
+                [PipelineStage::TopOfPipe].as_slice().into(),
+                [].as_slice().into(),
+                [PipelineStage::ComputeShader].as_slice().into(),
+                [MemoryAccessAs::ShaderRead].as_slice().into(),
+                surfel_stats_unordered.clone(),
                 self.queue_family.clone(),
                 self.queue_family.clone(),
             )
@@ -786,10 +882,10 @@ impl GILighting {
                     .as_slice()
                     .into(),
                 [PipelineStage::ComputeShader].as_slice().into(),
-                [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
+                [MemoryAccessAs::ShaderRead]
                     .as_slice()
                     .into(),
-                surfel_stats_srr.clone(),
+                surfel_stats_ordered.clone(),
                 self.queue_family.clone(),
                 self.queue_family.clone(),
             )
@@ -835,7 +931,7 @@ impl GILighting {
                 [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
                     .as_slice()
                     .into(),
-                surfel_stats_srr.clone(),
+                surfel_stats_unordered.clone(),
                 self.queue_family.clone(),
                 self.queue_family.clone(),
             )

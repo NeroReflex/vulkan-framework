@@ -319,4 +319,7 @@ void main() {
     const float reused_scale = gi_data.gi_reuse_frames > 0 ? 2.0 : 1.0;
     imageStore(outputImage[0], texel_position, vec4((old_gi_data / 2.0) + (contribution / (float(FIRST_PASS_RAYS) * reused_scale)), 1.0));
     //imageStore(outputImage, texel_position, vec4(float(texel_position.x)/resolution.x, float(texel_position.y)/resolution.y, 0.0, 1.0));
+
+    // this only works if ordered_surfels is only incrementing
+    atomicMax(active_surfels, int(count_ordered_surfels()));
 }

@@ -27,19 +27,20 @@ void main() {
         // since unordered_surfels is used by the raytracing pipeline to track how many surfels
         // have been allocated on a single frame.
         atomicAnd(unordered_surfels, 0);
+        atomicAnd(active_surfels, 0);
 
         // DEBUG OUTPUT
         // =========================================
-        int merda = atomicMax(ordered_surfels, 0);
-        if (merda == 0) {
-            // no surfels to reorder
-            debugPrintfEXT("reorder.comp: no surfels to reorder: %d\n", merda);
-        } else if (merda < 0) {
-            debugPrintfEXT("reorder.comp: something went really wrong!!!: %d\n", merda);
-            atomicAdd(ordered_surfels, (merda * -1) + 1); // restore the previous value
-        } else {
-            debugPrintfEXT("reorder.comp: reordering %d surfels\n", merda);
-        }
+        //int merda = atomicMax(ordered_surfels, 0);
+        //if (merda == 0) {
+        //    // no surfels to reorder
+        //    debugPrintfEXT("reorder.comp: no surfels to reorder: %d\n", merda);
+        //} else if (merda < 0) {
+        //    debugPrintfEXT("reorder.comp: something went really wrong!!!: %d\n", merda);
+        //    atomicAdd(ordered_surfels, (merda * -1) + 1); // restore the previous value
+        //} else {
+        //    debugPrintfEXT("reorder.comp: reordering %d surfels\n", merda);
+        //}
         // =========================================
     }
 

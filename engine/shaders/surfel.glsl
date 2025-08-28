@@ -49,9 +49,10 @@ layout (set = SURFELS_DESCRIPTOR_SET, binding = 0, std430) /*coherent*/ buffer s
     int total_surfels;
     int unordered_surfels;
     int ordered_surfels;
+    int active_surfels;
 };
 
-layout (set = SURFELS_DESCRIPTOR_SET, binding = 1, std430) /*coherent*/ buffer surfel_buffer_data { 
+layout (set = SURFELS_DESCRIPTOR_SET, binding = 1, std430) /*coherent*/ buffer surfel_buffer_data {
     Surfel surfels[];
 };
 
