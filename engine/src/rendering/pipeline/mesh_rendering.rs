@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::{sync::{Arc, Mutex}, u32};
 
 use inline_spirv::*;
 
@@ -95,7 +95,7 @@ impl MeshRendering {
 
     #[inline(always)]
     fn output_instance_format() -> ImageFormat {
-        ImageFormat::from(CommonImageFormat::r32_sfloat)
+        ImageFormat::from(CommonImageFormat::r32g32b32a32_uint)
     }
 
     #[inline(always)]
@@ -360,9 +360,9 @@ impl MeshRendering {
 
         let gbuffer_sampler = Sampler::new(
             device.clone(),
-            Filtering::Linear,
-            Filtering::Linear,
-            MipmapMode::ModeLinear,
+            Filtering::Nearest,
+            Filtering::Nearest,
+            MipmapMode::ModeNearest,
             1.0,
         )?;
 
@@ -693,7 +693,7 @@ impl MeshRendering {
             ),
             DynamicRenderingColorAttachment::new(
                 instance_id_imageview.clone(),
-                RenderingAttachmentSetup::clear(ColorClearValues::UVec4(0, 0, 0, 0)),
+                RenderingAttachmentSetup::clear(ColorClearValues::UVec4(u32::MAX, u32::MAX, u32::MAX, u32::MAX)),
                 AttachmentStoreOp::Store,
             ),
         ];

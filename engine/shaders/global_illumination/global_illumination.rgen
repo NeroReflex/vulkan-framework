@@ -65,6 +65,9 @@ void main() {
     const vec3 specular = texelFetch(gbuffer[3], texel_position, 0).xyz;
     const float depth = texture(gbuffer_depth, vec3(float(texel_position.x) / float(resolution.x), float(texel_position.y) / float(resolution.y), 1.0));
 
+    const uvec4 instance_data = texelFetch(gbuffer_instance_id, texel_position, 0);
+    const uint mesh_id = instance_data.x;
+
     const vec2 clip_planes = reconstructNearFarFromCamera();
     const vec3 eye_position = get_eye_position();
     const vec3 view_dir = normalize(eye_position - origin);
@@ -73,7 +76,7 @@ void main() {
     uint seed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, gi_data.gi_reuse_frames);
 
     // direct lighting: only compute it if the previous GI data cannot be reused
-    if ((gi_data.gi_reuse_frames == 0) && (depth < DEPTH_IGNORE)) {
+    if ((gi_data.gi_reuse_frames == 0) && (depth < DEPTH_IGNORE) && (mesh_id != 0xFFFFFFFFu)) {
         vec3 lights_contribution = vec3(0.0, 0.0, 0.0);
         for (uint light_index = 0; light_index < MAX_DIRECTIONAL_LIGHTS; light_index++) {
             const vec3 light_intensity = vec3(light[light_index].intensity_x, light[light_index].intensity_y, light[light_index].intensity_z);
@@ -135,7 +138,7 @@ void main() {
     vec3 contribution = vec3(0.0, 0.0, 0.0);
 
 #if SHOW_SURFELS
-    if (depth < DEPTH_IGNORE) {
+    if ((depth < DEPTH_IGNORE) && (mesh_id != 0xFFFFFFFFu)) {
         
         // ================================
         // Low level debug visualization of (old) surfels
@@ -193,7 +196,7 @@ void main() {
 
     uint casted_primary_rays = 0;
     uint ray_depth = 0;
-    if (depth < DEPTH_IGNORE) {
+    if ((depth < DEPTH_IGNORE) && (mesh_id != 0xFFFFFFFFu)) {
         while ((ray_depth < MAX_RAY_DEPTH) /*&& (!SHOW_SURFELS)*/) {
             // cast a ray in a random direction over the hemisphere oriented by the normal
             // accumulate the contribution of the ray if it hits something

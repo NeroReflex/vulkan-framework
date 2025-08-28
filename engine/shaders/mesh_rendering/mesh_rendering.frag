@@ -3,7 +3,7 @@ layout (location = 0) out vec4 out_vPosition;           // Search for GBUFFER_FB
 layout (location = 1) out vec4 out_vNormal;             // Search for GBUFFER_FB1
 layout (location = 2) out vec4 out_vDiffuse;            // Search for GBUFFER_FB2
 layout (location = 3) out vec4 out_vSpecular;           // Search for GBUFFER_FB3
-layout (location = 4) out vec4 out_vInstanceId;         // Search for GBUFFER_FB4
+layout (location = 4) out uvec4 out_vInstanceId;         // Search for GBUFFER_FB4
 // ===============================================================================================================
 
 layout (location = 0) in vec4 in_vPosition_worldspace;
@@ -63,5 +63,5 @@ void main() {
     out_vNormal = vec4(bestNormal.xyz, 0.0);
     out_vDiffuse = texture(textures[diffuse_texture_index], in_vTextureUV);
     out_vSpecular = vec4(0.0, 0.0, 0.0, 0.0);
-    out_vInstanceId = vec4(float(mesh_data.mesh_id), 0.0, 0.0, 0.0);
+    out_vInstanceId = uvec4(mesh_data.mesh_id, 0, 0, 0);
 }
