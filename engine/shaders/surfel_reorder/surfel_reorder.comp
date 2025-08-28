@@ -28,6 +28,7 @@ void main() {
         // have been allocated on a single frame.
         atomicAnd(unordered_surfels, 0);
         atomicAnd(active_surfels, 0);
+        atomicMax(active_surfels, int(count_ordered_surfels()));
 
         // DEBUG OUTPUT
         // =========================================
