@@ -152,22 +152,48 @@ void init_surfel(
     // WARNING: exiting from this function, the surfel is still locked
 }
 
-uint binary_search_morton(uint start, uint size, uint key, bool excess) {
-    // Non ho voglia di implementarlo bene.
-
-    const uint max_el = start + size;
-    uint result = 0;
-    for (uint i = start; i < max_el; i++) {
-        if ((excess) && (surfels[i].morton > key)) {
-            return i;
-        } else if ((!excess) && (surfels[i].morton >= key)) {
-            return result;
+uint binary_search_bound(const uint start, const uint size, uint key, bool upper_bound) {
+    // Returns lower_bound (first >= key) if upper_bound == false
+    // Returns upper_bound (first > key)  if upper_bound == true
+    uint lo = start;
+    uint hi = start + size; // one-past-end
+    while (lo < hi) {
+        uint mid = lo + ((hi - lo) >> 1);
+        uint v = surfels[mid].morton;
+        if (upper_bound) {
+            if (v <= key) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        } else {
+            if (v < key) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
         }
-        
-        result = i;
     }
 
-    return result;
+    if (upper_bound) {
+        while (surfels[lo].morton == key && lo < (start + size)) {
+            lo += 1;
+        }
+    } else {
+        while (surfels[lo].morton == key && lo > start) {
+            lo -= 1;
+        }
+    }
+
+    return lo; // in [start, start+size]
+}
+
+uvec2 binary_search_range(const uint start, const uint size, uint min_key, uint max_key) {
+    const uint lb = binary_search_bound(start, size, min_key, false);
+    const uint ub = binary_search_bound(start, size, max_key, true);
+
+    return uvec2(lb, ub);
+
 }
 
 // This is the fast version to search surfels: take advantage of the fact that surfels are
@@ -239,8 +265,10 @@ uint linear_search_ordered_surfel_for_allocation(
         max_morton = max(max_morton, morton);
     }
 
-    const uint begin_colliding_surfel_id = binary_search_morton(0, last_ordered_id, min_morton, false);
-    const uint end_colliding_surfel_id = binary_search_morton(0, last_ordered_id, max_morton, true);
+
+    const uvec2 selected_range = binary_search_range(0, last_ordered_id, min_morton, max_morton);
+    const uint begin_colliding_surfel_id = selected_range.x;
+    const uint end_colliding_surfel_id = selected_range.y;
     for (uint i = begin_colliding_surfel_id; i <= end_colliding_surfel_id; i++) {
         if (surfels[i].morton == MORTON_OUT_OF_SCALE) {
             // this is an ordered set and MORTON_OUT_OF_SCALE is both invalid and the highest possible value,
