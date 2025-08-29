@@ -8,9 +8,9 @@
 #extension GL_EXT_debug_printf : enable
 
 #include "../config.glsl"
-#include "../math.glsl"
 #include "payload.glsl"
-#include "random.glsl"
+#include "../random.glsl"
+#include "../math.glsl"
 #include "../morton.glsl"
 
 #define SURFELS_DESCRIPTOR_SET 5
@@ -44,6 +44,72 @@ vec3 random_point_on_unit_sphere(inout uint state)
 vec3 contribution(in vec3 surface_color, in float light_intensity, in float diffuse_coefficient)
 {
     return surface_color * light_intensity * diffuse_coefficient;
+}
+
+// this function returns uvec2(split_element, elements_after)
+uvec2 find_split_range(in const vec3 eye_position, in const vec2 clip_space, const uint start, const uint size, vec3 point) {
+    const uint key = morton3D(eye_position, point, clip_space);
+
+    const uint index = binary_search_bound(start, size, key, false);
+
+    return uvec2(index, count_ordered_surfels() - index);
+}
+
+#define BIAS_PARAM 0.5
+
+uint importance_sample_surfel(
+    in const vec3 eye_position,
+    in const vec2 clip_space,
+    vec3 point,
+    inout uint prev,
+    inout float sample_prob    
+) {
+    const uvec2 split = find_split_range(eye_position, clip_space, 0, count_ordered_surfels(), point);
+
+    bool higher = false;
+    if (lcg(prev) % 2u == 0u) {
+        higher = true;
+    }
+
+    const uint count = higher ? split.y : split.x;
+    const float random_offset = biasedRandom(prev, count, BIAS_PARAM);
+    const float prob = relativeProbability(random_offset, count, BIAS_PARAM);
+
+    uint index = /* abs( */ uint(floor(random_offset)) /* ) */;
+    index += higher ? split.x : 0u;
+
+    sample_prob = prob;
+
+    return index;
+}
+
+uint importance_sample_surfel_beyond_horizon(
+    in const vec3 eye_position,
+    in const vec2 clip_space,
+    vec3 point,
+    inout uint prev,
+    inout float sample_prob    
+) {
+    uint surfel_index = 0xFFFFFFFFu;
+    uint retry = 0;
+    do {
+        uint surfel_index = importance_sample_surfel(
+            eye_position,
+            clip_space,
+            point,
+            prev,
+            sample_prob
+        );
+
+        const vec3 surfel_center = vec3(surfels[surfel_index].position_x, surfels[surfel_index].position_y, surfels[surfel_index].position_z);
+        const vec3 surfel_normal = vec3(surfels[surfel_index].normal_x, surfels[surfel_index].normal_y, surfels[surfel_index].normal_z);
+        if (is_below_horizon(surfel_normal, surfel_center - point)) {
+            surfel_index = 0xFFFFFFFFu;
+            continue;
+        }
+
+        return surfel_index;
+    } while ((surfel_index == 0xFFFFFFFFu) && (retry < 24));
 }
 
 #define MAX_RAY_DEPTH 2
@@ -106,14 +172,14 @@ void main() {
 
                 if (!payload.hit) {
                     diffuse_contribution = max(dot(normal, ray_dir), 0.0);
-                    const vec3 diffuse = diffuse_contribution * light_intensity * diffuse;
+                    const vec3 diffuse_component = diffuse_contribution * light_intensity * diffuse;
 
                     const vec3 reflect_dir = reflect(-light_dir, normal);
                     specular_contribution = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
                     const vec3 specular = specular_contribution * light_intensity * specular;
 
                     // TODO: here sum specular
-                    lights_contribution += diffuse;
+                    lights_contribution += diffuse_component;
 
                     register_surfel(
                         eye_position,

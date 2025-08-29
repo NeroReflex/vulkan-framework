@@ -2,7 +2,7 @@
 #define _SURFEL_
 
 #include "config.glsl"
-
+#include "random.glsl"
 #include "morton.glsl"
 
 #ifndef SURFELS_DESCRIPTOR_SET
@@ -152,19 +152,19 @@ void init_surfel(
 
     // no need to store morton code, it will be computed on the next frame
     // and for this frame it is in the unordered set anyway
-    surfels[surfel_id].morton             = 0;
-    surfels[surfel_id].instance_id        = instance_id;
-    surfels[surfel_id].position_x         = position.x;
-    surfels[surfel_id].position_y         = position.y;
-    surfels[surfel_id].position_z         = position.z;
-    surfels[surfel_id].radius             = radius;
-    surfels[surfel_id].normal_x           = normal.x;
-    surfels[surfel_id].normal_y           = normal.y;
-    surfels[surfel_id].normal_z           = normal.z;
-    surfels[surfel_id].irradiance_r       = irradiance.r;
-    surfels[surfel_id].irradiance_g       = irradiance.g;
-    surfels[surfel_id].irradiance_b       = irradiance.b;
-    surfels[surfel_id].contributions      = 1u;
+    surfels[surfel_id].morton        = 0;
+    surfels[surfel_id].instance_id   = instance_id;
+    surfels[surfel_id].position_x    = position.x;
+    surfels[surfel_id].position_y    = position.y;
+    surfels[surfel_id].position_z    = position.z;
+    surfels[surfel_id].radius        = radius;
+    surfels[surfel_id].normal_x      = normal.x;
+    surfels[surfel_id].normal_y      = normal.y;
+    surfels[surfel_id].normal_z      = normal.z;
+    surfels[surfel_id].irradiance_r  = irradiance.r;
+    surfels[surfel_id].irradiance_g  = irradiance.g;
+    surfels[surfel_id].irradiance_b  = irradiance.b;
+    surfels[surfel_id].contributions = 1u;
 
     // last_contribution is skipped: the morton compute shader will set it to 0
 
@@ -383,7 +383,6 @@ uint update_surfel(
     // surfel is locked: update it
     const vec3 current_normal = vec3(surfels[surfel_id].normal_x, surfels[surfel_id].normal_y, surfels[surfel_id].normal_z);
     const vec3 current_irradiance = vec3(surfels[surfel_id].irradiance_r, surfels[surfel_id].irradiance_g, surfels[surfel_id].irradiance_b);
-    const vec3 new_normal = normalize(current_normal + normal);
 
     if (dot(current_normal, normal) < 0.0) {
         // surfel is below the horizon: ignore it
@@ -392,9 +391,13 @@ uint update_surfel(
         return REGISTER_SURFEL_BELOW_HORIZON;
     }
 
+    /*
+    // this could potentially make a mess for thin geometry
+    const vec3 new_normal = normalize(current_normal + normal);
     surfels[surfel_id].normal_x = new_normal.x;
     surfels[surfel_id].normal_y = new_normal.y;
     surfels[surfel_id].normal_z = new_normal.z;
+    */
 
     surfels[surfel_id].irradiance_r += irradiance.r;
     surfels[surfel_id].irradiance_g += irradiance.g;
