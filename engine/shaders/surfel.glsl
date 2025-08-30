@@ -9,7 +9,7 @@
 #define SURFELS_DESCRIPTOR_SET 5
 #endif
 
-uniform layout (set = SURFELS_DESCRIPTOR_SET, binding = 3, rgba32f) image2D outputImage[2];
+uniform layout (set = SURFELS_DESCRIPTOR_SET, binding = 4, rgba32f) image2D outputImage[2];
 
 #define SURFELS_FULL        0xFFFFFFFFu
 #define SURFELS_MISSED      0xFFFFFFFEu
@@ -64,10 +64,22 @@ struct BVHNode {
 };
 
 layout (set = SURFELS_DESCRIPTOR_SET, binding = 0, std430) /*coherent*/ buffer surfel_stats {
+    // total number of surfels that can be allocated (max, immutable)
     int total_surfels;
+
+    // number of freshly spawned surfels (in the top half of surfels array)
     int unordered_surfels;
+
+    // number of ordered surfels (in the bottom half of surfels array)
     int ordered_surfels;
+
+    // used for intermediate calculations
     int active_surfels;
+
+    uint padding_0;
+    uint padding_1;
+    uint padding_2;
+    uint padding_3;
 };
 
 layout (set = SURFELS_DESCRIPTOR_SET, binding = 1, std430) /*coherent*/ buffer surfel_buffer_data {
@@ -76,6 +88,10 @@ layout (set = SURFELS_DESCRIPTOR_SET, binding = 1, std430) /*coherent*/ buffer s
 
 layout (set = SURFELS_DESCRIPTOR_SET, binding = 2, std430) /*coherent*/ buffer surfel_bvh {
     BVHNode node[];
+};
+
+layout (set = SURFELS_DESCRIPTOR_SET, binding = 3, std430) /*coherent*/ buffer surfel_discovered {
+    uint discovered[];
 };
 
 bool is_point_in_surfel(uint surfel_id, const in vec3 point) {
@@ -88,6 +104,17 @@ bool is_point_in_surfel(uint surfel_id, const in vec3 point) {
     
     // this is supposed to be more efficient
     return dot(direction, direction) <= radius * radius;
+}
+
+uint count_discoveder_surfels() {
+    // discovered is never modified in raytrace shader.
+    for (uint i = 0; i < MAX_USABLE_SURFELS; i++) {
+        if (discovered[i] == USED_SURFEL_MISSING) {
+            return i;
+        }
+    }
+
+    return MAX_USABLE_SURFELS;
 }
 
 uint count_ordered_surfels() {

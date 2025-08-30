@@ -373,19 +373,19 @@ impl MeshRendering {
             device.clone(),
             [
                 BindingDescriptor::new(
-                    [ShaderStageAccessIn::RayTracing(vulkan_framework::shader_stage_access::ShaderStageAccessInRayTracingKHR::RayGen), ShaderStageAccessIn::Fragment].as_slice().into(),
+                    [ShaderStageAccessIn::RayTracing(vulkan_framework::shader_stage_access::ShaderStageAccessInRayTracingKHR::RayGen), ShaderStageAccessIn::Fragment, ShaderStageAccessIn::Compute].as_slice().into(),
                     BindingType::Native(NativeBindingType::CombinedImageSampler),
                     0,
                     1u32,
                 ),
                 BindingDescriptor::new(
-                    [ShaderStageAccessIn::RayTracing(vulkan_framework::shader_stage_access::ShaderStageAccessInRayTracingKHR::RayGen), ShaderStageAccessIn::Fragment].as_slice().into(),
+                    [ShaderStageAccessIn::RayTracing(vulkan_framework::shader_stage_access::ShaderStageAccessInRayTracingKHR::RayGen), ShaderStageAccessIn::Fragment, ShaderStageAccessIn::Compute].as_slice().into(),
                     BindingType::Native(NativeBindingType::CombinedImageSampler),
                     1,
                     1u32,
                 ),
                 BindingDescriptor::new(
-                    [ShaderStageAccessIn::RayTracing(vulkan_framework::shader_stage_access::ShaderStageAccessInRayTracingKHR::RayGen), ShaderStageAccessIn::Fragment].as_slice().into(),
+                    [ShaderStageAccessIn::RayTracing(vulkan_framework::shader_stage_access::ShaderStageAccessInRayTracingKHR::RayGen), ShaderStageAccessIn::Fragment, ShaderStageAccessIn::Compute].as_slice().into(),
                     BindingType::Native(NativeBindingType::CombinedImageSampler),
                     2,
                     4u32,

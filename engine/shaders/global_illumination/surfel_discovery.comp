@@ -1,0 +1,80 @@
+#extension GL_GOOGLE_include_directive : enable
+#extension GL_EXT_ray_tracing : require
+#extension GL_EXT_ray_flags_primitive_culling : require
+#extension GL_EXT_nonuniform_qualifier : enable
+
+#extension GL_EXT_debug_printf : enable
+
+#include "../config.glsl"
+#include "payload.glsl"
+#include "../random.glsl"
+#include "../math.glsl"
+#include "../morton.glsl"
+
+#define STATUS_DESCRIPTOR_SET 0
+#include "../status.glsl"
+
+#define GBUFFER_DESCRIPTOR_SET 1
+#include "../gbuffer.glsl"
+
+#define SURFELS_DESCRIPTOR_SET 2
+#include "../surfel.glsl"
+
+layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+void main() {
+    const ivec2 resolution = imageSize(outputImage[0]);
+
+    const ivec2 texel_position = ivec2(gl_GlobalInvocationID.xy);
+
+    // avoid checking out-of-bounds
+    if (any(greaterThanEqual(texel_position, resolution))) {
+        return;
+    }
+
+    const vec3 origin = texelFetch(gbuffer[0], texel_position, 0).xyz;
+
+    const uvec4 instance_data = texelFetch(gbuffer_instance_id, texel_position, 0);
+    const uint mesh_id = instance_data.x;
+
+    if (mesh_id == 0xFFFFFFFFu) {
+        // no geometry here
+        return;
+    }
+
+    const vec2 clip_planes = reconstructNearFarFromCamera();
+    const vec3 eye_position = get_eye_position();
+
+    // this function only searches for surfels that were allocated before this frame
+    const uint surfel_id = linear_search_ordered_surfel_for_allocation(
+        eye_position,
+        clip_planes,
+        origin,
+        // we don't want to query for surfels too close: this check is useless
+        0.0001
+    );
+
+    if ((surfel_id == SURFELS_MISSED) || (surfel_id == SURFELS_TOO_CLOSE)) {
+        // there is no surfel associated with this pixel
+        return;
+    }
+
+    for (uint i = 0; i < MAX_USABLE_SURFELS; i++) {
+        // we can proceed at attempting to add the surfel to the list of used surfels
+        const uint old_value = atomicCompSwap(discovered[i], USED_SURFEL_MISSING, surfel_id);
+        if (old_value == surfel_id) {
+            // my surfel was already discovered in another thread
+            return;
+        } else if (old_value == USED_SURFEL_MISSING) {
+            // I successfully added my surfel to the list of discovered surfels
+            
+            // update the last time the surfel was used
+            surfels[surfel_id].latest_contribution = 0;
+            memoryBarrierBuffer();
+
+            return;
+        }
+    }
+
+    debugPrintfEXT("Reached maximum number of usable surfels on id(%u, %u)\n", gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
+}

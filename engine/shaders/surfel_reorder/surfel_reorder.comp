@@ -45,6 +45,11 @@ void main() {
         // =========================================
     }
 
+    if (gl_GlobalInvocationID.x < MAX_USABLE_SURFELS) {
+        // clear the discovered surfels list to allow new surfels to be discovered
+        atomicOr(discovered[gl_GlobalInvocationID.x], USED_SURFEL_MISSING);
+    }
+
     // avoid out-of-bounds access
     if (surfel_id >= size) {
         return;

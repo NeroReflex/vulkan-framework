@@ -28,4 +28,13 @@
 
 #define SHOW_SURFELS 1
 
+#define SURFEL_IMPORTANCE_SAMPLES 4
+
+#define CLOSEST_INTERSECTION_DISTANCE 0.4
+
+// This MUST be kept in sync with rust side
+#define MAX_USABLE_SURFELS 1024
+
+#define USED_SURFEL_MISSING 0xFFFFFFFFu
+
 #endif // _CONFIG_
