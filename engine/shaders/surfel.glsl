@@ -448,13 +448,30 @@ bool is_out_of_range(in const vec3 eye_position, in const vec3 surfel_center, in
     return any(lessThan(surfel_center, min_allowed_position)) || any(greaterThan(surfel_center, max_allowed_position));
 }
 
+
+float radius_from_camera_distance(
+    in const vec3 eye_position,
+    in const vec2 clip_planes,
+    in const vec3 position
+) {
+    const float point_distance = distance(eye_position, position) - clip_planes.x;
+    const float max_distance = abs(clip_planes.y) - abs(clip_planes.x);
+    
+    // this is a linear mapping from distance to radius
+    // that maps 0.0 -> MIN_SURFEL_RADIUS and 1.0 -> MAX_SURFEL_RADIUS
+    return clamp(
+        MAX_SURFEL_RADIUS * (point_distance / max_distance),
+        MIN_SURFEL_RADIUS,
+        MAX_SURFEL_RADIUS
+    );
+}
+
 uint register_surfel(
     in const vec3 eye_position,
     in const vec2 clip_planes,
     uint instance_id,
     bool primary,
     vec3 position,
-    float radius,
     vec3 normal,
     vec3 irradiance
 ) {
@@ -464,6 +481,8 @@ uint register_surfel(
 
 #if ENABLE_SURFELS
     uint flags = primary ? SURFEL_FLAG_PRIMARY : 0u;
+
+    const float radius = radius_from_camera_distance(eye_position, clip_planes, position);
 
     bool done = false;
     uint checked_surfels = 0;

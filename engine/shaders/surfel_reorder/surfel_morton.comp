@@ -76,7 +76,7 @@ void main() {
 
     // The morton code can be MORTON_OUT_OF_SCALE: these will be removed in the sorting step
     const vec3 surfel_center = vec3(surfels[src_surfel_id].position_x, surfels[src_surfel_id].position_y, surfels[src_surfel_id].position_z);
-    
+
     // if previous morton was MORTON_OUT_OF_SCALE, keep it that way (so that surfels that were out of scale will get removed later)
     if (surfels[src_surfel_id].morton != MORTON_OUT_OF_SCALE) {
         // copy the surfel to the new location with updated morton code
@@ -91,6 +91,15 @@ void main() {
             //debugPrintfEXT("morton.comp: marking for later deletion surfel %u\n", src_surfel_id);
         }
 #endif
+
+        // if the surfel radius is disproportionate with its distance from the camera, delete it
+        const float ideal_radius = radius_from_camera_distance(eye_position, clip_space, surfel_center);
+        if (abs(ideal_radius - surfels[src_surfel_id].radius) > DELETE_ON_RADIUS_DIFFERENCE) {
+            //debugPrintfEXT("morton.comp: marking for later deletion surfel %u (radius=%f ideal_radius=%f)\n", src_surfel_id, surfels[src_surfel_id].radius, ideal_radius);
+            
+            // this surfel is out of scale: delete it
+            surfels[dst_surfel_id].morton = MORTON_OUT_OF_SCALE;
+        }
     } else {
         // decrement the number of ordered surfels: the next shader will use this
         // number as the number of surfels to reorder

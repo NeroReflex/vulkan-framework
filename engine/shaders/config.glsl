@@ -21,10 +21,11 @@
 
 // If this is enabled surfel that haven't contributed to the final image
 // in N frames are deleted
-#define DELETE_NOT_CONTRIBUTING_SURFELS 32
+#define DELETE_NOT_CONTRIBUTING_SURFELS 120
 
 #define MIN_SURFEL_RADIUS 10.0
-#define MAX_SURFEL_RADIUS 60.0
+#define MAX_SURFEL_RADIUS 120.0
+#define DELETE_ON_RADIUS_DIFFERENCE 15.0
 
 #define SHOW_SURFELS 1
 
