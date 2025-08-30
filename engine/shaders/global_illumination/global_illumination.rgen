@@ -482,6 +482,16 @@ void main() {
     //    seed
     //);
 
+    // use visible surfels to contribute to the GI
+    vec3 surfels_contributions = vec3(0.0, 0.0, 0.0);
+    for (uint i = 0; i < MAX_USABLE_SURFELS; i++) {
+        if (discovered[i] == USED_SURFEL_MISSING) {
+            break;
+        }
+
+        surfels_contributions += projected_irradiance(surfels[discovered[i]], origin, normal);
+    }
+
     const float reused_scale = gi_data.gi_reuse_frames > 0 ? 2.0 : 1.0;
     imageStore(outputImage[0], texel_position, vec4((old_gi_data / 2.0) + (contribution / (float(FIRST_PASS_RAYS) * reused_scale)), 1.0));
     //imageStore(outputImage[0], texel_position, vec4((old_gi_data / 2.0) + (surfels_contribution / reused_scale), 1.0));

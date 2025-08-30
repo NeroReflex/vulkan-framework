@@ -578,4 +578,24 @@ vec3 surfelNormal(in Surfel s) {
     return normalize(vec3(s.normal_x, s.normal_y, s.normal_z));
 }
 
+// Calculate the light given from the surfel to the given position,
+// assuming no object is on its way: basically use a surfel
+// as a point light source
+vec3 projected_irradiance(in Surfel s, in const vec3 position, in const vec3 normal) {
+    if (s.contributions == 0u) {
+        return vec3(0.0, 0.0, 0.0);
+    }
+
+    const vec3 surfel_pos = surfelPosition(s);
+
+    const vec3 light_dir = normalize(surfel_pos - position);
+    const float intensity = max(dot(normal, light_dir), 0.0);
+
+    return vec3(
+        s.irradiance_r / float(s.contributions),
+        s.irradiance_g / float(s.contributions),
+        s.irradiance_b / float(s.contributions)
+    );
+}
+
 #endif // _SURFEL_
