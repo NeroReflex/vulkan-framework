@@ -457,7 +457,7 @@ impl GILighting {
             Buffer::new(
                 device.clone(),
                 ConcreteBufferDescriptor::new(
-                    [BufferUseAs::StorageBuffer, BufferUseAs::TransferDst]
+                    [BufferUseAs::StorageBuffer]
                         .as_slice()
                         .into(),
                     8u64 * 4u64,
