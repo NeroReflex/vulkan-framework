@@ -695,7 +695,6 @@ impl System {
             memory_manager.clone(),
             mesh_rendering.descriptor_set_layout(),
             global_illumination_lighting.descriptor_set_layout(),
-            status_descriptor_set_layout.clone(),
             &render_area,
             frames_in_flight,
         )?);

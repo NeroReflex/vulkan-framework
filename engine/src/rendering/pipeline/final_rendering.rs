@@ -73,7 +73,6 @@ impl FinalRendering {
         memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
         gbuffer_descriptor_set_layout: Arc<DescriptorSetLayout>,
         gibuffer_descriptor_set_layout: Arc<DescriptorSetLayout>,
-        status_descriptor_set_layout: Arc<DescriptorSetLayout>,
         render_area: &RenderingDimensions,
         frames_in_flight: u32,
     ) -> RenderingResult<Self> {
@@ -148,7 +147,6 @@ impl FinalRendering {
             &[
                 gbuffer_descriptor_set_layout,
                 gibuffer_descriptor_set_layout,
-                status_descriptor_set_layout,
             ],
             &[],
             Some("final_rendering.pipeline_layout"),

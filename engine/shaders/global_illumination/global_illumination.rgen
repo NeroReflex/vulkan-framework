@@ -533,13 +533,8 @@ void main() {
     }
     */
 
-    const float reused_scale = gi_data.gi_reuse_frames > 0 ? 2.0 : 1.0;
-
-    //imageStore(outputImage[0], texel_position, vec4((old_gi_data / 2.0) + (surfels_contributions / (/*float(surfels_contributions_count) * */ reused_scale)), 1.0));
-
     // this is the monte-carlo estimate of the GI at this point
-    imageStore(outputImage[0], texel_position, vec4((old_gi_data) + (contribution / float(FIRST_PASS_RAYS)), 1.0));
-
-    //imageStore(outputImage[0], texel_position, vec4((old_gi_data / 2.0) + (surfels_contribution / reused_scale), 1.0));
-    //imageStore(outputImage, texel_position, vec4(float(texel_position.x)/resolution.x, float(texel_position.y)/resolution.y, 0.0, 1.0));
+    //const vec3 mc_gi_contribution = (old_gi_data + (contribution / float(FIRST_PASS_RAYS))) / float(gi_data.gi_reuse_frames + 1u);
+    const vec3 mc_gi_contribution = (old_gi_data * float(gi_data.gi_reuse_frames) + (contribution / float(FIRST_PASS_RAYS))) / float(gi_data.gi_reuse_frames + 1u);
+    imageStore(outputImage[0], texel_position, vec4(mc_gi_contribution, 1.0));
 }
