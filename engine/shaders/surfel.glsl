@@ -20,6 +20,8 @@ uniform layout (set = SURFELS_DESCRIPTOR_SET, binding = 4, rgba32f) image2D outp
 
 #define RADIANCE_THRESHOLD 1.0f
 
+// ensure in std430 the size matches the alignment
+// and it is SURFEL_SIZE in rust sources
 struct Surfel {
     uint instance_id;
 
@@ -35,12 +37,11 @@ struct Surfel {
     float irradiance_r;
     float irradiance_g;
     float irradiance_b;
-/*
+
     float direct_light_r;
     float direct_light_g;
     float direct_light_b;
-    uint direct_light_contributions;
-*/
+
     uint contributions;
 
     uint flags;
@@ -352,6 +353,13 @@ uint linear_search_unordered_surfel_for_allocation(
 ) {
     bool too_close = false;
 
+    // This is very clever (and probably based on UB): the number of unordered surfels
+    // is only increase via atomic operations, but since this function reads it in a
+    // non-atomic way, it is VERY LIKELY to read a stale value, that will be updated
+    // only when a concurrently-allocating-surfel thread has committed the updated
+    // counter, as well as the new surfel position via a memoryBufferBarrier(), thus
+    // ensuring I won't spawn a new surfel that would be too close to an already allocated one
+    // simply because I haven't read that surfel yet.
     checked_surfels = count_unordered_surfels();
     const uint first_unordered_surfel_id = total_surfels / 2;
     const uint last_unordered_surfel_id = first_unordered_surfel_id + checked_surfels;

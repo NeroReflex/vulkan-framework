@@ -206,6 +206,11 @@ void main() {
 
     const ivec2 texel_position = ivec2(gl_LaunchIDEXT.xy);
 
+    // we have already accumulated enough frames: do nothing
+    if (gi_data.gi_reuse_frames >= 0xFFFFFFFEu) {
+        return;
+    }
+
     const vec3 old_gi_data = gi_data.gi_reuse_frames > 0 ? imageLoad(outputImage[0], ivec2(gl_LaunchIDEXT.xy)).rgb : vec3(0.0, 0.0, 0.0);
 
     const vec3 origin = texelFetch(gbuffer[0], texel_position, 0).xyz;
@@ -216,6 +221,7 @@ void main() {
 
     const uvec4 instance_data = texelFetch(gbuffer_instance_id, texel_position, 0);
     const uint mesh_id = instance_data.x;
+    const uint instance_id = instance_data.y;
 
     const vec2 clip_planes = reconstructNearFarFromCamera();
     const vec3 eye_position = get_eye_position();
@@ -291,6 +297,7 @@ void main() {
     vec3 ray_directions[MAX_RAY_DEPTH];
 
     vec3 contribution = vec3(0.0, 0.0, 0.0);
+    uint contribution_samples = 0;
 
 #if SHOW_SURFELS
     if ((depth < DEPTH_IGNORE) && (mesh_id != 0xFFFFFFFFu)) {
@@ -457,6 +464,9 @@ void main() {
                         }
 
                         contribution += incoming_diffuse_light;
+                        if (ray_depth == 0) {
+                            contribution_samples += 1;
+                        }
                         //contribution += vec3(float(texel_position.x)/resolution.x, float(texel_position.y)/resolution.y, 0.0);
                     }
                 }
@@ -536,5 +546,23 @@ void main() {
     // this is the monte-carlo estimate of the GI at this point
     //const vec3 mc_gi_contribution = (old_gi_data + (contribution / float(FIRST_PASS_RAYS))) / float(gi_data.gi_reuse_frames + 1u);
     const vec3 mc_gi_contribution = (old_gi_data * float(gi_data.gi_reuse_frames) + (contribution / float(FIRST_PASS_RAYS))) / float(gi_data.gi_reuse_frames + 1u);
+
+    // if there is enough light incoming on this this point make a surfel out of it!
+    if (
+        mc_gi_contribution.x > RADIANCE_THRESHOLD ||
+        mc_gi_contribution.y > RADIANCE_THRESHOLD ||
+        mc_gi_contribution.z > RADIANCE_THRESHOLD
+    ) {
+        register_surfel(
+            eye_position,
+            clip_planes,
+            instance_id,
+            false,
+            origin,
+            normal,
+            mc_gi_contribution
+        );
+    }
+
     imageStore(outputImage[0], texel_position, vec4(mc_gi_contribution, 1.0));
 }

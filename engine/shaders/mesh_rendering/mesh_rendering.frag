@@ -11,10 +11,12 @@ layout (location = 1) in vec4 in_vNormal_worldspace;
 layout (location = 2) in vec2 in_vTextureUV;
 layout (location = 3) in vec4 in_vPosition_worldspace_minus_eye_position;
 layout (location = 4) in flat vec4 in_eyePosition_worldspace;
+layout (location = 5) in flat uint offset_instance_id;
 
 layout(push_constant) uniform MeshData {
     mat3x4 load_matrix;
     uint mesh_id;
+    uint base_instance;
 } mesh_data;
 
 // MUST match with MAX_TEXTURES on rust side
@@ -63,5 +65,5 @@ void main() {
     out_vNormal = vec4(bestNormal.xyz, 0.0);
     out_vDiffuse = texture(textures[diffuse_texture_index], in_vTextureUV);
     out_vSpecular = vec4(0.0, 0.0, 0.0, 0.0);
-    out_vInstanceId = uvec4(mesh_data.mesh_id, 0, 0, 0);
+    out_vInstanceId = uvec4(mesh_data.mesh_id, mesh_data.base_instance + offset_instance_id, 0, 0);
 }

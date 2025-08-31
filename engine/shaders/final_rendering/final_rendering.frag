@@ -19,7 +19,7 @@ void main() {
 
     vec3 out_vDiffuseAlbedo = directional_light_received + global_illumination_received;
     #if SHOW_SURFELS
-        out_vDiffuseAlbedo = directional_light_received * 0.1 + global_illumination_received;
+        out_vDiffuseAlbedo = directional_light_received * 0.8 + global_illumination_received;
     #endif
 
     outColor = vec4(out_vDiffuseAlbedo.xyz, 1.0);

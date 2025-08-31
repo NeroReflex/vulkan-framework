@@ -456,7 +456,7 @@ impl MeshRendering {
                 view_projection_descriptor_set_layout,
             ]
             .as_slice(),
-            [PushConstanRange::new(0, 52u32, push_constants_stages)].as_slice(),
+            [PushConstanRange::new(0, 56u32, push_constants_stages)].as_slice(),
             Some("mesh_rendering.pipeline_layout"),
         )?;
 

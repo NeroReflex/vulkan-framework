@@ -1460,6 +1460,9 @@ impl Manager {
                     println!(
                         "skipping drawing of a mesh due to a bound blas not being fully loaded"
                     );
+
+                    // avoid pushing a base instance_id that won't match the TLAS instance_id
+                    drawn += instance_count as u64;
                     continue;
                 };
 
@@ -1470,6 +1473,9 @@ impl Manager {
                     println!(
                         "skipping drawing of a mesh due to a bound (diffuse) texture not being fully loaded"
                     );
+
+                    // avoid pushing a base instance_id that won't match the TLAS instance_id
+                    drawn += instance_count as u64;
                     continue;
                 }
 
@@ -1480,6 +1486,9 @@ impl Manager {
                     println!(
                         "skipping drawing of a mesh due to a bound (normal) texture not being fully loaded"
                     );
+
+                    // avoid pushing a base instance_id that won't match the TLAS instance_id
+                    drawn += instance_count as u64;
                     continue;
                 }
 
@@ -1490,6 +1499,9 @@ impl Manager {
                     println!(
                         "skipping drawing of a mesh due to a bound (reflection) texture not being fully loaded"
                     );
+
+                    // avoid pushing a base instance_id that won't match the TLAS instance_id
+                    drawn += instance_count as u64;
                     continue;
                 }
 
@@ -1500,6 +1512,9 @@ impl Manager {
                     println!(
                         "skipping drawing of a mesh due to a bound (displacement) texture not being fully loaded"
                     );
+
+                    // avoid pushing a base instance_id that won't match the TLAS instance_id
+                    drawn += instance_count as u64;
                     continue;
                 }
 
@@ -1511,6 +1526,9 @@ impl Manager {
                     println!(
                         "skipping drawing of a mesh due to a bound material not being fully loaded"
                     );
+
+                    // avoid pushing a base instance_id that won't match the TLAS instance_id
+                    drawn += instance_count as u64;
                     continue;
                 }
 
@@ -1540,6 +1558,20 @@ impl Manager {
                     },
                 );
 
+                let base_instance = drawn as u32;
+                let base_instance_size = core::mem::size_of_val(&base_instance) as u32;
+                recorder.push_constant(
+                    pipeline_layout.clone(),
+                    push_constant_stages,
+                    push_constant_offset + transform_size + mesh_id_size,
+                    unsafe {
+                        ::core::slice::from_raw_parts(
+                            (&base_instance as *const _) as *const u8,
+                            base_instance_size as usize,
+                        )
+                    },
+                );
+
                 let vertex_buffer = blas.vertex_buffer();
                 if vertex_buffer.buffer().native_handle() != last_bound_vertex_buffer {
                     last_bound_vertex_buffer = vertex_buffer.buffer().native_handle();
@@ -1563,8 +1595,18 @@ impl Manager {
 
                 recorder.bind_index_buffer(0, blas.index_buffer().buffer(), IndexType::UInt32);
 
-                // TODO: for now drawing one instance, but in the future allows multiple instances to be rendered
+                // This draw call draws all instances of this mesh.
+                // what is drawn by this call MUST be equivalent to what is being set as instance_id when
+                // building the top-level acceleration structure.
+                //
+                // When building the TLAS the same data (objects, meshes, instances) is iterated in the same way
+                // as here, BUT there an additional inner loop is performed on obj_instances.instances.iter()
+                // while here we use draw_indexed with instance_count set to the number of instances of this mesh:
+                // this means that to get the correct instance_id in the shader we MUST use gl_InstanceID + drawn.
                 recorder.draw_indexed(blas.max_primitives_count() * 3u32, instance_count, 0, 0, 0);
+                
+                // also notice that instances that got drawed are counted in drawn, so that the fragment shader
+                // will have access to the correct instance_id field.
                 drawn += instance_count as u64;
             }
         }

@@ -13,6 +13,7 @@ layout (location = 1) out vec4 out_vNormal_worldspace;
 layout (location = 2) out vec2 out_vTextureUV;
 layout (location = 3) out vec4 out_vPosition_worldspace_minus_eye_position;
 layout (location = 4) out flat vec4 eyePosition_worldspace;
+layout (location = 5) out flat uint offset_instance_id;
 
 layout(std140, set = 2, binding = 0) uniform camera_uniform {
 	mat4 viewMatrix;
@@ -43,6 +44,7 @@ void main() {
 	out_vTextureUV = vec2(vertex_texture.x, 1-vertex_texture.y);
 	out_vPosition_worldspace_minus_eye_position = vec4((vPosition_worldspace - eyePosition_worldspace).xyz, 1.0);
 	out_vNormal_worldspace = vec4((ModelMatrix * vec4(vertex_normal_modelspace, 0.0)).xyz, 0.0);
+    offset_instance_id = gl_InstanceIndex;
 
     gl_Position = MVP * vec4(vertex_position_modelspace, 1.0);
 }
