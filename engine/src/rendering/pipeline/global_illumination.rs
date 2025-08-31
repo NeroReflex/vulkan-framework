@@ -382,12 +382,7 @@ impl GILighting {
                 output_descriptor_set_layout.clone(),
             ]
             .as_slice(),
-            [PushConstanRange::new(
-                0,
-                core::mem::size_of::<u32>() as u32,
-                ShaderStagesAccess::raytracing(),
-            )]
-            .as_slice(),
+            [].as_slice(),
             Some("gi_lighting_pipeline_layout"),
         )?;
 
@@ -1193,20 +1188,6 @@ impl GILighting {
                 self.output_descriptor_set.clone(),
             ]
             .as_slice(),
-        );
-
-        let push_constant: [u32; 1] = [reuse_previous_frame];
-
-        recorder.push_constant(
-            self.raytracing_pipeline.get_parent_pipeline_layout(),
-            ShaderStagesAccess::raytracing(),
-            0,
-            unsafe {
-                ::core::slice::from_raw_parts(
-                    (&push_constant[0] as *const _) as *const u8,
-                    core::mem::size_of_val(&push_constant),
-                )
-            },
         );
 
         recorder.trace_rays(

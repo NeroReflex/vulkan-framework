@@ -94,6 +94,7 @@ pub struct System {
         smallvec::SmallVec<[Arc<AllocatedBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
     directional_light_buffers:
         smallvec::SmallVec<[Arc<AllocatedBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
+    status_buffers: smallvec::SmallVec<[Arc<AllocatedBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
 
     rt_descriptor_set_layout: Arc<DescriptorSetLayout>,
     rt_descriptor_pool: Arc<DescriptorPool>,
@@ -390,6 +391,7 @@ impl System {
 
         let mut view_projection_unallocated_buffers = vec![];
         let mut directional_lights_unallocated = vec![];
+        let mut status_buffer_unallocated = vec![];
         for index in 0..frames_in_flight {
             view_projection_unallocated_buffers.push(
                 Buffer::new(
@@ -411,13 +413,29 @@ impl System {
                 Buffer::new(
                     device.clone(),
                     ConcreteBufferDescriptor::new(
-                        [BufferUseAs::TransferDst, BufferUseAs::StorageBuffer]
+                        [BufferUseAs::StorageBuffer, BufferUseAs::TransferDst]
                             .as_slice()
                             .into(),
                         4u64 * 6u64 * (MAX_DIRECTIONAL_LIGHTS as u64),
                     ),
                     None,
                     Some(format!("directional_lights[{index}]").as_str()),
+                )?
+                .into(),
+            );
+
+            status_buffer_unallocated.push(
+                Buffer::new(
+                    device.clone(),
+                    ConcreteBufferDescriptor::new(
+                        // vkCmdUpdateBuffer counts as a trasfer operation, therefore set TrasferDst
+                        [BufferUseAs::UniformBuffer, BufferUseAs::TransferDst]
+                            .as_slice()
+                            .into(),
+                        4u64 * 8u64,
+                    ),
+                    None,
+                    Some(format!("status_buffers[{index}]").as_str()),
                 )?
                 .into(),
             );
@@ -454,6 +472,21 @@ impl System {
             .map(|r| r.buffer())
             .collect();
 
+        let status_buffers: smallvec::SmallVec<
+            [Arc<AllocatedBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
+        > = memory_manager
+            .allocate_resources(
+                // I don't care if the memory is visible or not to the host:
+                // I will use vkCmdUpdateBuffer to change memory content
+                &MemoryType::device_local_and_host_visible(),
+                &MemoryPoolFeatures::default(),
+                status_buffer_unallocated,
+                MemoryManagementTags::default().with_exclusivity(true),
+            )?
+            .into_iter()
+            .map(|r| r.buffer())
+            .collect();
+
         let memory_manager = Arc::new(Mutex::new(memory_manager));
 
         let obj_manager = ResourceManager::new(
@@ -473,6 +506,7 @@ impl System {
                 BindingDescriptor::new(
                     [
                         ShaderStageAccessIn::Compute,
+                        // view-projection is used in vertex shaders
                         ShaderStageAccessIn::Vertex,
                         ShaderStageAccessIn::RayTracing(ShaderStageAccessInRayTracingKHR::RayGen),
                     ]
@@ -493,6 +527,17 @@ impl System {
                     1,
                     1,
                 ),
+                BindingDescriptor::new(
+                    [
+                        ShaderStageAccessIn::Fragment,
+                        ShaderStageAccessIn::RayTracing(ShaderStageAccessInRayTracingKHR::RayGen),
+                    ]
+                    .as_slice()
+                    .into(),
+                    BindingType::Native(NativeBindingType::UniformBuffer),
+                    2,
+                    1,
+                ),
             ]
             .as_slice(),
         )?;
@@ -508,7 +553,7 @@ impl System {
                     0,
                     0,
                     frames_in_flight,
-                    frames_in_flight,
+                    2 * frames_in_flight,
                     0,
                     None,
                 ),
@@ -545,6 +590,19 @@ impl System {
                         1,
                         [(
                             directional_light_buffers[index].clone() as Arc<dyn BufferTrait>,
+                            None,
+                            None,
+                        )]
+                        .as_slice(),
+                    )
+                    .unwrap();
+
+                // bind the status buffer
+                binder
+                    .bind_uniform_buffer(
+                        2,
+                        [(
+                            status_buffers[index].clone() as Arc<dyn BufferTrait>,
                             None,
                             None,
                         )]
@@ -637,19 +695,15 @@ impl System {
             memory_manager.clone(),
             mesh_rendering.descriptor_set_layout(),
             global_illumination_lighting.descriptor_set_layout(),
+            status_descriptor_set_layout.clone(),
             &render_area,
             frames_in_flight,
         )?);
 
-        let hdr = Arc::new(HDRTransform::new(
-            memory_manager.clone(),
-            frames_in_flight,
-            &render_area,
-        )?);
+        let hdr = Arc::new(HDRTransform::new(memory_manager.clone(), &render_area)?);
 
         let renderquad = Arc::new(RenderQuad::new(
             device.clone(),
-            frames_in_flight,
             surface.final_format(),
             initial_width,
             initial_height,
@@ -668,7 +722,10 @@ impl System {
             PrimaryCommandBuffer::new(command_pool.clone(), Some("init_command_buffer"))?;
 
         init_command_buffer.record_one_time_submit(|recorder| {
+            mesh_rendering.record_init_commands(recorder);
             global_illumination_lighting.record_init_commands(recorder);
+            hdr.record_init_commands(recorder);
+            renderquad.record_init_commands(recorder);
         })?;
 
         let init_queue = Queue::new(queue_family.clone(), Some("init_queue")).unwrap();
@@ -678,6 +735,8 @@ impl System {
             &[
                 mesh_rendering.signal_semaphores(),
                 global_illumination_lighting.signal_semaphores(),
+                hdr.signal_semaphores(),
+                renderquad.signal_semaphores(),
             ],
             init_fence.clone(),
         )?;
@@ -711,6 +770,7 @@ impl System {
 
             view_projection_buffers,
             directional_light_buffers,
+            status_buffers,
 
             rt_descriptor_set_layout,
             rt_descriptor_pool,
@@ -891,12 +951,32 @@ impl System {
                             self.queue_family.clone(),
                         )
                         .into(),
+                        BufferMemoryBarrier::new(
+                            [PipelineStage::TopOfPipe].as_slice().into(),
+                            [].as_slice().into(),
+                            [PipelineStage::Transfer].as_slice().into(),
+                            [MemoryAccessAs::TransferWrite].as_slice().into(),
+                            BufferSubresourceRange::new(
+                                self.status_buffers[current_frame].clone(),
+                                0,
+                                self.status_buffers[current_frame].size(),
+                            ),
+                            self.queue_family.clone(),
+                            self.queue_family.clone(),
+                        )
+                        .into(),
                     ]);
 
                     recorder.update_buffer(
                         self.view_projection_buffers[current_frame].clone(),
                         0,
                         camera_matrices.as_slice(),
+                    );
+
+                    recorder.update_buffer(
+                        self.status_buffers[current_frame].clone(),
+                        0,
+                        [self.prev_frame_gi_reuse].as_slice(),
                     );
 
                     let mut light_index = 0u64;
@@ -965,6 +1045,27 @@ impl System {
                                 self.directional_light_buffers[current_frame].clone(),
                                 0,
                                 size_of_light * (lights_count as u64),
+                            ),
+                            self.queue_family.clone(),
+                            self.queue_family.clone(),
+                        )
+                        .into(),
+                        BufferMemoryBarrier::new(
+                            [PipelineStage::Transfer].as_slice().into(),
+                            [MemoryAccessAs::TransferWrite].as_slice().into(),
+                            [
+                                PipelineStage::AllGraphics,
+                                PipelineStage::RayTracingPipelineKHR(
+                                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                                ),
+                            ]
+                            .as_slice()
+                            .into(),
+                            [MemoryAccessAs::UniformRead].as_slice().into(),
+                            BufferSubresourceRange::new(
+                                self.status_buffers[current_frame].clone(),
+                                0,
+                                self.status_buffers[current_frame].size(),
                             ),
                             self.queue_family.clone(),
                             self.queue_family.clone(),
@@ -1056,7 +1157,6 @@ impl System {
                     self.queue_family(),
                     hdr,
                     final_rendering_output_image,
-                    current_frame,
                     recorder,
                 );
 
@@ -1066,7 +1166,6 @@ impl System {
                     swapchain.images_extent(),
                     hdr_output_image,
                     swapchain_imageviews[swapchain_index as usize].clone(),
-                    current_frame,
                     recorder,
                 );
             })?
@@ -1079,6 +1178,7 @@ impl System {
             present_semaphore.clone(),
             self.mesh_rendering.signal_semaphores(),
             self.global_illumination_lighting.signal_semaphores(),
+            self.hdr.signal_semaphores(),
         ];
         let wait_semaphores = vec![
             (
@@ -1087,6 +1187,7 @@ impl System {
             ),
             self.mesh_rendering.wait_semaphores(),
             self.global_illumination_lighting.wait_semaphores(),
+            self.hdr.wait_semaphores(),
         ];
         self.frames_in_flight[current_frame] = Some(frame_queue.submit(
             &[self.present_command_buffers[current_frame].clone()],

@@ -18,7 +18,7 @@ uniform layout (set = SURFELS_DESCRIPTOR_SET, binding = 4, rgba32f) image2D outp
 #define SURFEL_FLAG_LOCKED      (0x01u << 0u)
 #define SURFEL_FLAG_PRIMARY     (0x01u << 1u)
 
-#define RADIANCE_THRESHOLD 10.0f
+#define RADIANCE_THRESHOLD 1.0f
 
 struct Surfel {
     uint instance_id;

@@ -33,6 +33,7 @@ use vulkan_framework::{
     push_constant_range::PushConstanRange,
     queue_family::QueueFamily,
     sampler::{Filtering, MipmapMode, Sampler},
+    semaphore::Semaphore,
     shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType},
     shader_stage_access::{ShaderStageAccessIn, ShaderStagesAccess},
     shaders::{fragment_shader::FragmentShader, vertex_shader::VertexShader},
@@ -40,9 +41,7 @@ use vulkan_framework::{
 
 use crate::{
     core::hdr::HDR,
-    rendering::{
-        MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingResult, rendering_dimensions::RenderingDimensions,
-    },
+    rendering::{RenderingResult, rendering_dimensions::RenderingDimensions},
 };
 
 const RENDERQUAD_VERTEX_SPV: &[u32] = inline_spirv!(
@@ -185,7 +184,9 @@ void main() {
 );
 
 pub struct HDRTransform {
-    descriptor_sets: smallvec::SmallVec<[Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
+    semaphore: Arc<Semaphore>,
+
+    descriptor_set: Arc<DescriptorSet>,
 
     push_constant_size: u32,
     push_constant_access: ShaderStagesAccess,
@@ -195,7 +196,7 @@ pub struct HDRTransform {
     descriptor_set_layout: Arc<DescriptorSetLayout>,
 
     image_dimensions: Image2DDimensions,
-    image_views: smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
+    image_view: Arc<ImageView>,
 
     sampler: Arc<Sampler>,
 }
@@ -204,6 +205,18 @@ pub struct HDRTransform {
 /// the one that transform the raw result into something that can be sampled
 /// to generate the image to be presented: applies tone mapping and/or hdr.
 impl HDRTransform {
+    /// Returns the list of stages that has to wait on a specific semaphore
+    pub fn wait_semaphores(&self) -> (PipelineStages, Arc<Semaphore>) {
+        (
+            [PipelineStage::AllGraphics].as_slice().into(),
+            self.semaphore.clone(),
+        )
+    }
+
+    pub fn signal_semaphores(&self) -> Arc<Semaphore> {
+        self.semaphore.clone()
+    }
+
     #[inline]
     fn image_output_format() -> ImageFormat {
         CommonImageFormat::r32g32b32a32_sfloat.into()
@@ -217,7 +230,6 @@ impl HDRTransform {
 
     pub fn new(
         memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
-        frames_in_flight: u32,
         render_area: &RenderingDimensions,
     ) -> RenderingResult<Self> {
         let mut mem_manager = memory_manager.lock().unwrap();
@@ -226,24 +238,13 @@ impl HDRTransform {
 
         let image_dimensions = render_area.into();
 
+        let semaphore = Semaphore::new(device.clone(), Some("hdr_transform.semaphore"))?;
+
         let descriptor_pool = DescriptorPool::new(
             device.clone(),
             DescriptorPoolConcreteDescriptor::new(
-                DescriptorPoolSizesConcreteDescriptor::new(
-                    0,
-                    frames_in_flight,
-                    0,
-                    frames_in_flight,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    Some(DescriptorPoolSizesAcceletarionStructureKHR::new(
-                        frames_in_flight,
-                    )),
-                ),
-                frames_in_flight,
+                DescriptorPoolSizesConcreteDescriptor::new(0, 1, 0, 1, 0, 0, 0, 0, 0, None),
+                1,
             ),
             Some("hdr_transform.descriptor_pool"),
         )?;
@@ -260,12 +261,8 @@ impl HDRTransform {
         let descriptor_set_layout =
             DescriptorSetLayout::new(device.clone(), binding_descriptors.as_slice())?;
 
-        let mut descriptor_sets = smallvec::smallvec![];
-        for _ in 0..frames_in_flight {
-            let descriptor_set =
-                DescriptorSet::new(descriptor_pool.clone(), descriptor_set_layout.clone())?;
-            descriptor_sets.push(descriptor_set);
-        }
+        let descriptor_set =
+            DescriptorSet::new(descriptor_pool.clone(), descriptor_set_layout.clone())?;
 
         let push_constant_size = 4u32 * 2u32;
         let push_constant_access = [ShaderStageAccessIn::Fragment].as_slice().into();
@@ -323,10 +320,9 @@ impl HDRTransform {
             Some("hdr_transform.pipeline"),
         )?;
 
-        let mut image_handles = vec![];
-        for index in 0..(frames_in_flight as usize) {
-            let image_name = format!("hdr_transform.image[{index}]");
-            let image = Image::new(
+        let image_name = format!("hdr_transform.image");
+        let image_handles = vec![
+            Image::new(
                 device.clone(),
                 ConcreteImageDescriptor::new(
                     image_dimensions.into(),
@@ -342,41 +338,32 @@ impl HDRTransform {
                 ),
                 None,
                 Some(image_name.as_str()),
-            )?;
-
-            image_handles.push(image.into());
-        }
-
-        let mut image_views: smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]> =
-            smallvec::smallvec![];
-        for (index, image) in mem_manager
-            .allocate_resources(
-                &MemoryType::device_local(),
-                &MemoryPoolFeatures::new(false),
-                image_handles,
-                MemoryManagementTags::default()
-                    .with_name("hdr_transform".to_string())
-                    .with_size(MemoryManagementTagSize::MediumSmall),
             )?
-            .into_iter()
-            .enumerate()
-        {
-            let image_view_name = format!("hdr_transform.image_view[{index}]");
-            let image_view = ImageView::new(
-                image.image(),
-                Some(ImageViewType::Image2D),
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                Some(image_view_name.as_str()),
-            )?;
+            .into(),
+        ];
 
-            image_views.push(image_view);
-        }
+        let image = mem_manager.allocate_resources(
+            &MemoryType::device_local(),
+            &MemoryPoolFeatures::new(false),
+            image_handles,
+            MemoryManagementTags::default()
+                .with_name("hdr_transform".to_string())
+                .with_size(MemoryManagementTagSize::MediumSmall),
+        )?;
+
+        let image_view_name = format!("hdr_transform.image_view");
+        let image_view = ImageView::new(
+            image[0].image(),
+            Some(ImageViewType::Image2D),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(image_view_name.as_str()),
+        )?;
 
         let sampler = Sampler::new(
             device.clone(),
@@ -388,7 +375,9 @@ impl HDRTransform {
         .unwrap();
 
         Ok(Self {
-            descriptor_sets,
+            semaphore,
+
+            descriptor_set,
 
             push_constant_size,
             push_constant_access,
@@ -398,21 +387,22 @@ impl HDRTransform {
             descriptor_set_layout,
 
             image_dimensions,
-            image_views,
+            image_view,
 
             sampler,
         })
     }
+
+    pub fn record_init_commands(&self, _recorder: &mut CommandBufferRecorder) {}
 
     pub fn record_rendering_commands(
         &self,
         queue_family: Arc<QueueFamily>,
         hdr: &HDR,
         input_image_view: Arc<ImageView>,
-        current_frame: usize,
         recorder: &mut CommandBufferRecorder,
     ) -> Arc<ImageView> {
-        self.descriptor_sets[current_frame]
+        self.descriptor_set
             .bind_resources(|binder| {
                 binder
                     .bind_combined_images_samplers(
@@ -427,7 +417,7 @@ impl HDRTransform {
             })
             .unwrap();
 
-        let image_view = self.image_views[current_frame].clone();
+        let image_view = self.image_view.clone();
 
         // Transition the framebuffer image into color attachment optimal layout,
         // so that the graphics pipeline has it in the best format
@@ -445,7 +435,7 @@ impl HDRTransform {
         .into()]);
 
         let rendering_color_attachments = [DynamicRenderingColorAttachment::new(
-            self.image_views[current_frame].clone(),
+            self.image_view.clone(),
             RenderingAttachmentSetup::clear(ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0)),
             AttachmentStoreOp::Store,
         )];
@@ -459,7 +449,7 @@ impl HDRTransform {
                 recorder.bind_descriptor_sets_for_graphics_pipeline(
                     self.pipeline_layout.clone(),
                     0,
-                    &[self.descriptor_sets[current_frame].clone()],
+                    &[self.descriptor_set.clone()],
                 );
 
                 let push_constant = [hdr.gamma(), hdr.exposure()];

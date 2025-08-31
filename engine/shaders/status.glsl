@@ -27,6 +27,13 @@ layout(std430, set = STATUS_DESCRIPTOR_SET, binding = 1) readonly buffer directi
     light_t light[];
 };
 
+layout(std140, set = STATUS_DESCRIPTOR_SET, binding = 2) uniform status_buffer
+{
+    uint gi_reuse_frames;
+
+    uint padding[7];
+} gi_data;
+
 vec3 get_eye_position() {
     return vec3(camera.viewMatrix[3][0], camera.viewMatrix[3][1], camera.viewMatrix[3][2]);
 }

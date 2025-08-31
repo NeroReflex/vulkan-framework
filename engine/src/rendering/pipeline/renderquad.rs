@@ -6,8 +6,7 @@ use vulkan_framework::{
     clear_values::ColorClearValues,
     command_buffer::CommandBufferRecorder,
     descriptor_pool::{
-        DescriptorPool, DescriptorPoolConcreteDescriptor,
-        DescriptorPoolSizesAcceletarionStructureKHR, DescriptorPoolSizesConcreteDescriptor,
+        DescriptorPool, DescriptorPoolConcreteDescriptor, DescriptorPoolSizesConcreteDescriptor,
     },
     descriptor_set::DescriptorSet,
     descriptor_set_layout::DescriptorSetLayout,
@@ -26,15 +25,16 @@ use vulkan_framework::{
     image_view::ImageView,
     memory_barriers::{ImageMemoryBarrier, MemoryAccessAs},
     pipeline_layout::PipelineLayout,
-    pipeline_stage::PipelineStage,
+    pipeline_stage::{PipelineStage, PipelineStages},
     queue_family::QueueFamily,
     sampler::{Filtering, MipmapMode, Sampler},
+    semaphore::Semaphore,
     shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType},
     shader_stage_access::ShaderStagesAccess,
     shaders::{fragment_shader::FragmentShader, vertex_shader::VertexShader},
 };
 
-use crate::rendering::{MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingResult};
+use crate::rendering::RenderingResult;
 
 const RENDERQUAD_VERTEX_SPV: &[u32] = inline_spirv!(
     r#"
@@ -94,13 +94,26 @@ void main() {
 /// This is the very last stage of the drawing pipeline: the one that renders to the framebuffer
 /// that will be presented to the screen.
 pub struct RenderQuad {
-    descriptor_sets: smallvec::SmallVec<[Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
+    semaphore: Arc<Semaphore>,
+    descriptor_set: Arc<DescriptorSet>,
     pipeline_layout: Arc<PipelineLayout>,
     graphics_pipeline: Arc<GraphicsPipeline>,
     sampler: Arc<Sampler>,
 }
 
 impl RenderQuad {
+    /// Returns the list of stages that has to wait on a specific semaphore
+    pub fn wait_semaphores(&self) -> (PipelineStages, Arc<Semaphore>) {
+        (
+            [PipelineStage::AllGraphics].as_slice().into(),
+            self.semaphore.clone(),
+        )
+    }
+
+    pub fn signal_semaphores(&self) -> Arc<Semaphore> {
+        self.semaphore.clone()
+    }
+
     /// Returns the layout of the input 2D image MUST be in where the rendering operation starts.
     #[inline]
     pub fn image_input_layout() -> ImageLayout {
@@ -109,29 +122,17 @@ impl RenderQuad {
 
     pub fn new(
         device: Arc<Device>,
-        frames_in_flight: u32,
         final_format: ImageFormat,
         width: u32,
         height: u32,
     ) -> RenderingResult<Self> {
+        let semaphore = Semaphore::new(device.clone(), Some("renderquad.semaphore"))?;
+
         let descriptor_pool = DescriptorPool::new(
             device.clone(),
             DescriptorPoolConcreteDescriptor::new(
-                DescriptorPoolSizesConcreteDescriptor::new(
-                    0,
-                    frames_in_flight,
-                    0,
-                    frames_in_flight,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    Some(DescriptorPoolSizesAcceletarionStructureKHR::new(
-                        frames_in_flight,
-                    )),
-                ),
-                frames_in_flight,
+                DescriptorPoolSizesConcreteDescriptor::new(0, 1, 0, 1, 0, 0, 0, 0, 0, None),
+                1,
             ),
             Some("renderquad.descriptor_pool"),
         )?;
@@ -148,12 +149,8 @@ impl RenderQuad {
         let descriptor_set_layout =
             DescriptorSetLayout::new(device.clone(), binding_descriptors.as_slice())?;
 
-        let mut descriptor_sets = smallvec::smallvec![];
-        for _ in 0..frames_in_flight {
-            let descriptor_set =
-                DescriptorSet::new(descriptor_pool.clone(), descriptor_set_layout.clone())?;
-            descriptor_sets.push(descriptor_set);
-        }
+        let descriptor_set =
+            DescriptorSet::new(descriptor_pool.clone(), descriptor_set_layout.clone())?;
 
         let pipeline_layout = PipelineLayout::new(
             device.clone(),
@@ -211,12 +208,15 @@ impl RenderQuad {
         .unwrap();
 
         Ok(Self {
-            descriptor_sets,
+            semaphore,
+            descriptor_set,
             pipeline_layout,
             graphics_pipeline,
             sampler,
         })
     }
+
+    pub fn record_init_commands(&self, _recorder: &mut CommandBufferRecorder) {}
 
     pub fn record_rendering_commands(
         &self,
@@ -224,10 +224,9 @@ impl RenderQuad {
         draw_area: Image2DDimensions,
         input_image_view: Arc<ImageView>,
         output_image_view: Arc<ImageView>,
-        current_frame: usize,
         recorder: &mut CommandBufferRecorder,
     ) {
-        self.descriptor_sets[current_frame]
+        self.descriptor_set
             .bind_resources(|binder| {
                 binder
                     .bind_combined_images_samplers(
@@ -274,7 +273,7 @@ impl RenderQuad {
                 recorder.bind_descriptor_sets_for_graphics_pipeline(
                     self.pipeline_layout.clone(),
                     0,
-                    &[self.descriptor_sets[current_frame].clone()],
+                    &[self.descriptor_set.clone()],
                 );
                 recorder.draw(0, 6, 0, 1);
             },

@@ -27,11 +27,8 @@
 
 layout(location = 0) rayPayloadEXT hit_payload_t payload;
 
+// WARNING: this MUST be a power of two!
 #define FIRST_PASS_RAYS 8
-
-layout(push_constant) uniform GIData {
-    uint gi_reuse_frames;
-} gi_data;
 
 vec3 random_point_on_unit_sphere(inout uint state)
 {
@@ -482,19 +479,23 @@ void main() {
     //    seed
     //);
 
+
     // use visible surfels to contribute to the GI
     vec3 surfels_contributions = vec3(0.0, 0.0, 0.0);
     uint surfels_contributions_count = 0;
+    /*
     const uint discovered_surfels_count = count_discoveder_surfels();
     if (discovered_surfels_count == 0) {
         // no surfels discovered: store the old data and exit
         imageStore(outputImage[0], texel_position, vec4(old_gi_data / 2.0, 1.0));
         return;
     }
+    */
 
-    uint surface_samples = min(VIRTUAL_POINT_LIGHTS_PER_PIXEL, discovered_surfels_count);
+    /*
+    uint surface_samples = min(VIRTUAL_POINT_LIGHTS_PER_PIXEL, count_ordered_surfels());
     for (uint i = 0; i < surface_samples; i++) {
-        const uint discovered_index = lcg(seed) % discovered_surfels_count;
+        const uint discovered_index = lcg(seed) % count_ordered_surfels();
 
         if (discovered[discovered_index] == USED_SURFEL_MISSING) {
             break;
@@ -530,14 +531,15 @@ void main() {
         
         surfels_contributions_count += 1;
     }
+    */
 
     const float reused_scale = gi_data.gi_reuse_frames > 0 ? 2.0 : 1.0;
 
-    //imageStore(outputImage[0], texel_position, vec4((old_gi_data / 2.0) + (surfels_contributions / (float(surfels_contributions_count) * reused_scale)), 1.0));
-    
+    //imageStore(outputImage[0], texel_position, vec4((old_gi_data / 2.0) + (surfels_contributions / (/*float(surfels_contributions_count) * */ reused_scale)), 1.0));
+
     // this is the monte-carlo estimate of the GI at this point
-    imageStore(outputImage[0], texel_position, vec4((old_gi_data / 2.0) + (contribution / (float(FIRST_PASS_RAYS) * reused_scale)), 1.0));
-    
+    imageStore(outputImage[0], texel_position, vec4((old_gi_data) + (contribution / float(FIRST_PASS_RAYS)), 1.0));
+
     //imageStore(outputImage[0], texel_position, vec4((old_gi_data / 2.0) + (surfels_contribution / reused_scale), 1.0));
     //imageStore(outputImage, texel_position, vec4(float(texel_position.x)/resolution.x, float(texel_position.y)/resolution.y, 0.0, 1.0));
 }
