@@ -281,7 +281,6 @@ void main() {
                         eye_position,
                         clip_planes,
                         payload.instance_id,
-                        true,
                         origin,
                         normal,
                         diffuse_contribution * light_intensity
@@ -457,7 +456,6 @@ void main() {
                                 eye_position,
                                 clip_planes,
                                 payload.instance_id,
-                                false,
                                 collisions[ray_depth].position,
                                 collisions[ray_depth].triangle_normal,
                                 incoming_diffuse_light
@@ -558,7 +556,6 @@ void main() {
             eye_position,
             clip_planes,
             instance_id,
-            false,
             origin,
             normal,
             mc_gi_contribution

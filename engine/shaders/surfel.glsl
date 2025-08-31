@@ -476,11 +476,22 @@ float radius_from_camera_distance(
     );
 }
 
+// Function to register contribution to a surfel, or allocate a new one if needed
+// This function searches for a surfel in a compatible position first in the set of ordered
+// surfels (where surfels can be updated, but the set itself won't change during this shader invocation),
+// and then in the unordered set (where surfels can be updated, but also new surfels can be allocated)
+// and if no compatible surfel is found, and no surfel is too close, a new surfel is allocated.
+//
+// eye_position is the position of the observer: used to calculate morton code and radius size
+// clip_planes is the near/far clip planes of the observer: used to calculate morton and discard points too far away
+// instance_id is the instance id of the object generating the surfel
+// position is the position of the surfel to register
+// normal is the normal of the surfel to register
+// irradiance is the irradiance of the surfel to register
 uint register_surfel(
     in const vec3 eye_position,
     in const vec2 clip_planes,
     uint instance_id,
-    bool primary,
     vec3 position,
     vec3 normal,
     vec3 irradiance
@@ -490,7 +501,7 @@ uint register_surfel(
     }
 
 #if ENABLE_SURFELS
-    uint flags = primary ? SURFEL_FLAG_PRIMARY : 0u;
+    uint flags = 0u;
 
     const float radius = radius_from_camera_distance(eye_position, clip_planes, position);
 

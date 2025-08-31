@@ -3,8 +3,23 @@
 
 #include "random.glsl"
 
-bool is_below_horizon(vec3 surface_normal, vec3 in_normal) {
-    return dot(surface_normal, normalize(in_normal)) < 0.0;
+// Returns true if the out_normal is below the horizon defined by surface_normal
+//
+// This function normalizes out_normal, and out_normal MUST NOT be zero
+// and be a direction pointing OUTWARD from the surface
+bool is_below_horizon(vec3 surface_normal, vec3 out_normal) {
+    return dot(surface_normal, normalize(out_normal)) < 0.0;
+}
+
+// Given a surface point and  its normal, finds if the other_point is below the horizon
+// defined by the surface normal.
+bool is_point_below_horizon(vec3 surface_point, vec3 surface_normal, vec3 other_point) {
+    // here calculate a vector going from surface_point to other_point,
+    // this way we will have an OUTGOING direction from the surface,
+    // and we can then use the is_below_horizon function
+    vec3 out_normal = other_point - surface_point;
+
+    return is_below_horizon(surface_normal, out_normal);
 }
 
 // Function to generate a biased random number
