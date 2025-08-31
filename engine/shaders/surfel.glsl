@@ -260,6 +260,7 @@ uint linear_search_ordered_surfel_for_allocation(
     in const vec3 eye_position,
     in const vec2 clip_planes,
     vec3 point,
+    uint instance_id,
     float radius
 ) {
     bool too_close = false;
@@ -331,7 +332,7 @@ uint linear_search_ordered_surfel_for_allocation(
             // this is an ordered set and MORTON_OUT_OF_SCALE is both invalid and the highest possible value,
             // so when the first one is found, we can stop searching
             break;
-        } else if ((is_point_in_surfel(i, point))) {
+        } else if ((is_point_in_surfel(i, point)) && (surfels[i].instance_id == instance_id)) {
             return i;
         } else if (is_too_close(point, radius, i)) {
             too_close = true;
@@ -349,6 +350,7 @@ uint linear_search_ordered_surfel_for_allocation(
 uint linear_search_unordered_surfel_for_allocation(
     inout uint checked_surfels,
     vec3 point,
+    uint instance_id,
     float radius
 ) {
     bool too_close = false;
@@ -367,7 +369,7 @@ uint linear_search_unordered_surfel_for_allocation(
         // WARNING: here MORTON_OUT_OF_SCALE is not checked for
         // because it's not something we could have allocated this frame
 
-        if ((is_point_in_surfel(i, point))) {
+        if ((is_point_in_surfel(i, point)) && (surfels[i].instance_id == instance_id)) {
             return i;
         }
 
@@ -502,6 +504,7 @@ uint register_surfel(
         eye_position,
         clip_planes,
         position,
+        instance_id,
         radius
     );
 
@@ -525,6 +528,7 @@ uint register_surfel(
         const uint surfel_search_res = linear_search_unordered_surfel_for_allocation(
             checked_surfels,
             position,
+            instance_id,
             radius
         );
         if ((surfel_search_res != SURFELS_MISSED) && (surfel_search_res != SURFELS_TOO_CLOSE)) {

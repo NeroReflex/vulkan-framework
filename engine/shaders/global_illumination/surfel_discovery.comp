@@ -36,6 +36,7 @@ void main() {
 
     const uvec4 instance_data = texelFetch(gbuffer_instance_id, texel_position, 0);
     const uint mesh_id = instance_data.x;
+    const uint instance_id = instance_data.y;
 
     if (mesh_id == 0xFFFFFFFFu) {
         // no geometry here
@@ -50,6 +51,7 @@ void main() {
         eye_position,
         clip_planes,
         origin,
+        instance_id,
         // we don't want to query for surfels too close: this check is useless
         0.0001
     );

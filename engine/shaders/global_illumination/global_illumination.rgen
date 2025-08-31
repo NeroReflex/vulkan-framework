@@ -334,6 +334,7 @@ void main() {
             eye_position,
             clip_planes,
             origin,
+            instance_id,
             // we don't want to query for surfels too close: this check is useless
             0.0001
         );
