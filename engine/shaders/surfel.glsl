@@ -591,11 +591,15 @@ vec3 projected_irradiance(in Surfel s, in const vec3 position, in const vec3 nor
     const vec3 light_dir = normalize(surfel_pos - position);
     const float intensity = max(dot(normal, light_dir), 0.0);
 
+    /*
     return vec3(
         s.irradiance_r / float(s.contributions),
         s.irradiance_g / float(s.contributions),
         s.irradiance_b / float(s.contributions)
     );
+    */
+
+    return vec3(2.0, 2.0, 2.0);
 }
 
 #endif // _SURFEL_

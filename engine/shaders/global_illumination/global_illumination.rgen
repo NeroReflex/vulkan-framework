@@ -409,7 +409,7 @@ void main() {
                         0,
                         0,
                         collisions[ray_depth].position,
-                        0.1,
+                        CLOSEST_INTERSECTION_DISTANCE,
                         directional_light_dir,
                         10000.0,
                         0
@@ -484,16 +484,60 @@ void main() {
 
     // use visible surfels to contribute to the GI
     vec3 surfels_contributions = vec3(0.0, 0.0, 0.0);
-    for (uint i = 0; i < MAX_USABLE_SURFELS; i++) {
-        if (discovered[i] == USED_SURFEL_MISSING) {
+    uint surfels_contributions_count = 0;
+    const uint discovered_surfels_count = count_discoveder_surfels();
+    if (discovered_surfels_count == 0) {
+        // no surfels discovered: store the old data and exit
+        imageStore(outputImage[0], texel_position, vec4(old_gi_data / 2.0, 1.0));
+        return;
+    }
+
+    uint surface_samples = min(VIRTUAL_POINT_LIGHTS_PER_PIXEL, discovered_surfels_count);
+    for (uint i = 0; i < surface_samples; i++) {
+        const uint discovered_index = lcg(seed) % discovered_surfels_count;
+
+        if (discovered[discovered_index] == USED_SURFEL_MISSING) {
             break;
         }
 
-        surfels_contributions += projected_irradiance(surfels[discovered[i]], origin, normal);
+        // assume a hit if the distance is too short
+        bool hit = false;
+        const vec3 surfel_pos = surfelPosition(surfels[discovered[discovered_index]]);
+        const float origin_surfel_distance = distance(surfel_pos, origin);
+        if (origin_surfel_distance > 2.0 * CLOSEST_INTERSECTION_DISTANCE) {
+            const vec3 ray_dir = normalize(surfel_pos - origin);
+            traceRayEXT(
+                topLevelAS,
+                gl_RayFlagsNoneEXT,
+                0xff,
+                0,
+                0,
+                0,
+                surfel_pos.xyz,
+                CLOSEST_INTERSECTION_DISTANCE,
+                ray_dir.xyz,
+                origin_surfel_distance - CLOSEST_INTERSECTION_DISTANCE,
+                0
+            );
+
+            hit = payload.hit;
+        }
+
+        if (!hit) {
+            // the surfel is visible: add its contribution
+            surfels_contributions += projected_irradiance(surfels[discovered[discovered_index]], origin, normal);
+        }
+        
+        surfels_contributions_count += 1;
     }
 
     const float reused_scale = gi_data.gi_reuse_frames > 0 ? 2.0 : 1.0;
+
+    //imageStore(outputImage[0], texel_position, vec4((old_gi_data / 2.0) + (surfels_contributions / (float(surfels_contributions_count) * reused_scale)), 1.0));
+    
+    // this is the monte-carlo estimate of the GI at this point
     imageStore(outputImage[0], texel_position, vec4((old_gi_data / 2.0) + (contribution / (float(FIRST_PASS_RAYS) * reused_scale)), 1.0));
+    
     //imageStore(outputImage[0], texel_position, vec4((old_gi_data / 2.0) + (surfels_contribution / reused_scale), 1.0));
     //imageStore(outputImage, texel_position, vec4(float(texel_position.x)/resolution.x, float(texel_position.y)/resolution.y, 0.0, 1.0));
 }
