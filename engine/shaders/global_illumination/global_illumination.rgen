@@ -135,6 +135,7 @@ void main() {
                             instance_id,
                             origin,
                             normal,
+                            diffuse,
                             fresh_allocation
                         );
 
@@ -341,6 +342,7 @@ void main() {
                                 collisions[ray_depth].instance_id,
                                 collisions[ray_depth].position,
                                 collisions[ray_depth].triangle_normal,
+                                collisions[ray_depth].diffuse,
                                 fresh_allocation
                             );
                         }
@@ -454,6 +456,7 @@ void main() {
                 instance_id,
                 origin,
                 normal,
+                diffuse,
                 fresh_allocation
             );
         }

@@ -35,6 +35,10 @@ struct Surfel {
     float normal_y;
     float normal_z;
 
+    float diffuse_r;
+    float diffuse_g;
+    float diffuse_b;
+
     float irradiance_r;
     float irradiance_g;
     float irradiance_b;
@@ -50,6 +54,10 @@ struct Surfel {
     uint morton;
 
     uint latest_contribution;
+
+    uint unused_0;
+    uint unused_1;
+    uint unused_2;
 };
 
 struct BVHNode {
@@ -170,10 +178,11 @@ void unlock_surfel(uint surfel_id) {
 void init_surfel(
     uint surfel_id,
     uint flags,
-    uint instance_id,
-    vec3 position,
-    float radius,
-    vec3 normal
+    in const uint instance_id,
+    in const vec3 position,
+    in const float radius,
+    in const vec3 normal,
+    in const vec3 diffuse
 ) {
     // flag it as currently locked
     atomicOr(surfels[surfel_id].flags, SURFEL_FLAG_LOCKED);
@@ -189,6 +198,9 @@ void init_surfel(
     surfels[surfel_id].normal_x      = normal.x;
     surfels[surfel_id].normal_y      = normal.y;
     surfels[surfel_id].normal_z      = normal.z;
+    surfels[surfel_id].diffuse_r     = diffuse.r;
+    surfels[surfel_id].diffuse_g     = diffuse.g;
+    surfels[surfel_id].diffuse_b     = diffuse.b;
     surfels[surfel_id].irradiance_r  = 0;
     surfels[surfel_id].irradiance_g  = 0;
     surfels[surfel_id].irradiance_b  = 0;
@@ -473,14 +485,16 @@ float radius_from_camera_distance(
 // instance_id is the instance id of the object generating the surfel
 // position is the position of the surfel to register
 // normal is the normal of the surfel to register
+// diffuse is the diffuse color of the surfel to register
 // irradiance is the irradiance of the surfel to register
 // allocated_new is set to true if a new surfel was allocated
 uint find_surfel_or_allocate_new(
     in const vec3 eye_position,
     in const vec2 clip_planes,
-    uint instance_id,
-    vec3 position,
-    vec3 normal,
+    in const uint instance_id,
+    in const vec3 position,
+    in const vec3 normal,
+    in const vec3 diffuse,
     out bool allocated_new
 ) {
     allocated_new = false;
@@ -555,7 +569,7 @@ uint find_surfel_or_allocate_new(
                 // or, if not forcing allocation, just return REGISTER_SURFEL_IGNORED
             } else {
                 const uint surfel_id = (total_surfels / 2) + surfel_allocation_id;
-                init_surfel(surfel_id, flags, instance_id, position, radius, normal);
+                init_surfel(surfel_id, flags, instance_id, position, radius, normal, diffuse);
                 unlock_surfel(surfel_id);
                 memoryBarrierBuffer();
 
