@@ -173,8 +173,7 @@ void init_surfel(
     uint instance_id,
     vec3 position,
     float radius,
-    vec3 normal,
-    vec3 irradiance
+    vec3 normal
 ) {
     // flag it as currently locked
     atomicOr(surfels[surfel_id].flags, SURFEL_FLAG_LOCKED);
@@ -190,10 +189,10 @@ void init_surfel(
     surfels[surfel_id].normal_x      = normal.x;
     surfels[surfel_id].normal_y      = normal.y;
     surfels[surfel_id].normal_z      = normal.z;
-    surfels[surfel_id].irradiance_r  = irradiance.r;
-    surfels[surfel_id].irradiance_g  = irradiance.g;
-    surfels[surfel_id].irradiance_b  = irradiance.b;
-    surfels[surfel_id].contributions = 1u;
+    surfels[surfel_id].irradiance_r  = 0;
+    surfels[surfel_id].irradiance_g  = 0;
+    surfels[surfel_id].irradiance_b  = 0;
+    surfels[surfel_id].contributions = 0u;
 
     // last_contribution is skipped: the morton compute shader will set it to 0
 
@@ -397,45 +396,24 @@ uint linear_search_surfel(uint last_surfel_id, vec3 point, uint instance_id) {
 }
 */
 
-#define REGISTER_SURFEL_OK 0
-#define REGISTER_SURFEL_FRAME_LIMIT 1
-#define REGISTER_SURFEL_FULL 2
-#define REGISTER_SURFEL_DENSITY 3
-#define REGISTER_SURFEL_OUT_OF_RANGE 4
-#define REGISTER_SURFEL_BUSY 5;
-#define REGISTER_SURFEL_BELOW_HORIZON 6
-#define REGISTER_SURFEL_DISABLED 7
-#define REGISTER_SURFEL_IGNORED 8
+#define UPDATE_SURFEL_OK 0
+#define UPDATE_SURFEL_BUSY 0xFFFFFFFFu
 
-uint update_surfel(
+// Update the surfel with the given id, adding the given irradiance.
+//
+//
+// WARNING: this function MUST be called only after successfully locking the surfel
+// via lock_surfel(), and the surfel MUST be unlocked after this function returns
+// via unlock_surfel(), MOREOVER the caller is responsible for placing memoryBarrierBuffer()
+// after unlocking the surfel, to ensure the changes are visible to other shader invocations.
+uint add_diffuse_sample_to_surfel(
     uint surfel_id,
     vec3 normal,
     vec3 irradiance
 ) {
-    // try locking the surfel
-    if (!lock_surfel(surfel_id)) {
-        // surfel is locked, avoid wasting time and just return busy
-        return REGISTER_SURFEL_BUSY;
-    }
-
-    // surfel is locked: update it
-    const vec3 current_normal = vec3(surfels[surfel_id].normal_x, surfels[surfel_id].normal_y, surfels[surfel_id].normal_z);
+    const vec3 surfel_center = vec3(surfels[surfel_id].position_x, surfels[surfel_id].position_y, surfels[surfel_id].position_z);
+    const vec3 surfel_normal = vec3(surfels[surfel_id].normal_x, surfels[surfel_id].normal_y, surfels[surfel_id].normal_z);
     const vec3 current_irradiance = vec3(surfels[surfel_id].irradiance_r, surfels[surfel_id].irradiance_g, surfels[surfel_id].irradiance_b);
-
-    if (dot(current_normal, normal) < 0.0) {
-        // surfel is below the horizon: ignore it
-        unlock_surfel(surfel_id);
-        memoryBarrierBuffer();
-        return REGISTER_SURFEL_BELOW_HORIZON;
-    }
-
-    /*
-    // this could potentially make a mess for thin geometry
-    const vec3 new_normal = normalize(current_normal + normal);
-    surfels[surfel_id].normal_x = new_normal.x;
-    surfels[surfel_id].normal_y = new_normal.y;
-    surfels[surfel_id].normal_z = new_normal.z;
-    */
 
     surfels[surfel_id].irradiance_r += irradiance.r;
     surfels[surfel_id].irradiance_g += irradiance.g;
@@ -443,11 +421,7 @@ uint update_surfel(
 
     surfels[surfel_id].contributions += 1u;
 
-    // surfel is locked: unlock it for other instances
-    unlock_surfel(surfel_id);
-    memoryBarrierBuffer();
-
-    return REGISTER_SURFEL_OK;
+    return UPDATE_SURFEL_OK;
 }
 
 bool is_out_of_range(in const vec3 eye_position, in const vec3 surfel_center, in const vec2 clip_space) {
@@ -477,6 +451,17 @@ float radius_from_camera_distance(
     );
 }
 
+#define REGISTER_SURFEL_VERY_BAD_BUG 0xFFFFFFF8u
+#define REGISTER_SURFEL_FRAME_LIMIT 0xFFFFFFF9u
+#define REGISTER_SURFEL_FULL 0xFFFFFFFAu
+#define REGISTER_SURFEL_DENSITY 0xFFFFFFFBu
+#define REGISTER_SURFEL_OUT_OF_RANGE 0xFFFFFFFCu
+#define REGISTER_SURFEL_BELOW_HORIZON 0xFFFFFFFDu
+#define REGISTER_SURFEL_DISABLED 0xFFFFFFFEu
+#define REGISTER_SURFEL_IGNORED 0xFFFFFFFFu
+
+#define IS_SURFEL_VALID(surfel_id) (surfel_id < total_surfels)
+
 // Function to register contribution to a surfel, or allocate a new one if needed
 // This function searches for a surfel in a compatible position first in the set of ordered
 // surfels (where surfels can be updated, but the set itself won't change during this shader invocation),
@@ -489,14 +474,16 @@ float radius_from_camera_distance(
 // position is the position of the surfel to register
 // normal is the normal of the surfel to register
 // irradiance is the irradiance of the surfel to register
-uint register_surfel(
+// allocated_new is set to true if a new surfel was allocated
+uint find_surfel_or_allocate_new(
     in const vec3 eye_position,
     in const vec2 clip_planes,
     uint instance_id,
     vec3 position,
     vec3 normal,
-    vec3 irradiance
+    out bool allocated_new
 ) {
+    allocated_new = false;
     if (is_out_of_range(eye_position, position, clip_planes)) {
         return REGISTER_SURFEL_OUT_OF_RANGE;
     }
@@ -521,7 +508,7 @@ uint register_surfel(
     );
 
     if ((ordered_surfel_id_search_res != SURFELS_MISSED) && (ordered_surfel_id_search_res != SURFELS_TOO_CLOSE)) {
-        return update_surfel(ordered_surfel_id_search_res, normal, irradiance);
+        return ordered_surfel_id_search_res;
     } else if (ordered_surfel_id_search_res == SURFELS_TOO_CLOSE) {
         // we were too close to an existing surfel: do not allocate a new one
         //debugPrintfEXT("|TOO CLOSE");
@@ -544,7 +531,7 @@ uint register_surfel(
             radius
         );
         if ((surfel_search_res != SURFELS_MISSED) && (surfel_search_res != SURFELS_TOO_CLOSE)) {
-            return update_surfel(surfel_search_res, normal, irradiance);
+            return surfel_search_res;
         } else if (surfel_search_res == SURFELS_TOO_CLOSE) {
             // we were too close to an existing surfel: do not allocate a new one
             //debugPrintfEXT("|TOO CLOSE");
@@ -558,7 +545,7 @@ uint register_surfel(
             // A matching surfel was not found: try to allocate a new one
             uint surfel_allocation_id = allocate_surfel(checked_surfels);
             if (surfel_allocation_id == SURFELS_FULL) {
-                debugPrintfEXT("|FULL(%u)", surfel_allocation_id);
+                debugPrintfEXT("|FULL(%u)", checked_surfels);
                 return REGISTER_SURFEL_FULL;
             } else if (surfel_allocation_id == SURFELS_MISSED) {
                 // here we continue the loop to search again
@@ -568,16 +555,17 @@ uint register_surfel(
                 // or, if not forcing allocation, just return REGISTER_SURFEL_IGNORED
             } else {
                 const uint surfel_id = (total_surfels / 2) + surfel_allocation_id;
-                init_surfel(surfel_id, flags, instance_id, position, radius, normal, irradiance);
+                init_surfel(surfel_id, flags, instance_id, position, radius, normal);
                 unlock_surfel(surfel_id);
                 memoryBarrierBuffer();
 
                 //debugPrintfEXT("\nCreated surfel %u at position vec3(%f, %f, %f)", surfel_id, surfels[surfel_id].position_x, surfels[surfel_id].position_y, surfels[surfel_id].position_z);
-
-                return REGISTER_SURFEL_OK;
+                allocated_new = true;
+                return surfel_id;
             }
         } else {
             debugPrintfEXT("\nNICE FUCKUP");
+            return REGISTER_SURFEL_VERY_BAD_BUG;
         }
 #if FORCE_ALLOCATION
     } while (1 == 1);

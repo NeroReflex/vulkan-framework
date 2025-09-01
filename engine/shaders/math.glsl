@@ -3,6 +3,14 @@
 
 #include "random.glsl"
 
+vec3 random_point_on_unit_sphere(inout uint state)
+{
+  float z = rnd(state) * 2.0 - 1.0;
+  float t = rnd(state) * 6.28318530718; // 2 * PI
+  float r = sqrt(1.0 - z * z);
+  return vec3(r * cos(t), r * sin(t), z);
+}
+
 // Returns true if the out_normal is below the horizon defined by surface_normal
 //
 // This function normalizes out_normal, and out_normal MUST NOT be zero
