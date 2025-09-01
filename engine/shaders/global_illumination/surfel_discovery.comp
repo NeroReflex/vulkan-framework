@@ -61,6 +61,7 @@ void main() {
         return;
     }
 
+/*
     for (uint i = 0; i < MAX_USABLE_SURFELS; i++) {
         // we can proceed at attempting to add the surfel to the list of used surfels
         const uint old_value = atomicCompSwap(discovered[i], USED_SURFEL_MISSING, surfel_id);
@@ -79,4 +80,5 @@ void main() {
     }
 
     debugPrintfEXT("Reached maximum number of usable surfels on id(%u, %u)\n", gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
+*/
 }
