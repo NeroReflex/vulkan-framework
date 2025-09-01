@@ -7,7 +7,7 @@ use vulkan_framework::{
     command_buffer::CommandBufferRecorder,
     descriptor_pool::{
         DescriptorPool, DescriptorPoolConcreteDescriptor,
-        DescriptorPoolSizesAcceletarionStructureKHR, DescriptorPoolSizesConcreteDescriptor,
+        DescriptorPoolSizesConcreteDescriptor,
     },
     descriptor_set::DescriptorSet,
     descriptor_set_layout::DescriptorSetLayout,
