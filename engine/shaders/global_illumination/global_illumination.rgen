@@ -137,7 +137,7 @@ void main() {
                     register_surfel(
                         eye_position,
                         clip_planes,
-                        payload.instance_id,
+                        instance_id,
                         origin,
                         normal,
                         diffuse_contribution * light_intensity
@@ -409,6 +409,7 @@ void main() {
         mc_gi_contribution.y > RADIANCE_THRESHOLD ||
         mc_gi_contribution.z > RADIANCE_THRESHOLD
     ) {
+        /*
         register_surfel(
             eye_position,
             clip_planes,
@@ -417,6 +418,7 @@ void main() {
             normal,
             mc_gi_contribution
         );
+        */
     }
 
     imageStore(outputImage[0], texel_position, vec4(mc_gi_contribution, 1.0));
