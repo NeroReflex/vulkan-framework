@@ -54,149 +54,6 @@ uvec2 find_split_range(in const vec3 eye_position, in const vec2 clip_space, con
 
 #define BIAS_PARAM 0.5
 
-uint importance_sample_surfel(
-    in const vec3 eye_position,
-    in const vec2 clip_space,
-    vec3 point,
-    inout uint prev,
-    inout float sample_prob    
-) {
-    const uvec2 split = find_split_range(eye_position, clip_space, 0, count_ordered_surfels(), point);
-
-    bool higher = false;
-    if (lcg(prev) % 2u == 0u) {
-        higher = true;
-    }
-
-    const uint count = higher ? split.y : split.x;
-    const float random_offset = biasedRandom(prev, count, BIAS_PARAM);
-    const float prob = relativeProbability(random_offset, count, BIAS_PARAM);
-
-    uint index = /* abs( */ uint(floor(random_offset)) /* ) */;
-    index += higher ? split.x : 0u;
-
-    sample_prob = prob;
-
-    return index;
-}
-
-uint importance_sample_surfel_beyond_horizon(
-    in const vec3 eye_position,
-    in const vec2 clip_space,
-    vec3 point,
-    inout uint prev,
-    inout float sample_prob    
-) {
-    uint surfel_index = 0xFFFFFFFFu;
-    uint retry = 0;
-    do {
-        uint surfel_index = importance_sample_surfel(
-            eye_position,
-            clip_space,
-            point,
-            prev,
-            sample_prob
-        );
-
-        const vec3 surfel_center = vec3(surfels[surfel_index].position_x, surfels[surfel_index].position_y, surfels[surfel_index].position_z);
-        const vec3 surfel_normal = vec3(surfels[surfel_index].normal_x, surfels[surfel_index].normal_y, surfels[surfel_index].normal_z);
-        if (is_below_horizon(surfel_normal, surfel_center - point)) {
-            surfel_index = 0xFFFFFFFFu;
-            continue;
-        }
-
-        return surfel_index;
-    } while ((surfel_index == 0xFFFFFFFFu) && (retry < 8));
-}
-
-vec3 sample_contributions(
-    in const vec3 eye_position,
-    in const vec2 clip_space,
-    vec3 point,
-    vec3 normal,
-    inout uint prev
-) {
-    vec3 contribution_sum = vec3(0.0, 0.0, 0.0);
-    float total_weight = 0.0;
-    uint samples = 0;
-    for (uint i = 0; i < SURFEL_IMPORTANCE_SAMPLES; i++) {
-        float sample_prob = 1.0;
-        const uint surfel_index = importance_sample_surfel_beyond_horizon(
-            eye_position,
-            clip_space,
-            point,
-            prev,
-            sample_prob
-        );
-
-        if (surfel_index == 0xFFFFFFFFu) {
-            continue;
-        }
-
-        const vec3 surfel_center = vec3(surfels[surfel_index].position_x, surfels[surfel_index].position_y, surfels[surfel_index].position_z);
-        const vec3 surfel_normal = vec3(surfels[surfel_index].normal_x, surfels[surfel_index].normal_y, surfels[surfel_index].normal_z);
-
-        const float surfel_radius = surfels[surfel_index].radius;
-        const float surfel_contributions = float(surfels[surfel_index].contributions);
-
-        const float dist = distance(surfel_center, point);
-        if (dist < CLOSEST_INTERSECTION_DISTANCE) {
-            continue;
-        }
-
-        if (!lock_surfel(surfel_index)) {
-            // this surfel is being modified: skip it
-            continue;
-        }
-
-        const vec3 ray_dir = normalize(surfel_center - point);
-        traceRayEXT(
-            topLevelAS,
-            gl_RayFlagsNoneEXT,
-            0xff,
-            0,
-            0,
-            0,
-            point.xyz,
-            CLOSEST_INTERSECTION_DISTANCE,
-            ray_dir.xyz,
-            10000.0,
-            0
-        );
-
-        // uhm.... what? This should be possible, but let's ignore it and print a message.
-        if (!payload.hit) {
-            debugPrintfEXT("I haven't hit the surfel %u. Weird.\n", surfel_index);
-
-            unlock_surfel(surfel_index);
-            continue;
-        }
-
-        /*
-        // this isn't implemented yet as instance_id is not correctly propagated
-        if (payload.instance_id != surfels[surfel_index].instance_id) {
-            // the ray hit something else before reaching the surfel
-            continue;
-        }
-        */
-
-        // test the depth instead
-        const float hit_distance = distance(payload.position, point);
-        if ((hit_distance < dist - 1.0) || (hit_distance > dist + 1.0)) {
-            // the ray hit something else before reaching the surfel
-            unlock_surfel(surfel_index);
-            continue;
-        }
-
-        const vec3 surfel_diffuse = vec3(surfels[surfel_index].irradiance_r, surfels[surfel_index].irradiance_g, surfels[surfel_index].irradiance_b) / float(surfels[surfel_index].contributions);
-        contribution_sum += surfel_diffuse * max(dot(normal, ray_dir), 0.0) * sample_prob;
-
-        samples += 1;
-    }
-
-    return contribution_sum / float(samples);
-}
-
 #define MAX_RAY_DEPTH 2
 
 #define DEPTH_IGNORE 1.0
@@ -238,6 +95,8 @@ void main() {
     uint seed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, gi_data.gi_reuse_frames);
 
     // direct lighting: only compute it if the previous GI data cannot be reused
+    uint surfel_id = REGISTER_SURFEL_IGNORED;
+    bool fresh_allocation = false;
     if ((gi_data.gi_reuse_frames == 0) && (depth < DEPTH_IGNORE) && (mesh_id != 0xFFFFFFFFu)) {
         vec3 lights_contribution = vec3(0.0, 0.0, 0.0);
         for (uint light_index = 0; light_index < MAX_DIRECTIONAL_LIGHTS; light_index++) {
@@ -277,14 +136,39 @@ void main() {
                     // TODO: here sum specular
                     lights_contribution += diffuse_component;
 
-                    register_surfel(
-                        eye_position,
-                        clip_planes,
-                        payload.instance_id,
-                        origin,
-                        normal,
-                        diffuse_contribution * light_intensity
-                    );
+                    if (!IS_SURFEL_VALID(surfel_id)) {
+                        fresh_allocation = false;
+                        surfel_id = find_surfel_or_allocate_new(
+                            eye_position,
+                            clip_planes,
+                            instance_id,
+                            origin,
+                            normal,
+                            fresh_allocation
+                        );
+
+                        if (fresh_allocation) {
+                            debugPrintfEXT("Fresh allocation of surfel %u at pixel %u,%u\n", surfel_id, texel_position.x, texel_position.y);
+                        }
+                    }
+                    
+                    if (IS_SURFEL_VALID(surfel_id)) {
+                        bool locked = false;
+                        if (fresh_allocation) {
+                            do {
+                                locked = lock_surfel(surfel_id);
+                            } while (!locked);
+                        } else {
+                            locked = lock_surfel(surfel_id);
+                        }
+
+                        if (locked) {
+                            update_surfel(surfel_id, normal, diffuse_contribution * light_intensity);
+                            unlock_surfel(surfel_id);
+                        } else {
+                            //debugPrintfEXT("Failed to lock surfel %u to register direct light update\n", surfel_id);
+                        }
+                    }
                 }
             }
         }
@@ -452,6 +336,7 @@ void main() {
                             incoming_diffuse_light.y > RADIANCE_THRESHOLD ||
                             incoming_diffuse_light.z > RADIANCE_THRESHOLD
                         ) {
+                            /*
                             register_surfel(
                                 eye_position,
                                 clip_planes,
@@ -459,6 +344,16 @@ void main() {
                                 collisions[ray_depth].position,
                                 collisions[ray_depth].triangle_normal,
                                 incoming_diffuse_light
+                            );
+                            */
+
+                            find_surfel_or_allocate_new(
+                                eye_position,
+                                clip_planes,
+                                payload.instance_id,
+                                collisions[ray_depth].position,
+                                collisions[ray_depth].triangle_normal,
+                                fresh_allocation
                             );
                         }
 
@@ -552,6 +447,7 @@ void main() {
         mc_gi_contribution.y > RADIANCE_THRESHOLD ||
         mc_gi_contribution.z > RADIANCE_THRESHOLD
     ) {
+        /*
         register_surfel(
             eye_position,
             clip_planes,
@@ -559,6 +455,16 @@ void main() {
             origin,
             normal,
             mc_gi_contribution
+        );
+        */
+
+        find_surfel_or_allocate_new(
+            eye_position,
+            clip_planes,
+            instance_id,
+            origin,
+            normal,
+            fresh_allocation
         );
     }
 
