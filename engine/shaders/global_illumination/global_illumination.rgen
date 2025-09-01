@@ -128,7 +128,6 @@ void main() {
                     lights_contribution += diffuse_component;
 
                     if (!IS_SURFEL_VALID(surfel_id)) {
-                        fresh_allocation = false;
                         surfel_id = find_surfel_or_allocate_new(
                             eye_position,
                             clip_planes,
