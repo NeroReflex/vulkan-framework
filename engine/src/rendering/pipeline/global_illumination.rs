@@ -31,14 +31,13 @@ use vulkan_framework::{
     memory_pool::MemoryPoolFeatures,
     pipeline_layout::{PipelineLayout, PipelineLayoutDependant},
     pipeline_stage::{PipelineStage, PipelineStageRayTracingPipelineKHR, PipelineStages},
-    push_constant_range::PushConstanRange,
     queue_family::QueueFamily,
     raytracing_pipeline::RaytracingPipeline,
     sampler::{Filtering, MipmapMode, Sampler},
     semaphore::Semaphore,
     shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType},
     shader_stage_access::{
-        ShaderStageAccessIn, ShaderStageAccessInRayTracingKHR, ShaderStagesAccess,
+        ShaderStageAccessIn, ShaderStageAccessInRayTracingKHR,
     },
     shaders::{
         closest_hit_shader::ClosestHitShader, compute_shader::ComputeShader,
