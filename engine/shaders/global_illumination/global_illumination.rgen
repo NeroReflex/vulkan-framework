@@ -139,7 +139,7 @@ void main() {
                         );
 
                         if (fresh_allocation) {
-                            debugPrintfEXT("Fresh allocation of surfel %u at pixel %u,%u\n", surfel_id, texel_position.x, texel_position.y);
+                            debugPrintfEXT("DL spawn surfel %u at pixel %u,%u\n", surfel_id, texel_position.x, texel_position.y);
                         }
                     }
 
@@ -324,17 +324,6 @@ void main() {
                             incoming_diffuse_light.y > RADIANCE_THRESHOLD ||
                             incoming_diffuse_light.z > RADIANCE_THRESHOLD
                         ) {
-                            /*
-                            register_surfel(
-                                eye_position,
-                                clip_planes,
-                                payload.instance_id,
-                                collisions[ray_depth].position,
-                                collisions[ray_depth].triangle_normal,
-                                incoming_diffuse_light
-                            );
-                            */
-
                             find_surfel_or_allocate_new(
                                 eye_position,
                                 clip_planes,
@@ -436,17 +425,6 @@ void main() {
         mc_gi_contribution.y > RADIANCE_THRESHOLD ||
         mc_gi_contribution.z > RADIANCE_THRESHOLD
     ) {
-        /*
-        register_surfel(
-            eye_position,
-            clip_planes,
-            instance_id,
-            origin,
-            normal,
-            mc_gi_contribution
-        );
-        */
-
         // if a surfel has not been already allocated for this pixel, try to allocate one now
         if (!IS_SURFEL_VALID(surfel_id)) {
             surfel_id = find_surfel_or_allocate_new(
@@ -458,6 +436,10 @@ void main() {
                 diffuse,
                 fresh_allocation
             );
+
+            if (fresh_allocation) {
+                debugPrintfEXT("Visibility spawn surfel %u at pixel %u,%u\n", surfel_id, texel_position.x, texel_position.y);
+            }
         }
 
         // if there is a surfel allocated for this pixel, try to lock it and update it
