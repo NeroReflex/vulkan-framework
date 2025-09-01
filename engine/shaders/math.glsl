@@ -35,4 +35,8 @@ float relativeProbability(float x, uint count, float p) {
     return (p * pow(float(x) / float(count), p - 1.0)) / float(count);
 }
 
+float map(float value, float inMin, float inMax, float outMin, float outMax) {
+    return outMin + (outMax - outMin) * (value - inMin) / (inMax - inMin);
+}
+
 #endif // _MATH_

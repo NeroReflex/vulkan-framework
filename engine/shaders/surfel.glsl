@@ -3,6 +3,7 @@
 
 #include "config.glsl"
 #include "random.glsl"
+#include "math.glsl"
 #include "morton.glsl"
 
 #ifndef SURFELS_DESCRIPTOR_SET
@@ -470,7 +471,7 @@ float radius_from_camera_distance(
     // this is a linear mapping from distance to radius
     // that maps 0.0 -> MIN_SURFEL_RADIUS and 1.0 -> MAX_SURFEL_RADIUS
     return clamp(
-        MAX_SURFEL_RADIUS * (point_distance / max_distance),
+        map(point_distance, 0.0, max_distance, MIN_SURFEL_RADIUS, MAX_SURFEL_RADIUS),
         MIN_SURFEL_RADIUS,
         MAX_SURFEL_RADIUS
     );
