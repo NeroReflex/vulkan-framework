@@ -163,8 +163,8 @@ pub struct GILighting {
 }
 
 // this MUST be kept in sync with config.glsl
-const SURFELS_MORTON_GROUP_SIZE_X: u32 = 64;
-const SURFELS_REORDER_GROUP_SIZE_X: u32 = 64;
+const SURFELS_MORTON_GROUP_SIZE_X: u32 = 256;
+const SURFELS_REORDER_GROUP_SIZE_X: u32 = 256;
 const SURFELS_DISCOVERY_GROUP_SIZE_X: u32 = 16;
 const SURFELS_DISCOVERY_GROUP_SIZE_Y: u32 = 16;
 
