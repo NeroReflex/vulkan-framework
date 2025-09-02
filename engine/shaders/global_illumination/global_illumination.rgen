@@ -137,10 +137,6 @@ void main() {
                             diffuse,
                             fresh_allocation
                         );
-
-                        if (fresh_allocation) {
-                            debugPrintfEXT("DL spawn surfel %u at pixel %u,%u\n", surfel_id, texel_position.x, texel_position.y);
-                        }
                     }
 
                     // as a rule globally valid it is the surfel spawner's responsibility
@@ -434,10 +430,6 @@ void main() {
                 diffuse,
                 fresh_allocation
             );
-
-            if (fresh_allocation) {
-                debugPrintfEXT("Visibility spawn surfel %u at pixel %u,%u\n", surfel_id, texel_position.x, texel_position.y);
-            }
         }
 
         // if there is a surfel allocated for this pixel, try to lock it and update it
