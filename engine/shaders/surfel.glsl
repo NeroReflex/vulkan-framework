@@ -451,13 +451,16 @@ float radius_from_camera_distance(
     in const vec2 clip_planes,
     in const vec3 position
 ) {
-    const float point_distance = distance(eye_position, position) - clip_planes.x;
-    const float max_distance = abs(clip_planes.y) - abs(clip_planes.x);
-    
     // this is a linear mapping from distance to radius
     // that maps 0.0 -> MIN_SURFEL_RADIUS and 1.0 -> MAX_SURFEL_RADIUS
     return clamp(
-        map(point_distance, 0.0, max_distance, MIN_SURFEL_RADIUS, MAX_SURFEL_RADIUS),
+        map(
+            distance(eye_position, position),
+            abs(clip_planes.x),
+            abs(clip_planes.y),
+            MIN_SURFEL_RADIUS,
+            MAX_SURFEL_RADIUS
+        ),
         MIN_SURFEL_RADIUS,
         MAX_SURFEL_RADIUS
     );
@@ -572,6 +575,8 @@ uint find_surfel_or_allocate_new(
                 init_surfel(surfel_id, flags, instance_id, position, radius, normal, diffuse);
                 unlock_surfel(surfel_id);
                 memoryBarrierBuffer();
+
+                //debugPrintfEXT("clip_planes: vec2(%f, %f), distance: %f, radius: %f\n", clip_planes.x, clip_planes.y, distance(eye_position, position), radius);
 
                 //debugPrintfEXT("\nCreated surfel %u at position vec3(%f, %f, %f)", surfel_id, surfels[surfel_id].position_x, surfels[surfel_id].position_y, surfels[surfel_id].position_z);
                 allocated_new = true;
