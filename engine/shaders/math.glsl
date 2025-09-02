@@ -44,7 +44,8 @@ float relativeProbability(float x, uint count, float p) {
 }
 
 float map(float value, float inMin, float inMax, float outMin, float outMax) {
-    return outMin + (outMax - outMin) * (value - inMin) / (inMax - inMin);
+    const float scale = (value - inMin) / (inMax - inMin);
+    return outMin + scale * (outMax - outMin);
 }
 
 #endif // _MATH_
