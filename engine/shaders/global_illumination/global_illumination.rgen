@@ -220,8 +220,6 @@ void main() {
                     contribution = vec3(250.0, 0.0, 0.0);
                 }
             }
-
-            contribution *= vec3(surfels[surfel_id].contributions) * 1.0;
         }
     }
 #endif
