@@ -5,6 +5,7 @@
 #include "random.glsl"
 #include "math.glsl"
 #include "morton.glsl"
+#include "aabb.glsl"
 
 #ifndef SURFELS_DESCRIPTOR_SET
 #define SURFELS_DESCRIPTOR_SET 5
@@ -60,17 +61,28 @@ struct Surfel {
     uint unused_2;
 };
 
+/**
+ * Represents a binary tree node in a linearized bvh tree
+ *
+ * If you change this remember to also change TLAS_TreeNodeSize
+ */
 struct BVHNode {
     // these are world positions
     float min_x;
     float min_y;
     float min_z;
+
     float max_x;
     float max_y;
     float max_z;
 
-    uint range_start;
-    uint range_size;
+    uint parent;
+    uint left;
+    uint right;
+
+    uint unused_0;
+    uint unused_1;
+    uint unused_2;
 };
 
 layout (set = SURFELS_DESCRIPTOR_SET, binding = 0, std430) /*coherent*/ buffer surfel_stats {
@@ -97,12 +109,14 @@ layout (set = SURFELS_DESCRIPTOR_SET, binding = 1, std430) /*coherent*/ buffer s
 };
 
 layout (set = SURFELS_DESCRIPTOR_SET, binding = 2, std430) /*coherent*/ buffer surfel_bvh {
-    BVHNode node[];
+    BVHNode tree[];
 };
 
 layout (set = SURFELS_DESCRIPTOR_SET, binding = 3, std430) /*coherent*/ buffer surfel_discovered {
     uint discovered[];
 };
+
+#define NODE_IS_LEAF_FLAG 0x80000000u
 
 bool is_point_in_surfel(uint surfel_id, const in vec3 point) {
     const vec3 center = vec3(surfels[surfel_id].position_x, surfels[surfel_id].position_y, surfels[surfel_id].position_z);

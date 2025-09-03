@@ -1,5 +1,7 @@
 #extension GL_EXT_debug_printf : enable
 
+// This algorithm is a modified version of https://developer.nvidia.com/blog/thinking-parallel-part-iii-tree-construction-gpu
+
 #include "../config.glsl"
 
 layout (local_size_x = SURFELS_PER_LEAF, local_size_y = 1, local_size_z = 1) in;
@@ -14,8 +16,6 @@ layout (local_size_x = SURFELS_PER_LEAF, local_size_y = 1, local_size_z = 1) in;
 #define uint64_t uvec2
 #define new_uint64_from_uint(u) uint64_t(u, 0)
 #define new_uint64(low, high) uint64_t(low, high)
-
-#define float2 vec2
 
 uint64_t rightShift(uint64_t value, uint shift) {
     if (shift >= 64) {
@@ -130,7 +130,7 @@ int delta(int i, int j, const uint surfels_count)
     return leading_zeroes;
 }
 
-float2 determineRange(const int index_internal_nodes, const uint numberOfTriangles)
+vec2 determineRange(const int index_internal_nodes, const uint numberOfTriangles)
 {
     const int dleft = delta(index_internal_nodes, index_internal_nodes - 1, numberOfTriangles);
     const int dright = delta(index_internal_nodes, index_internal_nodes + 1, numberOfTriangles);
@@ -161,7 +161,7 @@ float2 determineRange(const int index_internal_nodes, const uint numberOfTriangl
 
     int j = index_internal_nodes + l * direction;
 
-    return float2(
+    return vec2(
         min(index_internal_nodes, j),
         max(index_internal_nodes, j)
     );
@@ -191,46 +191,23 @@ int findSplit(const int first, const int last, const uint count)
 }
 
 void main() {
-    const uint half_size = total_surfels / 2;
-
-    // I have nothing to do: I do not correspond to a valid surfel
-    if (gl_GlobalInvocationID.x >= ordered_surfels) {
-        return;
-    }
-
-    uint depth = 0;
-    int last_split = -1;
-    do {
-        last_split = fetch_splits(gl_GlobalInvocationID.x, ordered_surfels - gl_GlobalInvocationID.x);
-    } while (last_split != -1);
-
-    uvec3 ranges_and_splits[] = uvec3[](
-        uvec3(0, 0, 0), // placeholder for surfel 0
-        uvec3(1, 1, 0)  // placeholder for surfel 1
-    );
-}
-
-/*
-[numthreads(TLAS_CONSTRUCTION_LOCAL_SIZE_X, 1, 1)]
-void main(uint3 gl_GlobalInvocationID : SV_DispatchThreadID)
-{
     const uint index_internal_nodes = gl_GlobalInvocationID.x;
 
-    uint tmp = 0;
+    const uint surfels_count = count_ordered_surfels();
 
     // prepare the synchronization structure for the next step
-    InterlockedMin(sync[index_internal_nodes], 0, tmp);
+    uint tmp = atomicMin(discovered[index_internal_nodes], 0);
 
-    if (index_internal_nodes >= (push_constants.meshInstancesCount - 1)) {
+    if ((index_internal_nodes + 1) >= surfels_count) {
         return;
     }
 
-    const float2 range = determineRange(int(index_internal_nodes), push_constants.meshInstancesCount);
+    const vec2 range = determineRange(int(index_internal_nodes), surfels_count);
 
-    const int first_without_offset = range.x;
-    const int last_without_offset = range.y;
+    const int first_without_offset = int(range.x);
+    const int last_without_offset = int(range.y);
 
-    const int split_without_offset = findSplit(first_without_offset, last_without_offset, push_constants.meshInstancesCount);
+    const int split_without_offset = findSplit(first_without_offset, last_without_offset, surfels_count);
 
     const uint split = split_without_offset;
     const uint first = uint(first_without_offset);
@@ -238,20 +215,20 @@ void main(uint3 gl_GlobalInvocationID : SV_DispatchThreadID)
 
     tree[index_internal_nodes].left = split;
     tree[index_internal_nodes].right = split + 1;
-    
+
     // make sure the parent of a root node is the root node itself!
     if (index_internal_nodes == 0) {
         tree[index_internal_nodes].parent = index_internal_nodes;
     }
 
     AABB leftAABB = compatAABB(
-        float3(POSITIVE_INF, POSITIVE_INF, POSITIVE_INF),
-        float3(NEGATIVE_INF, NEGATIVE_INF, NEGATIVE_INF)
+        vec3(POSITIVE_INF, POSITIVE_INF, POSITIVE_INF),
+        vec3(NEGATIVE_INF, NEGATIVE_INF, NEGATIVE_INF)
     );
 
     AABB rightAABB = compatAABB(
-        float3(POSITIVE_INF, POSITIVE_INF, POSITIVE_INF),
-        float3(NEGATIVE_INF, NEGATIVE_INF, NEGATIVE_INF)
+        vec3(POSITIVE_INF, POSITIVE_INF, POSITIVE_INF),
+        vec3(NEGATIVE_INF, NEGATIVE_INF, NEGATIVE_INF)
     );
 
     // Output child pointers
@@ -260,6 +237,9 @@ void main(uint3 gl_GlobalInvocationID : SV_DispatchThreadID)
         // Update the parent node
         tree[split].parent = index_internal_nodes;
     } else {
+        // TODO: write leftAABB
+
+        /*
         const float aabb_vMin[3] = meshes[refs[split].meshReferenceIndex].aabb_vMin;
         const float aabb_vMax[3] = meshes[refs[split].meshReferenceIndex].aabb_vMax;
         const float4x4 modelMatrix = instances[refs[split].instanceReferenceIndex];
@@ -272,8 +252,10 @@ void main(uint3 gl_GlobalInvocationID : SV_DispatchThreadID)
                 float3(aabb_vMax[0], aabb_vMax[1], aabb_vMax[2])
             )
         );
+        */
 
-        tree[index_internal_nodes].left |= 0b10000000000000000000000000000000u; 
+        // set to 1 the most significant bit: this is a leaf!
+        tree[index_internal_nodes].left |= NODE_IS_LEAF_FLAG; 
     }
 
     if ((split + 1) != last)
@@ -281,6 +263,9 @@ void main(uint3 gl_GlobalInvocationID : SV_DispatchThreadID)
         // Update the parent node
         tree[split + 1].parent = index_internal_nodes;
     } else {
+        // TODO: write rightAABB
+
+        /*
         const float aabb_vMin[3] = meshes[refs[split + 1].meshReferenceIndex].aabb_vMin;
         const float aabb_vMax[3] = meshes[refs[split + 1].meshReferenceIndex].aabb_vMax;
         const float4x4 modelMatrix = instances[refs[split + 1].instanceReferenceIndex];
@@ -293,19 +278,21 @@ void main(uint3 gl_GlobalInvocationID : SV_DispatchThreadID)
                 float3(aabb_vMax[0], aabb_vMax[1], aabb_vMax[2])
             )
         );
+        */
 
-        tree[index_internal_nodes].right |= 0b10000000000000000000000000000000u;
+        // set to 1 the most significant bit: this is a leaf!
+        tree[index_internal_nodes].right |= NODE_IS_LEAF_FLAG;
     }
 
     const AABB combinedAABB = combineAABBs(leftAABB, rightAABB);
 
-    tree[index_internal_nodes].aabb_vMin[0] = combinedAABB.vMin.x;
-    tree[index_internal_nodes].aabb_vMin[1] = combinedAABB.vMin.y;
-    tree[index_internal_nodes].aabb_vMin[2] = combinedAABB.vMin.z;
-    tree[index_internal_nodes].aabb_vMax[0] = combinedAABB.vMax.x;
-    tree[index_internal_nodes].aabb_vMax[1] = combinedAABB.vMax.y;
-    tree[index_internal_nodes].aabb_vMax[2] = combinedAABB.vMax.z;
+    tree[index_internal_nodes].min_x = combinedAABB.vMin.x;
+    tree[index_internal_nodes].min_y = combinedAABB.vMin.y;
+    tree[index_internal_nodes].min_z = combinedAABB.vMin.z;
 
-    AllMemoryBarrier();
+    tree[index_internal_nodes].max_x = combinedAABB.vMax.x;
+    tree[index_internal_nodes].max_y = combinedAABB.vMax.y;
+    tree[index_internal_nodes].max_z = combinedAABB.vMax.z;
+
+    memoryBarrierBuffer();
 }
-*/

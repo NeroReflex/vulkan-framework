@@ -25,7 +25,9 @@ use vulkan_framework::{
         ImageUseAs,
     },
     image_view::ImageView,
-    memory_barriers::{BufferMemoryBarrier, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
+    memory_barriers::{
+        BufferMemoryBarrier, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs, MemoryBarrier,
+    },
     memory_heap::MemoryType,
     memory_management::{MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait},
     memory_pool::MemoryPoolFeatures,
@@ -36,9 +38,7 @@ use vulkan_framework::{
     sampler::{Filtering, MipmapMode, Sampler},
     semaphore::Semaphore,
     shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType},
-    shader_stage_access::{
-        ShaderStageAccessIn, ShaderStageAccessInRayTracingKHR,
-    },
+    shader_stage_access::{ShaderStageAccessIn, ShaderStageAccessInRayTracingKHR},
     shaders::{
         closest_hit_shader::ClosestHitShader, compute_shader::ComputeShader,
         miss_shader::MissShader, raygen_shader::RaygenShader,
@@ -165,15 +165,19 @@ pub struct GILighting {
 // this MUST be kept in sync with config.glsl
 const SURFELS_MORTON_GROUP_SIZE_X: u32 = 256;
 const SURFELS_REORDER_GROUP_SIZE_X: u32 = 256;
+const SURFELS_BVH_GROUP_SIZE_X: u32 = 256;
 const SURFELS_DISCOVERY_GROUP_SIZE_X: u32 = 16;
 const SURFELS_DISCOVERY_GROUP_SIZE_Y: u32 = 16;
 
 // This MUST be a power of two an a multiple of TWICE:
 // SURFELS_MORTON_GROUP_SIZE_X and SURFELS_REORDER_GROUP_SIZE_X
 const MAX_SURFELS: u32 = u32::pow(2, 14);
+
+// Keep in sync with glsl side
 const SURFEL_SIZE: u32 = 24 * 4;
 
-const BVH_NODE_SIZE: u32 = 8 * 4;
+// Keep in sync with glsl side
+const BVH_NODE_SIZE: u32 = 12 * 4;
 
 // The maximum number of surfels that can be used as virtual point lights
 // in the global illumination pass: ideally this should be equal to MAX_SURFELS
@@ -182,7 +186,7 @@ const BVH_NODE_SIZE: u32 = 8 * 4;
 // This MUST be be less than half of MAX_SURFELS
 //
 // This MUST be kept in sync with MAX_USABLE_SURFELS in config.glsl
-const MAX_USABLE_SURFELS: u32 = 1024;
+const MAX_USABLE_SURFELS: u32 = 8182;
 
 impl GILighting {
     /// Returns the descriptor set layout for the gbuffer
@@ -366,7 +370,7 @@ impl GILighting {
                     Some("surfel_discovery_pipeline_layout"),
                 )?,
                 (surfel_discovery_compute_shader, None),
-                Some("surfel_bvh_pipeline"),
+                Some("surfel_discovery_pipeline"),
             )?
         };
 
@@ -474,7 +478,8 @@ impl GILighting {
                 device.clone(),
                 ConcreteBufferDescriptor::new(
                     [BufferUseAs::StorageBuffer].as_slice().into(),
-                    (BVH_NODE_SIZE as u64) * ((MAX_SURFELS as u64) * 3u64),
+                    // the bhv is a binary tree of ordered surfels: hald the number of MAX_SURFELS
+                    ((BVH_NODE_SIZE as u64) * ((MAX_SURFELS as u64) >> 1u64)) - 1u64,
                 ),
                 None,
                 Some("bvh_pool"),
@@ -913,62 +918,15 @@ impl GILighting {
             ]);
         }
 
-        recorder.pipeline_barriers([
-            BufferMemoryBarrier::new(
-                [PipelineStage::TopOfPipe].as_slice().into(),
-                [].as_slice().into(),
-                [PipelineStage::ComputeShader].as_slice().into(),
-                [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
-                    .as_slice()
-                    .into(),
-                surfel_stats_ordered.clone(),
-                self.queue_family.clone(),
-                self.queue_family.clone(),
-            )
-            .into(),
-            BufferMemoryBarrier::new(
-                [PipelineStage::TopOfPipe].as_slice().into(),
-                [].as_slice().into(),
-                [PipelineStage::ComputeShader].as_slice().into(),
-                [MemoryAccessAs::ShaderRead].as_slice().into(),
-                surfel_stats_active.clone(),
-                self.queue_family.clone(),
-                self.queue_family.clone(),
-            )
-            .into(),
-            BufferMemoryBarrier::new(
-                [PipelineStage::TopOfPipe].as_slice().into(),
-                [].as_slice().into(),
-                [PipelineStage::ComputeShader].as_slice().into(),
-                [MemoryAccessAs::ShaderRead].as_slice().into(),
-                surfel_stats_total.clone(),
-                self.queue_family.clone(),
-                self.queue_family.clone(),
-            )
-            .into(),
-            BufferMemoryBarrier::new(
-                [PipelineStage::TopOfPipe].as_slice().into(),
-                [].as_slice().into(),
-                [PipelineStage::ComputeShader].as_slice().into(),
-                [MemoryAccessAs::ShaderRead].as_slice().into(),
-                surfel_stats_unordered.clone(),
-                self.queue_family.clone(),
-                self.queue_family.clone(),
-            )
-            .into(),
-            BufferMemoryBarrier::new(
-                [PipelineStage::TopOfPipe].as_slice().into(),
-                [].as_slice().into(),
-                [PipelineStage::ComputeShader].as_slice().into(),
-                [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
-                    .as_slice()
-                    .into(),
-                surfels_srr.clone(),
-                self.queue_family.clone(),
-                self.queue_family.clone(),
-            )
-            .into(),
-        ]);
+        recorder.pipeline_barriers([MemoryBarrier::new(
+            [PipelineStage::TopOfPipe].as_slice().into(),
+            [].as_slice().into(),
+            [PipelineStage::ComputeShader].as_slice().into(),
+            [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
+                .as_slice()
+                .into(),
+        )
+        .into()]);
 
         // this step will calculate the morton codes for each surfel and also update
         // the number of ordered_surfels.
@@ -985,46 +943,17 @@ impl GILighting {
 
         recorder.dispatch((MAX_SURFELS >> 1) / SURFELS_MORTON_GROUP_SIZE_X, 1, 1);
 
-        recorder.pipeline_barriers([
-            BufferMemoryBarrier::new(
-                [PipelineStage::ComputeShader].as_slice().into(),
-                [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
-                    .as_slice()
-                    .into(),
-                [PipelineStage::ComputeShader].as_slice().into(),
-                [MemoryAccessAs::ShaderRead].as_slice().into(),
-                surfel_stats_ordered.clone(),
-                self.queue_family.clone(),
-                self.queue_family.clone(),
-            )
-            .into(),
-            BufferMemoryBarrier::new(
-                [PipelineStage::TopOfPipe].as_slice().into(),
-                [].as_slice().into(),
-                [PipelineStage::ComputeShader].as_slice().into(),
-                [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
-                    .as_slice()
-                    .into(),
-                surfels_discovered.clone(),
-                self.queue_family.clone(),
-                self.queue_family.clone(),
-            )
-            .into(),
-            BufferMemoryBarrier::new(
-                [PipelineStage::ComputeShader].as_slice().into(),
-                [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
-                    .as_slice()
-                    .into(),
-                [PipelineStage::ComputeShader].as_slice().into(),
-                [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
-                    .as_slice()
-                    .into(),
-                surfels_srr.clone(),
-                self.queue_family.clone(),
-                self.queue_family.clone(),
-            )
-            .into(),
-        ]);
+        recorder.pipeline_barriers([MemoryBarrier::new(
+            [PipelineStage::ComputeShader].as_slice().into(),
+            [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
+                .as_slice()
+                .into(),
+            [PipelineStage::ComputeShader].as_slice().into(),
+            [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
+                .as_slice()
+                .into(),
+        )
+        .into()]);
 
         // this step will reorder surfels by morton code and also update the number of unallocated_surfels
         recorder.bind_compute_pipeline(self.surfel_reorder_pipeline.clone());
@@ -1041,62 +970,45 @@ impl GILighting {
         recorder.dispatch((MAX_SURFELS >> 1) / SURFELS_REORDER_GROUP_SIZE_X, 1, 1);
 
         // prepare surfel(s) buffer(s) for use within the raytracing shader
-        recorder.pipeline_barriers([
-            BufferMemoryBarrier::new(
-                [PipelineStage::ComputeShader].as_slice().into(),
-                [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
-                    .as_slice()
-                    .into(),
-                [PipelineStage::ComputeShader].as_slice().into(),
-                [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
-                    .as_slice()
-                    .into(),
-                surfels_srr.clone(),
-                self.queue_family.clone(),
-                self.queue_family.clone(),
-            )
-            .into(),
-            BufferMemoryBarrier::new(
-                [PipelineStage::ComputeShader].as_slice().into(),
-                [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
-                    .as_slice()
-                    .into(),
-                [PipelineStage::ComputeShader].as_slice().into(),
-                [MemoryAccessAs::ShaderRead].as_slice().into(),
-                surfel_stats_ordered.clone(),
-                self.queue_family.clone(),
-                self.queue_family.clone(),
-            )
-            .into(),
-            BufferMemoryBarrier::new(
-                [PipelineStage::ComputeShader].as_slice().into(),
-                [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
-                    .as_slice()
-                    .into(),
-                [PipelineStage::ComputeShader].as_slice().into(),
-                [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
-                    .as_slice()
-                    .into(),
-                surfels_discovered.clone(),
-                self.queue_family.clone(),
-                self.queue_family.clone(),
-            )
-            .into(),
-            BufferMemoryBarrier::new(
-                [PipelineStage::ComputeShader].as_slice().into(),
-                [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
-                    .as_slice()
-                    .into(),
-                [PipelineStage::ComputeShader].as_slice().into(),
-                [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
-                    .as_slice()
-                    .into(),
-                surfels_srr.clone(),
-                self.queue_family.clone(),
-                self.queue_family.clone(),
-            )
-            .into(),
-        ]);
+        recorder.pipeline_barriers([MemoryBarrier::new(
+            [PipelineStage::ComputeShader].as_slice().into(),
+            [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
+                .as_slice()
+                .into(),
+            [PipelineStage::ComputeShader].as_slice().into(),
+            [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
+                .as_slice()
+                .into(),
+        )
+        .into()]);
+
+        // prepare surfel(s) buffer(s) for bvh construction
+        recorder.pipeline_barriers([MemoryBarrier::new(
+            [PipelineStage::ComputeShader].as_slice().into(),
+            [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
+                .as_slice()
+                .into(),
+            [PipelineStage::ComputeShader].as_slice().into(),
+            [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
+                .as_slice()
+                .into(),
+        )
+        .into()]);
+
+        // this step will build the actual bvh
+        recorder.bind_compute_pipeline(self.surfel_bvh_pipeline.clone());
+        recorder.bind_descriptor_sets_for_compute_pipeline(
+            self.surfel_bvh_pipeline.get_parent_pipeline_layout(),
+            0,
+            [
+                status_descriptor_set.clone(),
+                self.output_descriptor_set.clone(),
+            ]
+            .as_slice(),
+        );
+
+        // discover surfels being used in this frame
+        recorder.dispatch((MAX_SURFELS >> 1) / SURFELS_BVH_GROUP_SIZE_X, 1, 1);
 
         // this step will discover surfels on screen
         recorder.bind_compute_pipeline(self.surfel_discovery_pipeline.clone());
@@ -1119,60 +1031,21 @@ impl GILighting {
         );
 
         // prepare surfel(s) buffer(s) for use within the raytracing shader
-        recorder.pipeline_barriers([
-            BufferMemoryBarrier::new(
-                [PipelineStage::ComputeShader].as_slice().into(),
-                [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
-                    .as_slice()
-                    .into(),
-                [PipelineStage::RayTracingPipelineKHR(
-                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                )]
+        recorder.pipeline_barriers([MemoryBarrier::new(
+            [PipelineStage::ComputeShader].as_slice().into(),
+            [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
                 .as_slice()
                 .into(),
-                [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
-                    .as_slice()
-                    .into(),
-                surfel_stats_unordered.clone(),
-                self.queue_family.clone(),
-                self.queue_family.clone(),
-            )
+            [PipelineStage::RayTracingPipelineKHR(
+                PipelineStageRayTracingPipelineKHR::RayTracingShader,
+            )]
+            .as_slice()
             .into(),
-            BufferMemoryBarrier::new(
-                [PipelineStage::ComputeShader].as_slice().into(),
-                [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
-                    .as_slice()
-                    .into(),
-                [PipelineStage::RayTracingPipelineKHR(
-                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                )]
+            [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
                 .as_slice()
                 .into(),
-                [MemoryAccessAs::ShaderRead].as_slice().into(),
-                surfels_discovered.clone(),
-                self.queue_family.clone(),
-                self.queue_family.clone(),
-            )
-            .into(),
-            BufferMemoryBarrier::new(
-                [PipelineStage::ComputeShader].as_slice().into(),
-                [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
-                    .as_slice()
-                    .into(),
-                [PipelineStage::RayTracingPipelineKHR(
-                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                )]
-                .as_slice()
-                .into(),
-                [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
-                    .as_slice()
-                    .into(),
-                surfels_srr.clone(),
-                self.queue_family.clone(),
-                self.queue_family.clone(),
-            )
-            .into(),
-        ]);
+        )
+        .into()]);
 
         recorder.bind_ray_tracing_pipeline(self.raytracing_pipeline.clone());
         recorder.bind_descriptor_sets_for_ray_tracing_pipeline(

@@ -34,7 +34,7 @@
 #define CLOSEST_INTERSECTION_DISTANCE 0.4
 
 // This MUST be kept in sync with rust side
-#define MAX_USABLE_SURFELS 1024
+#define MAX_USABLE_SURFELS 8182
 
 #define USED_SURFEL_MISSING 0xFFFFFFFFu
 

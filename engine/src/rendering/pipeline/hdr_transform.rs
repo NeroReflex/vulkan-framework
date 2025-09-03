@@ -6,8 +6,7 @@ use vulkan_framework::{
     clear_values::ColorClearValues,
     command_buffer::CommandBufferRecorder,
     descriptor_pool::{
-        DescriptorPool, DescriptorPoolConcreteDescriptor,
-        DescriptorPoolSizesConcreteDescriptor,
+        DescriptorPool, DescriptorPoolConcreteDescriptor, DescriptorPoolSizesConcreteDescriptor,
     },
     descriptor_set::DescriptorSet,
     descriptor_set_layout::DescriptorSetLayout,

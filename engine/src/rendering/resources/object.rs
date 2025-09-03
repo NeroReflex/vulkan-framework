@@ -1604,7 +1604,7 @@ impl Manager {
                 // while here we use draw_indexed with instance_count set to the number of instances of this mesh:
                 // this means that to get the correct instance_id in the shader we MUST use gl_InstanceID + drawn.
                 recorder.draw_indexed(blas.max_primitives_count() * 3u32, instance_count, 0, 0, 0);
-                
+
                 // also notice that instances that got drawed are counted in drawn, so that the fragment shader
                 // will have access to the correct instance_id field.
                 drawn += instance_count as u64;

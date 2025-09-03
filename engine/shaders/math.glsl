@@ -3,6 +3,16 @@
 
 #include "random.glsl"
 
+#define PI 3.14159265f
+#define HALF_PI 1.57079f
+#define EPSILON 0.000000000000000000000000000001f
+#define SQRT_3 1.73205080f
+#define POSITIVE_INF (1.0f / 0.0f)
+#define NEGATIVE_INF (-1.0f / 0.0f)
+#define MIN_FLOAT -340282346638528859811704183484516925440.0000000000000000f
+#define MAX_FLOAT 340282346638528859811704183484516925440.0000000000000000f
+#define kEpsilon 0.00000001f
+
 vec3 random_point_on_unit_sphere(inout uint state)
 {
   float z = rnd(state) * 2.0 - 1.0;
