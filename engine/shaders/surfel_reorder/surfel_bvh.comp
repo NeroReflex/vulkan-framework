@@ -15,31 +15,41 @@ layout (local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
 // low is x, high is y
 #define uint64_t uvec2
-#define new_uint64_from_uint(u) uint64_t(u, 0)
+#define new_uint64_from_uint(u) uint64_t(u, 0u)
 #define new_uint64(low, high) uint64_t(low, high)
 
 uint64_t rightShift(uint64_t value, uint shift) {
-    if (shift >= 64) {
-        return new_uint64_from_uint(0); // Shift out all bits
-    } else if (shift >= 32) {
-        // Shift high part into low part
-        return new_uint64_from_uint(value.x >> (shift - 32));
+    if (shift >= 64u) {
+        return new_uint64_from_uint(0u); // Shift out all bits
+    } else if (shift >= 32u) {
+        // shift >=32: high part moves into low
+        uint s = shift - 32u;
+        uint newLow = (value.y >> s);
+        uint newHigh = 0u;
+        return new_uint64(newLow, newHigh);
     } else {
-        // Shift low part and combine with high part
-        uint newLow = (value.x >> shift) | (value.x << (32 - shift));
-        uint newHigh = value.x >> shift;
+        // shift <32: low becomes (low >> s) | (high << (32-s)), high becomes high >> s
+        uint s = shift;
+        uint newLow = (value.x >> s) | (value.y << (32u - s));
+        uint newHigh = (value.y >> s);
         return new_uint64(newLow, newHigh);
     }
 }
 
 uint64_t leftShift(uint64_t value, uint shift) {
-    if (shift >= 64) {
-        return new_uint64_from_uint(0); // Shift out all bits
-    } else if (shift >= 32) {
-        return new_uint64(0, value.x << (shift - 32));
+    if (shift >= 64u) {
+        return new_uint64_from_uint(0u); // Shift out all bits
+    } else if (shift >= 32u) {
+        uint s = shift - 32u;
+        // low becomes 0, high becomes low << s
+        uint newLow = 0u;
+        uint newHigh = (value.x << s);
+        return new_uint64(newLow, newHigh);
     } else {
-        uint newLow = value.x << shift;
-        uint newHigh = (value.y << shift) | (value.x >> (32 - shift));
+        // shift <32: low = low << s; high = (high << s) | (low >> (32-s))
+        uint s = shift;
+        uint newLow = (value.x << s);
+        uint newHigh = (value.y << s) | (value.x >> (32u - s));
         return new_uint64(newLow, newHigh);
     }
 }
@@ -54,6 +64,43 @@ uint64_t bitwiseXor(uint64_t a, uint64_t b) {
 
 uint64_t bitwiseOr(uint64_t a, uint64_t b) {
     return new_uint64(a.x | b.x, a.y | b.y);
+}
+
+// Build a mask with single bit set at position k (0 = LSB, 63 = MSB)
+uint64_t mask64_at(int k) {
+    if (k < 0) return new_uint64_from_uint(0u);
+    if (k < 32) {
+        return new_uint64((1u << uint(k)), 0u);
+    } else {
+        return new_uint64(0u, (1u << uint(k - 32)));
+    }
+}
+
+// Count leading zeros of a uint64 represented as uvec2(low, high)
+int clz64(uint64_t v) {
+    // check high part first (bits 63..32)
+    if (v.y != 0u) {
+        // leading zeros = number of zeros before the highest 1 in high (32-bit)
+        // Use a 32-bit loop or builtin if available:
+        for (int i = 31; i >= 0; --i) {
+            if ((v.y & (1u << uint(i))) != 0u) {
+                return 31 - i; // zeros before this bit within high
+            }
+        }
+        // unreachable
+        return 0;
+    } else {
+        // high == 0 -> leading zeros include 32 bits of high + clz(low)
+        if (v.x == 0u) {
+            return 64; // all zero
+        }
+        for (int i = 31; i >= 0; --i) {
+            if ((v.x & (1u << uint(i))) != 0u) {
+                return 32 + (31 - i);
+            }
+        }
+        return 64;
+    }
 }
 
 // Fetch the number of splits in a given range of surfels:
@@ -106,29 +153,25 @@ int fetch_splits(uint start, uint size) {
 
 int delta(int i, int j, const uint surfels_count)
 {
-    if (((j < 0) || (j > surfels_count - 1)) || ((i < 0) || (i > surfels_count - 1)))
-    {
+    if (i < 0 || j < 0 || i >= int(surfels_count) || j >= int(surfels_count)) {
         return -1;
     }
 
     const uint64_t key_i = new_uint64_from_uint(surfels[i].morton);
     const uint64_t key_j = new_uint64_from_uint(surfels[j].morton);
 
-    const uint64_t composed_key_i = bitwiseOr(leftShift(key_i, 32), new_uint64_from_uint(i));
-    const uint64_t composed_key_j = bitwiseOr(leftShift(key_j, 32), new_uint64_from_uint(j));
+    const uint64_t composed_key_i = bitwiseOr(leftShift(key_i, 32u), new_uint64_from_uint(uint(i)));
+    const uint64_t composed_key_j = bitwiseOr(leftShift(key_j, 32u), new_uint64_from_uint(uint(j)));
 
     const uint64_t x = bitwiseXor(composed_key_i, composed_key_j);
 
-    int leading_zeroes = 0;
-    for (int k = 63; k >= 0; --k) {
-        if (bitwiseAnd(x, new_uint64_from_uint(0x01 << k)) == uint64_t(0)) {
-            ++leading_zeroes;
-        } else {
-            return leading_zeroes;
-        }
+    // If x == 0 -> keys identical -> leading zeros = 64
+    if (x.x == 0u && x.y == 0u) {
+        return 64;
     }
 
-    return leading_zeroes;
+    int lz = clz64(x);
+    return lz;
 }
 
 vec2 determineRange(const int index_internal_nodes, const uint numberOfTriangles)
