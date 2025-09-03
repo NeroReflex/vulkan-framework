@@ -276,6 +276,7 @@ void main() {
     // make sure the parent of a root node is the root node itself!
     if (index_internal_nodes == 0) {
         tree[index_internal_nodes].parent = index_internal_nodes;
+        memoryBarrierBuffer(); // Ensure root parent assignment is visible
     }
 
     AABB leftAABB = compatAABB(
@@ -291,8 +292,24 @@ void main() {
     // Output child pointers
     if (split != first)
     {
-        // Update the parent node
-        tree[split].parent = index_internal_nodes;
+        // Use atomic compare-and-swap to ensure only one thread can set the parent
+        // If the parent is already set (not 0), this thread loses the race
+        uint expected = 0u;
+        uint desired = index_internal_nodes;
+        uint actual = atomicCompSwap(tree[split].parent, expected, desired);
+        
+        if (actual == expected) {
+            // Successfully claimed this child node
+            memoryBarrierBuffer();
+        } else {
+            // Another thread already claimed this node, skip parent assignment
+            // but still need to set up the AABB for this internal node
+            AABB childAABB = compatAABB(
+                vec3(tree[split].min_x, tree[split].min_y, tree[split].min_z),
+                vec3(tree[split].max_x, tree[split].max_y, tree[split].max_z)
+            );
+            leftAABB = combineAABBs(leftAABB, childAABB);
+        }
     } else {
         leftAABB = combineAABBs(
             leftAABB,
@@ -305,8 +322,24 @@ void main() {
 
     if ((split + 1) != last)
     {
-        // Update the parent node
-        tree[split + 1].parent = index_internal_nodes;
+        // Use atomic compare-and-swap to ensure only one thread can set the parent
+        // If the parent is already set (not 0), this thread loses the race
+        uint expected = 0u;
+        uint desired = index_internal_nodes;
+        uint actual = atomicCompSwap(tree[split + 1].parent, expected, desired);
+        
+        if (actual == expected) {
+            // Successfully claimed this child node
+            memoryBarrierBuffer();
+        } else {
+            // Another thread already claimed this node, skip parent assignment
+            // but still need to set up the AABB for this internal node
+            AABB childAABB = compatAABB(
+                vec3(tree[split + 1].min_x, tree[split + 1].min_y, tree[split + 1].min_z),
+                vec3(tree[split + 1].max_x, tree[split + 1].max_y, tree[split + 1].max_z)
+            );
+            rightAABB = combineAABBs(rightAABB, childAABB);
+        }
     } else {
         rightAABB = combineAABBs(
             rightAABB,
