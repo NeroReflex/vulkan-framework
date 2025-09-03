@@ -47,7 +47,7 @@ void main() {
                 leftAABB_vMax = leftSurfelAABB.vMax;
             } else {
                 // The sync[leftIdx] will be set after a memoryBarrier() therefore if it is NOT 1 then the value read is unreliable and thus I must exit
-                uint leftTreeNodeWasAdjusted = atomicCompSwap(discovered[leftIdx], 1, 1);
+                uint leftTreeNodeWasAdjusted = atomicCompSwap(tree[leftIdx].flags, 1, 1);
                 if (leftTreeNodeWasAdjusted != 1) {
                     break;
                 }
@@ -62,7 +62,7 @@ void main() {
                 rightAABB_vMin = rightSurfelAABB.vMin;
                 rightAABB_vMax = rightSurfelAABB.vMax;
             } else {
-                uint rightTreeNodeWasAdjusted = atomicCompSwap(discovered[rightIdx], 1, 1);
+                uint rightTreeNodeWasAdjusted = atomicCompSwap(tree[rightIdx].flags, 1, 1);
                 if (rightTreeNodeWasAdjusted != 1) {
                     break;
                 }
@@ -82,7 +82,7 @@ void main() {
             memoryBarrierBuffer();
 
             // Update the visibility bit so that when the check will be performed it will be one signaling that the value has been written and the memoryBarrier() has been performed
-            uint tmp = atomicCompSwap(discovered[currentTreeNode], 0, 1);
+            uint tmp = atomicCompSwap(tree[currentTreeNode].flags, 0, 1);
 
             previousTreeNode = currentTreeNode;
             currentTreeNode = tree[currentTreeNode].parent;

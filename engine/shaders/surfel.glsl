@@ -80,7 +80,8 @@ struct BVHNode {
     uint left;
     uint right;
 
-    uint unused_0;
+    uint flags;
+
     uint unused_1;
     uint unused_2;
 };

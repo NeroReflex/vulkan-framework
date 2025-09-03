@@ -239,6 +239,11 @@ void main() {
 
     const uint surfels_count = count_ordered_surfels();
 
+    // prepare the synchronization structure for the next step
+    if (index_internal_nodes < (total_surfels / 2)) {
+        tree[index_internal_nodes].flags = 0;
+    }
+
     // initialize the root node as parent=0, left=0, right=0
     // if it is when needed it means the tree is empty.
     if (index_internal_nodes == 0) {
@@ -251,9 +256,6 @@ void main() {
     if (surfels_count == 0) {
         return;
     }
-
-    // prepare the synchronization structure for the next step
-    uint tmp = atomicMin(discovered[index_internal_nodes], 0);
 
     if (index_internal_nodes >= (surfels_count - 1)) {
         return;
