@@ -328,9 +328,9 @@ uint bvh_search(in const vec3 point) {
             currentIndex = (traverseL) ? leftIdx : rightIdx;
 
             if (traverseL && traverseR) {
-                if (stackDepth == MAX_BVH_STACK_DEPTH) {
-                    debugPrintfEXT("Max search stack depth reached.");
-                }
+                //if (stackDepth == MAX_BVH_STACK_DEPTH) {
+                //    debugPrintfEXT("Max search stack depth reached.");
+                //}
 
                 stack[stackDepth++] = rightIdx;
             }
