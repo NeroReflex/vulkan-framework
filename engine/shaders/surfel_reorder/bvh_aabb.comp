@@ -1,0 +1,91 @@
+#extension GL_EXT_debug_printf : enable
+
+#include "../config.glsl"
+#include "../aabb.glsl"
+
+layout (local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+#define SURFELS_DESCRIPTOR_SET 0
+#include "../surfel.glsl"
+
+void main() {
+    const uint index_internal_nodes = gl_GlobalInvocationID.x;
+
+    const uint surfels_count = count_ordered_surfels();
+    if (surfels_count == 0) {
+        return;
+    }
+
+    if (index_internal_nodes < (surfels_count - 1)) {
+        uint currentTreeNode = index_internal_nodes;
+
+        uint previousTreeNode = surfels_count - 1;
+
+        while (currentTreeNode != previousTreeNode) {
+            const uint childL = tree[currentTreeNode].left;
+            const uint childR = tree[currentTreeNode].right;
+
+            const bool leftIsLeaf = (childL & NODE_IS_LEAF_FLAG) != 0;
+            const bool rightIsLeaf = (childR & NODE_IS_LEAF_FLAG) != 0;
+
+            const uint leftIdx = (childL & ~(NODE_IS_LEAF_FLAG));
+            const uint rightIdx = (childR & ~(NODE_IS_LEAF_FLAG));
+
+            vec3 leftAABB_vMin;
+            vec3 leftAABB_vMax;
+
+            vec3 rightAABB_vMin;
+            vec3 rightAABB_vMax;
+
+            // I will load AABBs from nodes that might have been written by another invocation. Issue a memory barrier.
+            memoryBarrierBuffer();
+
+            // left is a leaf, so the contribution is already here (from when the BVH was built) and I have to fetch that
+            if (leftIsLeaf) {
+                leftAABB_vMin = vec3(tree[currentTreeNode].min_x, tree[currentTreeNode].min_y, tree[currentTreeNode].min_z);
+                leftAABB_vMax = vec3(tree[currentTreeNode].max_x, tree[currentTreeNode].max_y, tree[currentTreeNode].max_z);
+            } else {
+                // The sync[leftIdx] will be set after a memoryBarrier() therefore if it is NOT 1 then the value read is unreliable and thus I must exit
+                uint leftTreeNodeWasAdjusted = atomicCompSwap(discovered[leftIdx], 1, 1);
+                if (leftTreeNodeWasAdjusted != 1) {
+                    break;
+                }
+                    
+                leftAABB_vMin = vec3(tree[leftIdx].min_x, tree[leftIdx].min_y, tree[leftIdx].min_z);
+                leftAABB_vMax = vec3(tree[leftIdx].max_x, tree[leftIdx].max_y, tree[leftIdx].max_z);
+            }
+
+            // read comments for left and when you see "left" interpret as "right"
+            if (rightIsLeaf) {
+                rightAABB_vMin = vec3(tree[currentTreeNode].min_x, tree[currentTreeNode].min_y, tree[currentTreeNode].min_z);
+                rightAABB_vMax = vec3(tree[currentTreeNode].max_x, tree[currentTreeNode].max_y, tree[currentTreeNode].max_z);
+            } else {
+                uint rightTreeNodeWasAdjusted = atomicCompSwap(discovered[rightIdx], 1, 1);
+                if (rightTreeNodeWasAdjusted != 1) {
+                    break;
+                }
+
+                rightAABB_vMin = vec3(tree[rightIdx].min_x, tree[rightIdx].min_y, tree[rightIdx].min_z);
+                rightAABB_vMax = vec3(tree[rightIdx].max_x, tree[rightIdx].max_y, tree[rightIdx].max_z);
+            }
+
+            tree[currentTreeNode].min_x = min(leftAABB_vMin.x, rightAABB_vMin.x);
+            tree[currentTreeNode].min_y = min(leftAABB_vMin.y, rightAABB_vMin.y);
+            tree[currentTreeNode].min_z = min(leftAABB_vMin.z, rightAABB_vMin.z);
+            tree[currentTreeNode].max_x = max(leftAABB_vMax.x, rightAABB_vMax.x);
+            tree[currentTreeNode].max_y = max(leftAABB_vMax.y, rightAABB_vMax.y);
+            tree[currentTreeNode].max_z = max(leftAABB_vMax.z, rightAABB_vMax.z);
+
+            // Make writes visible to other shader invocation(s)
+            memoryBarrierBuffer();
+
+            // Update the visibility bit so that when the check will be performed it will be one signaling that the value has been written and the memoryBarrier() has been performed
+            uint tmp = atomicCompSwap(discovered[currentTreeNode], 0, 1);
+
+            previousTreeNode = currentTreeNode;
+            currentTreeNode = tree[currentTreeNode].parent;
+        }
+    }
+
+    memoryBarrierBuffer();
+}

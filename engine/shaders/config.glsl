@@ -14,8 +14,6 @@
 // memory area, accessed with atomic updates: a very expensive operation.
 #define FORCE_ALLOCATION 0
 
-#define SURFELS_PER_LEAF 8
-
 // Keep in sync wit rust side
 #define MAX_SURFELS_PER_FRAME 256
 

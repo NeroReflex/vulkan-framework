@@ -20,7 +20,8 @@
 #define SURFELS_DESCRIPTOR_SET 2
 #include "../surfel.glsl"
 
-layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+// Keep in sync with SURFELS_DISCOVERY_GROUP_SIZE_X and SURFELS_DISCOVERY_GROUP_SIZE_Y
+layout (local_size_x = 32, local_size_y = 16, local_size_z = 1) in;
 
 void main() {
     const ivec2 resolution = imageSize(outputImage[0]);

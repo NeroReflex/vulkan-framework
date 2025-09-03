@@ -4,7 +4,8 @@
 
 #include "../config.glsl"
 
-layout (local_size_x = SURFELS_PER_LEAF, local_size_y = 1, local_size_z = 1) in;
+// Keep in sync with SURFELS_BVH_GROUP_SIZE_X
+layout (local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
 #define STATUS_DESCRIPTOR_SET 0
 #include "../status.glsl"
@@ -194,11 +195,14 @@ void main() {
     const uint index_internal_nodes = gl_GlobalInvocationID.x;
 
     const uint surfels_count = count_ordered_surfels();
+    if (surfels_count == 0) {
+        return;
+    }
 
     // prepare the synchronization structure for the next step
     uint tmp = atomicMin(discovered[index_internal_nodes], 0);
 
-    if ((index_internal_nodes + 1) >= surfels_count) {
+    if (index_internal_nodes >= (surfels_count - 1)) {
         return;
     }
 

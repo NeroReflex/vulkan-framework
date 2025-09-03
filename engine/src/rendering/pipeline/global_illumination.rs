@@ -83,6 +83,19 @@ const SURFELS_BVH_SPV: &[u32] = inline_spirv!(
     entry = "main"
 );
 
+const BVH_AABB_SPV: &[u32] = inline_spirv!(
+    r#"
+#version 460
+
+#include "engine/shaders/surfel_reorder/bvh_aabb.comp"
+"#,
+    glsl,
+    comp,
+    vulkan1_2,
+    entry = "main"
+);
+
+
 const SURFELS_DISCOVERY_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
@@ -139,6 +152,7 @@ pub struct GILighting {
     surfel_morton_pipeline: Arc<ComputePipeline>,
     surfel_reorder_pipeline: Arc<ComputePipeline>,
     surfel_bvh_pipeline: Arc<ComputePipeline>,
+    bvh_aabb_pipeline: Arc<ComputePipeline>,
     surfel_discovery_pipeline: Arc<ComputePipeline>,
 
     raytracing_pipeline: Arc<RaytracingPipeline>,
@@ -166,7 +180,8 @@ pub struct GILighting {
 const SURFELS_MORTON_GROUP_SIZE_X: u32 = 256;
 const SURFELS_REORDER_GROUP_SIZE_X: u32 = 256;
 const SURFELS_BVH_GROUP_SIZE_X: u32 = 256;
-const SURFELS_DISCOVERY_GROUP_SIZE_X: u32 = 16;
+const BVH_AABB_GROUP_SIZE_X: u32 = 256;
+const SURFELS_DISCOVERY_GROUP_SIZE_X: u32 = 32;
 const SURFELS_DISCOVERY_GROUP_SIZE_Y: u32 = 16;
 
 // This MUST be a power of two an a multiple of TWICE:
@@ -350,6 +365,24 @@ impl GILighting {
                 )?,
                 (surfel_bvh_compute_shader, None),
                 Some("surfel_bvh_pipeline"),
+            )?
+        };
+
+        let bvh_aabb_pipeline = {
+            let bvh_aabb_compute_shader = ComputeShader::new(device.clone(), BVH_AABB_SPV)?;
+            ComputePipeline::new(
+                None,
+                PipelineLayout::new(
+                    device.clone(),
+                    [
+                        output_descriptor_set_layout.clone(),
+                    ]
+                    .as_slice(),
+                    [].as_slice(),
+                    Some("bvh_aabb_pipeline_layout"),
+                )?,
+                (bvh_aabb_compute_shader, None),
+                Some("bvh_aabb_pipeline"),
             )?
         };
 
@@ -695,6 +728,7 @@ impl GILighting {
             surfel_morton_pipeline,
             surfel_reorder_pipeline,
             surfel_bvh_pipeline,
+            bvh_aabb_pipeline,
             surfel_discovery_pipeline,
             raytracing_pipeline,
 
@@ -768,36 +802,6 @@ impl GILighting {
     ) -> Arc<DescriptorSet> {
         // TODO: of all word positions from GBUFFER, (order them, maybe) and for each directional light
         // use those to decide the portion that has to be rendered as depth in the shadow map
-
-        let surfel_stats_total =
-            BufferSubresourceRange::new(self.raytracing_surfel_stats_buffer.clone(), 0u64, 4u64);
-
-        let surfel_stats_unordered =
-            BufferSubresourceRange::new(self.raytracing_surfel_stats_buffer.clone(), 4u64, 4u64);
-
-        let surfel_stats_ordered = BufferSubresourceRange::new(
-            self.raytracing_surfel_stats_buffer.clone(),
-            2u64 * 4u64,
-            4u64,
-        );
-
-        let surfel_stats_active = BufferSubresourceRange::new(
-            self.raytracing_surfel_stats_buffer.clone(),
-            3u64 * 4u64,
-            4u64,
-        );
-
-        let surfels_discovered = BufferSubresourceRange::new(
-            self.raytracing_discovered.clone(),
-            0u64,
-            self.raytracing_discovered.size(),
-        );
-
-        let surfels_srr = BufferSubresourceRange::new(
-            self.raytracing_surfels.clone(),
-            0u64,
-            self.raytracing_surfels.size(),
-        );
 
         // Here clear image(s) and transition its layout for using it in the raytracing pipeline
         let gibuffer_image_srr: ImageSubresourceRange = self.raytracing_gibuffer.image().into();
@@ -1009,6 +1013,44 @@ impl GILighting {
 
         // discover surfels being used in this frame
         recorder.dispatch((MAX_SURFELS >> 1) / SURFELS_BVH_GROUP_SIZE_X, 1, 1);
+
+        recorder.pipeline_barriers([MemoryBarrier::new(
+            [PipelineStage::ComputeShader].as_slice().into(),
+            [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
+                .as_slice()
+                .into(),
+            [PipelineStage::ComputeShader].as_slice().into(),
+            [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
+                .as_slice()
+                .into(),
+        )
+        .into()]);
+
+        // this step will rewrite AABBs on the built bvh
+        recorder.bind_compute_pipeline(self.bvh_aabb_pipeline.clone());
+        recorder.bind_descriptor_sets_for_compute_pipeline(
+            self.bvh_aabb_pipeline.get_parent_pipeline_layout(),
+            0,
+            [
+                self.output_descriptor_set.clone(),
+            ]
+            .as_slice(),
+        );
+
+        // discover surfels being used in this frame
+        recorder.dispatch((MAX_SURFELS >> 1) / BVH_AABB_GROUP_SIZE_X, 1, 1);
+
+        recorder.pipeline_barriers([MemoryBarrier::new(
+            [PipelineStage::ComputeShader].as_slice().into(),
+            [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
+                .as_slice()
+                .into(),
+            [PipelineStage::ComputeShader].as_slice().into(),
+            [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
+                .as_slice()
+                .into(),
+        )
+        .into()]);
 
         // this step will discover surfels on screen
         recorder.bind_compute_pipeline(self.surfel_discovery_pipeline.clone());
