@@ -1,6 +1,7 @@
 #extension GL_EXT_debug_printf : enable
 
 // This algorithm is a modified version of https://developer.nvidia.com/blog/thinking-parallel-part-iii-tree-construction-gpu
+// Also read "Fast BVH Construction on GPUs" https://luebke.us/publications/eg09.pdf
 
 #include "../config.glsl"
 
