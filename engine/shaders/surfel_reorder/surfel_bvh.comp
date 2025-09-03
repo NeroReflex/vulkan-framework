@@ -333,13 +333,14 @@ void main() {
     tree[index_internal_nodes].max_y = combinedAABB.vMax.y;
     tree[index_internal_nodes].max_z = combinedAABB.vMax.z;
 
-    debugPrintfEXT(
-        "node index %u -- parent: %u, left: %u, right: %u\n",
-        index_internal_nodes,
-        tree[index_internal_nodes].parent,
-        tree[index_internal_nodes].left,
-        tree[index_internal_nodes].right
-    );
+    // use tree_viewer.py to debug the bvh tree built by this compute shader
+    //debugPrintfEXT(
+    //    "node index %u -- parent: %u, left: %u, right: %u\n",
+    //    index_internal_nodes,
+    //    tree[index_internal_nodes].parent,
+    //    tree[index_internal_nodes].left,
+    //    tree[index_internal_nodes].right
+    //);
 
     memoryBarrierBuffer();
 }

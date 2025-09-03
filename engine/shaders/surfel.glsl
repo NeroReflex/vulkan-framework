@@ -141,8 +141,8 @@ vec3 surfelNormal(uint surfel_id) {
 
 AABB surfelAABB(uint surfel_id) {
     return compatAABB(
-        surfelPosition(surfel_id) + surfels[surfel_id].radius,
-        surfelPosition(surfel_id) - surfels[surfel_id].radius
+        surfelPosition(surfel_id) - surfels[surfel_id].radius,
+        surfelPosition(surfel_id) + surfels[surfel_id].radius
     );
 }
 

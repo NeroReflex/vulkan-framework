@@ -40,10 +40,11 @@ void main() {
             // I will load AABBs from nodes that might have been written by another invocation. Issue a memory barrier.
             memoryBarrierBuffer();
 
-            // left is a leaf, so the contribution is already here (from when the BVH was built) and I have to fetch that
+            // left is a leaf, so we need to get the AABB from the surfel itself
             if (leftIsLeaf) {
-                leftAABB_vMin = vec3(tree[currentTreeNode].min_x, tree[currentTreeNode].min_y, tree[currentTreeNode].min_z);
-                leftAABB_vMax = vec3(tree[currentTreeNode].max_x, tree[currentTreeNode].max_y, tree[currentTreeNode].max_z);
+                AABB leftSurfelAABB = surfelAABB(leftIdx);
+                leftAABB_vMin = leftSurfelAABB.vMin;
+                leftAABB_vMax = leftSurfelAABB.vMax;
             } else {
                 // The sync[leftIdx] will be set after a memoryBarrier() therefore if it is NOT 1 then the value read is unreliable and thus I must exit
                 uint leftTreeNodeWasAdjusted = atomicCompSwap(discovered[leftIdx], 1, 1);
@@ -55,10 +56,11 @@ void main() {
                 leftAABB_vMax = vec3(tree[leftIdx].max_x, tree[leftIdx].max_y, tree[leftIdx].max_z);
             }
 
-            // read comments for left and when you see "left" interpret as "right"
+            // right is a leaf, so we need to get the AABB from the surfel itself
             if (rightIsLeaf) {
-                rightAABB_vMin = vec3(tree[currentTreeNode].min_x, tree[currentTreeNode].min_y, tree[currentTreeNode].min_z);
-                rightAABB_vMax = vec3(tree[currentTreeNode].max_x, tree[currentTreeNode].max_y, tree[currentTreeNode].max_z);
+                AABB rightSurfelAABB = surfelAABB(rightIdx);
+                rightAABB_vMin = rightSurfelAABB.vMin;
+                rightAABB_vMax = rightSurfelAABB.vMax;
             } else {
                 uint rightTreeNodeWasAdjusted = atomicCompSwap(discovered[rightIdx], 1, 1);
                 if (rightTreeNodeWasAdjusted != 1) {
