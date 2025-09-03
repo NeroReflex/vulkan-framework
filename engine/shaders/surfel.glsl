@@ -118,8 +118,37 @@ layout (set = SURFELS_DESCRIPTOR_SET, binding = 3, std430) /*coherent*/ buffer s
 
 #define NODE_IS_LEAF_FLAG 0x80000000u
 
+// =================== READ SURFEL HELPERS ========================
+bool surfel_is_primary(uint surfel_id) {
+    return (surfels[surfel_id].flags & SURFEL_FLAG_PRIMARY) != 0u;
+}
+
+vec3 surfelPosition(in Surfel s) {
+    return vec3(s.position_x, s.position_y, s.position_z);
+}
+
+vec3 surfelNormal(in Surfel s) {
+    return normalize(vec3(s.normal_x, s.normal_y, s.normal_z));
+}
+
+vec3 surfelPosition(uint surfel_id) {
+    return surfelPosition(surfels[surfel_id]);
+}
+
+vec3 surfelNormal(uint surfel_id) {
+    return surfelNormal(surfels[surfel_id]);
+}
+
+AABB surfelAABB(uint surfel_id) {
+    return compatAABB(
+        surfelPosition(surfel_id) + surfels[surfel_id].radius,
+        surfelPosition(surfel_id) - surfels[surfel_id].radius
+    );
+}
+// =================================================================
+
 bool is_point_in_surfel(uint surfel_id, const in vec3 point) {
-    const vec3 center = vec3(surfels[surfel_id].position_x, surfels[surfel_id].position_y, surfels[surfel_id].position_z);
+    const vec3 center = surfelPosition(surfel_id);
     const float radius = surfels[surfel_id].radius;
 
     const vec3 direction = point - center;
@@ -399,7 +428,7 @@ uint linear_search_unordered_surfel_for_allocation(
             return i;
         }
 
-        if (distance(point, vec3(surfels[i].position_x, surfels[i].position_y, surfels[i].position_z)) < (radius + surfels[i].radius)) {
+        if (distance(point, surfelPosition(i)) < (radius + surfels[i].radius)) {
             too_close = true;
             // do not break, we want to check all surfels for matches,
             // but we also want to know if we were too close to any of them
@@ -437,8 +466,8 @@ uint add_diffuse_sample_to_surfel(
     vec3 normal,
     vec3 irradiance
 ) {
-    const vec3 surfel_center = vec3(surfels[surfel_id].position_x, surfels[surfel_id].position_y, surfels[surfel_id].position_z);
-    const vec3 surfel_normal = vec3(surfels[surfel_id].normal_x, surfels[surfel_id].normal_y, surfels[surfel_id].normal_z);
+    const vec3 surfel_center = surfelPosition(surfel_id);
+    const vec3 surfel_normal = surfelNormal(surfel_id);
     const vec3 current_irradiance = vec3(surfels[surfel_id].irradiance_r, surfels[surfel_id].irradiance_g, surfels[surfel_id].irradiance_b);
 
     surfels[surfel_id].irradiance_r += irradiance.r;
@@ -609,18 +638,6 @@ uint find_surfel_or_allocate_new(
 #endif
 
     return REGISTER_SURFEL_IGNORED;
-}
-
-bool surfel_is_primary(uint surfel_id) {
-    return (surfels[surfel_id].flags & SURFEL_FLAG_PRIMARY) != 0u;
-}
-
-// read surfel helpers
-vec3 surfelPosition(in Surfel s) {
-    return vec3(s.position_x, s.position_y, s.position_z);
-}
-vec3 surfelNormal(in Surfel s) {
-    return normalize(vec3(s.normal_x, s.normal_y, s.normal_z));
 }
 
 // Calculate the light given from the surfel to the given position,

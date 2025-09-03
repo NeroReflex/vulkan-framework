@@ -195,6 +195,16 @@ void main() {
     const uint index_internal_nodes = gl_GlobalInvocationID.x;
 
     const uint surfels_count = count_ordered_surfels();
+
+    // initialize the root node as parent=0, left=0, right=0
+    // if it is when needed it means the tree is empty.
+    if (index_internal_nodes == 0) {
+        tree[index_internal_nodes].parent = 0;
+        tree[index_internal_nodes].left = 0;
+        tree[index_internal_nodes].right = 0;
+        memoryBarrierBuffer();
+    }
+
     if (surfels_count == 0) {
         return;
     }
@@ -241,22 +251,10 @@ void main() {
         // Update the parent node
         tree[split].parent = index_internal_nodes;
     } else {
-        // TODO: write leftAABB
-
-        /*
-        const float aabb_vMin[3] = meshes[refs[split].meshReferenceIndex].aabb_vMin;
-        const float aabb_vMax[3] = meshes[refs[split].meshReferenceIndex].aabb_vMax;
-        const float4x4 modelMatrix = instances[refs[split].instanceReferenceIndex];
-
         leftAABB = combineAABBs(
             leftAABB,
-            compatAABB(
-                modelMatrix,
-                float3(aabb_vMin[0], aabb_vMin[1], aabb_vMin[2]),
-                float3(aabb_vMax[0], aabb_vMax[1], aabb_vMax[2])
-            )
+            surfelAABB(split)
         );
-        */
 
         // set to 1 the most significant bit: this is a leaf!
         tree[index_internal_nodes].left |= NODE_IS_LEAF_FLAG; 
@@ -267,22 +265,10 @@ void main() {
         // Update the parent node
         tree[split + 1].parent = index_internal_nodes;
     } else {
-        // TODO: write rightAABB
-
-        /*
-        const float aabb_vMin[3] = meshes[refs[split + 1].meshReferenceIndex].aabb_vMin;
-        const float aabb_vMax[3] = meshes[refs[split + 1].meshReferenceIndex].aabb_vMax;
-        const float4x4 modelMatrix = instances[refs[split + 1].instanceReferenceIndex];
-
         rightAABB = combineAABBs(
             rightAABB,
-            compatAABB(
-                modelMatrix,
-                float3(aabb_vMin[0], aabb_vMin[1], aabb_vMin[2]),
-                float3(aabb_vMax[0], aabb_vMax[1], aabb_vMax[2])
-            )
+            surfelAABB(split + 1)
         );
-        */
 
         // set to 1 the most significant bit: this is a leaf!
         tree[index_internal_nodes].right |= NODE_IS_LEAF_FLAG;

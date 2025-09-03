@@ -45,7 +45,7 @@ void main() {
     if (gl_GlobalInvocationID.x < unordered_size) {
         // We also need to update the morton code of these surfels that are kept in place
         const uint src_surfel_id = half_size + gl_GlobalInvocationID.x;
-        const vec3 surfel_center = vec3(surfels[src_surfel_id].position_x, surfels[src_surfel_id].position_y, surfels[src_surfel_id].position_z);
+        const vec3 surfel_center = surfelPosition(src_surfel_id);
         surfels[src_surfel_id].morton = morton3D(eye_position, surfel_center, clip_space);
 
         // this is a just spawned surfel: it hasn't contributed yet
