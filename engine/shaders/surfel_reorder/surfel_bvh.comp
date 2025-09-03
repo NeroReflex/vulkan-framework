@@ -270,8 +270,23 @@ void main() {
     const uint first = uint(first_without_offset);
     const uint last = uint(last_without_offset);
 
-    tree[index_internal_nodes].left = split;
-    tree[index_internal_nodes].right = split + 1;
+    // Determine if left and right children are leaves or internal nodes
+    bool leftIsLeaf = (split == first);
+    bool rightIsLeaf = ((split + 1) == last);
+
+    // Set left child
+    if (leftIsLeaf) {
+        tree[index_internal_nodes].left = split | NODE_IS_LEAF_FLAG;
+    } else {
+        tree[index_internal_nodes].left = split;
+    }
+
+    // Set right child  
+    if (rightIsLeaf) {
+        tree[index_internal_nodes].right = (split + 1) | NODE_IS_LEAF_FLAG;
+    } else {
+        tree[index_internal_nodes].right = split + 1;
+    }
 
     // make sure the parent of a root node is the root node itself!
     if (index_internal_nodes == 0) {
@@ -289,65 +304,23 @@ void main() {
         vec3(NEGATIVE_INF, NEGATIVE_INF, NEGATIVE_INF)
     );
 
-    // Output child pointers
-    if (split != first)
-    {
-        // Use atomic compare-and-swap to ensure only one thread can set the parent
-        // If the parent is already set (not 0), this thread loses the race
-        uint expected = 0u;
-        uint desired = index_internal_nodes;
-        uint actual = atomicCompSwap(tree[split].parent, expected, desired);
-        
-        if (actual == expected) {
-            // Successfully claimed this child node
-            memoryBarrierBuffer();
-        } else {
-            // Another thread already claimed this node, skip parent assignment
-            // but still need to set up the AABB for this internal node
-            AABB childAABB = compatAABB(
-                vec3(tree[split].min_x, tree[split].min_y, tree[split].min_z),
-                vec3(tree[split].max_x, tree[split].max_y, tree[split].max_z)
-            );
-            leftAABB = combineAABBs(leftAABB, childAABB);
-        }
+    // Set parent pointers for child nodes (only for internal nodes, not leaves)
+    if (!leftIsLeaf) {
+        tree[split].parent = index_internal_nodes;
     } else {
         leftAABB = combineAABBs(
             leftAABB,
             surfelAABB(split)
         );
-
-        // set to 1 the most significant bit: this is a leaf!
-        tree[index_internal_nodes].left |= NODE_IS_LEAF_FLAG; 
     }
 
-    if ((split + 1) != last)
-    {
-        // Use atomic compare-and-swap to ensure only one thread can set the parent
-        // If the parent is already set (not 0), this thread loses the race
-        uint expected = 0u;
-        uint desired = index_internal_nodes;
-        uint actual = atomicCompSwap(tree[split + 1].parent, expected, desired);
-        
-        if (actual == expected) {
-            // Successfully claimed this child node
-            memoryBarrierBuffer();
-        } else {
-            // Another thread already claimed this node, skip parent assignment
-            // but still need to set up the AABB for this internal node
-            AABB childAABB = compatAABB(
-                vec3(tree[split + 1].min_x, tree[split + 1].min_y, tree[split + 1].min_z),
-                vec3(tree[split + 1].max_x, tree[split + 1].max_y, tree[split + 1].max_z)
-            );
-            rightAABB = combineAABBs(rightAABB, childAABB);
-        }
+    if (!rightIsLeaf) {
+        tree[split + 1].parent = index_internal_nodes;
     } else {
         rightAABB = combineAABBs(
             rightAABB,
             surfelAABB(split + 1)
         );
-
-        // set to 1 the most significant bit: this is a leaf!
-        tree[index_internal_nodes].right |= NODE_IS_LEAF_FLAG;
     }
 
     const AABB combinedAABB = combineAABBs(leftAABB, rightAABB);

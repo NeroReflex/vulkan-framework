@@ -20,7 +20,7 @@ void main() {
         uint currentTreeNode = index_internal_nodes;
 
         uint previousTreeNode = surfels_count - 1;
-        /*
+
         while (currentTreeNode != previousTreeNode) {
             const uint childL = tree[currentTreeNode].left;
             const uint childR = tree[currentTreeNode].right;
@@ -85,7 +85,6 @@ void main() {
             previousTreeNode = currentTreeNode;
             currentTreeNode = tree[currentTreeNode].parent;
         }
-        */
     }
 
     memoryBarrierBuffer();
