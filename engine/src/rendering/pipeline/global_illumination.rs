@@ -973,19 +973,6 @@ impl GILighting {
 
         recorder.dispatch((MAX_SURFELS >> 1) / SURFELS_REORDER_GROUP_SIZE_X, 1, 1);
 
-        // prepare surfel(s) buffer(s) for use within the raytracing shader
-        recorder.pipeline_barriers([MemoryBarrier::new(
-            [PipelineStage::ComputeShader].as_slice().into(),
-            [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
-                .as_slice()
-                .into(),
-            [PipelineStage::ComputeShader].as_slice().into(),
-            [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
-                .as_slice()
-                .into(),
-        )
-        .into()]);
-
         // prepare surfel(s) buffer(s) for bvh construction
         recorder.pipeline_barriers([MemoryBarrier::new(
             [PipelineStage::ComputeShader].as_slice().into(),

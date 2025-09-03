@@ -194,6 +194,11 @@ int findSplit(const int first, const int last, const uint count)
 void main() {
     const uint index_internal_nodes = gl_GlobalInvocationID.x;
 
+    debugPrintfEXT(
+        "Running %u",
+        index_internal_nodes
+    );
+
     const uint surfels_count = count_ordered_surfels();
 
     // initialize the root node as parent=0, left=0, right=0
@@ -283,6 +288,14 @@ void main() {
     tree[index_internal_nodes].max_x = combinedAABB.vMax.x;
     tree[index_internal_nodes].max_y = combinedAABB.vMax.y;
     tree[index_internal_nodes].max_z = combinedAABB.vMax.z;
+
+    debugPrintfEXT(
+        "node index %u -- parent: %u, left: %u, right: %u",
+        index_internal_nodes,
+        tree[index_internal_nodes].parent,
+        tree[index_internal_nodes].left,
+        tree[index_internal_nodes].right
+    );
 
     memoryBarrierBuffer();
 }

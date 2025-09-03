@@ -18,6 +18,12 @@ bool triangleContainedInAABB(in const AABB aabb, in const vec3 v1, in const vec3
     return vertexContainedInAABB(aabb, v1) && vertexContainedInAABB(aabb, v2) && vertexContainedInAABB(aabb, v3);
 }
 
+bool AABBcontains(in const AABB aabb, in const vec3 v) {
+    return ((v.x >= aabb.vMin.x) && (v.x < aabb.vMax.x)) &&
+        ((v.y >= aabb.vMin.y) && (v.y < aabb.vMax.y)) &&
+        ((v.z >= aabb.vMin.z) && (v.z < aabb.vMax.z));
+}
+
 AABB expandAABB(in const AABB aabb, in const vec3 v) {
 	AABB result = aabb;
 

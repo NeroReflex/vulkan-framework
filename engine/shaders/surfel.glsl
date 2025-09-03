@@ -145,6 +145,10 @@ AABB surfelAABB(uint surfel_id) {
         surfelPosition(surfel_id) - surfels[surfel_id].radius
     );
 }
+
+bool point_inside_surfel(uint surfel_id, vec3 point) {
+    return distance(surfelPosition(surfel_id), point) <= surfels[surfel_id].radius;
+}
 // =================================================================
 
 bool is_point_in_surfel(uint surfel_id, const in vec3 point) {
@@ -258,6 +262,82 @@ void init_surfel(
     atomicOr(surfels[surfel_id].flags, flags & ~SURFEL_FLAG_LOCKED);
 
     // WARNING: exiting from this function, the surfel is still locked
+}
+
+uint bvh_search(in const vec3 point) {
+    // BVH is empty: return a failure.
+    if (tree[0].left == tree[0].parent) {
+        return 0xFFFFFFFFu;
+    }
+
+    uint stack[MAX_BVH_STACK_DEPTH];
+    int stackDepth = 0;
+
+    uint currentIndex = 0;
+    stack[stackDepth++] = currentIndex;
+
+    while (stackDepth > 0) {
+
+        const uint childR = tree[currentIndex].right;
+        const uint childL = tree[currentIndex].left;
+
+        const bool leftIsLeaf = (childL & NODE_IS_LEAF_FLAG) != 0;
+        const bool rightIsLeaf = (childR & NODE_IS_LEAF_FLAG) != 0;
+
+        const uint rightIdx = (childR & ~(NODE_IS_LEAF_FLAG));
+        const uint leftIdx = (childL & ~(NODE_IS_LEAF_FLAG));
+
+        bool traverseL = false;
+        bool traverseR = false;
+
+        if (leftIsLeaf) {
+            if (point_inside_surfel(leftIdx, point)) {
+                return leftIdx;
+            }
+        } else {
+            const AABB leftAABB = compatAABB(
+                vec3(tree[leftIdx].min_x, tree[leftIdx].min_y, tree[leftIdx].min_z),
+                vec3(tree[leftIdx].max_x, tree[leftIdx].max_y, tree[leftIdx].max_z)
+            );
+
+            traverseL = AABBcontains(
+                leftAABB,
+                point
+            );
+        }
+
+        if (rightIsLeaf) {
+            if (point_inside_surfel(rightIdx, point)) {
+                return rightIdx;
+            }
+        } else {
+            const AABB rightAABB = compatAABB(
+                vec3(tree[rightIdx].min_x, tree[rightIdx].min_y, tree[rightIdx].min_z),
+                vec3(tree[rightIdx].max_x, tree[rightIdx].max_y, tree[rightIdx].max_z)
+            );
+
+            traverseR = AABBcontains(
+                rightAABB,
+                point
+            );
+        }
+
+        if ((!traverseL) && (!traverseR)) {
+            currentIndex = stack[--stackDepth];
+        } else {
+            currentIndex = (traverseL) ? leftIdx : rightIdx;
+
+            if (traverseL && traverseR) {
+                if (stackDepth == MAX_BVH_STACK_DEPTH) {
+                    debugPrintfEXT("Max search stack depth reached.");
+                }
+
+                stack[stackDepth++] = rightIdx;
+            }
+        }
+    }
+
+    return 0xFFFFFFFFu;
 }
 
 uint binary_search_bound(const uint start, const uint size, uint key, bool upper_bound) {
@@ -488,7 +568,6 @@ bool is_out_of_range(in const vec3 eye_position, in const vec3 surfel_center, in
     return any(lessThan(surfel_center, min_allowed_position)) || any(greaterThan(surfel_center, max_allowed_position));
 }
 
-
 float radius_from_camera_distance(
     in const vec3 eye_position,
     in const vec2 clip_planes,
@@ -662,6 +741,112 @@ vec3 projected_irradiance(in Surfel s, in const vec3 position, in const vec3 nor
     */
 
     return vec3(2.0, 2.0, 2.0);
+}
+
+// helpers for MSB-leaf encoding
+const uint MSB = 0x80000000u;
+bool isLeaf(uint v) { return (v & MSB) != 0u; }
+uint childIndex(uint v) { return v & ~MSB; }
+
+// Print a single line with indentation and branch characters.
+// depth: root = 0
+void printLine(uint depth, uint nodeIndex) {
+    for (uint d = 0u; d < depth; ++d) {
+        debugPrintfEXT("|   ");
+    }
+    if (depth > 0u) {
+        debugPrintfEXT("-- ");
+    }
+    debugPrintfEXT("%u\n", nodeIndex);
+}
+
+// Iterative traversal that prints a nicely formatted tree.
+// - Assumes rootIndex is valid (typically 0).
+// - MAX_STACK must be large enough for your BVH depth.
+// - This is a callable function; no main(), no use of gl_* IDs.
+void printBVHTree(uint rootIndex) {
+    const uint MAX_STACK = 1024u;
+
+    // Stack entry: node index, depth, state
+    // state: 0 = not printed, 1 = printed (left not visited), 2 = left done (right not visited), 3 = both done
+    struct StackEntry {
+        uint node;
+        uint depth;
+        uint state;
+    };
+
+    // local stack in function scope
+    StackEntry stack[MAX_STACK];
+    uint sp = 0u;
+
+    // push root
+    stack[sp].node = rootIndex;
+    stack[sp].depth = 0u;
+    stack[sp].state = 0u;
+    sp++;
+
+    while (sp > 0u) {
+        // peek (copy)
+        StackEntry e = stack[sp - 1u];
+
+        // PRINT node first time we see it
+        if (e.state == 0u) {
+            printLine(e.depth, e.node);
+            stack[sp - 1u].state = 1u; // mark printed, left not visited
+            e.state = 1u;
+        }
+
+        // load node
+        BVHNode n = tree[e.node];
+        bool leftIsLeaf = isLeaf(n.left);
+        bool rightIsLeaf = isLeaf(n.right);
+        uint leftIdx = childIndex(n.left);
+        uint rightIdx = childIndex(n.right);
+
+        // Visit left child
+        if (e.state == 1u) {
+            stack[sp - 1u].state = 2u; // left will be processed/skipped
+            if (leftIsLeaf) {
+                printLine(e.depth + 1u, leftIdx);
+            } else {
+                // push left node
+                if (sp < MAX_STACK) {
+                    stack[sp].node = leftIdx;
+                    stack[sp].depth = e.depth + 1u;
+                    stack[sp].state = 0u;
+                    sp++;
+                } else {
+                    debugPrintfEXT("... stack overflow (left)\n");
+                }
+            }
+            continue;
+        }
+
+        // Visit right child
+        if (e.state == 2u) {
+            stack[sp - 1u].state = 3u; // right will be processed/skipped
+            if (rightIsLeaf) {
+                printLine(e.depth + 1u, rightIdx);
+            } else {
+                // push right node
+                if (sp < MAX_STACK) {
+                    stack[sp].node = rightIdx;
+                    stack[sp].depth = e.depth + 1u;
+                    stack[sp].state = 0u;
+                    sp++;
+                } else {
+                    debugPrintfEXT("... stack overflow (right)\n");
+                }
+            }
+            continue;
+        }
+
+        // Both children done: pop
+        if (e.state >= 3u) {
+            sp--;
+            continue;
+        }
+    }
 }
 
 #endif // _SURFEL_

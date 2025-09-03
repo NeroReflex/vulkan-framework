@@ -38,4 +38,7 @@
 
 #define VIRTUAL_POINT_LIGHTS_PER_PIXEL 4u
 
+#define MAX_BVH_STACK_DEPTH 128
+#define BVH_TREE_RANK 2
+
 #endif // _CONFIG_
