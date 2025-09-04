@@ -99,7 +99,7 @@ const SURFELS_DISCOVERY_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
 
-#include "engine/shaders/global_illumination/surfel_discovery.comp"
+#include "engine/shaders/surfel_discovery/surfel_discovery.comp"
 "#,
     glsl,
     comp,

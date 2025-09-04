@@ -6,7 +6,6 @@
 #extension GL_EXT_debug_printf : enable
 
 #include "../config.glsl"
-#include "payload.glsl"
 #include "../random.glsl"
 #include "../math.glsl"
 #include "../morton.glsl"
@@ -27,6 +26,24 @@ void main() {
     const ivec2 resolution = imageSize(outputImage[0]);
 
     const ivec2 texel_position = ivec2(gl_GlobalInvocationID.xy);
+
+    
+    // ================================
+    // debug for the ordering to be correct
+#if SHOW_SURFELS
+    if (texel_position == uvec2(0, 0)) {
+        const uint available_surfels = count_ordered_surfels();
+        uint surfel_id = SURFELS_MISSED;
+        uint last_morton = 0;
+        for (uint i = 0; i < available_surfels; i++) {
+            if (last_morton > surfels[i].morton) {
+                // this should never happen
+                debugPrintfEXT("MORTON SORT ERROR AT SURFEL %u %u > %u\n", i, last_morton, surfels[i].morton);
+            }
+        }
+    }
+#endif
+    // ================================
 
     // avoid checking out-of-bounds
     if (any(greaterThanEqual(texel_position, resolution))) {
@@ -87,16 +104,7 @@ void main() {
     }
 
     uint surfel_id = SURFELS_MISSED;
-    uint last_morton = 0;
     for (uint i = 0; i < available_surfels; i++) {
-        if (last_morton > surfels[i].morton) {
-            // this should never happen
-            //debugPrintfEXT("MORTON SORT ERROR AT SURFEL %u %u > %u\n", i, last_morton, surfels[i].morton);
-            //contribution = vec3(2500.0, 2500.0, 2500.0);
-        }
-
-        last_morton = surfels[i].morton;
-
         if (is_point_in_surfel(i, origin)) {
             surfel_id = i;
             break;
