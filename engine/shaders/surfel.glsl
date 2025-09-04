@@ -109,7 +109,7 @@ layout (set = SURFELS_DESCRIPTOR_SET, binding = 1, std430) /*coherent*/ buffer s
     Surfel surfels[];
 };
 
-layout (set = SURFELS_DESCRIPTOR_SET, binding = 2, std430) /*coherent*/ buffer surfel_bvh {
+layout (set = SURFELS_DESCRIPTOR_SET, binding = 2, std430) coherent buffer surfel_bvh {
     BVHNode tree[];
 };
 
