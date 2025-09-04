@@ -67,10 +67,9 @@ void main() {
     }
 
     // direct lighting: only compute it if the previous GI data cannot be reused
-    uint surfel_id = REGISTER_SURFEL_IGNORED;
-    bool fresh_allocation = false;
+    vec3 surfel_received_direction_light = vec3(0.0);
     if ((gi_data.gi_reuse_frames == 0) && (depth < DEPTH_IGNORE) && (mesh_id != 0xFFFFFFFFu)) {
-        vec3 lights_contribution = vec3(0.0, 0.0, 0.0);
+        vec3 lights_contribution = vec3(0.0);
         for (uint light_index = 0; light_index < MAX_DIRECTIONAL_LIGHTS; light_index++) {
             const vec3 light_intensity = vec3(light[light_index].intensity_x, light[light_index].intensity_y, light[light_index].intensity_z);
             const vec3 light_dir = vec3(light[light_index].direction_x, light[light_index].direction_y, light[light_index].direction_z);
@@ -79,100 +78,78 @@ void main() {
             float diffuse_contribution = 0.0;
             float specular_contribution = 0.0;
 
-            if (length(light_dir) > 0.1) {
-                if (!(origin.x == 0 && origin.y == 0 && origin.z == 0)) {
-                    // other flags: gl_RayFlagsCullNoOpaqueEXT gl_RayFlagsNoneEXT
-                    traceRayEXT(
-                        topLevelAS,
-                        gl_RayFlagsSkipAABBEXT | gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsCullNoOpaqueEXT,
-                        0xff,
-                        0,
-                        0,
-                        0,
-                        origin.xyz,
-                        CLOSEST_INTERSECTION_DISTANCE,
-                        ray_dir.xyz,
-                        10000.0,
-                        0
-                    );
-                }
+            if (length(light_dir) < 0.4) {
+                continue;
+            }
 
-                if (!payload.hit) {
-                    diffuse_contribution = max(dot(normal, ray_dir), 0.0);
-                    const vec3 diffuse_component = diffuse_contribution * light_intensity * diffuse;
+            // other flags: gl_RayFlagsCullNoOpaqueEXT gl_RayFlagsNoneEXT
+            traceRayEXT(
+                topLevelAS,
+                gl_RayFlagsSkipAABBEXT | gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsCullNoOpaqueEXT,
+                0xff,
+                0,
+                0,
+                0,
+                origin.xyz,
+                CLOSEST_INTERSECTION_DISTANCE,
+                ray_dir.xyz,
+                10000.0,
+                0
+            );
 
-                    const vec3 reflect_dir = reflect(-light_dir, normal);
-                    specular_contribution = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
-                    const vec3 specular = specular_contribution * light_intensity * specular;
+            if (!payload.hit) {
+                diffuse_contribution = max(dot(normal, ray_dir), 0.0);
+                const vec3 diffuse_component = diffuse_contribution * light_intensity * diffuse;
 
-                    // TODO: here sum specular
-                    lights_contribution += diffuse_component;
+                const vec3 reflect_dir = reflect(-light_dir, normal);
+                specular_contribution = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
+                const vec3 specular = specular_contribution * light_intensity * specular;
 
-                    if (!IS_SURFEL_VALID(surfel_id)) {
-                        surfel_id = find_surfel_or_allocate_new(
-                            eye_position,
-                            clip_planes,
-                            instance_id,
-                            origin,
-                            normal,
-                            diffuse,
-                            fresh_allocation
-                        );
-                    }
+                // TODO: here sum specular
+                lights_contribution += diffuse_component;
 
-                    // as a rule globally valid it is the surfel spawner's responsibility
-                    // to calculate directional light contribution to the surfel
-                    // becuase it is something that can be analytically calculated.
-                    if (IS_SURFEL_VALID(surfel_id) && fresh_allocation) {
-                        bool locked = false;
-                        do {
-                            locked = lock_surfel(surfel_id);
-                        } while (!locked);
-
-                        // TODO: register this incoming light to the surfel
-
-                        unlock_surfel(surfel_id);
-                        memoryBarrierBuffer();
-                    }
-                }
+                // data for the surfel that will be spawned: accumulate incoming light:
+                // DO NOT account for surface properties
+                surfel_received_direction_light += diffuse_contribution * light_intensity;
             }
         }
 
         imageStore(outputImage[1], texel_position, vec4(lights_contribution, 1.0));
     }
 
-    // if a surfel has not been already allocated for this pixel, try to allocate one now
+    // try to allocate a new surfel (or get the ID of an existing one)
+    bool fresh_allocation = false;
+    const uint surfel_id = find_surfel_or_allocate_new(
+        eye_position,
+        clip_planes,
+        instance_id,
+        origin,
+        normal,
+        diffuse,
+        true,
+        fresh_allocation
+    );
+
     if (!IS_SURFEL_VALID(surfel_id)) {
-        surfel_id = find_surfel_or_allocate_new(
-            eye_position,
-            clip_planes,
-            instance_id,
-            origin,
-            normal,
-            diffuse,
-            fresh_allocation
-        );
+        return;
     }
 
-    /*
-    // if there is a surfel allocated for this pixel, try to lock it and update it
-    if (IS_SURFEL_VALID(surfel_id)) {
-        bool locked = false;
-        if (fresh_allocation) {
-            do {
-                locked = lock_surfel(surfel_id);
-            } while (!locked);
-        } else {
-            locked = lock_surfel(surfel_id);
-        }
+    // as a rule globally valid it is the surfel spawner's responsibility
+    // to calculate directional light contribution to the surfel.
+    if (fresh_allocation) {
+        // Register incoming directional lighting to the surfel
+        addDirectionalLightContribution(surfel_id, surfel_received_direction_light);
 
-        if (locked) {
-            // TODO: register this incoming light to the surfel
+        unlock_surfel(surfel_id);
+        memoryBarrierBuffer();
+    } else {
+        if (lock_surfel(surfel_id)) {
+            // update the last time the surfel was used
+            surfels[surfel_id].latest_contribution = 0;
+
             unlock_surfel(surfel_id);
             memoryBarrierBuffer();
-        } else {
-            //debugPrintfEXT("Failed to lock surfel %u to register GI update\n", surfel_id);
         }
     }
-    */
+    
 }
