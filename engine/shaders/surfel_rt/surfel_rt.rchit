@@ -4,15 +4,16 @@
 
 #extension GL_GOOGLE_include_directive : enable
 
+
 #include "payload.glsl"
 
 #define RT_DESCRIPTOR_SET 0
 #include "../rt_descriptor_set.glsl"
 
-#define TEXTURES_DESCRIPTOR_SET 3
+#define TEXTURES_DESCRIPTOR_SET 2
 #include "../textures.glsl"
 
-#define MATERIALS_DESCRIPTOR_SET 4
+#define MATERIALS_DESCRIPTOR_SET 3
 #include "../materials.glsl"
 
 layout(location = 0) rayPayloadInEXT hit_payload_t payload;

@@ -1,0 +1,190 @@
+//#version 460
+
+#extension GL_GOOGLE_include_directive : enable
+#extension GL_EXT_ray_tracing : require
+#extension GL_EXT_ray_flags_primitive_culling : require
+#extension GL_EXT_nonuniform_qualifier : enable
+
+#extension GL_EXT_debug_printf : enable
+
+#include "../config.glsl"
+#include "payload.glsl"
+#include "../random.glsl"
+#include "../math.glsl"
+#include "../morton.glsl"
+
+#define SURFELS_DESCRIPTOR_SET 4
+#include "../surfel.glsl"
+
+#define RT_DESCRIPTOR_SET 0
+#include "../rt_descriptor_set.glsl"
+
+#define STATUS_DESCRIPTOR_SET 1
+#include "../status.glsl"
+
+layout(location = 0) rayPayloadEXT hit_payload_t payload;
+
+// WARNING: this MUST be a power of two!
+#define FIRST_PASS_RAYS 8
+
+#define BIAS_PARAM 0.5
+
+#define MAX_RAY_DEPTH 2
+
+#define DEPTH_IGNORE 1.0
+
+void main() {
+    // we have already accumulated enough frames: do nothing
+    if (gi_data.gi_reuse_frames >= 0xFFFFFFFEu) {
+        return;
+    }
+
+    const vec2 clip_planes = reconstructNearFarFromCamera();
+    const vec3 eye_position = get_eye_position();
+
+    // load the surfel and terminate the shader if no surfel is found
+    if (gl_LaunchIDEXT.x >= count_discoveder_surfels()) {
+        return;
+    }
+
+    const uint surfel_id = discovered[gl_LaunchIDEXT.x];
+    //debugPrintfEXT("evaluating surfel_id %u %u/%u\n", surfel_id, gl_LaunchIDEXT.x, count_discoveder_surfels());
+
+    // Initialize the random number
+    uint seed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, gi_data.gi_reuse_frames);
+
+    /*
+    hit_payload_t collisions[MAX_RAY_DEPTH];
+    vec3 ray_directions[MAX_RAY_DEPTH];
+
+    vec3 contribution = vec3(0.0, 0.0, 0.0);
+    uint contribution_samples = 0;
+
+    uint casted_primary_rays = 0;
+    uint ray_depth = 0;
+    if ((depth < DEPTH_IGNORE) && (mesh_id != 0xFFFFFFFFu)) {
+        while (ray_depth < MAX_RAY_DEPTH) {
+            // cast a ray in a random direction over the hemisphere oriented by the normal
+            // accumulate the contribution of the ray if it hits something
+            // if it hits nothing, stop
+            // if it hits something, repeat
+            if (casted_primary_rays == FIRST_PASS_RAYS) {
+                break;
+            }
+
+            const vec3 random_point_on_sphere = random_point_on_unit_sphere(seed);
+            vec3 ray_dir = reflect(normal, random_point_on_sphere);
+            ray_dir = is_below_horizon(normal, random_point_on_sphere) ? -ray_dir : ray_dir;
+
+            ray_directions[ray_depth] = ray_dir;
+            if (ray_depth == 0) {
+                casted_primary_rays += 1;
+            }
+
+            traceRayEXT(
+                topLevelAS,
+                gl_RayFlagsNoneEXT,
+                0xff,
+                0,
+                0,
+                0,
+                ray_depth == 0 ? origin.xyz : collisions[ray_depth - 1].position.xyz,
+                CLOSEST_INTERSECTION_DISTANCE,
+                ray_directions[ray_depth].xyz,
+                10000.0,
+                0
+            );
+
+            collisions[ray_depth] = payload;
+
+            if (collisions[ray_depth].hit) {
+                // from the new point try to query all the directional lights
+                for (uint dir_light_index = 0; dir_light_index < MAX_DIRECTIONAL_LIGHTS; dir_light_index++) {
+                    const vec3 directional_light_dir = -1.0 * vec3(light[nonuniformEXT(dir_light_index)].direction_x, light[nonuniformEXT(dir_light_index)].direction_y, light[nonuniformEXT(dir_light_index)].direction_z);
+                    const vec3 directional_light_intensity = vec3(light[nonuniformEXT(dir_light_index)].intensity_x, light[nonuniformEXT(dir_light_index)].intensity_y, light[nonuniformEXT(dir_light_index)].intensity_z);
+                    if (length(directional_light_dir) <= 0.1) {
+                        continue;
+                    }
+
+                    //if ((abs(directional_light_intensity.x) + abs(directional_light_intensity.y) + abs(directional_light_intensity.z)) <= 0.1)) {
+                    //    continue;
+                    //}
+
+                    // check for this directional light
+                    traceRayEXT(
+                        topLevelAS,
+                        gl_RayFlagsNoneEXT,
+                        0xff,
+                        0,
+                        0,
+                        0,
+                        collisions[ray_depth].position,
+                        CLOSEST_INTERSECTION_DISTANCE,
+                        directional_light_dir,
+                        10000.0,
+                        0
+                    );
+
+                    // shadow ray is not occluded: sum the contribution of this point
+                    if (!payload.hit) {
+                        // when calculating directional light contribution, account for the entire path
+                        // the light has been reflected at each bounce according to the diffuse coefficient
+                        // (so the contribution is attenuated at each bounce)
+                        // also account for the angle of incidence of the light on each surface (Lambertian
+                        // reflectance):
+                        //
+                        // To do this associate the diffuse texture and normal of the last SURELY hit surface collisions[ray_depth-1]
+                        // (or "diffuse" and "normal" in case ray_depth is 0), and the ray_direction at that point collisions[ray_depth]
+                        // (or directional_light_dir if ray_depth is )
+
+                        vec3 incoming_diffuse_light = directional_light_intensity;
+                        uint r = ray_depth;
+                        while (1 == 1) {
+                            vec3 surface_normal = r == 0 ? normal : collisions[r].triangle_normal;
+                            vec3 surface_diffuse = r == 0 ? diffuse : collisions[r].diffuse;
+                            vec3 surface_ray = r == ray_depth ? directional_light_dir : ray_directions[r + 1];
+
+                            incoming_diffuse_light *= max(dot(surface_normal, surface_ray), 0.0) * surface_diffuse;
+
+                            if (r == 0) {
+                                break;
+                            } else {
+                                r -= 1;
+                            }
+                        }
+
+                        //if (
+                        //    incoming_diffuse_light.x > RADIANCE_THRESHOLD ||
+                        //    incoming_diffuse_light.y > RADIANCE_THRESHOLD ||
+                        //    incoming_diffuse_light.z > RADIANCE_THRESHOLD
+                        //) {
+                        //    find_surfel_or_allocate_new(
+                        //        eye_position,
+                        //        clip_planes,
+                        //        collisions[ray_depth].instance_id,
+                        //        collisions[ray_depth].position,
+                        //        collisions[ray_depth].triangle_normal,
+                        //        collisions[ray_depth].diffuse,
+                        //        fresh_allocation
+                        //    );
+                        //}
+
+                        contribution += incoming_diffuse_light;
+                        if (ray_depth == 0) {
+                            contribution_samples += 1;
+                        }
+                        //contribution += vec3(float(texel_position.x)/resolution.x, float(texel_position.y)/resolution.y, 0.0);
+                    }
+                }
+            }
+
+            // no surface hit: restart from the beginning
+            if (collisions[ray_depth].hit) {
+                ray_depth++;
+            } else {
+                ray_depth = 0;
+            }
+        }
+    }
+    */
+}
