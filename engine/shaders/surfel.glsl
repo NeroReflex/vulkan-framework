@@ -11,7 +11,9 @@
 #define SURFELS_DESCRIPTOR_SET 5
 #endif
 
-uniform layout (set = SURFELS_DESCRIPTOR_SET, binding = 4, rgba32f) image2D outputImage[2];
+uniform layout (set = SURFELS_DESCRIPTOR_SET, binding = 4, r32ui) uimage2D surfelOverlappingImage;
+
+uniform layout (set = SURFELS_DESCRIPTOR_SET, binding = 5, rgba32f) image2D outputImage[2];
 
 #define SURFELS_FULL        0xFFFFFFFFu
 #define SURFELS_MISSED      0xFFFFFFFEu

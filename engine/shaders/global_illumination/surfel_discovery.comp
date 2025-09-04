@@ -47,21 +47,15 @@ void main() {
     const vec2 clip_planes = reconstructNearFarFromCamera();
     const vec3 eye_position = get_eye_position();
 
-    // this function only searches for surfels that were allocated before this frame
-    const uint surfel_id = linear_search_ordered_surfel_for_allocation(
-        eye_position,
-        clip_planes,
-        origin,
-        instance_id,
-        // we don't want to query for surfels too close: this check is useless
-        0.0001
-    );
-
+    // try a fast search for surfels that have been allocated any older frame
+    // because the shader that spawns surfels from the gbuffer has yet to be executed
+    uint surfel_id = bvh_search(origin);
     if ((surfel_id == SURFELS_MISSED) || (surfel_id == SURFELS_TOO_CLOSE)) {
         // there is no surfel associated with this pixel
         return;
     }
 
+    imageStore(surfelOverlappingImage, texel_position, uvec4(surfel_id, 0, 0, 0));
 /*
     for (uint i = 0; i < MAX_USABLE_SURFELS; i++) {
         // we can proceed at attempting to add the surfel to the list of used surfels
@@ -82,4 +76,56 @@ void main() {
 
     debugPrintfEXT("Reached maximum number of usable surfels on id(%u, %u)\n", gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
 */
+
+
+    /*
+    // ================================
+    // Low level debug visualization of (old) surfels
+    const uint available_surfels = count_ordered_surfels();
+    if (available_surfels == 0) {
+        contribution = vec3(2500.0, 2500.0, 2500.0);
+    }
+
+    uint surfel_id = SURFELS_MISSED;
+    uint last_morton = 0;
+    for (uint i = 0; i < available_surfels; i++) {
+        if (last_morton > surfels[i].morton) {
+            // this should never happen
+            //debugPrintfEXT("MORTON SORT ERROR AT SURFEL %u %u > %u\n", i, last_morton, surfels[i].morton);
+            //contribution = vec3(2500.0, 2500.0, 2500.0);
+        }
+
+        last_morton = surfels[i].morton;
+
+        if (is_point_in_surfel(i, origin)) {
+            surfel_id = i;
+            break;
+        }
+    }
+    // ================================
+    */
+
+    /*
+    // this function only searches for surfels that were allocated before this frame
+    const uint surfel_id = linear_search_ordered_surfel_for_allocation(
+        eye_position,
+        clip_planes,
+        origin,
+        instance_id,
+        // we don't want to query for surfels too close: this check is useless
+        0.0001
+    );
+
+    if (surfel_id != SURFELS_MISSED) {
+        if (surfels[surfel_id].contributions > 200u) {
+            contribution = vec3(0.0, 250.0, 0.0);
+        } else {
+            if (surfel_is_primary(surfel_id)) {
+                contribution = vec3(0.0, 0.0, 250.0);
+            } else {
+                contribution = vec3(250.0, 0.0, 0.0);
+            }
+        }
+    }
+    */
 }
