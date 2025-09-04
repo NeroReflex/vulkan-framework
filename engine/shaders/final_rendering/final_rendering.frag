@@ -16,12 +16,16 @@ void main() {
     const vec3 in_vNormal_worldspace = texture(gbuffer[1], in_vTextureUV).xyz;
     const vec4 in_vDiffuseAlbedo = texture(gbuffer[2], in_vTextureUV);
 
+    const uvec4 in_overlappingSurfel = texture(surfels_buffer, in_vTextureUV);
+
     const vec3 global_illumination_received = texture(gibuffer[0], in_vTextureUV).xyz;
     const vec3 directional_light_received = texture(gibuffer[1], in_vTextureUV).xyz;
 
     vec3 out_vDiffuseAlbedo = directional_light_received + global_illumination_received;
     #if SHOW_SURFELS
-        out_vDiffuseAlbedo = directional_light_received * 0.8 + global_illumination_received;
+        if (in_overlappingSurfel.x != 0xFFFFFFFFu) {
+            out_vDiffuseAlbedo += vec3(250.0, 0.0, 0.0);
+        }
     #endif
 
     outColor = vec4(out_vDiffuseAlbedo.xyz, 1.0);
