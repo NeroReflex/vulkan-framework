@@ -13,6 +13,10 @@
 #include "../math.glsl"
 #include "../morton.glsl"
 
+// in this context no surfel allocation or editing is permitted
+#define SURFEL_IS_READONLY
+#define BVH_IS_READONLY
+#define DISCOVERED_IS_READONLY
 #define SURFELS_DESCRIPTOR_SET 5
 #include "../surfel.glsl"
 
