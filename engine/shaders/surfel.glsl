@@ -157,22 +157,31 @@ vec3 surfelNormal(uint surfel_id) {
 // basically use a surfel as a point light source.
 vec3 projected_irradiance(in Surfel s, in const vec3 position, in const vec3 normal) {
     vec3 reflected_directional_light = vec3(
-        0.0
+        s.direct_light_r,
+        s.direct_light_g,
+        s.direct_light_b
     );
     
-    if (s.contributions == 0u) {
-        return reflected_directional_light + vec3(0.0);
+    vec3 irradiance = vec3(0.0);
+    if (s.contributions > 0u) {
+        irradiance = vec3(
+            s.irradiance_r / float(s.contributions),
+            s.irradiance_g / float(s.contributions),
+            s.irradiance_b / float(s.contributions)
+        );
     }
 
     const vec3 surfel_pos = surfelPosition(s);
 
+    if (distance(surfel_pos, position) < kEpsilon) {
+        return reflected_directional_light + irradiance;
+    }
+
     const vec3 light_dir = normalize(surfel_pos - position);
     const float intensity = max(dot(normal, light_dir), 0.0);
 
-    return vec3(
-        s.irradiance_r / float(s.contributions),
-        s.irradiance_g / float(s.contributions),
-        s.irradiance_b / float(s.contributions)
+    return intensity * (
+        reflected_directional_light + irradiance
     );
 }
 
