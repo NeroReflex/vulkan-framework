@@ -22,12 +22,16 @@
 // Keep in sync with SURFELS_DISCOVERY_GROUP_SIZE_X and SURFELS_DISCOVERY_GROUP_SIZE_Y
 layout (local_size_x = 32, local_size_y = 16, local_size_z = 1) in;
 
+// Per-workgroup staging for surfel insertion
+shared uint wgCandidates[gl_WorkGroupSize.x * gl_WorkGroupSize.y]; // flattened 2D local IDs
+shared uint wgCount;    // number of valid compacted entries in wgCandidates
+shared uint wgBase;     // base reserved index returned by atomicAdd
+
 void main() {
     const ivec2 resolution = imageSize(outputImage[0]);
 
     const ivec2 texel_position = ivec2(gl_GlobalInvocationID.xy);
 
-    
     // ================================
     // debug for the ordering to be correct
 #if SHOW_SURFELS
@@ -45,20 +49,22 @@ void main() {
 #endif
     // ================================
 
+    bool enabled = true;
+
     // avoid checking out-of-bounds
     if (any(greaterThanEqual(texel_position, resolution))) {
-        return;
+        enabled = false;
     }
 
-    const vec3 origin = texelFetch(gbuffer[0], texel_position, 0).xyz;
+    const vec3 origin = enabled ? texelFetch(gbuffer[0], texel_position, 0).xyz : vec3(0.0);
 
-    const uvec4 instance_data = texelFetch(gbuffer_instance_id, texel_position, 0);
+    const uvec4 instance_data = enabled ? texelFetch(gbuffer_instance_id, texel_position, 0) : uvec4(0xFFFFFFFFu);
     const uint mesh_id = instance_data.x;
     const uint instance_id = instance_data.y;
 
     if (mesh_id == 0xFFFFFFFFu) {
         // no geometry here
-        return;
+        enabled = false;
     }
 
     const vec2 clip_planes = reconstructNearFarFromCamera();
@@ -66,34 +72,103 @@ void main() {
 
     // try a fast search for surfels that have been allocated any older frame
     // because the shader that spawns surfels from the gbuffer has yet to be executed
-    uint surfel_id = bvh_search(origin);
-    if ((surfel_id == SURFELS_MISSED) || (surfel_id == SURFELS_TOO_CLOSE)) {
-        // there is no surfel associated with this pixel
-        return;
+    uint surfel_id = enabled ? bvh_search(origin) : 0xFFFFFFFFu;
+
+    // ---------- Per-workgroup gather + single atomic reservation ----------
+    // Each thread writes its candidate surfel id into wgCandidates at its local flattened index.
+    uint localFlat = gl_LocalInvocationIndex; // flattened index within the workgroup
+    uint candidate = surfel_id; // candidate to insert; could be SURFELS_MISSED in other cases
+    wgCandidates[localFlat] = candidate;
+    memoryBarrierShared();
+    barrier();
+
+    // Leader compacts + deduplicates the candidates into wgCandidates[0..wgCount-1]
+    if (gl_LocalInvocationIndex == 0u) {
+        uint writeIdx = 0u;
+        uint WG_SIZE = gl_WorkGroupSize.x * gl_WorkGroupSize.y;
+        for (uint i = 0u; i < WG_SIZE; ++i) {
+            uint v = wgCandidates[i];
+            if (v == SURFELS_MISSED) continue;
+            // dedupe within the workgroup
+            bool dup = false;
+            for (uint j = 0u; j < writeIdx; ++j) {
+                if (wgCandidates[j] == v) { dup = true; break; }
+            }
+            if (!dup) {
+                wgCandidates[writeIdx++] = v;
+            }
+        }
+        wgCount = writeIdx;
     }
+    memoryBarrierShared();
+    barrier();
 
-    imageStore(surfelOverlappingImage, texel_position, uvec4(surfel_id, 0, 0, 0));
-/*
-    for (uint i = 0; i < MAX_USABLE_SURFELS; i++) {
-        // we can proceed at attempting to add the surfel to the list of used surfels
-        const uint old_value = atomicCompSwap(discovered[i], USED_SURFEL_MISSING, surfel_id);
-        if (old_value == surfel_id) {
-            // my surfel was already discovered in another thread
-            return;
-        } else if (old_value == USED_SURFEL_MISSING) {
-            // I successfully added my surfel to the list of discovered surfels
-            
-            // update the last time the surfel was used
-            surfels[surfel_id].latest_contribution = 0;
-            memoryBarrierBuffer();
+    uint myWgCount = wgCount;
+    if ((myWgCount > 0u) && (enabled)) {
+        // Leader reserves a contiguous block in the global discovered array
+        if (gl_LocalInvocationIndex == 0u) {
+            // atomicAdd returns the previous value; that is the base index for this group's block
+            wgBase = atomicAdd(global_reserve_counter, myWgCount);
+        }
+        memoryBarrierShared();
+    }
+    barrier();
 
-            return;
+    uint base = wgBase;
+    bool write_surfel = true;
+    // If reservation would overflow, simply drop entries that don't fit
+    if (enabled) {
+        if (base >= MAX_USABLE_SURFELS) {
+            write_surfel = false;
         }
     }
 
-    debugPrintfEXT("Reached maximum number of usable surfels on id(%u, %u)\n", gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
-*/
+    // clamp to available capacity
+    uint writable = myWgCount;
+    if (base + writable > MAX_USABLE_SURFELS) {
+        writable = MAX_USABLE_SURFELS - base;
+    }
 
+    // Each thread writes a subset of the compacted wgCandidates into the reserved global slots.
+    if ((enabled) && (write_surfel)) {
+        for (uint i = gl_LocalInvocationIndex; i < writable; i += gl_WorkGroupSize.x * gl_WorkGroupSize.y) {
+            uint dst = base + i;
+            uint val = wgCandidates[i];
+            if (val == 0xFFFFFFFFu) {
+                continue;
+            }
+
+            for (uint i = 0; i < MAX_USABLE_SURFELS; i++) {
+                // we can proceed at attempting to add the surfel to the list of used surfels
+                const uint old_value = atomicCompSwap(discovered[i], USED_SURFEL_MISSING, val);
+                if (old_value == val) {
+                    // my surfel was already discovered in another thread
+                    break;
+                } else if (old_value == USED_SURFEL_MISSING) {
+                    // I successfully added my surfel to the list of discovered surfels
+                    
+                    // update the last time the surfel was used
+                    surfels[surfel_id].latest_contribution = 0;
+                    memoryBarrierBuffer();
+
+                    break;
+                }
+            }
+            
+            if (i == MAX_USABLE_SURFELS) {
+                debugPrintfEXT("Reached maximum number of usable surfels on id(%u, %u)\n", gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
+            }
+        }
+    }
+
+    barrier();
+
+    // --------------------------------------------------------------------
+
+    if ((surfel_id != 0xFFFFFFFFu) && (enabled)) {
+        // there is no surfel associated with this pixel
+        imageStore(surfelOverlappingImage, texel_position, uvec4(surfel_id, 0, 0, 0));
+    }
 
     /*
     // ================================
