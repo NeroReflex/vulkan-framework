@@ -78,6 +78,14 @@ void main() {
 
     // debug print of discovered surfels
     //if (texel_position == ivec2(0, 0)) {
+    //    uint used = 0;
+    //    for (uint a = 0; a < MAX_USABLE_SURFELS; ++a) {
+    //        if (discovered[a] == USED_SURFEL_MISSING) {
+    //            break;
+    //        }
+    //        used++;
+    //    }
+    //    debugPrintfEXT("partecipating surfels: %u\n", used);
     //    printBVHTree(0);
     //    debugPrintfEXT("clip planes: %f %f\n", clip_planes.x, clip_planes.y);
     //    debugPrintfEXT("Number of discovered surfels: %u\n", count_discoveder_surfels());
@@ -85,7 +93,6 @@ void main() {
 
     // Initialize the random number
     uint seed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, gi_data.gi_reuse_frames);
-
 
     hit_payload_t collisions[MAX_RAY_DEPTH];
     vec3 ray_directions[MAX_RAY_DEPTH];

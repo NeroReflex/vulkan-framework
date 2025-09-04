@@ -101,7 +101,8 @@ layout (set = SURFELS_DESCRIPTOR_SET, binding = 0, std430) /*coherent*/ buffer s
     // used for intermediate calculations
     int active_surfels;
 
-    uint padding_0;
+    uint global_reserve_counter;
+
     uint padding_1;
     uint padding_2;
     uint padding_3;
