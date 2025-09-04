@@ -222,7 +222,7 @@ const SURFELS_DISCOVERY_GROUP_SIZE_Y: u32 = 16;
 
 // This MUST be a power of two an a multiple of TWICE:
 // SURFELS_MORTON_GROUP_SIZE_X and SURFELS_REORDER_GROUP_SIZE_X
-const MAX_SURFELS: u32 = u32::pow(2, 14);
+const MAX_SURFELS: u32 = u32::pow(2, 16);
 
 // Keep in sync with glsl side
 const SURFEL_SIZE: u32 = 24 * 4;
