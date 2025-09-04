@@ -40,14 +40,11 @@ void main() {
         const bool leftIsLeaf = (childL & NODE_IS_LEAF_FLAG) != 0;
         const bool rightIsLeaf = (childR & NODE_IS_LEAF_FLAG) != 0;
 
-        const uint leftIdx = (childL & ~(NODE_IS_LEAF_FLAG));
-        const uint rightIdx = (childR & ~(NODE_IS_LEAF_FLAG));
+        const uint leftIdx = (childL & ~NODE_IS_LEAF_FLAG);
+        const uint rightIdx = (childR & ~NODE_IS_LEAF_FLAG);
 
         AABB leftAABB;
         AABB rightAABB;
-
-        // I will load AABBs from nodes that might have been written by another invocation. Issue a memory barrier.
-        memoryBarrierBuffer();
 
         // left is a leaf, so we need to get the AABB from the surfel itself
         if (leftIsLeaf) {
