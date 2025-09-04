@@ -17,6 +17,7 @@
 #include "../gbuffer.glsl"
 
 //#define SURFEL_IS_READONLY
+#define SURFEL_IS_READONLY
 #define BVH_IS_READONLY
 #define SURFELS_DESCRIPTOR_SET 2
 #include "../surfel.glsl"
@@ -148,13 +149,8 @@ void main() {
                     break;
                 } else if (old_value == USED_SURFEL_MISSING) {
                     // I successfully added my surfel to the list of discovered surfels
-                    
-                    // update the last time the surfel was used
-                    surfels[surfel_id].latest_contribution = 0;
-                    memoryBarrierBuffer();
-
                     atomicAdd(discovered_surfels, 1);
-
+                    memoryBarrierBuffer();
                     break;
                 }
             }

@@ -153,6 +153,29 @@ vec3 surfelNormal(uint surfel_id) {
     return surfelNormal(surfels[surfel_id]);
 }
 
+// Calculate the light given from the surfel to the given position, assuming no object in-between:
+// basically use a surfel as a point light source.
+vec3 projected_irradiance(in Surfel s, in const vec3 position, in const vec3 normal) {
+    vec3 reflected_directional_light = vec3(
+        0.0
+    );
+    
+    if (s.contributions == 0u) {
+        return reflected_directional_light + vec3(0.0);
+    }
+
+    const vec3 surfel_pos = surfelPosition(s);
+
+    const vec3 light_dir = normalize(surfel_pos - position);
+    const float intensity = max(dot(normal, light_dir), 0.0);
+
+    return vec3(
+        s.irradiance_r / float(s.contributions),
+        s.irradiance_g / float(s.contributions),
+        s.irradiance_b / float(s.contributions)
+    );
+}
+
 AABB surfelAABB(uint surfel_id) {
     return compatAABB(
         surfelPosition(surfel_id) - surfels[surfel_id].radius,
@@ -163,6 +186,18 @@ AABB surfelAABB(uint surfel_id) {
 bool point_inside_surfel(uint surfel_id, vec3 point) {
     return distance(surfelPosition(surfel_id), point) <= surfels[surfel_id].radius;
 }
+// =================================================================
+
+// =================== WRITE SURFEL HELPERS ========================
+#ifndef SURFEL_IS_READONLY
+
+void addDirectionalLightContribution(uint surfel_id, vec3 received_directional_light) {
+    surfels[surfel_id].direct_light_r += received_directional_light.r;
+    surfels[surfel_id].direct_light_g += received_directional_light.g;
+    surfels[surfel_id].direct_light_b += received_directional_light.b;
+}
+
+#endif // SURFEL_IS_READONLY
 // =================================================================
 
 bool is_point_in_surfel(uint surfel_id, const in vec3 point) {
@@ -233,6 +268,7 @@ void unlock_surfel(uint surfel_id) {
 
 void init_surfel(
     uint surfel_id,
+    in const bool allocate_locked,
     uint flags,
     in const uint instance_id,
     in const vec3 position,
@@ -245,30 +281,35 @@ void init_surfel(
 
     // no need to store morton code, it will be computed on the next frame
     // and for this frame it is in the unordered set anyway
-    surfels[surfel_id].morton        = 0;
-    surfels[surfel_id].instance_id   = instance_id;
-    surfels[surfel_id].position_x    = position.x;
-    surfels[surfel_id].position_y    = position.y;
-    surfels[surfel_id].position_z    = position.z;
-    surfels[surfel_id].radius        = radius;
-    surfels[surfel_id].normal_x      = normal.x;
-    surfels[surfel_id].normal_y      = normal.y;
-    surfels[surfel_id].normal_z      = normal.z;
-    surfels[surfel_id].diffuse_r     = diffuse.r;
-    surfels[surfel_id].diffuse_g     = diffuse.g;
-    surfels[surfel_id].diffuse_b     = diffuse.b;
-    surfels[surfel_id].irradiance_r  = 0;
-    surfels[surfel_id].irradiance_g  = 0;
-    surfels[surfel_id].irradiance_b  = 0;
-    surfels[surfel_id].contributions = 0u;
+    surfels[surfel_id].morton         = 0;
+    surfels[surfel_id].instance_id    = instance_id;
+    surfels[surfel_id].position_x     = position.x;
+    surfels[surfel_id].position_y     = position.y;
+    surfels[surfel_id].position_z     = position.z;
+    surfels[surfel_id].radius         = radius;
+    surfels[surfel_id].normal_x       = normal.x;
+    surfels[surfel_id].normal_y       = normal.y;
+    surfels[surfel_id].normal_z       = normal.z;
+    surfels[surfel_id].diffuse_r      = diffuse.r;
+    surfels[surfel_id].diffuse_g      = diffuse.g;
+    surfels[surfel_id].diffuse_b      = diffuse.b;
+    surfels[surfel_id].irradiance_r   = 0;
+    surfels[surfel_id].irradiance_g   = 0;
+    surfels[surfel_id].irradiance_b   = 0;
+    surfels[surfel_id].direct_light_r = 0;
+    surfels[surfel_id].direct_light_g = 0;
+    surfels[surfel_id].direct_light_b = 0;
+    surfels[surfel_id].contributions  = 0u;
 
     // last_contribution is skipped: the morton compute shader will set it to 0
 
     // set flags to 0 except the lock bit
     atomicAnd(surfels[surfel_id].flags, SURFEL_FLAG_LOCKED);
 
-    // set all flags as requested except the lock bit
-    atomicOr(surfels[surfel_id].flags, flags & ~SURFEL_FLAG_LOCKED);
+    // set all flags as requested (lock bit is special)
+    atomicOr(
+        surfels[surfel_id].flags,
+        flags & ((!allocate_locked) ? ~SURFEL_FLAG_LOCKED : 0xFFFFFFFFu));
 
     // WARNING: exiting from this function, the surfel is still locked
 }
@@ -615,6 +656,7 @@ float radius_from_camera_distance(
 // normal is the normal of the surfel to register
 // diffuse is the diffuse color of the surfel to register
 // irradiance is the irradiance of the surfel to register
+// allocate_locked leave new allocations locked
 // allocated_new is set to true if a new surfel was allocated
 uint find_surfel_or_allocate_new(
     in const vec3 eye_position,
@@ -623,6 +665,7 @@ uint find_surfel_or_allocate_new(
     in const vec3 position,
     in const vec3 normal,
     in const vec3 diffuse,
+    in const bool allocate_locked,
     out bool allocated_new
 ) {
     allocated_new = false;
@@ -697,7 +740,7 @@ uint find_surfel_or_allocate_new(
                 // or, if not forcing allocation, just return REGISTER_SURFEL_IGNORED
             } else {
                 const uint surfel_id = (total_surfels / 2) + surfel_allocation_id;
-                init_surfel(surfel_id, flags, instance_id, position, radius, normal, diffuse);
+                init_surfel(surfel_id, allocate_locked, flags, instance_id, position, radius, normal, diffuse);
                 unlock_surfel(surfel_id);
                 memoryBarrierBuffer();
 
@@ -723,29 +766,5 @@ uint find_surfel_or_allocate_new(
 }
 
 #endif // SURFEL_IS_READONLY
-
-// Calculate the light given from the surfel to the given position,
-// assuming no object is on its way: basically use a surfel
-// as a point light source
-vec3 projected_irradiance(in Surfel s, in const vec3 position, in const vec3 normal) {
-    if (s.contributions == 0u) {
-        return vec3(0.0, 0.0, 0.0);
-    }
-
-    const vec3 surfel_pos = surfelPosition(s);
-
-    const vec3 light_dir = normalize(surfel_pos - position);
-    const float intensity = max(dot(normal, light_dir), 0.0);
-
-    /*
-    return vec3(
-        s.irradiance_r / float(s.contributions),
-        s.irradiance_g / float(s.contributions),
-        s.irradiance_b / float(s.contributions)
-    );
-    */
-
-    return vec3(2.0, 2.0, 2.0);
-}
 
 #endif // _SURFEL_
