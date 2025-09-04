@@ -151,6 +151,8 @@ void main() {
                     surfels[surfel_id].latest_contribution = 0;
                     memoryBarrierBuffer();
 
+                    atomicAdd(discovered_surfels, 1);
+
                     break;
                 }
             }

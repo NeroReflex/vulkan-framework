@@ -85,7 +85,7 @@ void main() {
     //        }
     //        used++;
     //    }
-    //    debugPrintfEXT("partecipating surfels: %u\n", used);
+    //    debugPrintfEXT("partecipating surfels: %u %u\n", used, discovered_surfels);
     //    printBVHTree(0);
     //    debugPrintfEXT("clip planes: %f %f\n", clip_planes.x, clip_planes.y);
     //    debugPrintfEXT("Number of discovered surfels: %u\n", count_discoveder_surfels());

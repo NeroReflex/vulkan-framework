@@ -103,7 +103,8 @@ layout (set = SURFELS_DESCRIPTOR_SET, binding = 0, std430) /*coherent*/ buffer s
 
     uint global_reserve_counter;
 
-    uint padding_1;
+    uint discovered_surfels;
+
     uint padding_2;
     uint padding_3;
 };
@@ -168,14 +169,9 @@ bool is_point_in_surfel(uint surfel_id, const in vec3 point) {
 }
 
 uint count_discoveder_surfels() {
-    // discovered is never modified in raytrace shader.
-    for (uint i = 0; i < MAX_USABLE_SURFELS; i++) {
-        if (discovered[i] == USED_SURFEL_MISSING) {
-            return i;
-        }
-    }
-
-    return MAX_USABLE_SURFELS;
+    // discovered_surfels is never modified in raytrace shader,
+    // so avoid the expensive atomic read
+    return discovered_surfels;
 }
 
 uint count_ordered_surfels() {
