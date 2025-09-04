@@ -13,6 +13,8 @@
 #include "../math.glsl"
 #include "../morton.glsl"
 
+#define BVH_IS_READONLY
+#define DISCOVERED_IS_READONLY
 #define SURFELS_DESCRIPTOR_SET 4
 #include "../surfel.glsl"
 
@@ -48,7 +50,11 @@ void main() {
     }
 
     const uint surfel_id = discovered[gl_LaunchIDEXT.x];
-    //debugPrintfEXT("evaluating surfel_id %u %u/%u\n", surfel_id, gl_LaunchIDEXT.x, count_discoveder_surfels());
+    debugPrintfEXT("evaluating surfel_id %u %u/%u\n", surfel_id, gl_LaunchIDEXT.x, count_discoveder_surfels());
+
+    if (!IS_SURFEL_VALID(surfel_id)) {
+        debugPrintfEXT("Invalid surfel_id %u detected!!!", surfel_id);
+    }
 
     // Initialize the random number
     uint seed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, gi_data.gi_reuse_frames);

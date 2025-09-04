@@ -113,10 +113,16 @@ layout (set = SURFELS_DESCRIPTOR_SET, binding = 1, std430) /*coherent*/ buffer s
     Surfel surfels[];
 };
 
+#ifdef BVH_IS_READONLY
+readonly
+#endif
 layout (set = SURFELS_DESCRIPTOR_SET, binding = 2, std430) coherent buffer surfel_bvh {
     BVHNode tree[];
 };
 
+#ifdef DISCOVERED_IS_READONLY
+readonly
+#endif
 layout (set = SURFELS_DESCRIPTOR_SET, binding = 3, std430) /*coherent*/ buffer surfel_discovered {
     uint discovered[];
 };
