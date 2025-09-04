@@ -159,7 +159,7 @@ bool is_point_in_surfel(uint surfel_id, const in vec3 point) {
     const vec3 direction = point - center;
 
     //return length(direction) <= radius;
-    
+
     // this is supposed to be more efficient
     return dot(direction, direction) <= radius * radius;
 }
@@ -186,7 +186,7 @@ uint count_unordered_surfels() {
     // and a memoryBufferBarrier() is issued: making this value coherent again:
     // avoid an expensive atomic read.
     return unordered_surfels;
-    
+
     //return atomicMax(unordered_surfels, 0);
 }
 
@@ -258,7 +258,7 @@ void init_surfel(
 
     // set flags to 0 except the lock bit
     atomicAnd(surfels[surfel_id].flags, SURFEL_FLAG_LOCKED);
-    
+
     // set all flags as requested except the lock bit
     atomicOr(surfels[surfel_id].flags, flags & ~SURFEL_FLAG_LOCKED);
 
@@ -278,7 +278,6 @@ uint bvh_search(in const vec3 point) {
     stack[stackDepth++] = currentIndex;
 
     while (stackDepth > 0) {
-
         const uint childR = tree[currentIndex].right;
         const uint childL = tree[currentIndex].left;
 
