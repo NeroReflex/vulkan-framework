@@ -86,80 +86,6 @@ void main() {
     // Initialize the random number
     uint seed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, gi_data.gi_reuse_frames);
 
-    // direct lighting: only compute it if the previous GI data cannot be reused
-    uint surfel_id = REGISTER_SURFEL_IGNORED;
-    bool fresh_allocation = false;
-    if ((gi_data.gi_reuse_frames == 0) && (depth < DEPTH_IGNORE) && (mesh_id != 0xFFFFFFFFu)) {
-        vec3 lights_contribution = vec3(0.0, 0.0, 0.0);
-        for (uint light_index = 0; light_index < MAX_DIRECTIONAL_LIGHTS; light_index++) {
-            const vec3 light_intensity = vec3(light[light_index].intensity_x, light[light_index].intensity_y, light[light_index].intensity_z);
-            const vec3 light_dir = vec3(light[light_index].direction_x, light[light_index].direction_y, light[light_index].direction_z);
-            const vec3 ray_dir = -1.0 * light_dir;
-
-            float diffuse_contribution = 0.0;
-            float specular_contribution = 0.0;
-
-            if (length(light_dir) > 0.1) {
-                if (!(origin.x == 0 && origin.y == 0 && origin.z == 0)) {
-                    // other flags: gl_RayFlagsCullNoOpaqueEXT gl_RayFlagsNoneEXT
-                    traceRayEXT(
-                        topLevelAS,
-                        gl_RayFlagsSkipAABBEXT | gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsCullNoOpaqueEXT,
-                        0xff,
-                        0,
-                        0,
-                        0,
-                        origin.xyz,
-                        CLOSEST_INTERSECTION_DISTANCE,
-                        ray_dir.xyz,
-                        10000.0,
-                        0
-                    );
-                }
-
-                if (!payload.hit) {
-                    diffuse_contribution = max(dot(normal, ray_dir), 0.0);
-                    const vec3 diffuse_component = diffuse_contribution * light_intensity * diffuse;
-
-                    const vec3 reflect_dir = reflect(-light_dir, normal);
-                    specular_contribution = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
-                    const vec3 specular = specular_contribution * light_intensity * specular;
-
-                    // TODO: here sum specular
-                    lights_contribution += diffuse_component;
-
-                    if (!IS_SURFEL_VALID(surfel_id)) {
-                        surfel_id = find_surfel_or_allocate_new(
-                            eye_position,
-                            clip_planes,
-                            instance_id,
-                            origin,
-                            normal,
-                            diffuse,
-                            fresh_allocation
-                        );
-                    }
-
-                    // as a rule globally valid it is the surfel spawner's responsibility
-                    // to calculate directional light contribution to the surfel
-                    // becuase it is something that can be analytically calculated.
-                    if (IS_SURFEL_VALID(surfel_id) && fresh_allocation) {
-                        bool locked = false;
-                        do {
-                            locked = lock_surfel(surfel_id);
-                        } while (!locked);
-
-                        // TODO: register this incoming light to the surfel
-
-                        unlock_surfel(surfel_id);
-                        memoryBarrierBuffer();
-                    }
-                }
-            }
-        }
-
-        imageStore(outputImage[1], texel_position, vec4(lights_contribution, 1.0));
-    }
 
     hit_payload_t collisions[MAX_RAY_DEPTH];
     vec3 ray_directions[MAX_RAY_DEPTH];
@@ -320,7 +246,7 @@ void main() {
                                 r -= 1;
                             }
                         }
-
+/*
                         if (
                             incoming_diffuse_light.x > RADIANCE_THRESHOLD ||
                             incoming_diffuse_light.y > RADIANCE_THRESHOLD ||
@@ -336,7 +262,7 @@ void main() {
                                 fresh_allocation
                             );
                         }
-
+*/
                         contribution += incoming_diffuse_light;
                         if (ray_depth == 0) {
                             contribution_samples += 1;
@@ -420,46 +346,6 @@ void main() {
     // this is the monte-carlo estimate of the GI at this point
     //const vec3 mc_gi_contribution = (old_gi_data + (contribution / float(FIRST_PASS_RAYS))) / float(gi_data.gi_reuse_frames + 1u);
     const vec3 mc_gi_contribution = (old_gi_data * float(gi_data.gi_reuse_frames) + (contribution / float(FIRST_PASS_RAYS))) / float(gi_data.gi_reuse_frames + 1u);
-
-    // if there is enough light incoming on this this point make a surfel out of it!
-    if (
-        mc_gi_contribution.x > RADIANCE_THRESHOLD ||
-        mc_gi_contribution.y > RADIANCE_THRESHOLD ||
-        mc_gi_contribution.z > RADIANCE_THRESHOLD
-    ) {
-        // if a surfel has not been already allocated for this pixel, try to allocate one now
-        if (!IS_SURFEL_VALID(surfel_id)) {
-            surfel_id = find_surfel_or_allocate_new(
-                eye_position,
-                clip_planes,
-                instance_id,
-                origin,
-                normal,
-                diffuse,
-                fresh_allocation
-            );
-        }
-
-        // if there is a surfel allocated for this pixel, try to lock it and update it
-        if (IS_SURFEL_VALID(surfel_id)) {
-            bool locked = false;
-            if (fresh_allocation) {
-                do {
-                    locked = lock_surfel(surfel_id);
-                } while (!locked);
-            } else {
-                locked = lock_surfel(surfel_id);
-            }
-
-            if (locked) {
-                // TODO: register this incoming light to the surfel
-                unlock_surfel(surfel_id);
-                memoryBarrierBuffer();
-            } else {
-                //debugPrintfEXT("Failed to lock surfel %u to register GI update\n", surfel_id);
-            }
-        }
-    }
 
     imageStore(outputImage[0], texel_position, vec4(mc_gi_contribution, 1.0));
 }
