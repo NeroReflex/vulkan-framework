@@ -143,6 +143,42 @@ const SURFELS_SPAWN_CHIT_SPV: &[u32] = inline_spirv!(
     entry = "main"
 );
 
+const SURFELS_RT_RAYGEN_SPV: &[u32] = inline_spirv!(
+    r#"
+#version 460
+
+#include "engine/shaders/surfel_rt/surfel_rt.rgen"
+"#,
+    glsl,
+    rgen,
+    vulkan1_2,
+    entry = "main"
+);
+
+const SURFELS_RT_MISS_SPV: &[u32] = inline_spirv!(
+    r#"
+#version 460
+
+#include "engine/shaders/surfel_rt/surfel_rt.rmiss"
+"#,
+    glsl,
+    rmiss,
+    vulkan1_2,
+    entry = "main"
+);
+
+const SURFELS_RT_CHIT_SPV: &[u32] = inline_spirv!(
+    r#"
+#version 460
+
+#include "engine/shaders/surfel_rt/surfel_rt.rchit"
+"#,
+    glsl,
+    rchit,
+    vulkan1_2,
+    entry = "main"
+);
+
 const RAYGEN_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
@@ -190,6 +226,7 @@ pub struct GILighting {
     bvh_aabb_pipeline: Arc<ComputePipeline>,
     surfel_discovery_pipeline: Arc<ComputePipeline>,
     surfel_spawn_pipeline: Arc<RaytracingPipeline>,
+    surfel_rt_pipeline: Arc<RaytracingPipeline>,
     raytracing_pipeline: Arc<RaytracingPipeline>,
 
     raytracing_surfel_stats_buffer: Arc<AllocatedBuffer>,
@@ -200,6 +237,7 @@ pub struct GILighting {
     raytracing_gibuffer: Arc<ImageView>,
     raytracing_dlbuffer: Arc<ImageView>,
 
+    surfel_rt_sbt: Arc<RaytracingBindingTables>,
     surfel_spawn_sbt: Arc<RaytracingBindingTables>,
     raytracing_sbt: Arc<RaytracingBindingTables>,
 
@@ -475,6 +513,30 @@ impl GILighting {
             Some("surfels_spawn_pipeline!"),
         )?;
 
+        let surfel_rt_pipeline = RaytracingPipeline::new(
+            PipelineLayout::new(
+                device.clone(),
+                [
+                    rt_descriptor_set_layout.clone(),
+                    status_descriptor_set_layout.clone(),
+                    textures_descriptor_set_layout.clone(),
+                    materials_descriptor_set_layout.clone(),
+                    output_descriptor_set_layout.clone(),
+                ]
+                .as_slice(),
+                [].as_slice(),
+                Some("surfel_rt_pipeline_layout"),
+            )?,
+            1,
+            RaygenShader::new(device.clone(), SURFELS_RT_RAYGEN_SPV)?,
+            None,
+            MissShader::new(device.clone(), SURFELS_RT_MISS_SPV).unwrap(),
+            None,
+            ClosestHitShader::new(device.clone(), SURFELS_RT_CHIT_SPV).unwrap(),
+            None,
+            Some("surfel_rt_pipeline!"),
+        )?;
+
         let raytracing_pipeline = RaytracingPipeline::new(
             PipelineLayout::new(
                 device.clone(),
@@ -622,6 +684,7 @@ impl GILighting {
             raytracing_gibuffer,
             raytracing_dlbuffer,
             surfel_spawn_sbt,
+            surfel_rt_sbt,
             raytracing_sbt,
         ) = {
             let mut mem_manager = memory_manager.lock().unwrap();
@@ -690,6 +753,14 @@ impl GILighting {
                     .with_size(MemoryManagementTagSize::MediumSmall),
             )?;
 
+            let surfel_rt_sbt = RaytracingBindingTables::new(
+                surfel_rt_pipeline.clone(),
+                mem_manager.deref_mut(),
+                MemoryManagementTags::default()
+                    .with_name("global_illumination_lighting".to_string())
+                    .with_size(MemoryManagementTagSize::MediumSmall),
+            )?;
+
             let raytracing_sbt = RaytracingBindingTables::new(
                 raytracing_pipeline.clone(),
                 mem_manager.deref_mut(),
@@ -707,6 +778,7 @@ impl GILighting {
                 raytracing_gibuffer,
                 raytracing_dlbuffer,
                 surfel_spawn_sbt,
+                surfel_rt_sbt,
                 raytracing_sbt,
             )
         };
@@ -872,6 +944,7 @@ impl GILighting {
             bvh_aabb_pipeline,
             surfel_discovery_pipeline,
             surfel_spawn_pipeline,
+            surfel_rt_pipeline,
             raytracing_pipeline,
 
             raytracing_surfel_stats_buffer,
@@ -883,6 +956,7 @@ impl GILighting {
             raytracing_dlbuffer,
 
             surfel_spawn_sbt,
+            surfel_rt_sbt,
             raytracing_sbt,
 
             output_descriptor_set,
@@ -1290,6 +1364,47 @@ impl GILighting {
             recorder.trace_rays(
                 self.surfel_spawn_sbt.clone(),
                 Image3DDimensions::new(self.renderarea_width, self.renderarea_height, 1),
+            );
+        }
+
+        recorder.pipeline_barriers([MemoryBarrier::new(
+            [PipelineStage::RayTracingPipelineKHR(
+                PipelineStageRayTracingPipelineKHR::RayTracingShader,
+            )]
+            .as_slice()
+            .into(),
+            [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
+                .as_slice()
+                .into(),
+            [PipelineStage::RayTracingPipelineKHR(
+                PipelineStageRayTracingPipelineKHR::RayTracingShader,
+            )]
+            .as_slice()
+            .into(),
+            [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
+                .as_slice()
+                .into(),
+        )
+        .into()]);
+
+        {
+            recorder.bind_ray_tracing_pipeline(self.surfel_rt_pipeline.clone());
+            recorder.bind_descriptor_sets_for_ray_tracing_pipeline(
+                self.surfel_rt_pipeline.get_parent_pipeline_layout(),
+                0,
+                [
+                    raytracing_descriptor_set.clone(),
+                    status_descriptor_set.clone(),
+                    textures_descriptor_set.clone(),
+                    materials_descriptor_set.clone(),
+                    self.output_descriptor_set.clone(),
+                ]
+                .as_slice(),
+            );
+
+            recorder.trace_rays(
+                self.surfel_rt_sbt.clone(),
+                Image3DDimensions::new(MAX_USABLE_SURFELS, 1, 1),
             );
         }
 
