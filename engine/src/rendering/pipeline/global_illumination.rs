@@ -1144,6 +1144,46 @@ impl GILighting {
         .into()]);
 
         {
+            recorder.bind_ray_tracing_pipeline(self.surfel_spawn_pipeline.clone());
+            recorder.bind_descriptor_sets_for_ray_tracing_pipeline(
+                self.surfel_spawn_pipeline.get_parent_pipeline_layout(),
+                0,
+                [
+                    raytracing_descriptor_set.clone(),
+                    gbuffer_descriptor_set.clone(),
+                    status_descriptor_set.clone(),
+                    self.output_descriptor_set.clone(),
+                ]
+                .as_slice(),
+            );
+
+            recorder.trace_rays(
+                self.surfel_spawn_sbt.clone(),
+                Image3DDimensions::new(self.renderarea_width, self.renderarea_height, 1),
+            );
+        }
+
+        recorder.pipeline_barriers([MemoryBarrier::new(
+            [PipelineStage::RayTracingPipelineKHR(
+                PipelineStageRayTracingPipelineKHR::RayTracingShader,
+            )]
+            .as_slice()
+            .into(),
+            [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
+                .as_slice()
+                .into(),
+            [PipelineStage::RayTracingPipelineKHR(
+                PipelineStageRayTracingPipelineKHR::RayTracingShader,
+            )]
+            .as_slice()
+            .into(),
+            [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
+                .as_slice()
+                .into(),
+        )
+        .into()]);
+
+        {
             recorder.bind_ray_tracing_pipeline(self.raytracing_pipeline.clone());
             recorder.bind_descriptor_sets_for_ray_tracing_pipeline(
                 self.raytracing_pipeline.get_parent_pipeline_layout(),
