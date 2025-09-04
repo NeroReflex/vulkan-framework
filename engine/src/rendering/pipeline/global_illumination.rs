@@ -95,7 +95,6 @@ const BVH_AABB_SPV: &[u32] = inline_spirv!(
     entry = "main"
 );
 
-
 const SURFELS_DISCOVERY_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
@@ -104,6 +103,42 @@ const SURFELS_DISCOVERY_SPV: &[u32] = inline_spirv!(
 "#,
     glsl,
     comp,
+    vulkan1_2,
+    entry = "main"
+);
+
+const SURFELS_SPAWN_RAYGEN_SPV: &[u32] = inline_spirv!(
+    r#"
+#version 460
+
+#include "engine/shaders/surfel_spawn/surfel_spawn.rgen"
+"#,
+    glsl,
+    rgen,
+    vulkan1_2,
+    entry = "main"
+);
+
+const SURFELS_SPAWN_MISS_SPV: &[u32] = inline_spirv!(
+    r#"
+#version 460
+
+#include "engine/shaders/surfel_spawn/surfel_spawn.rmiss"
+"#,
+    glsl,
+    rmiss,
+    vulkan1_2,
+    entry = "main"
+);
+
+const SURFELS_SPAWN_CHIT_SPV: &[u32] = inline_spirv!(
+    r#"
+#version 460
+
+#include "engine/shaders/surfel_spawn/surfel_spawn.rchit"
+"#,
+    glsl,
+    rchit,
     vulkan1_2,
     entry = "main"
 );
@@ -154,7 +189,7 @@ pub struct GILighting {
     surfel_bvh_pipeline: Arc<ComputePipeline>,
     bvh_aabb_pipeline: Arc<ComputePipeline>,
     surfel_discovery_pipeline: Arc<ComputePipeline>,
-
+    surfel_spawn_pipeline: Arc<RaytracingPipeline>,
     raytracing_pipeline: Arc<RaytracingPipeline>,
 
     raytracing_surfel_stats_buffer: Arc<AllocatedBuffer>,
@@ -165,6 +200,7 @@ pub struct GILighting {
     raytracing_gibuffer: Arc<ImageView>,
     raytracing_dlbuffer: Arc<ImageView>,
 
+    surfel_spawn_sbt: Arc<RaytracingBindingTables>,
     raytracing_sbt: Arc<RaytracingBindingTables>,
 
     output_descriptor_set: Arc<DescriptorSet>,
@@ -374,10 +410,7 @@ impl GILighting {
                 None,
                 PipelineLayout::new(
                     device.clone(),
-                    [
-                        output_descriptor_set_layout.clone(),
-                    ]
-                    .as_slice(),
+                    [output_descriptor_set_layout.clone()].as_slice(),
                     [].as_slice(),
                     Some("bvh_aabb_pipeline_layout"),
                 )?,
@@ -407,35 +440,50 @@ impl GILighting {
             )?
         };
 
-        let pipeline_layout = PipelineLayout::new(
-            device.clone(),
-            [
-                rt_descriptor_set_layout,
-                gbuffer_descriptor_set_layout,
-                status_descriptor_set_layout,
-                textures_descriptor_set_layout,
-                materials_descriptor_set_layout,
-                output_descriptor_set_layout.clone(),
-            ]
-            .as_slice(),
-            [].as_slice(),
-            Some("gi_lighting_pipeline_layout"),
+        let surfel_spawn_pipeline = RaytracingPipeline::new(
+            PipelineLayout::new(
+                device.clone(),
+                [
+                    rt_descriptor_set_layout.clone(),
+                    gbuffer_descriptor_set_layout.clone(),
+                    status_descriptor_set_layout.clone(),
+                    output_descriptor_set_layout.clone(),
+                ]
+                .as_slice(),
+                [].as_slice(),
+                Some("surfel_spawn_pipeline_layout"),
+            )?,
+            1,
+            RaygenShader::new(device.clone(), SURFELS_SPAWN_RAYGEN_SPV)?,
+            None,
+            MissShader::new(device.clone(), SURFELS_SPAWN_MISS_SPV).unwrap(),
+            None,
+            ClosestHitShader::new(device.clone(), SURFELS_SPAWN_CHIT_SPV).unwrap(),
+            None,
+            Some("surfels_spawn_pipeline!"),
         )?;
 
-        let raygen_shader = RaygenShader::new(device.clone(), RAYGEN_SPV)?;
-        let miss_shader = MissShader::new(device.clone(), MISS_SPV).unwrap();
-        //let anyhit_shader = AnyHitShader::new(dev.clone(), AHIT_SPV).unwrap();
-        let closesthit_shader = ClosestHitShader::new(device.clone(), CHIT_SPV).unwrap();
-        //let callable_shader = CallableShader::new(dev.clone(), CALLABLE_SPV).unwrap();
-
         let raytracing_pipeline = RaytracingPipeline::new(
-            pipeline_layout.clone(),
+            PipelineLayout::new(
+                device.clone(),
+                [
+                    rt_descriptor_set_layout,
+                    gbuffer_descriptor_set_layout,
+                    status_descriptor_set_layout,
+                    textures_descriptor_set_layout,
+                    materials_descriptor_set_layout,
+                    output_descriptor_set_layout.clone(),
+                ]
+                .as_slice(),
+                [].as_slice(),
+                Some("gi_lighting_pipeline_layout"),
+            )?,
             1,
-            raygen_shader,
+            RaygenShader::new(device.clone(), RAYGEN_SPV)?,
             None,
-            miss_shader,
+            MissShader::new(device.clone(), MISS_SPV).unwrap(),
             None,
-            closesthit_shader,
+            ClosestHitShader::new(device.clone(), CHIT_SPV).unwrap(),
             None,
             Some("gi_lighting_raytracing_pipeline!"),
         )?;
@@ -538,6 +586,7 @@ impl GILighting {
             raytracing_discovered,
             raytracing_gibuffer,
             raytracing_dlbuffer,
+            surfel_spawn_sbt,
             raytracing_sbt,
         ) = {
             let mut mem_manager = memory_manager.lock().unwrap();
@@ -585,6 +634,14 @@ impl GILighting {
 
             let raytracing_discovered = raytracing_buffers_allocated[5].buffer();
 
+            let surfel_spawn_sbt = RaytracingBindingTables::new(
+                surfel_spawn_pipeline.clone(),
+                mem_manager.deref_mut(),
+                MemoryManagementTags::default()
+                    .with_name("global_illumination_lighting".to_string())
+                    .with_size(MemoryManagementTagSize::MediumSmall),
+            )?;
+
             let raytracing_sbt = RaytracingBindingTables::new(
                 raytracing_pipeline.clone(),
                 mem_manager.deref_mut(),
@@ -600,6 +657,7 @@ impl GILighting {
                 raytracing_discovered,
                 raytracing_gibuffer,
                 raytracing_dlbuffer,
+                surfel_spawn_sbt,
                 raytracing_sbt,
             )
         };
@@ -730,6 +788,7 @@ impl GILighting {
             surfel_bvh_pipeline,
             bvh_aabb_pipeline,
             surfel_discovery_pipeline,
+            surfel_spawn_pipeline,
             raytracing_pipeline,
 
             raytracing_surfel_stats_buffer,
@@ -739,6 +798,7 @@ impl GILighting {
             raytracing_gibuffer,
             raytracing_dlbuffer,
 
+            surfel_spawn_sbt,
             raytracing_sbt,
 
             output_descriptor_set,
@@ -934,18 +994,20 @@ impl GILighting {
 
         // this step will calculate the morton codes for each surfel and also update
         // the number of ordered_surfels.
-        recorder.bind_compute_pipeline(self.surfel_morton_pipeline.clone());
-        recorder.bind_descriptor_sets_for_compute_pipeline(
-            self.surfel_morton_pipeline.get_parent_pipeline_layout(),
-            0,
-            [
-                status_descriptor_set.clone(),
-                self.output_descriptor_set.clone(),
-            ]
-            .as_slice(),
-        );
+        {
+            recorder.bind_compute_pipeline(self.surfel_morton_pipeline.clone());
+            recorder.bind_descriptor_sets_for_compute_pipeline(
+                self.surfel_morton_pipeline.get_parent_pipeline_layout(),
+                0,
+                [
+                    status_descriptor_set.clone(),
+                    self.output_descriptor_set.clone(),
+                ]
+                .as_slice(),
+            );
 
-        recorder.dispatch((MAX_SURFELS >> 1) / SURFELS_MORTON_GROUP_SIZE_X, 1, 1);
+            recorder.dispatch((MAX_SURFELS >> 1) / SURFELS_MORTON_GROUP_SIZE_X, 1, 1);
+        }
 
         recorder.pipeline_barriers([MemoryBarrier::new(
             [PipelineStage::ComputeShader].as_slice().into(),
@@ -960,18 +1022,20 @@ impl GILighting {
         .into()]);
 
         // this step will reorder surfels by morton code and also update the number of unallocated_surfels
-        recorder.bind_compute_pipeline(self.surfel_reorder_pipeline.clone());
-        recorder.bind_descriptor_sets_for_compute_pipeline(
-            self.surfel_reorder_pipeline.get_parent_pipeline_layout(),
-            0,
-            [
-                status_descriptor_set.clone(),
-                self.output_descriptor_set.clone(),
-            ]
-            .as_slice(),
-        );
+        {
+            recorder.bind_compute_pipeline(self.surfel_reorder_pipeline.clone());
+            recorder.bind_descriptor_sets_for_compute_pipeline(
+                self.surfel_reorder_pipeline.get_parent_pipeline_layout(),
+                0,
+                [
+                    status_descriptor_set.clone(),
+                    self.output_descriptor_set.clone(),
+                ]
+                .as_slice(),
+            );
 
-        recorder.dispatch((MAX_SURFELS >> 1) / SURFELS_REORDER_GROUP_SIZE_X, 1, 1);
+            recorder.dispatch((MAX_SURFELS >> 1) / SURFELS_REORDER_GROUP_SIZE_X, 1, 1);
+        }
 
         // prepare surfel(s) buffer(s) for bvh construction
         recorder.pipeline_barriers([MemoryBarrier::new(
@@ -987,19 +1051,21 @@ impl GILighting {
         .into()]);
 
         // this step will build the actual bvh
-        recorder.bind_compute_pipeline(self.surfel_bvh_pipeline.clone());
-        recorder.bind_descriptor_sets_for_compute_pipeline(
-            self.surfel_bvh_pipeline.get_parent_pipeline_layout(),
-            0,
-            [
-                status_descriptor_set.clone(),
-                self.output_descriptor_set.clone(),
-            ]
-            .as_slice(),
-        );
+        {
+            recorder.bind_compute_pipeline(self.surfel_bvh_pipeline.clone());
+            recorder.bind_descriptor_sets_for_compute_pipeline(
+                self.surfel_bvh_pipeline.get_parent_pipeline_layout(),
+                0,
+                [
+                    status_descriptor_set.clone(),
+                    self.output_descriptor_set.clone(),
+                ]
+                .as_slice(),
+            );
 
-        // discover surfels being used in this frame
-        recorder.dispatch((MAX_SURFELS >> 1) / SURFELS_BVH_GROUP_SIZE_X, 1, 1);
+            // discover surfels being used in this frame
+            recorder.dispatch((MAX_SURFELS >> 1) / SURFELS_BVH_GROUP_SIZE_X, 1, 1);
+        }
 
         recorder.pipeline_barriers([MemoryBarrier::new(
             [PipelineStage::ComputeShader].as_slice().into(),
@@ -1014,18 +1080,17 @@ impl GILighting {
         .into()]);
 
         // this step will rewrite AABBs on the built bvh
-        recorder.bind_compute_pipeline(self.bvh_aabb_pipeline.clone());
-        recorder.bind_descriptor_sets_for_compute_pipeline(
-            self.bvh_aabb_pipeline.get_parent_pipeline_layout(),
-            0,
-            [
-                self.output_descriptor_set.clone(),
-            ]
-            .as_slice(),
-        );
+        {
+            recorder.bind_compute_pipeline(self.bvh_aabb_pipeline.clone());
+            recorder.bind_descriptor_sets_for_compute_pipeline(
+                self.bvh_aabb_pipeline.get_parent_pipeline_layout(),
+                0,
+                [self.output_descriptor_set.clone()].as_slice(),
+            );
 
-        // discover surfels being used in this frame
-        recorder.dispatch((MAX_SURFELS >> 1) / BVH_AABB_GROUP_SIZE_X, 1, 1);
+            // discover surfels being used in this frame
+            recorder.dispatch((MAX_SURFELS >> 1) / BVH_AABB_GROUP_SIZE_X, 1, 1);
+        }
 
         recorder.pipeline_barriers([MemoryBarrier::new(
             [PipelineStage::ComputeShader].as_slice().into(),
@@ -1040,24 +1105,26 @@ impl GILighting {
         .into()]);
 
         // this step will discover surfels on screen
-        recorder.bind_compute_pipeline(self.surfel_discovery_pipeline.clone());
-        recorder.bind_descriptor_sets_for_compute_pipeline(
-            self.surfel_discovery_pipeline.get_parent_pipeline_layout(),
-            0,
-            [
-                status_descriptor_set.clone(),
-                gbuffer_descriptor_set.clone(),
-                self.output_descriptor_set.clone(),
-            ]
-            .as_slice(),
-        );
+        {
+            recorder.bind_compute_pipeline(self.surfel_discovery_pipeline.clone());
+            recorder.bind_descriptor_sets_for_compute_pipeline(
+                self.surfel_discovery_pipeline.get_parent_pipeline_layout(),
+                0,
+                [
+                    status_descriptor_set.clone(),
+                    gbuffer_descriptor_set.clone(),
+                    self.output_descriptor_set.clone(),
+                ]
+                .as_slice(),
+            );
 
-        // discover surfels being used in this frame
-        recorder.dispatch(
-            (self.renderarea_width / SURFELS_DISCOVERY_GROUP_SIZE_X) + 1,
-            (self.renderarea_height / SURFELS_DISCOVERY_GROUP_SIZE_Y) + 1,
-            1,
-        );
+            // discover surfels being used in this frame
+            recorder.dispatch(
+                (self.renderarea_width / SURFELS_DISCOVERY_GROUP_SIZE_X) + 1,
+                (self.renderarea_height / SURFELS_DISCOVERY_GROUP_SIZE_Y) + 1,
+                1,
+            );
+        }
 
         // prepare surfel(s) buffer(s) for use within the raytracing shader
         recorder.pipeline_barriers([MemoryBarrier::new(
@@ -1076,25 +1143,27 @@ impl GILighting {
         )
         .into()]);
 
-        recorder.bind_ray_tracing_pipeline(self.raytracing_pipeline.clone());
-        recorder.bind_descriptor_sets_for_ray_tracing_pipeline(
-            self.raytracing_pipeline.get_parent_pipeline_layout(),
-            0,
-            [
-                raytracing_descriptor_set,
-                gbuffer_descriptor_set,
-                status_descriptor_set,
-                textures_descriptor_set,
-                materials_descriptor_set,
-                self.output_descriptor_set.clone(),
-            ]
-            .as_slice(),
-        );
+        {
+            recorder.bind_ray_tracing_pipeline(self.raytracing_pipeline.clone());
+            recorder.bind_descriptor_sets_for_ray_tracing_pipeline(
+                self.raytracing_pipeline.get_parent_pipeline_layout(),
+                0,
+                [
+                    raytracing_descriptor_set,
+                    gbuffer_descriptor_set,
+                    status_descriptor_set,
+                    textures_descriptor_set,
+                    materials_descriptor_set,
+                    self.output_descriptor_set.clone(),
+                ]
+                .as_slice(),
+            );
 
-        recorder.trace_rays(
-            self.raytracing_sbt.clone(),
-            Image3DDimensions::new(self.renderarea_width, self.renderarea_height, 1),
-        );
+            recorder.trace_rays(
+                self.raytracing_sbt.clone(),
+                Image3DDimensions::new(self.renderarea_width, self.renderarea_height, 1),
+            );
+        }
 
         recorder.pipeline_barriers([
             ImageMemoryBarrier::new(
