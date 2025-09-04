@@ -16,6 +16,8 @@
 #define GBUFFER_DESCRIPTOR_SET 1
 #include "../gbuffer.glsl"
 
+//#define SURFEL_IS_READONLY
+#define BVH_IS_READONLY
 #define SURFELS_DESCRIPTOR_SET 2
 #include "../surfel.glsl"
 

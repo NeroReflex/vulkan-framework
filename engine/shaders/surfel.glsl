@@ -109,6 +109,9 @@ layout (set = SURFELS_DESCRIPTOR_SET, binding = 0, std430) /*coherent*/ buffer s
     uint padding_3;
 };
 
+#ifdef SURFEL_IS_READONLY
+readonly
+#endif
 layout (set = SURFELS_DESCRIPTOR_SET, binding = 1, std430) /*coherent*/ buffer surfel_buffer_data {
     Surfel surfels[];
 };
@@ -219,7 +222,7 @@ bool can_spawn_another_surfel() {
     return count_unordered_surfels() < MAX_SURFELS_PER_FRAME;
 }
 
-
+#ifndef SURFEL_IS_READONLY
 bool lock_surfel(uint surfel_id) {
     return (atomicOr(surfels[surfel_id].flags, SURFEL_FLAG_LOCKED) & SURFEL_FLAG_LOCKED) == 0u;
 }
@@ -269,6 +272,7 @@ void init_surfel(
 
     // WARNING: exiting from this function, the surfel is still locked
 }
+#endif // SURFEL_IS_READONLY
 
 uint bvh_search(in const vec3 point) {
     // BVH is empty: return a failure.
@@ -524,17 +528,7 @@ uint linear_search_unordered_surfel_for_allocation(
     return too_close ? SURFELS_TOO_CLOSE : SURFELS_MISSED;
 }
 
-/*
-uint linear_search_surfel(uint last_surfel_id, vec3 point, uint instance_id) {
-    for (uint i = 0; i < last_surfel_id; i++) {
-        if ((surfels[i].instance_id == instance_id) && (is_point_in_surfel(i, point))) {
-            return i;
-        }
-    }
-
-    return SURFELS_MISSED;
-}
-*/
+#ifndef SURFEL_IS_READONLY
 
 #define UPDATE_SURFEL_OK 0
 #define UPDATE_SURFEL_BUSY 0xFFFFFFFFu
@@ -563,6 +557,8 @@ uint add_diffuse_sample_to_surfel(
 
     return UPDATE_SURFEL_OK;
 }
+
+#endif // SURFEL_IS_READONLY
 
 bool is_out_of_range(in const vec3 eye_position, in const vec3 surfel_center, in const vec2 clip_space) {
     const float range = abs(clip_space.y) - abs(clip_space.x);
@@ -593,6 +589,10 @@ float radius_from_camera_distance(
     );
 }
 
+#define IS_SURFEL_VALID(surfel_id) (surfel_id < total_surfels)
+
+#ifndef SURFEL_IS_READONLY
+
 #define REGISTER_SURFEL_VERY_BAD_BUG 0xFFFFFFF8u
 #define REGISTER_SURFEL_FRAME_LIMIT 0xFFFFFFF9u
 #define REGISTER_SURFEL_FULL 0xFFFFFFFAu
@@ -601,8 +601,6 @@ float radius_from_camera_distance(
 #define REGISTER_SURFEL_BELOW_HORIZON 0xFFFFFFFDu
 #define REGISTER_SURFEL_DISABLED 0xFFFFFFFEu
 #define REGISTER_SURFEL_IGNORED 0xFFFFFFFFu
-
-#define IS_SURFEL_VALID(surfel_id) (surfel_id < total_surfels)
 
 // Function to register contribution to a surfel, or allocate a new one if needed
 // This function searches for a surfel in a compatible position first in the set of ordered
@@ -723,6 +721,8 @@ uint find_surfel_or_allocate_new(
 
     return REGISTER_SURFEL_IGNORED;
 }
+
+#endif // SURFEL_IS_READONLY
 
 // Calculate the light given from the surfel to the given position,
 // assuming no object is on its way: basically use a surfel
