@@ -16,77 +16,85 @@ void main() {
         return;
     }
 
-    if (index_internal_nodes < (surfels_count - 1)) {
-        uint currentTreeNode = index_internal_nodes;
+    if (index_internal_nodes >= surfels_count) {
+        return;
+    }
 
-        uint previousTreeNode = surfels_count - 1;
+    // If this node doesn't have any leaf don't proceed:
+    // the algorithm fills AABBs starting from nodes with leafs
+    // attached and going upward.
+    if (
+        ((tree[index_internal_nodes].left & NODE_IS_LEAF_FLAG) == 0) &&
+        ((tree[index_internal_nodes].right & NODE_IS_LEAF_FLAG) == 0)
+    ) {
+        return;
+    }
 
-        while (currentTreeNode != previousTreeNode) {
-            const uint childL = tree[currentTreeNode].left;
-            const uint childR = tree[currentTreeNode].right;
+    uint currentTreeNode = index_internal_nodes;
+    uint previousTreeNode = surfels_count - 1;
 
-            const bool leftIsLeaf = (childL & NODE_IS_LEAF_FLAG) != 0;
-            const bool rightIsLeaf = (childR & NODE_IS_LEAF_FLAG) != 0;
+    while (currentTreeNode != previousTreeNode) {
+        const uint childL = tree[currentTreeNode].left;
+        const uint childR = tree[currentTreeNode].right;
 
-            const uint leftIdx = (childL & ~(NODE_IS_LEAF_FLAG));
-            const uint rightIdx = (childR & ~(NODE_IS_LEAF_FLAG));
+        const bool leftIsLeaf = (childL & NODE_IS_LEAF_FLAG) != 0;
+        const bool rightIsLeaf = (childR & NODE_IS_LEAF_FLAG) != 0;
 
-            vec3 leftAABB_vMin;
-            vec3 leftAABB_vMax;
+        const uint leftIdx = (childL & ~(NODE_IS_LEAF_FLAG));
+        const uint rightIdx = (childR & ~(NODE_IS_LEAF_FLAG));
 
-            vec3 rightAABB_vMin;
-            vec3 rightAABB_vMax;
+        AABB leftAABB;
+        AABB rightAABB;
 
-            // I will load AABBs from nodes that might have been written by another invocation. Issue a memory barrier.
-            memoryBarrierBuffer();
+        // I will load AABBs from nodes that might have been written by another invocation. Issue a memory barrier.
+        memoryBarrierBuffer();
 
-            // left is a leaf, so we need to get the AABB from the surfel itself
-            if (leftIsLeaf) {
-                AABB leftSurfelAABB = surfelAABB(leftIdx);
-                leftAABB_vMin = leftSurfelAABB.vMin;
-                leftAABB_vMax = leftSurfelAABB.vMax;
-            } else {
-                // The sync[leftIdx] will be set after a memoryBarrier() therefore if it is NOT 1 then the value read is unreliable and thus I must exit
-                uint leftTreeNodeWasAdjusted = atomicCompSwap(tree[leftIdx].flags, 1, 1);
-                if (leftTreeNodeWasAdjusted != 1) {
-                    break;
-                }
-                    
-                leftAABB_vMin = vec3(tree[leftIdx].min_x, tree[leftIdx].min_y, tree[leftIdx].min_z);
-                leftAABB_vMax = vec3(tree[leftIdx].max_x, tree[leftIdx].max_y, tree[leftIdx].max_z);
+        // left is a leaf, so we need to get the AABB from the surfel itself
+        if (leftIsLeaf) {
+            leftAABB = surfelAABB(leftIdx);
+        } else {
+            // The sync[leftIdx] will be set after a memoryBarrier() therefore if it is NOT 1 then the value read is unreliable and thus I must exit
+            uint leftTreeNodeWasAdjusted = atomicCompSwap(tree[leftIdx].flags, 1, 1);
+            if (leftTreeNodeWasAdjusted != 1) {
+                break;
             }
 
-            // right is a leaf, so we need to get the AABB from the surfel itself
-            if (rightIsLeaf) {
-                AABB rightSurfelAABB = surfelAABB(rightIdx);
-                rightAABB_vMin = rightSurfelAABB.vMin;
-                rightAABB_vMax = rightSurfelAABB.vMax;
-            } else {
-                uint rightTreeNodeWasAdjusted = atomicCompSwap(tree[rightIdx].flags, 1, 1);
-                if (rightTreeNodeWasAdjusted != 1) {
-                    break;
-                }
-
-                rightAABB_vMin = vec3(tree[rightIdx].min_x, tree[rightIdx].min_y, tree[rightIdx].min_z);
-                rightAABB_vMax = vec3(tree[rightIdx].max_x, tree[rightIdx].max_y, tree[rightIdx].max_z);
-            }
-
-            tree[currentTreeNode].min_x = min(leftAABB_vMin.x, rightAABB_vMin.x);
-            tree[currentTreeNode].min_y = min(leftAABB_vMin.y, rightAABB_vMin.y);
-            tree[currentTreeNode].min_z = min(leftAABB_vMin.z, rightAABB_vMin.z);
-            tree[currentTreeNode].max_x = max(leftAABB_vMax.x, rightAABB_vMax.x);
-            tree[currentTreeNode].max_y = max(leftAABB_vMax.y, rightAABB_vMax.y);
-            tree[currentTreeNode].max_z = max(leftAABB_vMax.z, rightAABB_vMax.z);
-
-            // Make writes visible to other shader invocation(s)
-            memoryBarrierBuffer();
-
-            // Update the visibility bit so that when the check will be performed it will be one signaling that the value has been written and the memoryBarrier() has been performed
-            uint tmp = atomicCompSwap(tree[currentTreeNode].flags, 0, 1);
-
-            previousTreeNode = currentTreeNode;
-            currentTreeNode = tree[currentTreeNode].parent;
+            leftAABB = compatAABB(
+                vec3(tree[leftIdx].min_x, tree[leftIdx].min_y, tree[leftIdx].min_z),
+                vec3(tree[leftIdx].max_x, tree[leftIdx].max_y, tree[leftIdx].max_z)
+            );
         }
+
+        // right is a leaf, so we need to get the AABB from the surfel itself
+        if (rightIsLeaf) {
+            rightAABB = surfelAABB(rightIdx);
+        } else {
+            uint rightTreeNodeWasAdjusted = atomicCompSwap(tree[rightIdx].flags, 1, 1);
+            if (rightTreeNodeWasAdjusted != 1) {
+                break;
+            }
+
+            rightAABB = compatAABB(
+                vec3(tree[rightIdx].min_x, tree[rightIdx].min_y, tree[rightIdx].min_z),
+                vec3(tree[rightIdx].max_x, tree[rightIdx].max_y, tree[rightIdx].max_z)
+            );
+        }
+
+        tree[currentTreeNode].min_x = min(leftAABB.vMin.x, rightAABB.vMin.x);
+        tree[currentTreeNode].min_y = min(leftAABB.vMin.y, rightAABB.vMin.y);
+        tree[currentTreeNode].min_z = min(leftAABB.vMin.z, rightAABB.vMin.z);
+        tree[currentTreeNode].max_x = max(leftAABB.vMax.x, rightAABB.vMax.x);
+        tree[currentTreeNode].max_y = max(leftAABB.vMax.y, rightAABB.vMax.y);
+        tree[currentTreeNode].max_z = max(leftAABB.vMax.z, rightAABB.vMax.z);
+
+        // Make writes visible to other shader invocation(s)
+        memoryBarrierBuffer();
+
+        // Update the visibility bit so that when the check will be performed it will be one signaling that the value has been written and the memoryBarrier() has been performed
+        uint tmp = atomicCompSwap(tree[currentTreeNode].flags, 0, 1);
+
+        previousTreeNode = currentTreeNode;
+        currentTreeNode = tree[currentTreeNode].parent;
     }
 
     memoryBarrierBuffer();
