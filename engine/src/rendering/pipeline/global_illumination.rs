@@ -196,7 +196,7 @@ pub struct GILighting {
     raytracing_surfels: Arc<AllocatedBuffer>,
     raytracing_bvh: Arc<AllocatedBuffer>,
     raytracing_discovered: Arc<AllocatedBuffer>,
-
+    raytracing_overlapping: Arc<ImageView>,
     raytracing_gibuffer: Arc<ImageView>,
     raytracing_dlbuffer: Arc<ImageView>,
 
@@ -329,7 +329,7 @@ impl GILighting {
                     3,
                     1,
                 ),
-                // outputImages
+                // surfels overlapping GBuffer
                 BindingDescriptor::new(
                     [
                         ShaderStageAccessIn::Compute,
@@ -339,6 +339,18 @@ impl GILighting {
                     .into(),
                     BindingType::Native(NativeBindingType::StorageImage),
                     4,
+                    1,
+                ),
+                // outputImages
+                BindingDescriptor::new(
+                    [
+                        ShaderStageAccessIn::Compute,
+                        ShaderStageAccessIn::RayTracing(ShaderStageAccessInRayTracingKHR::RayGen),
+                    ]
+                    .as_slice()
+                    .into(),
+                    BindingType::Native(NativeBindingType::StorageImage),
+                    5,
                     2,
                 ),
             ]
@@ -577,6 +589,28 @@ impl GILighting {
                 Some("discovered_list"),
             )?
             .into(),
+            Image::new(
+                device.clone(),
+                ConcreteImageDescriptor::new(
+                    render_area.into(),
+                    [
+                        ImageUseAs::TransferDst,
+                        ImageUseAs::Storage,
+                        ImageUseAs::Sampled,
+                    ]
+                    .as_slice()
+                    .into(),
+                    ImageMultisampling::SamplesPerPixel1,
+                    1,
+                    1,
+                    ImageFormat::from(CommonImageFormat::r32_uint),
+                    ImageFlags::empty(),
+                    ImageTiling::Optimal,
+                ),
+                None,
+                Some("discovered_overlapping"),
+            )?
+            .into(),
         ];
 
         let (
@@ -584,6 +618,7 @@ impl GILighting {
             raytracing_surfels,
             raytracing_bvh,
             raytracing_discovered,
+            raytracing_overlapping,
             raytracing_gibuffer,
             raytracing_dlbuffer,
             surfel_spawn_sbt,
@@ -634,6 +669,19 @@ impl GILighting {
 
             let raytracing_discovered = raytracing_buffers_allocated[5].buffer();
 
+            let raytracing_overlapping = ImageView::new(
+                raytracing_buffers_allocated[6].image(),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(format!("raytracing_surfels_overlapping_image_imageview").as_str()),
+            )?;
+
             let surfel_spawn_sbt = RaytracingBindingTables::new(
                 surfel_spawn_pipeline.clone(),
                 mem_manager.deref_mut(),
@@ -655,6 +703,7 @@ impl GILighting {
                 raytracing_surfels,
                 raytracing_bvh,
                 raytracing_discovered,
+                raytracing_overlapping,
                 raytracing_gibuffer,
                 raytracing_dlbuffer,
                 surfel_spawn_sbt,
@@ -665,7 +714,7 @@ impl GILighting {
         let output_descriptor_pool = DescriptorPool::new(
             device.clone(),
             DescriptorPoolConcreteDescriptor::new(
-                DescriptorPoolSizesConcreteDescriptor::new(0, 0, 0, 2, 0, 0, 4, 0, 0, None),
+                DescriptorPoolSizesConcreteDescriptor::new(0, 0, 0, 3, 0, 0, 4, 0, 0, None),
                 1,
             ),
             Some("gi_lighting_descriptor_pool"),
@@ -725,6 +774,15 @@ impl GILighting {
                 .bind_storage_images_with_same_layout(
                     4,
                     ImageLayout::General,
+                    [raytracing_overlapping.clone()].as_slice(),
+                )
+                .unwrap();
+
+            // bind the output images
+            binder
+                .bind_storage_images_with_same_layout(
+                    5,
+                    ImageLayout::General,
                     [raytracing_gibuffer.clone(), raytracing_dlbuffer.clone()].as_slice(),
                 )
                 .unwrap();
@@ -733,25 +791,41 @@ impl GILighting {
         // this is the descriptor set that is reserved for OTHER pipelines to use the data calculated in this one
         let gibuffer_descriptor_set_layout = DescriptorSetLayout::new(
             device.clone(),
-            [BindingDescriptor::new(
-                [ShaderStageAccessIn::Fragment].as_slice().into(),
-                BindingType::Native(NativeBindingType::CombinedImageSampler),
-                0,
-                2,
-            )]
+            [
+                BindingDescriptor::new(
+                    [ShaderStageAccessIn::Fragment].as_slice().into(),
+                    BindingType::Native(NativeBindingType::CombinedImageSampler),
+                    0,
+                    1,
+                ),
+                BindingDescriptor::new(
+                    [ShaderStageAccessIn::Fragment].as_slice().into(),
+                    BindingType::Native(NativeBindingType::CombinedImageSampler),
+                    1,
+                    2,
+                ),
+            ]
             .as_slice(),
         )?;
 
         let gibuffer_descriptor_pool = DescriptorPool::new(
             device.clone(),
             DescriptorPoolConcreteDescriptor::new(
-                DescriptorPoolSizesConcreteDescriptor::new(0, 2, 0, 0, 0, 0, 0, 0, 0, None),
+                DescriptorPoolSizesConcreteDescriptor::new(0, 3, 0, 0, 0, 0, 0, 0, 0, None),
                 1,
             ),
             Some("global_illumination_buffer_descriptor_pool"),
         )?;
 
-        let dlbuffer_sampler = Sampler::new(
+        let gibuffer_sampler = Sampler::new(
+            device.clone(),
+            Filtering::Nearest,
+            Filtering::Nearest,
+            MipmapMode::ModeNearest,
+            0.0,
+        )?;
+
+        let surfels_sampler = Sampler::new(
             device.clone(),
             Filtering::Nearest,
             Filtering::Nearest,
@@ -769,7 +843,16 @@ impl GILighting {
                 .bind_combined_images_samplers_with_same_layout_and_sampler(
                     0,
                     ImageLayout::ShaderReadOnlyOptimal,
-                    dlbuffer_sampler.clone(),
+                    surfels_sampler.clone(),
+                    [raytracing_overlapping.clone()].as_slice(),
+                )
+                .unwrap();
+
+            binder
+                .bind_combined_images_samplers_with_same_layout_and_sampler(
+                    1,
+                    ImageLayout::ShaderReadOnlyOptimal,
+                    gibuffer_sampler.clone(),
                     [raytracing_gibuffer.clone(), raytracing_dlbuffer.clone()].as_slice(),
                 )
                 .unwrap();
@@ -795,6 +878,7 @@ impl GILighting {
             raytracing_surfels,
             raytracing_bvh,
             raytracing_discovered,
+            raytracing_overlapping,
             raytracing_gibuffer,
             raytracing_dlbuffer,
 
@@ -866,6 +950,52 @@ impl GILighting {
         // Here clear image(s) and transition its layout for using it in the raytracing pipeline
         let gibuffer_image_srr: ImageSubresourceRange = self.raytracing_gibuffer.image().into();
         let dlbuffer_image_srr: ImageSubresourceRange = self.raytracing_dlbuffer.image().into();
+        let overlapping_surfels_image_srr: ImageSubresourceRange =
+            self.raytracing_overlapping.image().into();
+
+        // clear images regarding surfels
+        {
+            recorder.pipeline_barriers([ImageMemoryBarrier::new(
+                [PipelineStage::TopOfPipe].as_slice().into(),
+                [].as_slice().into(),
+                [PipelineStage::Transfer].as_slice().into(),
+                [MemoryAccessAs::TransferWrite].as_slice().into(),
+                overlapping_surfels_image_srr.clone(),
+                ImageLayout::Undefined,
+                ImageLayout::TransferDstOptimal,
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into()]);
+
+            recorder.clear_color_image(
+                ColorClearValues::UVec4(0xFFFFFFFFu32, 0xFFFFFFFFu32, 0xFFFFFFFFu32, 0xFFFFFFFFu32),
+                overlapping_surfels_image_srr.clone(),
+            );
+
+            recorder.pipeline_barriers([ImageMemoryBarrier::new(
+                [PipelineStage::Transfer].as_slice().into(),
+                [MemoryAccessAs::TransferWrite].as_slice().into(),
+                [
+                    PipelineStage::ComputeShader,
+                    PipelineStage::RayTracingPipelineKHR(
+                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                    ),
+                ]
+                .as_slice()
+                .into(),
+                [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
+                    .as_slice()
+                    .into(),
+                overlapping_surfels_image_srr.clone(),
+                ImageLayout::TransferDstOptimal,
+                ImageLayout::General,
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into()]);
+        }
+
         if reuse_previous_frame == 0 {
             recorder.pipeline_barriers([
                 ImageMemoryBarrier::new(
@@ -1236,6 +1366,27 @@ impl GILighting {
                 gibuffer_stages,
                 gibuffer_access,
                 dlbuffer_image_srr,
+                ImageLayout::General,
+                ImageLayout::ShaderReadOnlyOptimal,
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into(),
+            ImageMemoryBarrier::new(
+                [
+                    PipelineStage::RayTracingPipelineKHR(
+                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                    ),
+                    PipelineStage::ComputeShader,
+                ]
+                .as_slice()
+                .into(),
+                [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
+                    .as_slice()
+                    .into(),
+                gibuffer_stages,
+                gibuffer_access,
+                overlapping_surfels_image_srr,
                 ImageLayout::General,
                 ImageLayout::ShaderReadOnlyOptimal,
                 self.queue_family.clone(),

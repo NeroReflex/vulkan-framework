@@ -7,7 +7,9 @@ layout (location = 0) in vec2 in_vTextureUV;
 #define GBUFFER_DESCRIPTOR_SET 0
 #include "../gbuffer.glsl"
 
-layout(set = 1, binding = 0) uniform sampler2D gibuffer[2];
+layout(set = 1, binding = 0) uniform usampler2D surfels_buffer;
+
+layout(set = 1, binding = 1) uniform sampler2D gibuffer[2];
 
 void main() {
     const vec3 in_vPosition_worldspace = texture(gbuffer[0], in_vTextureUV).xyz;
