@@ -90,4 +90,51 @@ AABB compatAABB(in const mat4 t, in const vec3 vMin, in const vec3 vMax) {
     return result;
 }
 
+float intersectAABBwithSphere(in const AABB aabb, vec3 point, float radius) {
+    float sqDist = 0.0f;
+
+    if (point.x < aabb.vMin.x) {
+        float d = aabb.vMin.x - point.x;
+        sqDist += d * d;
+    } else if (point.x > aabb.vMax.x) {
+        float d = point.x - aabb.vMax.x;
+        sqDist += d * d;
+    }
+
+    if (point.y < aabb.vMin.y) {
+        float d = aabb.vMin.y - point.y;
+        sqDist += d * d;
+    } else if (point.y > aabb.vMax.y) {
+        float d = point.y - aabb.vMax.y;
+        sqDist += d * d;
+    }
+
+    if (point.z < aabb.vMin.z) {
+        float d = aabb.vMin.z - point.z;
+        sqDist += d * d;
+    } else if (point.z > aabb.vMax.z) {
+        float d = point.z - aabb.vMax.z;
+        sqDist += d * d;
+    }
+
+    return sqrt(sqDist);
+}
+
+// returns the signed distance (it does not use the sphere radius)
+// subtract radius to get surface-to-surface separation).
+float distanceAABBPoint(in AABB aabb, in vec3 p) {
+    // compute distance outside the box (>=0)
+    vec3 dOutside = max(vec3(0.0), max(aabb.vMin - p, p - aabb.vMax));
+    float outsideDist = length(dOutside);
+
+    // compute distance inside the box (negative if inside)
+    vec3 inside = min(p - aabb.vMin, aabb.vMax - p);
+    float insideDist = min(min(inside.x, inside.y), inside.z);
+
+    // If any component of inside is negative, point is outside; insideDist will be <= 0.
+    // When point is inside, outsideDist == 0 and insideDist > 0; we want negative inside distance,
+    // so return -insideDist. When outside, return outsideDist.
+    return (outsideDist > 0.0) ? outsideDist : -insideDist;
+}
+
 #endif // _AABB_

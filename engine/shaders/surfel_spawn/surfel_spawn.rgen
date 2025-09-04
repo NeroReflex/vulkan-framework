@@ -21,6 +21,9 @@
 #define STATUS_DESCRIPTOR_SET 2
 #include "../status.glsl"
 
+// discovered and bvh fields are readonly (and discovered is unused)
+#define BVH_IS_READONLY
+#define DISCOVERED_IS_READONLY
 #define SURFELS_DESCRIPTOR_SET 3
 #include "../surfel.glsl"
 
