@@ -215,6 +215,18 @@ const CHIT_SPV: &[u32] = inline_spirv!(
     entry = "main"
 );
 
+const SURFELS_VPL_SPV: &[u32] = inline_spirv!(
+    r#"
+#version 460
+
+#include "engine/shaders/surfel_vpl/surfel_vpl.comp"
+"#,
+    glsl,
+    comp,
+    vulkan1_2,
+    entry = "main"
+);
+
 pub struct GILighting {
     queue_family: Arc<QueueFamily>,
 
@@ -228,6 +240,7 @@ pub struct GILighting {
     surfel_spawn_pipeline: Arc<RaytracingPipeline>,
     surfel_rt_pipeline: Arc<RaytracingPipeline>,
     raytracing_pipeline: Arc<RaytracingPipeline>,
+    surfel_vpl_pipeline: Arc<ComputePipeline>,
 
     raytracing_surfel_stats_buffer: Arc<AllocatedBuffer>,
     raytracing_surfels: Arc<AllocatedBuffer>,
@@ -257,6 +270,8 @@ const SURFELS_BVH_GROUP_SIZE_X: u32 = 256;
 const BVH_AABB_GROUP_SIZE_X: u32 = 256;
 const SURFELS_DISCOVERY_GROUP_SIZE_X: u32 = 32;
 const SURFELS_DISCOVERY_GROUP_SIZE_Y: u32 = 16;
+const SURFELS_VPL_GROUP_SIZE_X: u32 = 32;
+const SURFELS_VPL_GROUP_SIZE_Y: u32 = 16;
 
 // This MUST be a power of two an a multiple of TWICE:
 // SURFELS_MORTON_GROUP_SIZE_X and SURFELS_REORDER_GROUP_SIZE_X
@@ -541,11 +556,11 @@ impl GILighting {
             PipelineLayout::new(
                 device.clone(),
                 [
-                    rt_descriptor_set_layout,
-                    gbuffer_descriptor_set_layout,
-                    status_descriptor_set_layout,
-                    textures_descriptor_set_layout,
-                    materials_descriptor_set_layout,
+                    rt_descriptor_set_layout.clone(),
+                    gbuffer_descriptor_set_layout.clone(),
+                    status_descriptor_set_layout.clone(),
+                    textures_descriptor_set_layout.clone(),
+                    materials_descriptor_set_layout.clone(),
                     output_descriptor_set_layout.clone(),
                 ]
                 .as_slice(),
@@ -561,6 +576,26 @@ impl GILighting {
             None,
             Some("gi_lighting_raytracing_pipeline!"),
         )?;
+
+        let surfel_vpl_pipeline = {
+            let surfel_vpl_compute_shader = ComputeShader::new(device.clone(), SURFELS_VPL_SPV)?;
+            ComputePipeline::new(
+                None,
+                PipelineLayout::new(
+                    device.clone(),
+                    [
+                        status_descriptor_set_layout.clone(),
+                        gbuffer_descriptor_set_layout.clone(),
+                        output_descriptor_set_layout.clone(),
+                    ]
+                    .as_slice(),
+                    [].as_slice(),
+                    Some("surfel_vpl_pipeline_layout"),
+                )?,
+                (surfel_vpl_compute_shader, None),
+                Some("surfel_vpl_pipeline"),
+            )?
+        };
 
         let raytracing_buffers_unallocated = vec![
             Image::new(
@@ -946,6 +981,7 @@ impl GILighting {
             surfel_spawn_pipeline,
             surfel_rt_pipeline,
             raytracing_pipeline,
+            surfel_vpl_pipeline,
 
             raytracing_surfel_stats_buffer,
             raytracing_surfels,
@@ -1434,11 +1470,11 @@ impl GILighting {
                 self.raytracing_pipeline.get_parent_pipeline_layout(),
                 0,
                 [
-                    raytracing_descriptor_set,
-                    gbuffer_descriptor_set,
-                    status_descriptor_set,
-                    textures_descriptor_set,
-                    materials_descriptor_set,
+                    raytracing_descriptor_set.clone(),
+                    gbuffer_descriptor_set.clone(),
+                    status_descriptor_set.clone(),
+                    textures_descriptor_set.clone(),
+                    materials_descriptor_set.clone(),
                     self.output_descriptor_set.clone(),
                 ]
                 .as_slice(),
@@ -1447,6 +1483,44 @@ impl GILighting {
             recorder.trace_rays(
                 self.raytracing_sbt.clone(),
                 Image3DDimensions::new(self.renderarea_width, self.renderarea_height, 1),
+            );
+        }
+
+        recorder.pipeline_barriers([MemoryBarrier::new(
+            [PipelineStage::RayTracingPipelineKHR(
+                PipelineStageRayTracingPipelineKHR::RayTracingShader,
+            )]
+            .as_slice()
+            .into(),
+            [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
+                .as_slice()
+                .into(),
+            [PipelineStage::ComputeShader].as_slice().into(),
+            [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
+                .as_slice()
+                .into(),
+        )
+        .into()]);
+
+        // this step will discover surfels on screen
+        {
+            recorder.bind_compute_pipeline(self.surfel_vpl_pipeline.clone());
+            recorder.bind_descriptor_sets_for_compute_pipeline(
+                self.surfel_vpl_pipeline.get_parent_pipeline_layout(),
+                0,
+                [
+                    status_descriptor_set.clone(),
+                    gbuffer_descriptor_set.clone(),
+                    self.output_descriptor_set.clone(),
+                ]
+                .as_slice(),
+            );
+
+            // discover surfels being used in this frame
+            recorder.dispatch(
+                (self.renderarea_width / SURFELS_VPL_GROUP_SIZE_X) + 1,
+                (self.renderarea_height / SURFELS_VPL_GROUP_SIZE_Y) + 1,
+                1,
             );
         }
 

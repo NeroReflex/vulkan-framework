@@ -209,6 +209,22 @@ void addDirectionalLightContribution(uint surfel_id, vec3 received_directional_l
     surfels[surfel_id].direct_light_b += received_directional_light.b;
 }
 
+void addIndirectLightContribution(uint surfel_id, vec3 received_light) {
+    const uint max_contributions = 16384u;
+    if (surfels[surfel_id].contributions > max_contributions) {
+        // avoid overflow and at the same time help in dynamic scenes
+        surfels[surfel_id].irradiance_r -= surfels[surfel_id].irradiance_r / float(max_contributions);
+        surfels[surfel_id].irradiance_g -= surfels[surfel_id].irradiance_g / float(max_contributions);
+        surfels[surfel_id].irradiance_b -= surfels[surfel_id].irradiance_b / float(max_contributions);
+    }
+
+    surfels[surfel_id].irradiance_r += received_light.r;
+    surfels[surfel_id].irradiance_g += received_light.g;
+    surfels[surfel_id].irradiance_b += received_light.b;
+
+    surfels[surfel_id].contributions += 1u;
+}
+
 #endif // SURFEL_IS_READONLY
 // =================================================================
 
