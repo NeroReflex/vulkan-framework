@@ -26,6 +26,8 @@
 
 layout(location = 0) rayPayloadEXT hit_payload_t payload;
 
+#include "../rt_helpers.glsl"
+
 // WARNING: this MUST be a power of two!
 #define FIRST_PASS_RAYS 8
 
@@ -122,62 +124,44 @@ void main() {
         // from the previous pass surfel_spawn holds true in this shader too!
         if (fresh_allocation) {
             // done only once per surfel (at the spawn) calculate incoming directional lighting
-            vec3 surfel_received_direction_light = vec3(0.0, 0.0, 0.0);
-            for (uint light_index = 0; light_index < MAX_DIRECTIONAL_LIGHTS; light_index++) {
-                const vec3 light_intensity = vec3(light[light_index].intensity_x, light[light_index].intensity_y, light[light_index].intensity_z);
-                const vec3 light_dir = vec3(light[light_index].direction_x, light[light_index].direction_y, light[light_index].direction_z);
-                const vec3 ray_dir = -1.0 * light_dir;
-                if (length(light_dir) < 0.4) {
-                    continue;
-                }
-
-                // other flags: gl_RayFlagsCullNoOpaqueEXT gl_RayFlagsNoneEXT
-                traceRayEXT(
-                    topLevelAS,
-                    gl_RayFlagsSkipAABBEXT | gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsCullNoOpaqueEXT,
-                    0xff,
-                    0,
-                    0,
-                    0,
-                    surfelPosition(intersected_surfel),
-                    CLOSEST_INTERSECTION_DISTANCE,
-                    ray_dir.xyz,
-                    10000.0,
-                    0
-                );
-
-                const float diffuse_contribution = max(dot(surfelNormal(intersected_surfel), ray_dir), 0.0);
-                surfel_received_direction_light += diffuse_contribution * light_intensity;
-            }
+            const vec3 surfel_received_direction_light = rt_directional_light(intersected_surfel);
 
             // Register incoming directional lighting to the surfel
             addDirectionalLightContribution(surfel_id, surfel_received_direction_light);
 
             unlock_surfel(intersected_surfel);
             memoryBarrierBuffer();
-        } else {
-            // this surfel was already present: just unlock it
-            if (lock_surfel(intersected_surfel)) {
-                surfels[intersected_surfel].latest_contribution = 0;
-
-                unlock_surfel(intersected_surfel);
-                memoryBarrierBuffer();
-            }
+            continue;
         }
 
-/*
-        uint ray_depth = 0;
+        // this surfel was already present: just unlock it
+        if (!lock_surfel(intersected_surfel)) {
+            continue;
+        }
+
+        // this surfel has contributed to the current frame: keep it aslive
+        surfels[intersected_surfel].latest_contribution = 0;
+
+        // Recursively trace rays up to MAX_RAY_DEPTH: if no surfel is hit
+        // spawn a new surfel and stop, if a surfel is hit, continue.
+        uint ray_depth;
         hit_payload_t collisions[MAX_RAY_DEPTH];
-        vec3 ray_directions[MAX_RAY_DEPTH];
-        while (ray_depth < MAX_RAY_DEPTH) {
-            // no surface hit: restart from the beginning
-            if (collisions[ray_depth].hit) {
-                ray_depth++;
-            } else {
-                ray_depth = 0;
-            }
+        uint surfels_hit[MAX_RAY_DEPTH];
+        for (ray_depth = 0; ray_depth < MAX_RAY_DEPTH; ray_depth++) {
+            
         }
-*/
+
+        // Run the previous for backward, accumulating the contribution
+        // and updating the surfels along the way.
+        // WARNING: in order to avoid deadlocks/starvations it is imperative
+        // that surfels are unlocked in the reverse order they were locked!
+        for (ray_depth = ray_depth; ray_depth > 0; ray_depth--) {
+            // if no surfel was hit: stop
+            // if a surfel was hit: accumulate contribution and continue
+        }
+
+        unlock_surfel(intersected_surfel);
+        memoryBarrierBuffer();
     }
 
 
