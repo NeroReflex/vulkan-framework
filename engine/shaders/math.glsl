@@ -40,6 +40,12 @@ bool is_point_below_horizon(vec3 surface_point, vec3 surface_normal, vec3 other_
     return is_below_horizon(surface_normal, out_normal);
 }
 
+vec3 random_ray_above_horizon(vec3 surface_normal, inout uint seed) {
+    const vec3 random_point_on_sphere = random_point_on_unit_sphere(seed);
+    vec3 ray_dir = reflect(surface_normal, random_point_on_sphere);
+    return is_below_horizon(surface_normal, random_point_on_sphere) ? -ray_dir : ray_dir;
+}
+
 // Function to generate a biased random number
 float biasedRandom(inout uint seed, uint count, float p) {
     // Generate a uniform random number in the range [0, 1)

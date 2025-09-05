@@ -58,111 +58,151 @@ void main() {
         debugPrintfEXT("Invalid surfel_id %u detected!!!", surfel_id);
     }
 
+    // This is MY surfel! I have the right to work on it!
+    bool locked = false;
+    do {
+        locked = lock_surfel(surfel_id);
+    } while (!locked);
+    const vec3 base_surfel_position = surfelPosition(surfel_id);
+    const vec3 base_surfel_normal = surfelNormal(surfel_id);
+
     // Initialize the random number
     uint seed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, gi_data.gi_reuse_frames);
 
-    vec3 contribution = vec3(0.0, 0.0, 0.0);
+    vec3 contribution = vec3(0.0);
     uint contribution_samples = 0;
 
-    const vec3 surfel_position = surfelPosition(surfel_id);
-    const vec3 surfel_normal = surfelNormal(surfel_id);
     uint casted_primary_rays = 0;
     while (casted_primary_rays < FIRST_PASS_RAYS) {
         casted_primary_rays++;
 
-        // cast a ray in a random direction over the hemisphere oriented by the normal
-        // accumulate the contribution of the ray if it hits something
-        // if it hits nothing, stop
-        // if it hits something, repeat
-        const vec3 random_point_on_sphere = random_point_on_unit_sphere(seed);
-        vec3 ray_dir = reflect(surfel_normal, random_point_on_sphere);
-        ray_dir = is_below_horizon(surfel_normal, random_point_on_sphere) ? -ray_dir : ray_dir;
-
-        traceRayEXT(
-            topLevelAS,
-            gl_RayFlagsNoneEXT,
-            0xff,
-            0,
-            0,
-            0,
-            surfel_position,
-            CLOSEST_INTERSECTION_DISTANCE,
-            ray_dir,
-            10000.0,
-            0
-        );
-
-        // store the RT result
-        const hit_payload_t primary_payload = payload;
-
-        // no surface was hit: continue with the primary rays work
-        if (!primary_payload.hit) {
-            continue;
-        }
-
-        // query for surfel existance in the intersection point
-        bool fresh_allocation = false;
-        const uint intersected_surfel = find_surfel_or_allocate_new(
-            eye_position,
-            clip_planes,
-            primary_payload.instance_id,
-            primary_payload.position,
-            primary_payload.triangle_normal,
-            primary_payload.diffuse,
-            true,
-            fresh_allocation
-        );
-
-        // No surfel was either hit or freshly allocated: continue with the primary rays work
-        if (!IS_SURFEL_VALID(intersected_surfel)) {
-            continue;
-        }
-
-        // The surfel has been allocated with allocate_locked=true
-        // and MUST be unlocked before use, however the rule of
-        // "who spawns the surfel also calculates the received direction lighting"
-        // from the previous pass surfel_spawn holds true in this shader too!
-        if (fresh_allocation) {
-            // done only once per surfel (at the spawn) calculate incoming directional lighting
-            const vec3 surfel_received_direction_light = rt_directional_light(intersected_surfel);
-
-            // Register incoming directional lighting to the surfel
-            addDirectionalLightContribution(surfel_id, surfel_received_direction_light);
-
-            unlock_surfel(intersected_surfel);
-            memoryBarrierBuffer();
-            continue;
-        }
-
-        // this surfel was already present: just unlock it
-        if (!lock_surfel(intersected_surfel)) {
-            continue;
-        }
-
-        // this surfel has contributed to the current frame: keep it aslive
-        surfels[intersected_surfel].latest_contribution = 0;
-
         // Recursively trace rays up to MAX_RAY_DEPTH: if no surfel is hit
         // spawn a new surfel and stop, if a surfel is hit, continue.
-        uint ray_depth;
+        // 
+        // WARNING: when the for exits this is the number of currently locked surfels.
+        // a surfel can only contribute if its lock is held, otherwise I might perform
+        // incoherent reads/writes on the surfel data!
+        uint ray_depth = 0;
         hit_payload_t collisions[MAX_RAY_DEPTH];
         uint surfels_hit[MAX_RAY_DEPTH];
-        for (ray_depth = 0; ray_depth < MAX_RAY_DEPTH; ray_depth++) {
-            
+        while (ray_depth < MAX_RAY_DEPTH) {
+            const vec3 ray_dir = random_ray_above_horizon(ray_depth == 0 ? base_surfel_normal : collisions[ray_depth - 1].triangle_normal, seed);
+            traceRayEXT(
+                topLevelAS,
+                gl_RayFlagsNoneEXT,
+                0xff,
+                0,
+                0,
+                0,
+                ray_depth == 0 ? base_surfel_position : collisions[ray_depth - 1].position,
+                CLOSEST_INTERSECTION_DISTANCE,
+                ray_dir,
+                10000.0,
+                0
+            );
+
+            // store the RT result
+            collisions[ray_depth] = payload;
+
+            // no surface was hit: continue with the primary rays work
+            if (!collisions[ray_depth].hit) {
+                break;
+            }
+
+            // query for surfel existance in the intersection point
+            bool fresh_allocation = false;
+            const uint intersected_surfel_id = find_surfel_or_allocate_new(
+                eye_position,
+                clip_planes,
+                collisions[ray_depth].instance_id,
+                collisions[ray_depth].position,
+                collisions[ray_depth].triangle_normal,
+                collisions[ray_depth].diffuse,
+                true,
+                fresh_allocation
+            );
+
+            // No surfel was either hit or freshly allocated: continue with the primary rays work
+            if (!IS_SURFEL_VALID(intersected_surfel_id)) {
+                break;
+            }
+
+            // The surfel has been allocated with allocate_locked=true
+            // and MUST be unlocked before use, however the rule of
+            // "who spawns the surfel also calculates the received directional lighting"
+            // from the previous pass surfel_spawn holds true in this shader too!
+            if (fresh_allocation) {
+                // done only once per surfel (at the spawn) calculate incoming directional lighting
+                const vec3 surfel_received_direction_light = rt_directional_light(intersected_surfel_id);
+
+                // Register incoming directional lighting to the surfel
+                addDirectionalLightContribution(surfel_id, surfel_received_direction_light);
+            }
+
+            // if the surfel is not locked already (because it was freshly allocated)
+            // or if I failed to lock it, stop the search here
+            if ((!fresh_allocation) && (!lock_surfel(intersected_surfel_id))) {
+                break;
+            }
+
+            // this surfel has contributed to the current frame: keep it aslive
+            surfels[intersected_surfel_id].latest_contribution = 0;
+
+            // store the surfel and continue
+            surfels_hit[ray_depth++] = intersected_surfel_id;
         }
 
         // Run the previous for backward, accumulating the contribution
         // and updating the surfels along the way.
         // WARNING: in order to avoid deadlocks/starvations it is imperative
         // that surfels are unlocked in the reverse order they were locked!
-        for (ray_depth = ray_depth; ray_depth > 0; ray_depth--) {
-            // if no surfel was hit: stop
-            // if a surfel was hit: accumulate contribution and continue
+        for (uint i = ray_depth; i > 0; i--) {
+            if (i > 1) {
+                // project the contribution of the surfel i to i - 1,
+                // store the contribution and increment the sample count
+                const uint emitter_surfel = surfels_hit[i - 1];
+                const uint receiver_surfel = surfels_hit[i - 2];
+
+                const vec3 emitter_position = surfelPosition(emitter_surfel);
+                const vec3 emitter_normal = surfelNormal(emitter_surfel);
+                const vec3 receiver_position = surfelPosition(receiver_surfel);
+                const vec3 receiver_normal = surfelNormal(receiver_surfel);
+
+                const vec3 received_light = projected_irradiance(
+                    emitter_surfel,
+                    receiver_position,
+                    receiver_normal
+                );
+            } else {
+                // store the contribution of the last "random" surfel in the chain
+                // to be later applied to the current surfel
+                const uint emitter_surfel = surfels_hit[0];
+
+                const vec3 emitter_position = surfelPosition(emitter_surfel);
+                const vec3 emitter_normal = surfelNormal(emitter_surfel);
+
+                const vec3 received_light = projected_irradiance(
+                    emitter_surfel,
+                    base_surfel_position,
+                    base_surfel_normal
+                );
+
+                contribution_samples++;
+                contribution += received_light;
+            }
         }
 
-        unlock_surfel(intersected_surfel);
+        // Ensure others threads see the updated surfel data:
+        // perform the update while holding locks!
         memoryBarrierBuffer();
+
+        // TODO: unlock all surfels that were locked
+        while (ray_depth > 0) {
+            unlock_surfel(surfels_hit[ray_depth - 1]);
+            ray_depth--;
+        }
     }
 
-
+    // I am done with my surfel: unlock it    
+    unlock_surfel(surfel_id);
 }

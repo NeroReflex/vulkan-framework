@@ -185,6 +185,10 @@ vec3 projected_irradiance(in Surfel s, in const vec3 position, in const vec3 nor
     );
 }
 
+vec3 projected_irradiance(const uint surfel_id, in const vec3 position, in const vec3 normal) {
+    return projected_irradiance(surfels[surfel_id], position, normal);
+}
+
 AABB surfelAABB(uint surfel_id) {
     return compatAABB(
         surfelPosition(surfel_id) - surfels[surfel_id].radius,
