@@ -263,10 +263,10 @@ const SURFELS_DISCOVERY_GROUP_SIZE_Y: u32 = 16;
 const MAX_SURFELS: u32 = u32::pow(2, 16);
 
 // Keep in sync with glsl side
-const SURFEL_SIZE: u32 = 24 * 4;
+const SURFEL_SIZE: u32 = 20 * 4;
 
 // Keep in sync with glsl side
-const BVH_NODE_SIZE: u32 = 12 * 4;
+const BVH_NODE_SIZE: u32 = 10 * 4;
 
 // The maximum number of surfels that can be used as virtual point lights
 // in the global illumination pass: ideally this should be equal to MAX_SURFELS
@@ -1404,7 +1404,7 @@ impl GILighting {
 
             recorder.trace_rays(
                 self.surfel_rt_sbt.clone(),
-                Image3DDimensions::new(MAX_USABLE_SURFELS, 1, 1),
+                Image3DDimensions::new(self.renderarea_width, self.renderarea_height, 1),
             );
         }
 
@@ -1452,9 +1452,12 @@ impl GILighting {
 
         recorder.pipeline_barriers([
             ImageMemoryBarrier::new(
-                [PipelineStage::RayTracingPipelineKHR(
-                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                )]
+                [
+                    PipelineStage::ComputeShader,
+                    PipelineStage::RayTracingPipelineKHR(
+                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                    ),
+                ]
                 .as_slice()
                 .into(),
                 [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
@@ -1470,9 +1473,12 @@ impl GILighting {
             )
             .into(),
             ImageMemoryBarrier::new(
-                [PipelineStage::RayTracingPipelineKHR(
-                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                )]
+                [
+                    PipelineStage::ComputeShader,
+                    PipelineStage::RayTracingPipelineKHR(
+                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                    ),
+                ]
                 .as_slice()
                 .into(),
                 [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
@@ -1489,10 +1495,10 @@ impl GILighting {
             .into(),
             ImageMemoryBarrier::new(
                 [
+                    PipelineStage::ComputeShader,
                     PipelineStage::RayTracingPipelineKHR(
                         PipelineStageRayTracingPipelineKHR::RayTracingShader,
                     ),
-                    PipelineStage::ComputeShader,
                 ]
                 .as_slice()
                 .into(),

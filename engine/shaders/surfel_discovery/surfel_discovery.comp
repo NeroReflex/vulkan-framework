@@ -25,10 +25,12 @@
 // Keep in sync with SURFELS_DISCOVERY_GROUP_SIZE_X and SURFELS_DISCOVERY_GROUP_SIZE_Y
 layout (local_size_x = 32, local_size_y = 16, local_size_z = 1) in;
 
+#if POPULATE_VISIBLE_SURFELS_LIST
 // Per-workgroup staging for surfel insertion
 shared uint wgCandidates[gl_WorkGroupSize.x * gl_WorkGroupSize.y]; // flattened 2D local IDs
 shared uint wgCount;    // number of valid compacted entries in wgCandidates
 shared uint wgBase;     // base reserved index returned by atomicAdd
+#endif
 
 void main() {
     const ivec2 resolution = imageSize(outputImage[0]);
@@ -77,6 +79,7 @@ void main() {
     // because the shader that spawns surfels from the gbuffer has yet to be executed
     uint surfel_id = enabled ? bvh_search(origin) : 0xFFFFFFFFu;
 
+#if POPULATE_VISIBLE_SURFELS_LIST
     // ---------- Per-workgroup gather + single atomic reservation ----------
     // Each thread writes its candidate surfel id into wgCandidates at its local flattened index.
     uint localFlat = gl_LocalInvocationIndex; // flattened index within the workgroup
@@ -162,8 +165,8 @@ void main() {
     }
 
     barrier();
-
     // --------------------------------------------------------------------
+#endif
 
     if ((surfel_id != 0xFFFFFFFFu) && (enabled)) {
         // there is no surfel associated with this pixel
