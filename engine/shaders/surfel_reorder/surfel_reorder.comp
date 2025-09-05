@@ -76,6 +76,7 @@ void main() {
 
     // copy the surfel to the new location
     surfels[ordered_surfel_id] = surfels[src_surfel_id];
+    surfels[src_surfel_id].frame_contributions = 0;
     //memoryBarrierBuffer();
     //if (gl_GlobalInvocationID.x < 8) {
     //    debugPrintfEXT("reorder.comp: src_id=%u ordered_id=%u morton=%u\n", src_surfel_id, ordered_surfel_id, surfel_morton);

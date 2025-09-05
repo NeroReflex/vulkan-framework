@@ -6,6 +6,7 @@
 #include "math.glsl"
 #include "morton.glsl"
 #include "aabb.glsl"
+#include "compress.glsl"
 
 #ifndef SURFELS_DESCRIPTOR_SET
 #define SURFELS_DESCRIPTOR_SET 5
@@ -34,9 +35,9 @@ struct Surfel {
     float position_z;
     float radius;
 
-    float normal_x;
-    float normal_y;
-    float normal_z;
+    // the normal is packed using the nvidia method:
+    // see compress.glsl
+    uint normal;
 
     float diffuse_r;
     float diffuse_g;
@@ -50,17 +51,18 @@ struct Surfel {
     float direct_light_g;
     float direct_light_b;
 
+    // total number of contributions this surfel received sice it was created
     uint contributions;
+
+    // this is the number of contributions this surfel received this frame alone
+    uint frame_contributions;
 
     uint flags;
 
     uint morton;
 
+    // the last time (in frames) this surfel has contributed to the scene
     uint latest_contribution;
-
-    uint unused_0;
-    uint unused_1;
-    uint unused_2;
 };
 
 /**
@@ -83,9 +85,6 @@ struct BVHNode {
     uint right;
 
     uint flags;
-
-    uint unused_1;
-    uint unused_2;
 };
 
 layout (set = SURFELS_DESCRIPTOR_SET, binding = 0, std430) /*coherent*/ buffer surfel_stats {
@@ -142,7 +141,7 @@ vec3 surfelPosition(in Surfel s) {
 }
 
 vec3 surfelNormal(in Surfel s) {
-    return normalize(vec3(s.normal_x, s.normal_y, s.normal_z));
+    return decompress_unit_vec(s.normal);
 }
 
 vec3 surfelPosition(uint surfel_id) {
@@ -300,9 +299,7 @@ void init_surfel(
     surfels[surfel_id].position_y     = position.y;
     surfels[surfel_id].position_z     = position.z;
     surfels[surfel_id].radius         = radius;
-    surfels[surfel_id].normal_x       = normal.x;
-    surfels[surfel_id].normal_y       = normal.y;
-    surfels[surfel_id].normal_z       = normal.z;
+    surfels[surfel_id].normal         = compress_unit_vec(normal);
     surfels[surfel_id].diffuse_r      = diffuse.r;
     surfels[surfel_id].diffuse_g      = diffuse.g;
     surfels[surfel_id].diffuse_b      = diffuse.b;
