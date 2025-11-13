@@ -417,6 +417,70 @@ uint bvh_search(in const vec3 point) {
     return 0xFFFFFFFFu;
 }
 
+// BVH-based closest surfel search
+uint find_closest_surfel(in const vec3 point) {
+    if (tree[0].left == tree[0].parent) {
+        return 0xFFFFFFFFu;
+    }
+
+    uint stack[MAX_BVH_STACK_DEPTH];
+    int stackDepth = 0;
+    uint currentIndex = 0;
+    stack[stackDepth++] = currentIndex;
+
+    float min_dist = 1e30;
+    uint closest_id = 0xFFFFFFFFu;
+
+    while (stackDepth > 0) {
+        currentIndex = stack[--stackDepth];
+        const uint childR = tree[currentIndex].right;
+        const uint childL = tree[currentIndex].left;
+
+        const bool leftIsLeaf = (childL & NODE_IS_LEAF_FLAG) != 0;
+        const bool rightIsLeaf = (childR & NODE_IS_LEAF_FLAG) != 0;
+
+        const uint rightIdx = (childR & ~(NODE_IS_LEAF_FLAG));
+        const uint leftIdx = (childL & ~(NODE_IS_LEAF_FLAG));
+
+        // Check left child
+        if (leftIsLeaf) {
+            float d = distance(point, surfelPosition(leftIdx));
+            if (d < min_dist) {
+                min_dist = d;
+                closest_id = leftIdx;
+            }
+        } else {
+            const AABB leftAABB = compatAABB(
+                vec3(tree[leftIdx].min_x, tree[leftIdx].min_y, tree[leftIdx].min_z),
+                vec3(tree[leftIdx].max_x, tree[leftIdx].max_y, tree[leftIdx].max_z)
+            );
+            float aabb_dist = distanceAABBPoint(leftAABB, point);
+            if (aabb_dist < min_dist) {
+                stack[stackDepth++] = leftIdx;
+            }
+        }
+
+        // Check right child
+        if (rightIsLeaf) {
+            float d = distance(point, surfelPosition(rightIdx));
+            if (d < min_dist) {
+                min_dist = d;
+                closest_id = rightIdx;
+            }
+        } else {
+            const AABB rightAABB = compatAABB(
+                vec3(tree[rightIdx].min_x, tree[rightIdx].min_y, tree[rightIdx].min_z),
+                vec3(tree[rightIdx].max_x, tree[rightIdx].max_y, tree[rightIdx].max_z)
+            );
+            float aabb_dist = distanceAABBPoint(rightAABB, point);
+            if (aabb_dist < min_dist) {
+                stack[stackDepth++] = rightIdx;
+            }
+        }
+    }
+    return closest_id;
+}
+
 uint binary_search_bound(const uint start, const uint size, uint key, bool upper_bound) {
     // Returns lower_bound (first >= key) if upper_bound == false
     // Returns upper_bound (first > key)  if upper_bound == true

@@ -28,15 +28,26 @@ void main() {
     const ivec2 texel_position = ivec2(gl_GlobalInvocationID.xy);
 
     // avoid checking out-of-bounds
-    bool enabled = true;
-    if (any(greaterThanEqual(texel_position, resolution))) {
-        enabled = false;
-    }
+    bool enabled = !any(greaterThanEqual(texel_position, resolution));
 
 #if !ENABLE_SURFELS
     // surfels are disabled: do nothing
     return;
 #endif
 
-    // TODO: find nearby surfels and make them act as a VPL (light source) on the current gbuffer texel
+    // Find nearby surfels and make them act as VPLs (light sources) on the current gbuffer texel
+    if (enabled) {
+        // Sample gbuffer for world position and normal
+        vec3 world_pos = texelFetch(gbuffer[0], texel_position, 0).xyz;
+        vec3 world_normal = texelFetch(gbuffer[1], texel_position, 0).xyz;
+
+        // Find the closest surfel to the current texel position
+        uint surfel_id = find_closest_surfel(world_pos);
+        if (surfel_id != 0xFFFFFFFFu) {
+            vec3 vpl_light = projected_irradiance(surfel_id, world_pos, world_normal);
+            // TODO: Accumulate vpl_light to outputImage or appropriate buffer
+            // Example: imageStore(outputImage[0], texel_position, vec4(vpl_light, 1.0));
+        }
+
+    }
 }

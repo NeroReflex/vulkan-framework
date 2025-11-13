@@ -90,7 +90,7 @@ AABB compatAABB(in const mat4 t, in const vec3 vMin, in const vec3 vMax) {
     return result;
 }
 
-float intersectAABBwithSphere(in const AABB aabb, vec3 point, float radius) {
+float intersectAABBwithSphere(in const AABB aabb, in const vec3 point, float radius) {
     float sqDist = 0.0f;
 
     if (point.x < aabb.vMin.x) {
@@ -122,7 +122,7 @@ float intersectAABBwithSphere(in const AABB aabb, vec3 point, float radius) {
 
 // returns the signed distance (it does not use the sphere radius)
 // subtract radius to get surface-to-surface separation).
-float distanceAABBPoint(in AABB aabb, in vec3 p) {
+float distanceAABBPoint(in const AABB aabb, in const vec3 p) {
     // compute distance outside the box (>=0)
     vec3 dOutside = max(vec3(0.0), max(aabb.vMin - p, p - aabb.vMax));
     float outsideDist = length(dOutside);
