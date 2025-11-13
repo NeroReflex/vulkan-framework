@@ -34,15 +34,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Color animate over time for visible effect
     let t0 = Instant::now();
 
-    // Check for remote argument: --remote host:port
-    let mut remote_addr: Option<String> = None;
-    for arg in env::args().skip(1) {
-        if arg.starts_with("--remote") {
-            // allow "--remote" and next arg host:port or "--remote=host:port"
-            if let Some(eq) = arg.find('=') {
-                remote_addr = Some(arg[eq+1..].to_owned());
+    // Check for remote argument: support both `--remote host[:port]` and `--remote=host[:port]`.
+    // If no port is provided, use default 20002.
+    fn add_default_port(s: &str) -> String {
+        // If there's a trailing :port that parses as u16, keep it. Otherwise append default.
+        if let Some(pos) = s.rfind(':') {
+            if let Ok(_) = s[pos+1..].parse::<u16>() {
+                return s.to_owned();
             }
         }
+        format!("{}:20002", s)
+    }
+
+    let mut remote_addr: Option<String> = None;
+    let args: Vec<String> = env::args().collect();
+    let mut i = 1;
+    while i < args.len() {
+        let arg = &args[i];
+        if arg == "--remote" {
+            if i + 1 < args.len() {
+                remote_addr = Some(add_default_port(&args[i+1]));
+                i += 1;
+            }
+        } else if arg.starts_with("--remote=") {
+            let v = &arg[9..];
+            remote_addr = Some(add_default_port(v));
+        }
+        i += 1;
     }
 
     let mut worker: Option<(std::sync::mpsc::Sender<MeasureRequest>, std::sync::mpsc::Receiver<Result<lan::MeasurementResult, String>>)> = None;

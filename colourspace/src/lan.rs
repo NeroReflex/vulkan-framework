@@ -45,27 +45,35 @@ impl ColourSpaceClient {
         Ok(())
     }
 
-    fn read_message(&mut self) -> std::io::Result<String> {
+    fn read_message(&mut self) -> std::io::Result<Option<String>> {
         let mut buf = [0u8; 1];
-        let mut digits = Vec::new();
+        let mut header_bytes = Vec::new();
+        // Read header which may start with '-' followed by digits
         loop {
             let n = self.stream.read(&mut buf)?;
             if n == 0 {
                 return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "stream closed"));
             }
             let b = buf[0];
-            if (b as char).is_ascii_digit() {
-                digits.push(b);
-                if digits.len() > 16 {
+            let ch = b as char;
+            if (header_bytes.is_empty() && ch == '-') || ch.is_ascii_digit() {
+                header_bytes.push(b);
+                if header_bytes.len() > 17 {
                     return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "header too long"));
                 }
                 continue;
             } else {
-                let header = String::from_utf8(digits.clone()).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid header"))?;
-                let len: usize = header.parse().map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid header parse"))?;
+                let header = String::from_utf8(header_bytes.clone()).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid header"))?;
+                let signed: i64 = header.parse().map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid header parse"))?;
+                if signed < 0 {
+                    // negative size indicates communication over; caller should close
+                    return Ok(None);
+                }
+                let len: usize = signed as usize;
+
                 // Skip optional whitespace characters (spaces, tabs, newlines, CR) between header and payload
-                let mut first_payload_byte: Option<u8> = None;
-                if !(b as char).is_whitespace() {
+                let first_payload_byte: Option<u8>;
+                if !ch.is_whitespace() {
                     first_payload_byte = Some(b);
                 } else {
                     // consume further bytes until a non-whitespace or EOF
@@ -98,7 +106,7 @@ impl ColourSpaceClient {
                     return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "no payload after header"));
                 }
 
-                return String::from_utf8(payload).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid utf8 payload"));
+                return String::from_utf8(payload).map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid utf8 payload")).map(Some);
             }
         }
     }
@@ -114,7 +122,11 @@ impl ColourSpaceClient {
             r, g, b
         );
         self.send_xml(&xml)?;
-        let msg = self.read_message()?;
+        let msg_opt = self.read_message()?;
+        let msg = match msg_opt {
+            Some(s) => s,
+            None => return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "server closed communication (negative header)")),
+        };
         let mut reader = Reader::from_str(&msg);
         reader.trim_text(true);
         let mut buf = Vec::new();
@@ -165,7 +177,14 @@ pub fn spawn_worker(addr: &str) -> std::io::Result<(Sender<MeasureRequest>, Rece
                 while let Ok(req) = rx_req.recv() {
                     match client.measure(req.red, req.green, req.blue) {
                         Ok(res) => { let _ = tx_resp.send(Ok(res)); }
-                        Err(e) => { let _ = tx_resp.send(Err(e.to_string())); }
+                        Err(e) => {
+                            // If the server signalled communication over (we return UnexpectedEof for negative header), stop the worker.
+                            let is_eof = e.kind() == std::io::ErrorKind::UnexpectedEof;
+                            let _ = tx_resp.send(Err(e.to_string()));
+                            if is_eof {
+                                break; // drop tx_resp and end thread
+                            }
+                        }
                     }
                 }
             }
