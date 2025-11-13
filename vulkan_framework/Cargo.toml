@@ -8,8 +8,8 @@ edition = "2021"
 [dependencies]
 ash = "^0"
 smallvec = "^1"
-parking_lot = { version = "0.12.1", optional = true }
-thiserror = "2.0.12"
+parking_lot = { version = "*", optional = true }
+thiserror = "^2"
 
 [features]
 default = []

@@ -4,11 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-glm = "0.2.3"
-inline-spirv = "0.2.1"
-rust-embed = "8.7.2"
+glm = "*"
+inline-spirv = "*"
+rust-embed = "*"
 sdl2 = "^0"
 smallvec = "^1"
-tar = "0.4.44"
+tar = "^0"
 thiserror = "^2"
 vulkan_framework = { path = "../vulkan_framework" }
