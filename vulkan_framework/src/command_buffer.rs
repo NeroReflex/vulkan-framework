@@ -935,7 +935,9 @@ pub(crate) trait SubmittableCommandBufferTrait: Send + Sync {
     fn mark_execution_complete(&self) -> VulkanResult<()>;
 }
 
-pub trait CommandBufferTrait: SubmittableCommandBufferTrait + CommandPoolOwned + Send + Sync {
+pub trait CommandBufferTrait:
+    SubmittableCommandBufferTrait + CommandPoolOwned + Send + Sync
+{
     fn native_handle(&self) -> u64;
 }
 

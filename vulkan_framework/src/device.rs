@@ -794,10 +794,7 @@ impl Device {
 
             let external_memory_fd_ext: Option<ash::khr::external_memory_fd::Device> =
                 match device_extensions.iter().any(|ext| {
-                    ext.as_str()
-                        == ash::khr::external_memory_fd::NAME
-                            .to_str()
-                            .unwrap_or("")
+                    ext.as_str() == ash::khr::external_memory_fd::NAME.to_str().unwrap_or("")
                 }) {
                     true => Option::Some(ash::khr::external_memory_fd::Device::new(
                         instance.ash_handle(),

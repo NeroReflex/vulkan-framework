@@ -188,12 +188,9 @@ impl MemoryPool {
     /// device has `VK_KHR_external_memory_fd` enabled.
     pub fn export_fd(&self) -> VulkanResult<OwnedFd> {
         let device = self.memory_heap.get_parent_device();
-        let ext = device
-            .ash_ext_external_memory_fd_khr()
-            .as_ref()
-            .ok_or(VulkanError::MissingExtension(
-                "VK_KHR_external_memory_fd".into(),
-            ))?;
+        let ext = device.ash_ext_external_memory_fd_khr().as_ref().ok_or(
+            VulkanError::MissingExtension("VK_KHR_external_memory_fd".into()),
+        )?;
 
         let get_fd_info = ash::vk::MemoryGetFdInfoKHR::default()
             .memory(self.memory)
