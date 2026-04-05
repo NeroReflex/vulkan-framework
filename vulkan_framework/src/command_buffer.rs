@@ -929,13 +929,13 @@ impl<'a> CommandBufferRecorder<'a> {
     }
 }
 
-pub(crate) trait SubmittableCommandBufferTrait {
+pub(crate) trait SubmittableCommandBufferTrait: Send + Sync {
     fn mark_execution_begin(&self) -> VulkanResult<()>;
 
     fn mark_execution_complete(&self) -> VulkanResult<()>;
 }
 
-pub trait CommandBufferTrait: SubmittableCommandBufferTrait + CommandPoolOwned {
+pub trait CommandBufferTrait: SubmittableCommandBufferTrait + CommandPoolOwned + Send + Sync {
     fn native_handle(&self) -> u64;
 }
 
