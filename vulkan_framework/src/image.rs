@@ -296,6 +296,16 @@ impl From<ImageFormat> for ImageAspects {
             FormatType::B8G8R8A8_SRGB => Self::from([ImageAspect::Color].as_ref()),
             FormatType::B8G8R8A8_UINT => Self::from([ImageAspect::Color].as_ref()),
             FormatType::B8G8R8A8_UNORM => Self::from([ImageAspect::Color].as_ref()),
+            FormatType::R8G8B8A8_UNORM => Self::from([ImageAspect::Color].as_ref()),
+            FormatType::R8G8B8A8_SNORM => Self::from([ImageAspect::Color].as_ref()),
+            FormatType::R8G8B8A8_UINT => Self::from([ImageAspect::Color].as_ref()),
+            FormatType::R8G8B8A8_SINT => Self::from([ImageAspect::Color].as_ref()),
+            FormatType::R8G8B8A8_SRGB => Self::from([ImageAspect::Color].as_ref()),
+            FormatType::R8_UNORM => Self::from([ImageAspect::Color].as_ref()),
+            FormatType::R8G8_UNORM => Self::from([ImageAspect::Color].as_ref()),
+            FormatType::R16_SFLOAT => Self::from([ImageAspect::Color].as_ref()),
+            FormatType::R16G16_SFLOAT => Self::from([ImageAspect::Color].as_ref()),
+            FormatType::R16G16B16A16_SFLOAT => Self::from([ImageAspect::Color].as_ref()),
             FormatType::BC7_SRGB_BLOCK => Self::from([ImageAspect::Color].as_ref()),
             fmt => {
                 println!(
@@ -967,6 +977,29 @@ impl Image {
         sharing: Option<&[std::sync::Weak<QueueFamily>]>,
         debug_name: Option<&str>,
     ) -> VulkanResult<Self> {
+        Self::new_impl(device, descriptor, sharing, debug_name, false)
+    }
+
+    /// Create a new Image backed by externally-shareable memory (VK_KHR_external_memory).
+    ///
+    /// The image can later be allocated on an exportable MemoryPool and its
+    /// backing memory exported as a POSIX fd.
+    pub fn new_external(
+        device: Arc<Device>,
+        descriptor: ConcreteImageDescriptor,
+        sharing: Option<&[std::sync::Weak<QueueFamily>]>,
+        debug_name: Option<&str>,
+    ) -> VulkanResult<Self> {
+        Self::new_impl(device, descriptor, sharing, debug_name, true)
+    }
+
+    fn new_impl(
+        device: Arc<Device>,
+        descriptor: ConcreteImageDescriptor,
+        sharing: Option<&[std::sync::Weak<QueueFamily>]>,
+        debug_name: Option<&str>,
+        external: bool,
+    ) -> VulkanResult<Self> {
         if descriptor.img_layers == 0 {
             return Err(VulkanError::Framework(
                 FrameworkError::NoImageLayersSpecified,
@@ -991,7 +1024,7 @@ impl Image {
             }
         }
 
-        let create_info = ash::vk::ImageCreateInfo::default()
+        let mut create_info = ash::vk::ImageCreateInfo::default()
             .flags(descriptor.ash_flags())
             .image_type(descriptor.ash_image_type())
             .extent(descriptor.ash_extent_3d())
@@ -1007,6 +1040,15 @@ impl Image {
             })
             .queue_family_indices(queue_family_indices.as_ref())
             .tiling(descriptor.ash_tiling());
+
+        let mut external_image_info = ash::vk::ExternalMemoryImageCreateInfo::default()
+            .handle_types(ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD);
+
+        if external {
+            create_info.p_next = &mut external_image_info
+                as *mut ash::vk::ExternalMemoryImageCreateInfo
+                as *mut std::ffi::c_void;
+        }
 
         let image = unsafe {
             device.ash_handle().create_image(

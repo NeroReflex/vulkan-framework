@@ -11,6 +11,7 @@ use crate::{
 use std::{
     mem::size_of,
     ops::{Deref, DerefMut},
+    os::fd::OwnedFd,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -20,11 +21,13 @@ use std::{
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum MemoryPoolFeature {
     DeviceAddressable,
+    Exportable,
 }
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub struct MemoryPoolFeatures {
     device_addressable: bool,
+    exportable: bool,
 }
 
 impl MemoryPoolFeatures {
@@ -32,14 +35,28 @@ impl MemoryPoolFeatures {
         self.device_addressable
     }
 
+    pub fn exportable(&self) -> bool {
+        self.exportable
+    }
+
     pub fn new(device_addressable: bool) -> Self {
-        Self { device_addressable }
+        Self {
+            device_addressable,
+            exportable: false,
+        }
+    }
+
+    pub fn with_exportable(mut self) -> Self {
+        self.exportable = true;
+        self
     }
 }
 
 impl From<&[MemoryPoolFeature]> for MemoryPoolFeatures {
     fn from(features: &[MemoryPoolFeature]) -> Self {
-        Self::new(features.contains(&MemoryPoolFeature::DeviceAddressable))
+        let mut f = Self::new(features.contains(&MemoryPoolFeature::DeviceAddressable));
+        f.exportable = features.contains(&MemoryPoolFeature::Exportable);
+        f
     }
 }
 
@@ -133,9 +150,18 @@ impl MemoryPool {
         let mut memory_flags = ash::vk::MemoryAllocateFlagsInfo::default()
             .flags(ash::vk::MemoryAllocateFlags::DEVICE_ADDRESS);
 
+        let mut export_info = ash::vk::ExportMemoryAllocateInfo::default()
+            .handle_types(ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD);
+
         if features.device_addressable() {
             create_info.p_next =
                 &mut memory_flags as *mut ash::vk::MemoryAllocateFlagsInfo as *mut std::ffi::c_void;
+        }
+
+        if features.exportable() {
+            export_info.p_next = create_info.p_next;
+            create_info.p_next =
+                &mut export_info as *mut ash::vk::ExportMemoryAllocateInfo as *mut std::ffi::c_void;
         }
 
         let mapped = AtomicBool::new(false);
@@ -146,6 +172,79 @@ impl MemoryPool {
                 device.get_parent_instance().get_alloc_callbacks(),
             )?
         };
+
+        Ok(Arc::new(Self {
+            memory_heap,
+            allocator,
+            memory,
+            features,
+            mapped,
+        }))
+    }
+
+    /// Export this memory pool's device memory as a POSIX file descriptor.
+    ///
+    /// Requires that the pool was created with `Exportable` feature and that the
+    /// device has `VK_KHR_external_memory_fd` enabled.
+    pub fn export_fd(&self) -> VulkanResult<OwnedFd> {
+        let device = self.memory_heap.get_parent_device();
+        let ext = device
+            .ash_ext_external_memory_fd_khr()
+            .as_ref()
+            .ok_or(VulkanError::MissingExtension(
+                "VK_KHR_external_memory_fd".into(),
+            ))?;
+
+        let get_fd_info = ash::vk::MemoryGetFdInfoKHR::default()
+            .memory(self.memory)
+            .handle_type(ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD);
+
+        let fd = unsafe { ext.get_memory_fd(&get_fd_info) }?;
+
+        // SAFETY: vkGetMemoryFdKHR returns a new fd that we now own.
+        Ok(unsafe { std::os::fd::FromRawFd::from_raw_fd(fd) })
+    }
+
+    /// Import device memory from a POSIX file descriptor.
+    ///
+    /// The fd is consumed (ownership transfers to the Vulkan driver).
+    /// The caller must ensure `size` and `memory_type_index` match the
+    /// exporter's allocation.
+    pub fn import_from_fd(
+        memory_heap: Arc<MemoryHeap>,
+        allocator: Arc<dyn MemoryAllocator>,
+        fd: OwnedFd,
+    ) -> VulkanResult<Arc<Self>> {
+        let device = memory_heap.get_parent_device();
+        if device.ash_ext_external_memory_fd_khr().is_none() {
+            return Err(VulkanError::MissingExtension(
+                "VK_KHR_external_memory_fd".into(),
+            ));
+        }
+
+        // Transfer ownership of the fd to Vulkan — use into_raw_fd so Drop doesn't close it.
+        let raw_fd = std::os::fd::IntoRawFd::into_raw_fd(fd);
+
+        let mut import_info = ash::vk::ImportMemoryFdInfoKHR::default()
+            .handle_type(ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD)
+            .fd(raw_fd);
+
+        let mut create_info = ash::vk::MemoryAllocateInfo::default()
+            .allocation_size(allocator.total_size())
+            .memory_type_index(memory_heap.type_index());
+
+        create_info.p_next =
+            &mut import_info as *mut ash::vk::ImportMemoryFdInfoKHR as *mut std::ffi::c_void;
+
+        let memory = unsafe {
+            device.ash_handle().allocate_memory(
+                &create_info,
+                device.get_parent_instance().get_alloc_callbacks(),
+            )?
+        };
+
+        let features = MemoryPoolFeatures::default();
+        let mapped = AtomicBool::new(false);
 
         Ok(Arc::new(Self {
             memory_heap,
