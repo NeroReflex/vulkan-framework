@@ -28,6 +28,7 @@ struct DeviceExtensions {
     raytracing_pipeline_khr_ext: Option<ash::khr::ray_tracing_pipeline::Device>,
     raytracing_maintenance_khr_ext: Option<ash::khr::ray_tracing_maintenance1::Device>,
     acceleration_structure_khr_ext: Option<ash::khr::acceleration_structure::Device>,
+    external_memory_fd_khr_ext: Option<ash::khr::external_memory_fd::Device>,
 }
 
 struct DeviceData<'a> {
@@ -197,6 +198,16 @@ impl Device {
         &self,
     ) -> &Option<ash::khr::ray_tracing_pipeline::Device> {
         &self.extensions.raytracing_pipeline_khr_ext
+    }
+
+    pub(crate) fn ash_ext_external_memory_fd_khr(
+        &self,
+    ) -> &Option<ash::khr::external_memory_fd::Device> {
+        &self.extensions.external_memory_fd_khr_ext
+    }
+
+    pub fn has_external_memory_fd(&self) -> bool {
+        self.extensions.external_memory_fd_khr_ext.is_some()
     }
 
     pub(crate) fn ash_ext_deferred_host_operation_khr(
@@ -781,6 +792,20 @@ impl Device {
                     false => Option::None,
                 };
 
+            let external_memory_fd_ext: Option<ash::khr::external_memory_fd::Device> =
+                match device_extensions.iter().any(|ext| {
+                    ext.as_str()
+                        == ash::khr::external_memory_fd::NAME
+                            .to_str()
+                            .unwrap_or("")
+                }) {
+                    true => Option::Some(ash::khr::external_memory_fd::Device::new(
+                        instance.ash_handle(),
+                        &device,
+                    )),
+                    false => Option::None,
+                };
+
             let mut obj_name_bytes = vec![];
 
             if let Some(ext) = debug_utils_ext.clone() {
@@ -824,6 +849,7 @@ impl Device {
                     raytracing_maintenance_khr_ext: raytracing_maintenance_ext,
                     acceleration_structure_khr_ext: acceleration_structure_ext,
                     debug_utils_khr_ext: debug_utils_ext,
+                    external_memory_fd_khr_ext: external_memory_fd_ext,
                 },
                 instance,
                 supported_extension_names: selected_device.supported_extension_names,
