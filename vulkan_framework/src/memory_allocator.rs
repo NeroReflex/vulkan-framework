@@ -192,7 +192,7 @@ impl MemoryAllocator for DefaultAllocator {
             // if the start of the block is aligned then this will be 0 as I don't have to
             // waste the first block for aligning the rest, otherwise it will be 1
             // (meaning the first block if used to align the data)
-            let block_offset_alignment = if ((i * self.block_size) % alignment) == 0 {
+            let block_offset_alignment = if (i * self.block_size).is_multiple_of(alignment) {
                 0
             } else {
                 1

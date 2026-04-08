@@ -56,7 +56,7 @@ impl Instance {
     }
 
     #[inline]
-    pub fn get_alloc_callbacks(&self) -> Option<&ash::vk::AllocationCallbacks> {
+    pub fn get_alloc_callbacks(&self) -> Option<&ash::vk::AllocationCallbacks<'_>> {
         // TODO: implement in such a way that Instance remains Send + Sync
 
         /*match self.data.alloc_callbacks.as_ref() {

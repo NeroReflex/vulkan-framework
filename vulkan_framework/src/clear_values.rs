@@ -5,10 +5,10 @@ pub enum ColorClearValues {
     UVec4(u32, u32, u32, u32),
 }
 
-impl Into<crate::ash::vk::ClearColorValue> for &ColorClearValues {
-    fn into(self) -> crate::ash::vk::ClearColorValue {
+impl From<&ColorClearValues> for crate::ash::vk::ClearColorValue {
+    fn from(val: &ColorClearValues) -> Self {
         let mut result = crate::ash::vk::ClearColorValue::default();
-        match self {
+        match val {
             ColorClearValues::Vec4(r, g, b, a) => {
                 result.float32 = [r.to_owned(), g.to_owned(), b.to_owned(), a.to_owned()];
             }
@@ -24,15 +24,15 @@ impl Into<crate::ash::vk::ClearColorValue> for &ColorClearValues {
     }
 }
 
-impl Into<crate::ash::vk::ClearColorValue> for ColorClearValues {
-    fn into(self) -> crate::ash::vk::ClearColorValue {
-        (&self).into()
+impl From<ColorClearValues> for crate::ash::vk::ClearColorValue {
+    fn from(val: ColorClearValues) -> Self {
+        (&val).into()
     }
 }
 
-impl Into<crate::ash::vk::ClearValue> for ColorClearValues {
-    fn into(self) -> crate::ash::vk::ClearValue {
-        crate::ash::vk::ClearValue { color: self.into() }
+impl From<ColorClearValues> for crate::ash::vk::ClearValue {
+    fn from(val: ColorClearValues) -> Self {
+        crate::ash::vk::ClearValue { color: val.into() }
     }
 }
 
@@ -47,22 +47,22 @@ impl DepthClearValues {
     }
 }
 
-impl Into<crate::ash::vk::ClearDepthStencilValue> for &DepthClearValues {
-    fn into(self) -> crate::ash::vk::ClearDepthStencilValue {
-        crate::ash::vk::ClearDepthStencilValue::default().depth(self.depth)
+impl From<&DepthClearValues> for crate::ash::vk::ClearDepthStencilValue {
+    fn from(val: &DepthClearValues) -> Self {
+        crate::ash::vk::ClearDepthStencilValue::default().depth(val.depth)
     }
 }
 
-impl Into<crate::ash::vk::ClearDepthStencilValue> for DepthClearValues {
-    fn into(self) -> crate::ash::vk::ClearDepthStencilValue {
-        (&self).into()
+impl From<DepthClearValues> for crate::ash::vk::ClearDepthStencilValue {
+    fn from(val: DepthClearValues) -> Self {
+        (&val).into()
     }
 }
 
-impl Into<crate::ash::vk::ClearValue> for DepthClearValues {
-    fn into(self) -> crate::ash::vk::ClearValue {
+impl From<DepthClearValues> for crate::ash::vk::ClearValue {
+    fn from(val: DepthClearValues) -> Self {
         crate::ash::vk::ClearValue {
-            depth_stencil: self.into(),
+            depth_stencil: val.into(),
         }
     }
 }
@@ -78,22 +78,22 @@ impl StencilClearValues {
     }
 }
 
-impl Into<crate::ash::vk::ClearDepthStencilValue> for &StencilClearValues {
-    fn into(self) -> crate::ash::vk::ClearDepthStencilValue {
-        crate::ash::vk::ClearDepthStencilValue::default().stencil(self.stencil)
+impl From<&StencilClearValues> for crate::ash::vk::ClearDepthStencilValue {
+    fn from(val: &StencilClearValues) -> Self {
+        crate::ash::vk::ClearDepthStencilValue::default().stencil(val.stencil)
     }
 }
 
-impl Into<crate::ash::vk::ClearDepthStencilValue> for StencilClearValues {
-    fn into(self) -> crate::ash::vk::ClearDepthStencilValue {
-        (&self).into()
+impl From<StencilClearValues> for crate::ash::vk::ClearDepthStencilValue {
+    fn from(val: StencilClearValues) -> Self {
+        (&val).into()
     }
 }
 
-impl Into<crate::ash::vk::ClearValue> for StencilClearValues {
-    fn into(self) -> crate::ash::vk::ClearValue {
+impl From<StencilClearValues> for crate::ash::vk::ClearValue {
+    fn from(val: StencilClearValues) -> Self {
         crate::ash::vk::ClearValue {
-            depth_stencil: self.into(),
+            depth_stencil: val.into(),
         }
     }
 }

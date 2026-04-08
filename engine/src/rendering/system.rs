@@ -983,8 +983,7 @@ impl System {
                         recorder.copy_buffer(
                             dir_light.clone(),
                             self.directional_light_buffers[current_frame].clone(),
-                            [(0u64, (light_index as u64) * size_of_light, size_of_light)]
-                                .as_slice(),
+                            [(0u64, light_index * size_of_light, size_of_light)].as_slice(),
                         );
 
                         light_index += 1u64;
@@ -994,7 +993,7 @@ impl System {
                     for light_unused_index in light_index..(MAX_DIRECTIONAL_LIGHTS as u64) {
                         recorder.update_buffer(
                             self.directional_light_buffers[current_frame].clone(),
-                            (light_unused_index as u64) * size_of_light,
+                            light_unused_index * size_of_light,
                             stub_buffer.as_slice(),
                         );
                     }
@@ -1209,9 +1208,7 @@ impl System {
         }
 
         // The GI has been calculated for this frame: try to reuse it for the next frame
-        if self.prev_frame_gi_reuse < u32::MAX {
-            self.prev_frame_gi_reuse += 1;
-        }
+        self.prev_frame_gi_reuse = self.prev_frame_gi_reuse.saturating_add(1);
 
         Ok(())
     }

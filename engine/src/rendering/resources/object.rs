@@ -700,7 +700,7 @@ impl Manager {
                                 let vertex_count =
                                     indexes_size as usize / std::mem::size_of::<u32>();
 
-                                if (vertex_count as u64 % 3u64) != 0 {
+                                if !(vertex_count as u64).is_multiple_of(3u64) {
                                     panic!("wrong vertex count");
                                 }
 
@@ -1190,7 +1190,7 @@ impl Manager {
                         let transform = *obj_instance;
                         slice[instance_num] =
                             vulkan_framework::ash::vk::AccelerationStructureInstanceKHR {
-                                transform: transform,
+                                transform,
                                 instance_shader_binding_table_record_offset_and_flags:
                                     vulkan_framework::ash::vk::Packed24_8::new(0, 0x07), // VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR
                                 instance_custom_index_and_mask:

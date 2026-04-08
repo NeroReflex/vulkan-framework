@@ -35,7 +35,7 @@ use crate::{
         ImageDimensions, ImageLayout, ImageSubresourceLayers, ImageSubresourceRange, ImageTrait,
     },
     image_view::ImageView,
-    memory_barriers::{BufferMemoryBarrier, ImageMemoryBarrier, PipelineBarrier},
+    memory_barriers::PipelineBarrier,
     pipeline_layout::PipelineLayout,
     prelude::{FrameworkError, VulkanError, VulkanResult},
     raytracing_pipeline::RaytracingPipeline,
@@ -557,16 +557,16 @@ impl<'a> CommandBufferRecorder<'a> {
             .insert(CommandBufferReferencedResource::Buffer(dst.clone()));
 
         let bytes = std::mem::size_of_val(src);
-        if bytes as u64 % 4 != 0 {
+        if !(bytes as u64).is_multiple_of(4) {
             panic!("Size not multiple of 4 given!");
         }
 
-        if (offset % 4) != 0 {
+        if !offset.is_multiple_of(4) {
             panic!("Not aligned offset given!");
         }
 
         let ptr = src.as_ptr() as *const std::ffi::c_void;
-        if ptr as u64 % 4 != 0 {
+        if !(ptr as u64).is_multiple_of(4) {
             panic!("Unaligned pointer given!");
         }
 
@@ -656,7 +656,7 @@ impl<'a> CommandBufferRecorder<'a> {
     /// WARNING: The image layout MUST be VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
     /// at the time of the transfer operation
     pub fn clear_color_image(&mut self, value: ColorClearValues, image_srr: ImageSubresourceRange) {
-        let aspects: crate::ash::vk::ImageAspectFlags = image_srr.aspects().clone().into();
+        let aspects: crate::ash::vk::ImageAspectFlags = (*image_srr.aspects()).into();
         assert!(aspects.contains(ash::vk::ImageAspectFlags::COLOR));
 
         self.used_resources
@@ -680,7 +680,7 @@ impl<'a> CommandBufferRecorder<'a> {
     /// WARNING: The image layout MUST be VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
     /// at the time of the transfer operation
     pub fn clear_depth_image(&mut self, value: DepthClearValues, image_srr: ImageSubresourceRange) {
-        let aspects: crate::ash::vk::ImageAspectFlags = image_srr.aspects().clone().into();
+        let aspects: crate::ash::vk::ImageAspectFlags = (*image_srr.aspects()).into();
         assert!(aspects.contains(ash::vk::ImageAspectFlags::DEPTH));
 
         self.used_resources

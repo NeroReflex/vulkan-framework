@@ -617,7 +617,7 @@ impl GILighting {
                     ImageTiling::Optimal,
                 ),
                 None,
-                Some(format!("raytracing_global_illumination_image").as_str()),
+                Some("raytracing_global_illumination_image".to_string().as_str()),
             )?
             .into(),
             Image::new(
@@ -639,7 +639,7 @@ impl GILighting {
                     ImageTiling::Optimal,
                 ),
                 None,
-                Some(format!("raytracing_global_dlbuffer_image").as_str()),
+                Some("raytracing_global_dlbuffer_image".to_string().as_str()),
             )?
             .into(),
             Buffer::new(
@@ -743,7 +743,11 @@ impl GILighting {
                 None,
                 None,
                 None,
-                Some(format!("raytracing_global_illumination_image_imageview").as_str()),
+                Some(
+                    "raytracing_global_illumination_image_imageview"
+                        .to_string()
+                        .as_str(),
+                ),
             )?;
 
             let raytracing_dlbuffer = ImageView::new(
@@ -756,7 +760,11 @@ impl GILighting {
                 None,
                 None,
                 None,
-                Some(format!("raytracing_global_dlbuffer_image_imageview").as_str()),
+                Some(
+                    "raytracing_global_dlbuffer_image_imageview"
+                        .to_string()
+                        .as_str(),
+                ),
             )?;
 
             let raytracing_surfel_stats_buffer = raytracing_buffers_allocated[2].buffer();
@@ -777,7 +785,11 @@ impl GILighting {
                 None,
                 None,
                 None,
-                Some(format!("raytracing_surfels_overlapping_image_imageview").as_str()),
+                Some(
+                    "raytracing_surfels_overlapping_image_imageview"
+                        .to_string()
+                        .as_str(),
+                ),
             )?;
 
             let surfel_spawn_sbt = RaytracingBindingTables::new(

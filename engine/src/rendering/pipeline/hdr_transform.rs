@@ -319,7 +319,7 @@ impl HDRTransform {
             Some("hdr_transform.pipeline"),
         )?;
 
-        let image_name = format!("hdr_transform.image");
+        let image_name = "hdr_transform.image".to_string();
         let image_handles = vec![
             Image::new(
                 device.clone(),
@@ -350,7 +350,7 @@ impl HDRTransform {
                 .with_size(MemoryManagementTagSize::MediumSmall),
         )?;
 
-        let image_view_name = format!("hdr_transform.image_view");
+        let image_view_name = "hdr_transform.image_view".to_string();
         let image_view = ImageView::new(
             image[0].image(),
             Some(ImageViewType::Image2D),
