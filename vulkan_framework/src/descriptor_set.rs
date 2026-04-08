@@ -140,7 +140,7 @@ impl<'a> DescriptorSetWriter<'a> {
                 ));
             }
 
-            bindee.push((layout.clone(), image_view.clone(), sampler.clone()));
+            bindee.push((layout, image_view.clone(), sampler.clone()));
         }
 
         self.combined_image_sampler.push((first_layout_id, bindee));
@@ -246,7 +246,7 @@ impl<'a> DescriptorSetWriter<'a> {
                 ));
             }
 
-            bindee.push((images_layout.clone(), image_view.clone()));
+            bindee.push((images_layout, image_view.clone()));
         }
 
         self.storage_images.push((first_layout_id, bindee));

@@ -67,14 +67,14 @@ impl DynamicRenderingColorDefinition {
     }
 }
 
-impl Into<crate::ash::vk::Format> for &DynamicRenderingColorDefinition {
-    fn into(self) -> crate::ash::vk::Format {
-        self.format.into()
+impl From<&DynamicRenderingColorDefinition> for crate::ash::vk::Format {
+    fn from(val: &DynamicRenderingColorDefinition) -> Self {
+        val.format.into()
     }
 }
 
-impl Into<crate::ash::vk::PipelineColorBlendAttachmentState> for &DynamicRenderingColorDefinition {
-    fn into(self) -> crate::ash::vk::PipelineColorBlendAttachmentState {
+impl From<&DynamicRenderingColorDefinition> for crate::ash::vk::PipelineColorBlendAttachmentState {
+    fn from(val: &DynamicRenderingColorDefinition) -> Self {
         ash::vk::PipelineColorBlendAttachmentState::default()
             .color_write_mask(ash::vk::ColorComponentFlags::RGBA)
             .blend_enable(false)
@@ -138,12 +138,12 @@ where
     }
 }
 
-impl<T> Into<crate::ash::vk::AttachmentLoadOp> for RenderingAttachmentSetup<T>
+impl<T> From<RenderingAttachmentSetup<T>> for crate::ash::vk::AttachmentLoadOp
 where
     T: Into<crate::ash::vk::ClearValue>,
 {
-    fn into(self) -> crate::ash::vk::AttachmentLoadOp {
-        match self {
+    fn from(val: RenderingAttachmentSetup<T>) -> Self {
+        match val {
             RenderingAttachmentSetup::Load => crate::ash::vk::AttachmentLoadOp::LOAD,
             RenderingAttachmentSetup::Clear(maybe_clear) => match maybe_clear {
                 Some(_) => crate::ash::vk::AttachmentLoadOp::CLEAR,
@@ -153,12 +153,12 @@ where
     }
 }
 
-impl<T> Into<crate::ash::vk::ClearValue> for RenderingAttachmentSetup<T>
+impl<T> From<RenderingAttachmentSetup<T>> for crate::ash::vk::ClearValue
 where
     T: Into<crate::ash::vk::ClearValue>,
 {
-    fn into(self) -> crate::ash::vk::ClearValue {
-        match self {
+    fn from(val: RenderingAttachmentSetup<T>) -> Self {
+        match val {
             RenderingAttachmentSetup::Load => crate::ash::vk::ClearValue::default(),
             RenderingAttachmentSetup::Clear(maybe_clear) => match maybe_clear {
                 Some(clear_value) => clear_value.into(),
@@ -175,14 +175,14 @@ pub struct DynamicRenderingColorAttachment(
     AttachmentStoreOp,
 );
 
-impl<'a> Into<crate::ash::vk::RenderingAttachmentInfo<'a>> for DynamicRenderingColorAttachment {
-    fn into(self) -> crate::ash::vk::RenderingAttachmentInfo<'a> {
+impl<'a> From<DynamicRenderingColorAttachment> for crate::ash::vk::RenderingAttachmentInfo<'a> {
+    fn from(val: DynamicRenderingColorAttachment) -> Self {
         ash::vk::RenderingAttachmentInfo::default()
             .image_layout(crate::ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .image_view(ash::vk::ImageView::from_raw(self.0.native_handle()))
-            .store_op(self.2.into())
-            .load_op(self.1.clone().into())
-            .clear_value(self.1.into())
+            .image_view(ash::vk::ImageView::from_raw(val.0.native_handle()))
+            .store_op(val.2.into())
+            .load_op(val.1.clone().into())
+            .clear_value(val.1.into())
     }
 }
 
@@ -218,14 +218,14 @@ pub struct DynamicRenderingDepthAttachment(
     AttachmentStoreOp,
 );
 
-impl<'a> Into<crate::ash::vk::RenderingAttachmentInfo<'a>> for DynamicRenderingDepthAttachment {
-    fn into(self) -> crate::ash::vk::RenderingAttachmentInfo<'a> {
+impl<'a> From<DynamicRenderingDepthAttachment> for crate::ash::vk::RenderingAttachmentInfo<'a> {
+    fn from(val: DynamicRenderingDepthAttachment) -> Self {
         ash::vk::RenderingAttachmentInfo::default()
             .image_layout(crate::ash::vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
-            .image_view(ash::vk::ImageView::from_raw(self.0.native_handle()))
-            .store_op(self.2.into())
-            .load_op(self.1.clone().into())
-            .clear_value(self.1.into())
+            .image_view(ash::vk::ImageView::from_raw(val.0.native_handle()))
+            .store_op(val.2.into())
+            .load_op(val.1.clone().into())
+            .clear_value(val.1.into())
     }
 }
 
@@ -261,14 +261,14 @@ pub struct DynamicRenderingStencilAttachment(
     AttachmentStoreOp,
 );
 
-impl<'a> Into<crate::ash::vk::RenderingAttachmentInfo<'a>> for DynamicRenderingStencilAttachment {
-    fn into(self) -> crate::ash::vk::RenderingAttachmentInfo<'a> {
+impl<'a> From<DynamicRenderingStencilAttachment> for crate::ash::vk::RenderingAttachmentInfo<'a> {
+    fn from(val: DynamicRenderingStencilAttachment) -> Self {
         ash::vk::RenderingAttachmentInfo::default()
             .image_layout(crate::ash::vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL)
-            .image_view(ash::vk::ImageView::from_raw(self.0.native_handle()))
-            .store_op(self.2.into())
-            .load_op(self.1.clone().into())
-            .clear_value(self.1.into())
+            .image_view(ash::vk::ImageView::from_raw(val.0.native_handle()))
+            .store_op(val.2.into())
+            .load_op(val.1.clone().into())
+            .clear_value(val.1.into())
     }
 }
 

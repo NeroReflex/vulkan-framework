@@ -109,7 +109,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 if new_keyboard_state.is_scancode_pressed(Scancode::S) {
-                    camera.apply_movement(camera.orientation(), -1.0 * move_quantity);
+                    camera.apply_movement(camera.orientation(), -move_quantity);
 
                     renderer.change_camera(Arc::new(camera.clone()));
                 }
@@ -132,7 +132,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             glm::Vec3::new(0.0, 1.0, 0.0),
                             camera.orientation(),
                         )),
-                        -1.0 * move_quantity,
+                        -move_quantity,
                     );
 
                     renderer.change_camera(Arc::new(camera.clone()));

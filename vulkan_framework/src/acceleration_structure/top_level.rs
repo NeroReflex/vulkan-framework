@@ -26,7 +26,7 @@ impl Default for TopLevelBLASGroupDecl {
 }
 
 impl TopLevelBLASGroupDecl {
-    pub(crate) fn ash_geometry(&self) -> ash::vk::AccelerationStructureGeometryKHR {
+    pub(crate) fn ash_geometry(&self) -> ash::vk::AccelerationStructureGeometryKHR<'_> {
         ash::vk::AccelerationStructureGeometryKHR::default()
             // TODO: .flags()
             .geometry_type(ash::vk::GeometryTypeKHR::INSTANCES)

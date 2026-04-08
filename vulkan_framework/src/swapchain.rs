@@ -641,7 +641,7 @@ impl SwapchainKHR {
             )
         }?;
 
-        let images = unsafe { ext.get_swapchain_images(swapchain) }.inspect_err(|err| {
+        let images = unsafe { ext.get_swapchain_images(swapchain) }.inspect_err(|_err| {
             // avoid leaking the swapchain
             unsafe {
                 ext.destroy_swapchain(
