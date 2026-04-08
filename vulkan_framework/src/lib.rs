@@ -43,3 +43,6 @@ pub mod utils;
 
 // re-export ash so that the user can use it directly
 pub extern crate ash;
+
+#[cfg(test)]
+mod tests;

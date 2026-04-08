@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use std::sync::Arc;
 
 #[cfg(feature = "better_mutex")]
@@ -80,6 +78,10 @@ impl QueueFamily {
         self.family_index
     }
 
+    pub fn max_queues(&self) -> usize {
+        self.descriptor.max_queues()
+    }
+
     pub fn new(device: Arc<Device>, index_of_required_queue: usize) -> VulkanResult<Arc<Self>> {
         #[cfg(feature = "better_mutex")]
         let created_queues = const_mutex(0);
@@ -100,10 +102,10 @@ impl QueueFamily {
 
     pub(crate) fn move_out_queue(&self) -> VulkanResult<(u32, f32)> {
         #[cfg(feature = "better_mutex")]
-        let created_queues = self.created_queues.lock();
+        let mut created_queues = self.created_queues.lock();
 
         #[cfg(not(feature = "better_mutex"))]
-        let created_queues = match self.created_queues.lock() {
+        let mut created_queues = match self.created_queues.lock() {
             Ok(lock) => lock,
             Err(err) => {
                 return Err(VulkanError::Framework(FrameworkError::MutexError(format!(
@@ -112,13 +114,16 @@ impl QueueFamily {
             }
         };
 
-        let created_queues_num = *(created_queues.deref());
+        let created_queues_num = *created_queues;
         let total_number_of_queues = self.descriptor.queue_priorities.len();
         match created_queues_num < total_number_of_queues as u64 {
-            true => Ok((
-                created_queues_num as u32,
-                self.descriptor.queue_priorities[created_queues_num as usize],
-            )),
+            true => {
+                *created_queues += 1;
+                Ok((
+                    created_queues_num as u32,
+                    self.descriptor.queue_priorities[created_queues_num as usize],
+                ))
+            },
             false => Err(VulkanError::Framework(FrameworkError::TooManyQueues(
                 created_queues_num as usize,
                 total_number_of_queues,
