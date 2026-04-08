@@ -20,3 +20,6 @@ full = [ "better_mutex", "async" ]
 
 [profile.release]
 lto = true
+
+[dev-dependencies]
+inline-spirv = "*"

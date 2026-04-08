@@ -8,7 +8,10 @@ mod instance_device_tests {
     fn test_instance_and_device_creation() -> VulkanResult<()> {
         match crate::tests::common::setup_test_device() {
             Ok((_instance, device)) => {
-                println!("Created device with native handle: {:#x}", device.native_handle());
+                println!(
+                    "Created device with native handle: {:#x}",
+                    device.native_handle()
+                );
                 Ok(())
             }
             Err(err) => {
