@@ -16,30 +16,37 @@ mod queue_concurrency_tests {
     use crate::instance::Instance;
     use crate::prelude::*;
     use crate::queue::Queue;
-    use crate::queue_family::{ConcreteQueueFamilyDescriptor, QueueFamily, QueueFamilySupportedOperationType};
+    use crate::queue_family::{
+        ConcreteQueueFamilyDescriptor, QueueFamily, QueueFamilySupportedOperationType,
+    };
 
     /// Helper to create a minimal Vulkan instance and device for testing
     fn setup_test_device() -> VulkanResult<(Arc<Instance>, Arc<Device>)> {
         let instance = Instance::new(&[], &[], &"engine".to_string(), &"app".to_string())?;
-        
+
         // Create a queue descriptor for graphics operations with multiple queues
         let queue_descriptor = ConcreteQueueFamilyDescriptor::new(
             &[QueueFamilySupportedOperationType::Graphics],
             &[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0], // Request 8 queues
         );
-        
-        let device = Device::new(instance.clone(), &[queue_descriptor], &[], Some("test_device"))?;
+
+        let device = Device::new(
+            instance.clone(),
+            &[queue_descriptor],
+            &[],
+            Some("test_device"),
+        )?;
         Ok((instance, device))
     }
 
     #[test]
     fn test_queue_family_creates_unique_queue_indices() -> VulkanResult<()> {
         let (_instance, device) = setup_test_device()?;
-        
+
         // Create a queue family with graphics capability
         let queue_family = QueueFamily::new(device.clone(), 0)?;
         let max_queues = queue_family.max_queues();
-        
+
         // Ensure we have at least 2 queues available (most devices do)
         if max_queues < 2 {
             println!(
@@ -52,7 +59,7 @@ mod queue_concurrency_tests {
         // Create 4 queue objects from the same family
         let num_queues = std::cmp::min(4, max_queues);
         let mut queues = Vec::with_capacity(num_queues);
-        
+
         for i in 0..num_queues {
             let queue = Queue::new(queue_family.clone(), Some(&format!("test_queue_{}", i)))?;
             queues.push(queue);
@@ -64,7 +71,7 @@ mod queue_concurrency_tests {
         for (i, queue) in queues.iter().enumerate() {
             let handle = queue.native_handle();
             handles.push(handle);
-            
+
             // Each handle should be different
             for (j, prev_handle) in handles.iter().take(i).enumerate() {
                 assert_ne!(
@@ -74,7 +81,7 @@ mod queue_concurrency_tests {
                 );
             }
         }
-        
+
         println!("✓ All {} queues have unique handles", num_queues);
         Ok(())
     }
@@ -82,11 +89,11 @@ mod queue_concurrency_tests {
     #[test]
     fn test_concurrent_queue_submissions() -> VulkanResult<()> {
         let (_instance, device) = setup_test_device()?;
-        
+
         // Create a queue family
         let queue_family = QueueFamily::new(device.clone(), 0)?;
         let max_queues = queue_family.max_queues();
-        
+
         // Need at least 2 queues for meaningful concurrency test
         if max_queues < 2 {
             println!(
@@ -98,30 +105,33 @@ mod queue_concurrency_tests {
 
         let num_queues = std::cmp::min(4, max_queues);
         let mut queues = Vec::with_capacity(num_queues);
-        
+
         for i in 0..num_queues {
-            let queue = Queue::new(queue_family.clone(), Some(&format!("concurrent_queue_{}", i)))?;
+            let queue = Queue::new(
+                queue_family.clone(),
+                Some(&format!("concurrent_queue_{}", i)),
+            )?;
             queues.push(Arc::new(queue));
         }
 
         // Verification 2: Multiple threads submitting to different queues concurrently
         // should not cause Vulkan violations or panics
         let mut thread_handles = vec![];
-        
+
         for (i, queue) in queues.iter().enumerate() {
             let queue_clone = Arc::clone(queue);
-            
+
             let handle = thread::spawn(move || {
                 // Each thread verifies its queue handle is unique from the first
                 let handle = queue_clone.native_handle();
                 println!("Thread {} acquired queue with handle: {:#x}", i, handle);
-                
+
                 // Small delay to ensure threads overlap in execution
                 thread::sleep(Duration::from_millis(1));
-                
+
                 handle
             });
-            
+
             thread_handles.push(handle);
         }
 
@@ -144,7 +154,10 @@ mod queue_concurrency_tests {
             }
         }
 
-        println!("✓ Concurrent queue access verified: {} unique queue handles", collected_handles.len());
+        println!(
+            "✓ Concurrent queue access verified: {} unique queue handles",
+            collected_handles.len()
+        );
         Ok(())
     }
 
@@ -152,7 +165,7 @@ mod queue_concurrency_tests {
     fn test_queue_handle_increments_properly() -> VulkanResult<()> {
         let (_instance, device) = setup_test_device()?;
         let queue_family = QueueFamily::new(device.clone(), 0)?;
-        
+
         if queue_family.max_queues() < 3 {
             println!("Skipping: device has fewer than 3 queues");
             return Ok(());
@@ -168,9 +181,18 @@ mod queue_concurrency_tests {
         let queue3 = Queue::new(queue_family.clone(), Some("q3"))?;
         let handle3 = queue3.native_handle();
 
-        assert_ne!(handle1, handle2, "Queue 1 and 2 should have different handles");
-        assert_ne!(handle2, handle3, "Queue 2 and 3 should have different handles");
-        assert_ne!(handle1, handle3, "Queue 1 and 3 should have different handles");
+        assert_ne!(
+            handle1, handle2,
+            "Queue 1 and 2 should have different handles"
+        );
+        assert_ne!(
+            handle2, handle3,
+            "Queue 2 and 3 should have different handles"
+        );
+        assert_ne!(
+            handle1, handle3,
+            "Queue 1 and 3 should have different handles"
+        );
 
         println!(
             "✓ Queue handles incremented correctly: {:#x}, {:#x}, {:#x}",

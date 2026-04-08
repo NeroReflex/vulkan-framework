@@ -651,6 +651,7 @@ name = "vulkan_framework"
 version = "0.1.6"
 dependencies = [
  "ash",
+ "inline-spirv 0.1.6",
  "parking_lot",
  "smallvec",
  "thiserror",

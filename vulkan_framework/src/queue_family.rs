@@ -123,7 +123,7 @@ impl QueueFamily {
                     created_queues_num as u32,
                     self.descriptor.queue_priorities[created_queues_num as usize],
                 ))
-            },
+            }
             false => Err(VulkanError::Framework(FrameworkError::TooManyQueues(
                 created_queues_num as usize,
                 total_number_of_queues,
