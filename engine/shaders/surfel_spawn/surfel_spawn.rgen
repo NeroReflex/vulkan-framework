@@ -10,7 +10,6 @@
 #include "../config.glsl"
 #include "payload.glsl"
 #include "../math.glsl"
-#include "../morton.glsl"
 
 #define RT_DESCRIPTOR_SET 0
 #include "../rt_descriptor_set.glsl"

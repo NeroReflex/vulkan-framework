@@ -1,0 +1,157 @@
+#extension GL_EXT_debug_printf : enable
+
+#include "../config.glsl"
+#include "build_layout.glsl"
+
+// One invocation owns one range. Ranges do not overlap.
+layout (local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+#define SURFEL_NO_IMAGES 1
+#define SURFEL_NO_DISCOVERED 1
+#define SURFELS_DESCRIPTOR_SET 0
+#include "../surfel.glsl"
+
+layout (set = SURFELS_DESCRIPTOR_SET, binding = 6, std430) buffer surfel_build_scratch {
+    uint build_words[];
+};
+
+uint float_to_sortable(float value) {
+    const uint bits = floatBitsToUint(value);
+    const uint mask = (bits & 0x80000000u) != 0u ? 0xFFFFFFFFu : 0x80000000u;
+    return bits ^ mask;
+}
+
+float coord_of(uint surfel_id, uint axis) {
+    if (axis == 0u) {
+        return surfels[surfel_id].position_x;
+    } else if (axis == 1u) {
+        return surfels[surfel_id].position_y;
+    }
+    return surfels[surfel_id].position_z;
+}
+
+uint digit_of(uint surfel_id, uint axis, uint pass) {
+    if (pass < 4u) {
+        return (surfel_id >> (pass * 8u)) & 255u;
+    }
+    const uint key = float_to_sortable(coord_of(surfel_id, axis));
+    return (key >> ((pass - 4u) * 8u)) & 255u;
+}
+
+void radix_sort_range(uint start, uint count, uint axis) {
+    uint hist[256];
+    for (uint pass = 0u; pass < 8u; ++pass) {
+        for (uint b = 0u; b < 256u; ++b) {
+            hist[b] = 0u;
+        }
+        const bool read_a = (pass & 1u) == 0u;
+        for (uint i = 0u; i < count; ++i) {
+            const uint id = build_words[(read_a ? OFF_IDS_A : OFF_IDS_B) + start + i];
+            hist[digit_of(id, axis, pass)] += 1u;
+        }
+        uint sum = 0u;
+        for (uint b = 0u; b < 256u; ++b) {
+            const uint c = hist[b];
+            hist[b] = sum;
+            sum += c;
+        }
+        for (uint i = 0u; i < count; ++i) {
+            const uint id = build_words[(read_a ? OFF_IDS_A : OFF_IDS_B) + start + i];
+            const uint d = digit_of(id, axis, pass);
+            const uint dst = hist[d];
+            hist[d] = dst + 1u;
+            build_words[(read_a ? OFF_IDS_B : OFF_IDS_A) + start + dst] = id;
+        }
+    }
+}
+
+void main() {
+    const uint range_index = gl_GlobalInvocationID.x;
+    const uint range_count = build_words[HDR_RANGE_COUNT];
+    if (range_index >= range_count || range_index >= RANGE_CAP) {
+        return;
+    }
+
+    const uint range_base = OFF_RANGES + range_index * RANGE_STRIDE;
+    const uint start = build_words[range_base + 0u];
+    const uint count = build_words[range_base + 1u];
+    const uint node = build_words[range_base + 2u];
+    if (count <= 1u) {
+        const uint pending = OFF_PENDING + range_index * PENDING_STRIDE;
+        build_words[pending] = 0u;
+        return;
+    }
+
+    float min_x = 1e30;
+    float min_y = 1e30;
+    float min_z = 1e30;
+    float max_x = -1e30;
+    float max_y = -1e30;
+    float max_z = -1e30;
+    for (uint i = 0u; i < count; ++i) {
+        const uint id = build_words[OFF_IDS_A + start + i];
+        const vec3 p = surfelPosition(id);
+        min_x = min(min_x, p.x);
+        min_y = min(min_y, p.y);
+        min_z = min(min_z, p.z);
+        max_x = max(max_x, p.x);
+        max_y = max(max_y, p.y);
+        max_z = max(max_z, p.z);
+    }
+    const float ext_x = max_x - min_x;
+    const float ext_y = max_y - min_y;
+    const float ext_z = max_z - min_z;
+    uint axis = 0u;
+    float ext = ext_x;
+    if (ext_y > ext) {
+        axis = 1u;
+        ext = ext_y;
+    }
+    if (ext_z > ext) {
+        axis = 2u;
+    }
+
+    // Eight stable passes: id in the low bits, position in the high bits.
+    // An even number of passes leaves the sorted ids in bank A.
+    radix_sort_range(start, count, axis);
+
+    const uint left_count = count >> 1u;
+    const uint right_count = count - left_count;
+    const bool left_internal = left_count > 1u;
+    const bool right_internal = right_count > 1u;
+    const uint left_node = node + 1u;
+    const uint right_node = node + 1u + (left_internal ? (left_count - 1u) : 0u);
+
+    if (left_internal) {
+        tree[node].left = left_node;
+        tree[left_node].parent = node;
+        tree[left_node].flags = 0u;
+    } else {
+        tree[node].left = build_words[OFF_IDS_A + start] | NODE_IS_LEAF_FLAG;
+    }
+
+    if (right_internal) {
+        tree[node].right = right_node;
+        tree[right_node].parent = node;
+        tree[right_node].flags = 0u;
+    } else {
+        tree[node].right = build_words[OFF_IDS_A + start + left_count] | NODE_IS_LEAF_FLAG;
+    }
+    tree[node].flags = 0u;
+
+    const uint pending = OFF_PENDING + range_index * PENDING_STRIDE;
+    uint nchild = 0u;
+    if (left_internal) {
+        build_words[pending + 1u + nchild * 3u] = start;
+        build_words[pending + 2u + nchild * 3u] = left_count;
+        build_words[pending + 3u + nchild * 3u] = left_node;
+        nchild += 1u;
+    }
+    if (right_internal) {
+        build_words[pending + 1u + nchild * 3u] = start + left_count;
+        build_words[pending + 2u + nchild * 3u] = right_count;
+        build_words[pending + 3u + nchild * 3u] = right_node;
+        nchild += 1u;
+    }
+    build_words[pending] = nchild;
+}

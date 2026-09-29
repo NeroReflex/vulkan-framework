@@ -1,0 +1,48 @@
+#extension GL_EXT_debug_printf : enable
+
+#include "../config.glsl"
+
+layout (local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+#define STATUS_DESCRIPTOR_SET 0
+#include "../status.glsl"
+
+#define SURFEL_NO_IMAGES 1
+#define SURFEL_NO_DISCOVERED 1
+#define SURFELS_DESCRIPTOR_SET 1
+#include "../surfel.glsl"
+
+// Mark committed surfels that should leave the tree. Indices do not change.
+void main() {
+    const uint surfel_id = gl_GlobalInvocationID.x;
+    if (surfel_id >= uint(high_water)) {
+        return;
+    }
+
+    if ((surfels[surfel_id].flags & SURFEL_FLAG_DEAD) != 0u) {
+        return;
+    }
+
+    const vec2 clip_space = reconstructNearFarFromCamera();
+    const vec3 eye_position = get_eye_position();
+    const vec3 center = surfelPosition(surfel_id);
+
+    surfels[surfel_id].latest_contribution += 1u;
+
+#if DELETE_NOT_CONTRIBUTING_SURFELS
+    if (surfels[surfel_id].latest_contribution >= DELETE_NOT_CONTRIBUTING_SURFELS) {
+        atomicOr(surfels[surfel_id].flags, SURFEL_FLAG_DEAD);
+        return;
+    }
+#endif
+
+    const float ideal_radius = radius_from_camera_distance(eye_position, clip_space, center);
+    if (abs(ideal_radius - surfels[surfel_id].radius) > DELETE_ON_RADIUS_DIFFERENCE) {
+        atomicOr(surfels[surfel_id].flags, SURFEL_FLAG_DEAD);
+        return;
+    }
+
+    if (is_out_of_range(eye_position, center, clip_space)) {
+        atomicOr(surfels[surfel_id].flags, SURFEL_FLAG_DEAD);
+    }
+}

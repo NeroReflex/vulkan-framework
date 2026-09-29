@@ -1,0 +1,126 @@
+#extension GL_EXT_debug_printf : enable
+
+#include "../config.glsl"
+#include "build_layout.glsl"
+
+layout (local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+layout (push_constant) uniform PrefixParams {
+    uint phase;
+    uint kind; // 0 = dead holes, 1 = live ids
+} params;
+
+#define SURFEL_NO_IMAGES 1
+#define SURFEL_NO_DISCOVERED 1
+#define SURFELS_DESCRIPTOR_SET 0
+#include "../surfel.glsl"
+
+layout (set = SURFELS_DESCRIPTOR_SET, binding = 6, std430) buffer surfel_build_scratch {
+    uint build_words[];
+};
+
+shared uint local_scan[256];
+
+bool predicate(uint surfel_id) {
+    if (surfel_id >= uint(high_water)) {
+        return false;
+    }
+    const bool dead = (surfels[surfel_id].flags & SURFEL_FLAG_DEAD) != 0u;
+    return params.kind == 0u ? dead : !dead;
+}
+
+void exclusive_scan_workgroup(uint lid, uint value) {
+    local_scan[lid] = value;
+    barrier();
+    for (uint offset = 1u; offset < 256u; offset <<= 1u) {
+        uint val = local_scan[lid];
+        if (lid >= offset) {
+            val += local_scan[lid - offset];
+        }
+        barrier();
+        local_scan[lid] = val;
+        barrier();
+    }
+}
+
+void main() {
+    const uint lid = gl_LocalInvocationID.x;
+    const uint gid = gl_GlobalInvocationID.x;
+    const uint block = gl_WorkGroupID.x;
+
+    if (params.phase == 0u) {
+        if (block >= BUILD_BLOCKS) {
+            return;
+        }
+        const uint value = (gid < BUILD_HALF && predicate(gid)) ? 1u : 0u;
+        exclusive_scan_workgroup(lid, value);
+        if (lid == 255u) {
+            build_words[OFF_BLOCK_SUMS + block] = local_scan[255];
+        }
+        return;
+    }
+
+    if (params.phase == 1u) {
+        if (gl_GlobalInvocationID.x != 0u) {
+            return;
+        }
+        uint sum = 0u;
+        for (uint i = 0u; i < BUILD_BLOCKS; ++i) {
+            build_words[OFF_BLOCK_EXCL + i] = sum;
+            sum += build_words[OFF_BLOCK_SUMS + i];
+        }
+        if (params.kind == 0u) {
+            build_words[HDR_HOLE_COUNT] = sum;
+        } else {
+            live_count = int(sum);
+        }
+        return;
+    }
+
+    if (params.phase == 2u) {
+        if (block >= BUILD_BLOCKS) {
+            return;
+        }
+        const bool keep = gid < BUILD_HALF && predicate(gid);
+        const uint value = keep ? 1u : 0u;
+        exclusive_scan_workgroup(lid, value);
+        if (!keep) {
+            return;
+        }
+        const uint exclusive = local_scan[lid] - 1u;
+        const uint slot = build_words[OFF_BLOCK_EXCL + block] + exclusive;
+        if (params.kind == 0u) {
+            build_words[OFF_HOLES + slot] = gid;
+        } else {
+            build_words[OFF_IDS_A + slot] = gid;
+        }
+        return;
+    }
+
+    // phase 3: publish the root of the median-split tree
+    if (gl_GlobalInvocationID.x != 0u) {
+        return;
+    }
+
+    const uint n = uint(live_count);
+    tree[0].flags = 0u;
+    tree[0].parent = 0u;
+    if (n == 0u) {
+        tree[0].left = 0u;
+        tree[0].right = 0u;
+        build_words[HDR_RANGE_COUNT] = 0u;
+    } else if (n == 1u) {
+        const uint id = build_words[OFF_IDS_A];
+        tree[0].left = id | NODE_IS_LEAF_FLAG;
+        tree[0].right = id | NODE_IS_LEAF_FLAG;
+        build_words[HDR_RANGE_COUNT] = 0u;
+    } else {
+        tree[0].left = 0u;
+        tree[0].right = 0u;
+        build_words[OFF_RANGES + 0u] = 0u;
+        build_words[OFF_RANGES + 1u] = n;
+        build_words[OFF_RANGES + 2u] = 0u;
+        build_words[OFF_RANGES + 3u] = 0u;
+        build_words[HDR_RANGE_COUNT] = 1u;
+    }
+}

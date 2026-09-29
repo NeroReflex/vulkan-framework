@@ -1,0 +1,61 @@
+#extension GL_EXT_debug_printf : enable
+
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+#define SURFEL_NO_IMAGES 1
+#define SURFEL_NO_DISCOVERED 1
+#define SURFELS_DESCRIPTOR_SET 0
+#include "../surfel.glsl"
+
+struct QueryItem {
+    float x;
+    float y;
+    float z;
+    float radius;
+    uint count;
+    uint overflow;
+    uint ids[SURFEL_GATHER_MAX];
+    uint instance_id;
+    uint spawn_result;
+};
+
+layout(std430, set = 0, binding = 7) buffer Queries {
+    QueryItem items[];
+};
+
+void main() {
+    const uint query_index = gl_GlobalInvocationID.x;
+
+    const vec3 point = vec3(items[query_index].x, items[query_index].y, items[query_index].z);
+    const float radius = items[query_index].radius;
+    if (radius < 0.0) {
+        items[query_index].count = 0u;
+        items[query_index].overflow = 0u;
+        return;
+    }
+
+    const SurfelGather gathered = gather_nearby_surfels(point, radius);
+    items[query_index].count = gathered.count;
+    items[query_index].overflow = gathered.count == SURFEL_GATHER_MAX ? 1u : 0u;
+    for (uint i = 0u; i < SURFEL_GATHER_MAX; ++i) {
+        items[query_index].ids[i] = i < gathered.count ? gathered.ids[i] : 0u;
+    }
+
+    const uint ordered = linear_search_ordered_surfel_for_allocation(
+        point,
+        items[query_index].instance_id,
+        radius
+    );
+    if (ordered != SURFELS_MISSED) {
+        items[query_index].spawn_result = ordered;
+        return;
+    }
+
+    uint checked = 0u;
+    items[query_index].spawn_result = linear_search_unordered_surfel_for_allocation(
+        checked,
+        point,
+        items[query_index].instance_id,
+        radius
+    );
+}

@@ -1,0 +1,47 @@
+#extension GL_EXT_debug_printf : enable
+
+#include "../config.glsl"
+#include "build_layout.glsl"
+
+layout (local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+#define SURFEL_NO_IMAGES 1
+#define SURFEL_NO_DISCOVERED 1
+#define SURFELS_DESCRIPTOR_SET 0
+#include "../surfel.glsl"
+
+layout (set = SURFELS_DESCRIPTOR_SET, binding = 6, std430) buffer surfel_build_scratch {
+    uint build_words[];
+};
+
+void main() {
+    if (gl_GlobalInvocationID.x != 0u) {
+        return;
+    }
+
+    const uint range_count = build_words[HDR_RANGE_COUNT];
+
+    uint cursor = 0u;
+    for (uint i = 0u; i < range_count && i < RANGE_CAP; ++i) {
+        const uint pending = OFF_PENDING + i * PENDING_STRIDE;
+        const uint nchild = build_words[pending];
+        for (uint c = 0u; c < nchild; ++c) {
+            const uint base = OFF_RANGES_NEXT + cursor * RANGE_STRIDE;
+            build_words[base + 0u] = build_words[pending + 1u + c * 3u];
+            build_words[base + 1u] = build_words[pending + 2u + c * 3u];
+            build_words[base + 2u] = build_words[pending + 3u + c * 3u];
+            build_words[base + 3u] = 0u;
+            cursor += 1u;
+        }
+    }
+
+    for (uint i = 0u; i < cursor; ++i) {
+        const uint src = OFF_RANGES_NEXT + i * RANGE_STRIDE;
+        const uint dst = OFF_RANGES + i * RANGE_STRIDE;
+        build_words[dst + 0u] = build_words[src + 0u];
+        build_words[dst + 1u] = build_words[src + 1u];
+        build_words[dst + 2u] = build_words[src + 2u];
+        build_words[dst + 3u] = 0u;
+    }
+    build_words[HDR_RANGE_COUNT] = cursor;
+}

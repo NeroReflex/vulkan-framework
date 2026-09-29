@@ -6,7 +6,6 @@
 #include "../config.glsl"
 #include "../random.glsl"
 #include "../math.glsl"
-#include "../morton.glsl"
 
 #define STATUS_DESCRIPTOR_SET 0
 #include "../status.glsl"
