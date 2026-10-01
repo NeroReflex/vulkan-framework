@@ -237,11 +237,12 @@ impl Manager {
     }
 
     pub fn new(
-        queue_family: Arc<QueueFamily>,
+        queue: Arc<Queue>,
         memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
         frames_in_flight: u32,
         debug_name: String,
     ) -> RenderingResult<Self> {
+        let queue_family = queue.get_parent_queue_family();
         let device = queue_family.get_parent_device();
 
         let command_pool = CommandPool::new(queue_family.clone(), Some("tlas_command_pool"))?;
@@ -312,20 +313,20 @@ impl Manager {
         }
 
         let mesh_manager = MeshManager::new(
-            queue_family.clone(),
+            queue.clone(),
             memory_manager.clone(),
             frames_in_flight,
             format!("{debug_name}->mesh_manager"),
         )?;
         let texture_manager = TextureManager::new(
-            queue_family.clone(),
+            queue.clone(),
             memory_manager.clone(),
             stub_image_data.clone(),
             frames_in_flight,
             format!("{debug_name}->texture_manager"),
         )?;
         let material_manager = MaterialManager::new(
-            queue_family.clone(),
+            queue.clone(),
             memory_manager.clone(),
             frames_in_flight,
             format!("{debug_name}->material_manager"),
@@ -336,7 +337,7 @@ impl Manager {
             objects.push(None);
         }
 
-        let tlas_loading_queue = Queue::new(queue_family.clone(), Some("tlas_loading_queue"))?;
+        let tlas_loading_queue = queue.clone();
         let current_tlas = None;
 
         Ok(Self {

@@ -331,12 +331,15 @@ impl System {
                     "Could not detect a compatible amount of swapchain images",
                 )))?;
 
-        let mut queues = smallvec::smallvec![];
-        for index in 0..frames_in_flight {
-            queues.push(Queue::new(
+        // single queue for all tasks
+        let queue = Queue::new(
                 queue_family.clone(),
-                Some(format!("queues[{index}]").as_str()),
-            )?);
+                Some(format!("queue").as_str()),
+            )?;
+
+        let mut queues = smallvec::smallvec![];
+        for _ in 0..frames_in_flight {
+            queues.push(queue.clone());
         }
 
         let rendering_fences = (0..swapchain_images_count)
@@ -490,7 +493,7 @@ impl System {
         let memory_manager = Arc::new(Mutex::new(memory_manager));
 
         let obj_manager = ResourceManager::new(
-            queue_family.clone(),
+            queue.clone(),
             memory_manager.clone(),
             frames_in_flight,
             String::from("resource_manager"),
@@ -672,6 +675,8 @@ impl System {
 
         let rt_descriptor_set = None;
 
+        let main_queue = queue.clone(); // Queue::new(queue_family.clone(), Some("init_queue")).unwrap();
+
         let mesh_rendering = Arc::new(MeshRendering::new(
             memory_manager.clone(),
             obj_manager.textures_descriptor_set_layout(),
@@ -710,7 +715,7 @@ impl System {
 
         let resources_manager = Arc::new(Mutex::new(obj_manager));
         let lights_manager = Arc::new(Mutex::new(DirectionalLights::new(
-            queue_family.clone(),
+            queue.clone(),
             memory_manager.clone(),
             String::from("directional_lights"),
         )?));
@@ -727,8 +732,7 @@ impl System {
             renderquad.record_init_commands(recorder);
         })?;
 
-        let init_queue = Queue::new(queue_family.clone(), Some("init_queue")).unwrap();
-        let init_waiter = init_queue.submit(
+        let init_waiter = main_queue.submit(
             &[init_command_buffer.clone()],
             &[],
             &[

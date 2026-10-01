@@ -75,11 +75,12 @@ impl MeshManager {
     }
 
     pub fn new(
-        queue_family: Arc<QueueFamily>,
+        queue: Arc<Queue>,
         memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
         frames_in_flight: u32,
         debug_name: String,
     ) -> RenderingResult<Self> {
+        let queue_family = queue.get_parent_queue_family();
         let device = queue_family.get_parent_device();
 
         let descriptor_pool = DescriptorPool::new(
@@ -102,11 +103,6 @@ impl MeshManager {
                 frames_in_flight,
             ),
             Some(format!("{debug_name}.mesh_manager.descriptor_pool").as_str()),
-        )?;
-
-        let queue = Queue::new(
-            queue_family.clone(),
-            Some(format!("{debug_name}.mesh_manager.queue").as_str()),
         )?;
 
         let meshes = LoadableResourcesCollection::new(

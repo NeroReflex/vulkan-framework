@@ -35,16 +35,16 @@ pub struct DirectionalLights {
 
 impl DirectionalLights {
     pub fn new(
-        queue_family: Arc<QueueFamily>,
+        queue: Arc<Queue>,
         memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
         debug_name: String,
     ) -> RenderingResult<Self> {
-        let queue = Queue::new(queue_family.clone(), Some("texture_manager.queue"))?;
+        let queue_family = queue.get_parent_queue_family();
 
         let lights = LoadableResourcesCollection::new(
             queue_family,
             MAX_DIRECTIONAL_LIGHTS,
-            String::from("texture_manager"),
+            String::from("directional_lights"),
         )?;
 
         Ok(Self {

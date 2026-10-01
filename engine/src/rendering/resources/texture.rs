@@ -28,7 +28,7 @@ use vulkan_framework::{
     memory_pool::MemoryPoolFeatures,
     pipeline_stage::{PipelineStage, PipelineStages},
     queue::Queue,
-    queue_family::{QueueFamily, QueueFamilyOwned},
+    queue_family::QueueFamilyOwned,
     sampler::{Filtering, MipmapMode, Sampler},
     shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType},
     shader_stage_access::{ShaderStageAccessIn, ShaderStageAccessInRayTracingKHR},
@@ -142,15 +142,14 @@ impl TextureManager {
     }
 
     pub fn new(
-        queue_family: Arc<QueueFamily>,
+        queue: Arc<Queue>,
         memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
         stub_image_data: Arc<dyn BufferTrait>,
         frames_in_flight: u32,
         debug_name: String,
     ) -> RenderingResult<Self> {
+        let queue_family = queue.get_parent_queue_family();
         let device = queue_family.get_parent_device();
-
-        let queue = Queue::new(queue_family.clone(), Some("texture_manager.queue"))?;
 
         let descriptor_pool = DescriptorPool::new(
             device.clone(),

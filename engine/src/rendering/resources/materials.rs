@@ -135,14 +135,13 @@ impl MaterialManager {
     }
 
     pub fn new(
-        queue_family: Arc<QueueFamily>,
+        queue: Arc<Queue>,
         memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
         frames_in_flight: u32,
         debug_name: String,
     ) -> RenderingResult<Self> {
+        let queue_family = queue.get_parent_queue_family();
         let device = queue_family.get_parent_device();
-
-        let queue = Queue::new(queue_family.clone(), Some("texture_manager.queue"))?;
 
         let descriptor_pool = DescriptorPool::new(
             device.clone(),
