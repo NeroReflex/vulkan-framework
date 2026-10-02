@@ -305,6 +305,11 @@ impl System {
                 .unwrap(),
         )?;
 
+        let mut queue_priorities = vec![];
+        for _ in 0..(preferred_frames_in_flight + 4) {
+            queue_priorities.push(1.0f32);
+        }
+
         let device = Device::new(
             surface.get_parent_instance(),
             [ConcreteQueueFamilyDescriptor::new(
@@ -314,7 +319,7 @@ impl System {
                     QueueFamilySupportedOperationType::Present(surface.clone()),
                 ]
                 .as_ref(),
-                [1.0f32].as_slice(),
+                queue_priorities.as_slice(),
             )]
             .as_slice(),
             Self::required_device_extensions().as_slice(),
