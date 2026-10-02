@@ -1,5 +1,8 @@
 use std::{
-    sync::{atomic::Ordering, Arc},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::Duration,
 };
 
@@ -121,6 +124,138 @@ impl SurfaceTransformSwapchainKHR {
     }
 }
 
+pub(crate) fn image_count_supported(
+    capabilities: &ash::vk::SurfaceCapabilitiesKHR,
+    count: u32,
+) -> bool {
+    count >= capabilities.min_image_count
+        && (capabilities.max_image_count == 0 || count <= capabilities.max_image_count)
+}
+
+pub(crate) fn image_extent(
+    capabilities: &ash::vk::SurfaceCapabilitiesKHR,
+    preferred: Image2DDimensions,
+) -> Image2DDimensions {
+    if capabilities.current_extent.width != u32::MAX {
+        Image2DDimensions::new(
+            capabilities.current_extent.width,
+            capabilities.current_extent.height,
+        )
+    } else {
+        Image2DDimensions::new(
+            preferred.width().clamp(
+                capabilities.min_image_extent.width,
+                capabilities.max_image_extent.width,
+            ),
+            preferred.height().clamp(
+                capabilities.min_image_extent.height,
+                capabilities.max_image_extent.height,
+            ),
+        )
+    }
+}
+
+pub(crate) fn validate_image_capabilities(
+    capabilities: &ash::vk::SurfaceCapabilitiesKHR,
+    usage: ImageUsage,
+    extent: Image2DDimensions,
+    min_image_count: u32,
+    image_layers: u32,
+    transform: SurfaceTransformSwapchainKHR,
+    alpha: CompositeAlphaSwapchainKHR,
+) -> VulkanResult<()> {
+    if image_layers == 0 {
+        return Err(FrameworkError::NoImageLayersSpecified.into());
+    }
+    if extent.width() == 0 || extent.height() == 0 || image_extent(capabilities, extent) != extent {
+        return Err(FrameworkError::UnsuitableImageDimensions.into());
+    }
+    let usage: ash::vk::ImageUsageFlags = usage.into();
+    if image_layers > capabilities.max_image_array_layers
+        || !image_count_supported(capabilities, min_image_count)
+        || usage.is_empty()
+        || !capabilities.supported_usage_flags.contains(usage)
+        || !capabilities
+            .supported_transforms
+            .contains(transform.ash_transform())
+        || !capabilities
+            .supported_composite_alpha
+            .contains(alpha.ash_alpha())
+    {
+        return Err(ash::vk::Result::ERROR_UNKNOWN.into());
+    }
+    Ok(())
+}
+
+// Once vkCreateSwapchainKHR is called, oldSwapchain is retired even on failure.
+// Always release the retired handle; release the replacement too if enumeration fails.
+pub(crate) fn replace_native_swapchain(
+    ext: &ash::khr::swapchain::Device,
+    callbacks: Option<&ash::vk::AllocationCallbacks<'_>>,
+    create_info: &ash::vk::SwapchainCreateInfoKHR<'_>,
+    swapchain: &mut ash::vk::SwapchainKHR,
+    images: &mut Vec<ash::vk::Image>,
+) -> VulkanResult<()> {
+    let old = std::mem::replace(swapchain, ash::vk::SwapchainKHR::null());
+    images.clear();
+    let result = unsafe { ext.create_swapchain(create_info, callbacks) }.and_then(|new| {
+        match unsafe { ext.get_swapchain_images(new) } {
+            Ok(new_images) if !new_images.is_empty() => Ok((new, new_images)),
+            result => {
+                unsafe { ext.destroy_swapchain(new, callbacks) };
+                Err(result
+                    .err()
+                    .unwrap_or(ash::vk::Result::ERROR_INITIALIZATION_FAILED))
+            }
+        }
+    });
+    if old != ash::vk::SwapchainKHR::null() {
+        unsafe { ext.destroy_swapchain(old, callbacks) };
+    }
+    let (new, new_images) = result?;
+    *swapchain = new;
+    *images = new_images;
+    Ok(())
+}
+
+pub(crate) fn acquire_native_image(
+    ext: &ash::khr::swapchain::Device,
+    swapchain: ash::vk::SwapchainKHR,
+    timeout: Duration,
+    semaphore: ash::vk::Semaphore,
+    fence: ash::vk::Fence,
+) -> VulkanResult<(u32, bool)> {
+    let (index, suboptimal) = unsafe {
+        ext.acquire_next_image(
+            swapchain,
+            timeout.as_nanos().min(u64::MAX as u128) as u64,
+            semaphore,
+            fence,
+        )
+    }?;
+    Ok((index, !suboptimal))
+}
+
+// Reserve only the host acquisition call. The synchronous API leaves waiting/resetting
+// to the caller, and existing async waiters reset an unowned fence on completion.
+// Keeping a submission reservation after returning would prevent either path resetting it.
+pub(crate) struct AcquisitionFenceGuard<'a> {
+    fence: &'a Fence,
+}
+
+impl<'a> AcquisitionFenceGuard<'a> {
+    pub(crate) fn new(fence: &'a Fence) -> VulkanResult<Self> {
+        fence.reserve_submission()?;
+        Ok(Self { fence })
+    }
+}
+
+impl Drop for AcquisitionFenceGuard<'_> {
+    fn drop(&mut self) {
+        let _ = self.fence.cancel_submission();
+    }
+}
+
 pub struct DeviceSurfaceInfo {
     device: Arc<Device>,
     surface: Arc<Surface>,
@@ -137,9 +272,44 @@ impl DeviceOwned for DeviceSurfaceInfo {
 
 impl DeviceSurfaceInfo {
     pub fn image_count_supported(&self, count: u32) -> bool {
-        (count >= self.surface_capabilities.min_image_count)
-            && ((count < self.surface_capabilities.max_image_count)
-                || (self.surface_capabilities.max_image_count == 0))
+        image_count_supported(&self.surface_capabilities, count)
+    }
+
+    /// Use the surface's fixed current extent, or clamp the preferred extent to its limits.
+    /// A zero result (for example, a minimized window) cannot be used to create a swapchain.
+    pub fn image_extent(&self, preferred: Image2DDimensions) -> Image2DDimensions {
+        image_extent(&self.surface_capabilities, preferred)
+    }
+
+    pub fn transform_supported(&self, transform: &SurfaceTransformSwapchainKHR) -> bool {
+        self.surface_capabilities
+            .supported_transforms
+            .contains(transform.ash_transform())
+    }
+
+    pub fn composite_alpha_supported(&self, alpha: &CompositeAlphaSwapchainKHR) -> bool {
+        self.surface_capabilities
+            .supported_composite_alpha
+            .contains(alpha.ash_alpha())
+    }
+
+    /// The surface's current presentation transform.
+    pub fn current_transform(&self) -> SurfaceTransformSwapchainKHR {
+        // Vulkan reports exactly one of these bits as currentTransform.
+        [
+            SurfaceTransformSwapchainKHR::Identity,
+            SurfaceTransformSwapchainKHR::Rotate90,
+            SurfaceTransformSwapchainKHR::Rotate180,
+            SurfaceTransformSwapchainKHR::Rotate270,
+            SurfaceTransformSwapchainKHR::HorizontalMirror,
+            SurfaceTransformSwapchainKHR::HorizontalMirrorRotate90,
+            SurfaceTransformSwapchainKHR::HorizontalMirrorRotate180,
+            SurfaceTransformSwapchainKHR::HorizontalMirrorRotate270,
+            SurfaceTransformSwapchainKHR::Inherit,
+        ]
+        .into_iter()
+        .find(|transform| transform.ash_transform() == self.surface_capabilities.current_transform)
+        .expect("Vulkan returned an invalid current surface transform")
     }
 
     #[inline]
@@ -177,10 +347,19 @@ impl DeviceSurfaceInfo {
             .format(format.to_owned().into())
             .color_space(color_space.ash_colorspace());
 
-        self.surface_formats.contains(&fmt)
+        self.surface_formats.iter().any(|supported| {
+            supported.color_space == fmt.color_space
+                && (supported.format == fmt.format
+                    || supported.format == ash::vk::Format::UNDEFINED)
+        })
     }
 
     pub fn new(device: Arc<Device>, surface: Arc<Surface>) -> VulkanResult<Self> {
+        if device.get_parent_instance().native_handle()
+            != surface.get_parent_instance().native_handle()
+        {
+            return Err(FrameworkError::ResourceFromIncompatibleDevice.into());
+        }
         match device.get_parent_instance().get_surface_khr_extension() {
             Some(sfc_ext) => {
                 let surface_capabilities = unsafe {
@@ -217,8 +396,34 @@ impl DeviceSurfaceInfo {
                 })
             }
             None => Err(VulkanError::MissingExtension(String::from(
-                "VK_KHR_swapchain",
+                "VK_KHR_surface",
             ))),
+        }
+    }
+}
+
+// Own the device's reservation until a fully initialized swapchain takes over.
+pub(crate) struct SwapchainReservation<'a> {
+    exists: &'a AtomicBool,
+    pub(crate) committed: bool,
+}
+
+impl<'a> SwapchainReservation<'a> {
+    pub(crate) fn new(exists: &'a AtomicBool) -> VulkanResult<Self> {
+        exists
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .map_err(|_| FrameworkError::SwapchainAlreadyExists)?;
+        Ok(Self {
+            exists,
+            committed: false,
+        })
+    }
+}
+
+impl Drop for SwapchainReservation<'_> {
+    fn drop(&mut self) {
+        if !self.committed {
+            self.exists.store(false, Ordering::SeqCst);
         }
     }
 }
@@ -237,6 +442,9 @@ pub struct SwapchainKHR {
     composite_alpha: CompositeAlphaSwapchainKHR,
     min_image_count: u32,
     image_layers: u32,
+    present_mode: PresentModeSwapchainKHR,
+    color_space: SurfaceColorspaceSwapchainKHR,
+    clipped: bool,
     images: Vec<ash::vk::Image>,
 }
 
@@ -254,26 +462,15 @@ impl Drop for SwapchainKHR {
             panic!("Swapchain extension is not available anymore. This should not happend. If you read this main developer of this crate made something bad.");
         };
 
-        unsafe {
-            ext.destroy_swapchain(
-                self.swapchain,
-                self.device.get_parent_instance().get_alloc_callbacks(),
-            )
-        }
-
-        match self.device.swapchain_exists.compare_exchange(
-            true,
-            false,
-            Ordering::SeqCst,
-            Ordering::SeqCst,
-        ) {
-            Ok(_) => {}
-            Err(err) => {
-                panic!(
-                    "Error while informing the device that the swapchain has been destroyed {err}"
-                );
+        if self.swapchain != ash::vk::SwapchainKHR::null() {
+            unsafe {
+                ext.destroy_swapchain(
+                    self.swapchain,
+                    self.device.get_parent_instance().get_alloc_callbacks(),
+                )
             }
-        };
+        }
+        self.device.swapchain_exists.store(false, Ordering::SeqCst);
     }
 }
 
@@ -307,7 +504,7 @@ impl SwapchainKHR {
             swapchain.images_format(),
             swapchain.images_extent(),
             swapchain.images_layers_count(),
-            swapchain.images_layers_count(),
+            1,
             ash::vk::Image::from_raw(image_handle.as_raw()),
         );
 
@@ -329,9 +526,17 @@ impl SwapchainKHR {
         self.composite_alpha
     }
 
+    /// The minimum image count requested at creation, not necessarily the actual count.
     #[inline]
     pub fn min_image_count(&self) -> u32 {
         self.min_image_count
+    }
+
+    /// The actual number of images allocated by the driver (possibly above the minimum).
+    /// Returns zero after a failed recreation that retired the previous swapchain.
+    #[inline]
+    pub fn images_count(&self) -> u32 {
+        self.images.len() as u32
     }
 
     #[inline]
@@ -359,26 +564,45 @@ impl SwapchainKHR {
         self.image_layers
     }
 
+    /// Present an acquired image, waiting on binary semaphores from this device.
+    /// Returns `true` for a suboptimal presentation, and `false` for an optimal one.
+    /// Unlike acquisition, this follows Vulkan/ash's suboptimal boolean convention.
+    /// The caller must keep wait semaphores alive until presentation has consumed them.
     pub fn queue_present(
         &self,
         queue: Arc<Queue>,
         index: u32,
         semaphores: &[Arc<Semaphore>],
     ) -> VulkanResult<bool> {
-        if self.get_parent_device() != queue.get_parent_queue_family().get_parent_device() {
-            return Err(VulkanError::Framework(
-                crate::prelude::FrameworkError::ResourceFromIncompatibleDevice,
-            ));
+        self.ensure_live()?;
+        let family = queue.get_parent_queue_family();
+        if self.device != family.get_parent_device() {
+            return Err(FrameworkError::ResourceFromIncompatibleDevice.into());
+        }
+        if index as usize >= self.images.len() {
+            return Err(FrameworkError::InvalidSwapchainImageIndex(
+                index as usize,
+                self.images.len(),
+            )
+            .into());
+        }
+        if !self
+            .queue_families
+            .iter()
+            .any(|supported| supported.get_family_index() == family.get_family_index())
+            || !self.family_supports_present(&family)?
+        {
+            return Err(ash::vk::Result::ERROR_UNKNOWN.into());
         }
 
-        let native_semaphores = semaphores
-            .iter()
-            .map(|sem| {
-                // TODO: check self.device == sem.device
-
-                sem.ash_handle()
-            })
-            .collect::<smallvec::SmallVec<[ash::vk::Semaphore; 8]>>();
+        let mut native_semaphores = smallvec::SmallVec::<[ash::vk::Semaphore; 8]>::new();
+        for semaphore in semaphores {
+            Self::validate_semaphore(&self.device, semaphore)?;
+            if native_semaphores.contains(&semaphore.ash_handle()) {
+                return Err(ash::vk::Result::ERROR_UNKNOWN.into());
+            }
+            native_semaphores.push(semaphore.ash_handle());
+        }
 
         let swapchains = [self.ash_handle()];
         let indexes = [index];
@@ -387,16 +611,23 @@ impl SwapchainKHR {
             .image_indices(&indexes)
             .wait_semaphores(native_semaphores.as_slice());
 
-        match self.get_parent_device().ash_ext_swapchain_khr() {
-            Option::Some(ext) => {
-                Ok(unsafe { ext.queue_present(queue.ash_handle(), &present_info) }?)
-            }
-            Option::None => Err(VulkanError::MissingExtension(String::from(
-                "VK_KHR_swapchain",
-            ))),
-        }
+        let ext = self
+            .device
+            .ash_ext_swapchain_khr()
+            .as_ref()
+            .ok_or_else(|| VulkanError::MissingExtension(String::from("VK_KHR_swapchain")))?;
+        let _guard = queue.lock()?;
+        Ok(unsafe { ext.queue_present(queue.ash_handle(), &present_info) }?)
     }
 
+    /// Acquire an image and asynchronously wait for its fence. The result boolean is
+    /// `true` for an optimal image and `false` for a suboptimal image.
+    ///
+    /// Acquisition itself may block up to `timeout`; only the subsequent fence wait is async.
+    /// The waiter retains the fence and optional semaphore until completion and resets the
+    /// fence. Do not reset/reuse the fence through other references until then. Keep the
+    /// swapchain alive and do not recreate it while acquisition is pending. The existing
+    /// waiter is not cancellation-safe: await it to completion rather than dropping it.
     #[cfg(feature = "async")]
     pub fn async_threaded_acquire_next_image_index(
         &self,
@@ -405,54 +636,27 @@ impl SwapchainKHR {
         maybe_semaphore: Option<Arc<Semaphore>>,
         fence: Arc<Fence>,
     ) -> VulkanResult<ThreadedFenceWaiter<(u32, bool)>> {
-        match self.get_parent_device().ash_ext_swapchain_khr() {
-            Option::Some(ext) => {
-                match unsafe {
-                    let nanos = timeout.as_nanos();
-                    ext.acquire_next_image(
-                        self.swapchain,
-                        if nanos > (u64::MAX as u128) {
-                            u64::MAX
-                        } else {
-                            nanos as u64
-                        },
-                        match &maybe_semaphore {
-                            Option::Some(semaphore) => semaphore.ash_handle(),
-                            Option::None => ash::vk::Semaphore::null(),
-                        },
-                        fence.ash_handle(),
-                    )
-                } {
-                    Ok(result) => match &maybe_semaphore {
-                        Some(sem) => Ok(ThreadedFenceWaiter::new(
-                            pool,
-                            None,
-                            &[],
-                            &[sem.clone()],
-                            fence,
-                            result,
-                        )),
-                        None => Ok(ThreadedFenceWaiter::new(
-                            pool,
-                            None,
-                            &[],
-                            &[],
-                            fence,
-                            result,
-                        )),
-                    },
-                    Err(err) => Err(VulkanError::Vulkan(
-                        err.as_raw(),
-                        Some(format!("Error creating the swapchain: {}", err)),
-                    )),
-                }
-            }
-            Option::None => Err(VulkanError::MissingExtension(String::from(
-                "VK_KHR_swapchain",
-            ))),
-        }
+        let result =
+            self.acquire_next_image_index(timeout, maybe_semaphore.clone(), Some(fence.clone()))?;
+        let semaphores: Vec<_> = maybe_semaphore.into_iter().collect();
+        Ok(ThreadedFenceWaiter::new(
+            pool,
+            None,
+            &[],
+            &semaphores,
+            fence,
+            result,
+        ))
     }
 
+    /// Acquire an image and asynchronously poll its fence. The result boolean is
+    /// `true` for an optimal image and `false` for a suboptimal image.
+    ///
+    /// Acquisition itself may block up to `timeout`; only the subsequent fence wait is async.
+    /// The waiter retains the fence and optional semaphore until completion and resets the
+    /// fence. Do not reset/reuse the fence through other references until then. Keep the
+    /// swapchain alive and do not recreate it while acquisition is pending. The existing
+    /// waiter is not cancellation-safe: await it to completion rather than dropping it.
     #[cfg(feature = "async")]
     pub fn async_spinlock_acquire_next_image_index(
         &self,
@@ -460,109 +664,240 @@ impl SwapchainKHR {
         maybe_semaphore: Option<Arc<Semaphore>>,
         fence: Arc<Fence>,
     ) -> VulkanResult<SpinlockFenceWaiter<(u32, bool)>> {
-        match self.get_parent_device().ash_ext_swapchain_khr() {
-            Option::Some(ext) => {
-                match unsafe {
-                    let nanos = timeout.as_nanos();
-                    ext.acquire_next_image(
-                        self.swapchain,
-                        if nanos > (u64::MAX as u128) {
-                            u64::MAX
-                        } else {
-                            nanos as u64
-                        },
-                        match maybe_semaphore {
-                            Option::Some(semaphore) => semaphore.ash_handle(),
-                            Option::None => ash::vk::Semaphore::null(),
-                        },
-                        fence.ash_handle(),
-                    )
-                } {
-                    Ok(result) => Ok(SpinlockFenceWaiter::new(None, &[], &[], fence, result)),
-                    Err(err) => Err(VulkanError::Vulkan(
-                        err.as_raw(),
-                        Some(format!("Error creating the swapchain: {}", err)),
-                    )),
-                }
-            }
-            Option::None => Err(VulkanError::MissingExtension(String::from(
-                "VK_KHR_swapchain",
-            ))),
-        }
+        let result =
+            self.acquire_next_image_index(timeout, maybe_semaphore.clone(), Some(fence.clone()))?;
+        let semaphores: Vec<_> = maybe_semaphore.into_iter().collect();
+        Ok(SpinlockFenceWaiter::new(
+            None,
+            &[],
+            &semaphores,
+            fence,
+            result,
+        ))
     }
 
     /// Retrieve the index of the next available presentable image.
     ///
-    /// @param timeout how long the function waits if no image is available
-    /// @param maybe_semaphore the semaphore to signal
-    /// @param maybe_fence the fence to signal
-    /// @returns a tuple of the index and a boolean true or a boolean false if the image is suboptimal
+    /// Waits up to `timeout` for an image, signaling the optional binary semaphore
+    /// and/or unsignaled fence, which must belong to this device. At least one is required.
+    /// Keep the swapchain and synchronization objects alive until acquisition completes.
+    /// The fence must not be owned by a queue submission. Its host use is reserved during
+    /// the native acquisition call, but this API does not return a fence-ownership token:
+    /// after it returns, the caller must not reset/reuse the fence until it has signaled.
+    /// Externally synchronize semaphore/fence aliases; a semaphore must be unsignaled and
+    /// have no pending signal or wait operations.
     ///
+    /// Returns `(index, optimal)`: `true` means optimal, `false` means suboptimal.
+    /// This intentionally inverts Vulkan/ash's suboptimal boolean convention.
     pub fn acquire_next_image_index(
         &self,
         timeout: Duration,
         maybe_semaphore: Option<Arc<Semaphore>>,
         maybe_fence: Option<Arc<Fence>>,
     ) -> VulkanResult<(u32, bool)> {
-        match self.get_parent_device().ash_ext_swapchain_khr() {
-            Option::Some(ext) => {
-                let nanos = timeout.as_nanos();
-
-                let result = unsafe {
-                    ext.acquire_next_image(
-                        self.swapchain,
-                        if nanos > (u64::MAX as u128) {
-                            u64::MAX
-                        } else {
-                            nanos as u64
-                        },
-                        match maybe_semaphore {
-                            Option::Some(semaphore) => semaphore.ash_handle(),
-                            Option::None => ash::vk::Semaphore::null(),
-                        },
-                        match maybe_fence {
-                            Option::Some(fence) => fence.ash_handle(),
-                            Option::None => ash::vk::Fence::null(),
-                        },
-                    )
-                }?;
-
-                Ok(result)
-            }
-            Option::None => Err(VulkanError::MissingExtension(String::from(
-                "VK_KHR_swapchain",
-            ))),
+        self.ensure_live()?;
+        if maybe_semaphore.is_none() && maybe_fence.is_none() {
+            return Err(ash::vk::Result::ERROR_UNKNOWN.into());
         }
+        if let Some(semaphore) = &maybe_semaphore {
+            Self::validate_semaphore(&self.device, semaphore)?;
+        }
+        if let Some(fence) = &maybe_fence {
+            if fence.get_parent_device() != self.device {
+                return Err(FrameworkError::ResourceFromIncompatibleDevice.into());
+            }
+        }
+        let ext = self
+            .device
+            .ash_ext_swapchain_khr()
+            .as_ref()
+            .ok_or_else(|| VulkanError::MissingExtension(String::from("VK_KHR_swapchain")))?;
+        let _fence_guard = maybe_fence
+            .as_deref()
+            .map(AcquisitionFenceGuard::new)
+            .transpose()?;
+        acquire_native_image(
+            ext,
+            self.swapchain,
+            timeout,
+            maybe_semaphore
+                .as_ref()
+                .map_or(ash::vk::Semaphore::null(), |sem| sem.ash_handle()),
+            maybe_fence
+                .as_ref()
+                .map_or(ash::vk::Fence::null(), |fence| fence.ash_handle()),
+        )
     }
 
-    /// Recreates the swapchain.
+    /// Recreate using fresh surface capabilities and the current surface extent.
+    /// For surfaces with a variable extent, the previous image extent is the preference;
+    /// use `recreate_with_extent` to provide the new drawable size instead.
     ///
-    /// This function should be called when `acquire_next_image_index` indicates that the image is suboptimal.
+    /// Before calling, wait for all GPU work and call `Device::wait_idle()` to finish
+    /// presentation, then drop cached swapchain images, image views and command-buffer
+    /// references so that `Arc::get_mut()` can provide exclusive access to the swapchain.
+    /// Rebuild those resources after successful recreation; image count may change.
     ///
-    /// To recreate the swapchain (which will be an `Arc<SwapchainKHR>` instance), you must first obtain a mutable reference
-    /// by calling `Arc::get_mut()` on it. This will only succeed if there are no other references to the `Arc`, as Rust
-    /// enforces that a mutable reference can only exist when no other references are present.
-    ///
-    /// Note that the framework tracks resource usage, and the relationships between resources are as follows:
-    /// - Each `ImageSwapchainKHR` image contains a reference to the swapchain.
-    /// - Each `ImageView` contains a reference to the `ImageSwapchainKHR` it was created from.
-    /// - Each `Framebuffer` contains a reference to the `ImageView` it was created from.
-    ///
-    /// Therefore, before attempting to recreate the swapchain, ensure that all command buffers using any of these resources
-    /// are either dropped or have been recorded with the `record_one_time_submit` method and you have awaited the termination of
-    /// execution by dropping the `Arc<FenceWaiter>` returned by the `Queue` when the command buffer was submitted.
-    ///
-    /// # Returns
-    /// A `VulkanResult<()>` indicating the success or failure of the operation.
+    /// Capability/query/validation errors leave the old swapchain untouched. A driver
+    /// creation/enumeration error retires and destroys the old swapchain: this wrapper
+    /// then has no images, rejects acquisition/presentation with `ERROR_OUT_OF_DATE_KHR`,
+    /// and retains its device reservation until a retry succeeds or it is dropped.
     pub fn recreate(&mut self) -> VulkanResult<()> {
-        //.old_swapchain(match &old_swapchain {
-        //        Some(old) => old.swapchain,
-        //        None => ash::vk::SwapchainKHR::from_raw(0),
-        //    })
-
-        todo!()
+        self.recreate_with_extent(self.extent)
     }
 
+    /// Recreate with a preferred drawable extent, honoring fresh current/min/max extents.
+    /// Retains the present mode, format, color space, usage, layers and clipping preference.
+    /// Adjusts the minimum image count to fresh limits and retains transform/alpha when
+    /// supported, otherwise choosing the current transform and a supported alpha mode.
+    /// Has the same idle/resource-release requirements and failure semantics as `recreate`.
+    /// A zero current extent is rejected; retry once the window is drawable again.
+    pub fn recreate_with_extent(&mut self, preferred: Image2DDimensions) -> VulkanResult<()> {
+        let info = DeviceSurfaceInfo::new(self.device.clone(), self.surface.clone())?;
+        let extent = info.image_extent(preferred);
+        let mut min_image_count = self.min_image_count.max(info.min_image_count());
+        if info.max_image_count() != 0 {
+            min_image_count = min_image_count.min(info.max_image_count());
+        }
+        let transform = if info.transform_supported(&self.transform) {
+            self.transform
+        } else {
+            info.current_transform()
+        };
+        let alpha = if info.composite_alpha_supported(&self.composite_alpha) {
+            self.composite_alpha
+        } else {
+            [
+                CompositeAlphaSwapchainKHR::Opaque,
+                CompositeAlphaSwapchainKHR::PreMultiplied,
+                CompositeAlphaSwapchainKHR::PostMultiplied,
+                CompositeAlphaSwapchainKHR::Inherit,
+            ]
+            .into_iter()
+            .find(|alpha| info.composite_alpha_supported(alpha))
+            .ok_or(ash::vk::Result::ERROR_UNKNOWN)?
+        };
+        self.replace_swapchain(&info, extent, min_image_count, transform, alpha)
+    }
+
+    fn ensure_live(&self) -> VulkanResult<()> {
+        if self.swapchain == ash::vk::SwapchainKHR::null() {
+            return Err(ash::vk::Result::ERROR_OUT_OF_DATE_KHR.into());
+        }
+        Ok(())
+    }
+
+    pub(crate) fn validate_semaphore(
+        device: &Arc<Device>,
+        semaphore: &Semaphore,
+    ) -> VulkanResult<()> {
+        if semaphore.get_parent_device() != *device {
+            return Err(FrameworkError::ResourceFromIncompatibleDevice.into());
+        }
+        if semaphore.is_timeline() {
+            return Err(ash::vk::Result::ERROR_UNKNOWN.into());
+        }
+        Ok(())
+    }
+
+    fn family_supports_present(&self, family: &QueueFamily) -> VulkanResult<bool> {
+        let instance = self.device.get_parent_instance();
+        let ext = instance
+            .get_surface_khr_extension()
+            .ok_or_else(|| VulkanError::MissingExtension(String::from("VK_KHR_surface")))?;
+        Ok(unsafe {
+            ext.get_physical_device_surface_support(
+                *self.device.ash_physical_device_handle(),
+                family.get_family_index(),
+                *self.surface.ash_handle(),
+            )
+        }?)
+    }
+
+    fn replace_swapchain(
+        &mut self,
+        info: &DeviceSurfaceInfo,
+        extent: Image2DDimensions,
+        min_image_count: u32,
+        transform: SurfaceTransformSwapchainKHR,
+        alpha: CompositeAlphaSwapchainKHR,
+    ) -> VulkanResult<()> {
+        if !info.format_supported(&self.color_space, &self.image_format) {
+            return Err(ash::vk::Result::ERROR_FORMAT_NOT_SUPPORTED.into());
+        }
+        if !info.present_mode_supported(&self.present_mode) || self.queue_families.is_empty() {
+            return Err(ash::vk::Result::ERROR_UNKNOWN.into());
+        }
+        validate_image_capabilities(
+            &info.surface_capabilities,
+            self.image_usage,
+            extent,
+            min_image_count,
+            self.image_layers,
+            transform,
+            alpha,
+        )?;
+        let mut indexes = Vec::with_capacity(self.queue_families.len());
+        let mut can_present = false;
+        for family in &self.queue_families {
+            if family.get_parent_device() != self.device {
+                return Err(FrameworkError::ResourceFromIncompatibleDevice.into());
+            }
+            let index = family.get_family_index();
+            if indexes.contains(&index) {
+                return Err(ash::vk::Result::ERROR_UNKNOWN.into());
+            }
+            indexes.push(index);
+            can_present |= self.family_supports_present(family)?;
+        }
+        if !can_present {
+            return Err(ash::vk::Result::ERROR_UNKNOWN.into());
+        }
+        let create_info = ash::vk::SwapchainCreateInfoKHR::default()
+            .surface(*self.surface.ash_handle())
+            .old_swapchain(self.swapchain)
+            .image_extent(ash::vk::Extent2D {
+                width: extent.width(),
+                height: extent.height(),
+            })
+            .queue_family_indices(&indexes)
+            .image_sharing_mode(if indexes.len() == 1 {
+                ash::vk::SharingMode::EXCLUSIVE
+            } else {
+                ash::vk::SharingMode::CONCURRENT
+            })
+            .image_usage(self.image_usage.into())
+            .image_array_layers(self.image_layers)
+            .image_format(self.image_format.into())
+            .image_color_space(self.color_space.ash_colorspace())
+            .present_mode(self.present_mode.ash_value())
+            .clipped(self.clipped)
+            .pre_transform(transform.ash_transform())
+            .composite_alpha(alpha.ash_alpha())
+            .min_image_count(min_image_count);
+        let ext = self
+            .device
+            .ash_ext_swapchain_khr()
+            .as_ref()
+            .ok_or_else(|| VulkanError::MissingExtension(String::from("VK_KHR_swapchain")))?;
+        replace_native_swapchain(
+            ext,
+            self.device.get_parent_instance().get_alloc_callbacks(),
+            &create_info,
+            &mut self.swapchain,
+            &mut self.images,
+        )?;
+        self.extent = extent;
+        self.min_image_count = min_image_count;
+        self.transform = transform;
+        self.composite_alpha = alpha;
+        Ok(())
+    }
+
+    /// Create a swapchain after validating surface capabilities and queue families.
+    /// Use `DeviceSurfaceInfo::image_extent` to resolve a preferred drawable size before
+    /// passing `extent`; invalid or zero extents are rejected rather than silently changed.
+    /// `min_image_count` is a request: use `images_count()` for the allocated image count.
     pub fn new(
         device_info: &DeviceSurfaceInfo,
         queue_families: &[Arc<QueueFamily>],
@@ -577,90 +912,17 @@ impl SwapchainKHR {
         min_image_count: u32,
         image_layers: u32,
     ) -> VulkanResult<Arc<Self>> {
-        let queue_families: QueueFamiliesType = queue_families.iter().cloned().collect();
-
-        let queue_family_indexes: Vec<u32> = queue_families
-            .iter()
-            .map(|family| family.get_family_index())
-            .collect();
-
-        let device = device_info.device.clone();
-        let surface = device_info.surface.clone();
-
-        let Some(ext) = device.ash_ext_swapchain_khr() else {
+        if device_info.device.ash_ext_swapchain_khr().is_none() {
             return Err(VulkanError::MissingExtension(String::from(
                 "VK_KHR_swapchain",
             )));
-        };
-
-        assert!(
-            device_info.format_supported(&color_space, &image_format)
-                && device_info.present_mode_supported(&present_mode)
-        );
-
-        let create_info = ash::vk::SwapchainCreateInfoKHR::default()
-            .image_extent(
-                ash::vk::Extent2D::default()
-                    .height(extent.height())
-                    .width(extent.width()),
-            )
-            .surface(*surface.ash_handle())
-            .queue_family_indices(queue_family_indexes.as_slice())
-            .image_sharing_mode(match queue_family_indexes.len() <= 1 {
-                true => ash::vk::SharingMode::EXCLUSIVE,
-                false => ash::vk::SharingMode::CONCURRENT,
-            })
-            .image_usage(image_usage.into())
-            .image_array_layers(image_layers)
-            .image_format(image_format.into())
-            .image_color_space(color_space.ash_colorspace())
-            .present_mode(present_mode.ash_value())
-            .clipped(clipped)
-            .pre_transform(transform.ash_transform())
-            .composite_alpha(composite_alpha.ash_alpha())
-            .min_image_count(min_image_count);
-
-        match device.swapchain_exists.compare_exchange(
-            false,
-            true,
-            Ordering::SeqCst,
-            Ordering::SeqCst,
-        ) {
-            Ok(_) => {}
-            Err(_) => {
-                return Err(VulkanError::Framework(
-                    FrameworkError::SwapchainAlreadyExists,
-                ))
-            }
-        };
-
-        let swapchain = unsafe {
-            ext.create_swapchain(
-                &create_info,
-                device.get_parent_instance().get_alloc_callbacks(),
-            )
-        }?;
-
-        let images = unsafe { ext.get_swapchain_images(swapchain) }.inspect_err(|_err| {
-            // avoid leaking the swapchain
-            unsafe {
-                ext.destroy_swapchain(
-                    swapchain,
-                    device.get_parent_instance().get_alloc_callbacks(),
-                )
-            }
-
-            let _ = device
-                .swapchain_exists
-                .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
-                .unwrap();
-        })?;
-
-        Ok(Arc::new(Self {
-            device,
-            queue_families,
-            surface,
-            swapchain,
+        }
+        let mut reservation = SwapchainReservation::new(&device_info.device.swapchain_exists)?;
+        let mut swapchain = Self {
+            device: device_info.device.clone(),
+            queue_families: queue_families.iter().cloned().collect(),
+            surface: device_info.surface.clone(),
+            swapchain: ash::vk::SwapchainKHR::null(),
             min_image_count,
             transform,
             composite_alpha,
@@ -668,7 +930,20 @@ impl SwapchainKHR {
             image_usage,
             extent,
             image_layers,
-            images,
-        }))
+            present_mode,
+            color_space,
+            clipped,
+            images: Vec::new(),
+        };
+        // From here, SwapchainKHR::drop releases the reservation on every error path.
+        reservation.committed = true;
+        swapchain.replace_swapchain(
+            device_info,
+            extent,
+            min_image_count,
+            transform,
+            composite_alpha,
+        )?;
+        Ok(Arc::new(swapchain))
     }
 }

@@ -24,7 +24,7 @@ use vulkan_framework::{
     acceleration_structure::{
         AllowedBuildingDevice, VertexIndexing,
         bottom_level::{
-            BottomLevelAccelerationStructureIndexBuffer,
+            BottomLevelAccelerationStructure, BottomLevelAccelerationStructureIndexBuffer,
             BottomLevelAccelerationStructureTransformBuffer,
             BottomLevelAccelerationStructureVertexBuffer, BottomLevelTrianglesGroupDecl,
             BottomLevelVerticesTopologyDecl,
@@ -40,7 +40,6 @@ use vulkan_framework::{
     },
     command_buffer::{CommandBufferRecorder, CommandBufferTrait, PrimaryCommandBuffer},
     command_pool::CommandPool,
-    deferred_host_operations::DeferredHostOperationKHR,
     descriptor_set::DescriptorSet,
     descriptor_set_layout::DescriptorSetLayout,
     device::DeviceOwned,
@@ -52,10 +51,12 @@ use vulkan_framework::{
     memory_management::{MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait},
     memory_pool::{MemoryMap, MemoryPoolBacked, MemoryPoolFeatures},
     pipeline_layout::PipelineLayout,
-    pipeline_stage::{PipelineStage, PipelineStageAccelerationStructureKHR},
-    prelude::VulkanResult,
-    queue::Queue,
+    pipeline_stage::{
+        PipelineStage, PipelineStageAccelerationStructureKHR, PipelineStageRayTracingPipelineKHR,
+    },
+    queue::{Queue, SemaphoreSignalOp, SemaphoreWaitOp},
     queue_family::{QueueFamily, QueueFamilyOwned},
+    semaphore::Semaphore,
     shader_stage_access::ShaderStagesAccess,
 };
 
@@ -81,6 +82,7 @@ struct LoadedMesh {
     material: LoadedMaterial,
 }
 
+#[derive(Clone)]
 struct MeshDefinition {
     meshes: Vec<LoadedMesh>,
     load_transform: vulkan_framework::ash::vk::TransformMatrixKHR,
@@ -88,12 +90,13 @@ struct MeshDefinition {
 
 pub type InstanceDataType = vulkan_framework::ash::vk::TransformMatrixKHR;
 
+#[derive(Clone)]
 struct MeshInstances {
     instances: Vec<InstanceDataType>,
 }
 
 #[repr(C, packed)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone)]
 pub struct MaterialGPU {
     pub diffuse_texture_index: u32,
     pub normal_texture_index: u32,
@@ -101,36 +104,40 @@ pub struct MaterialGPU {
     pub displacement_texture_index: u32,
 }
 
-enum TLASLoading {
-    GPU(FenceWaiter),
-    CPU(Arc<DeferredHostOperationKHR>),
+struct TLASLoading {
+    _waiter: FenceWaiter,
+    fence: Arc<Fence>,
 }
 
-impl From<FenceWaiter> for TLASLoading {
-    fn from(value: FenceWaiter) -> Self {
-        Self::GPU(value)
+struct TLASDescriptorBuffer {
+    buffer: Arc<AllocatedBuffer>,
+    // Raw device addresses in the descriptor table do not retain their owners.
+    // Keeping this wrapper in the ray descriptor set retains every dependency.
+    _blas: Vec<Arc<BottomLevelAccelerationStructure>>,
+}
+
+impl DeviceOwned for TLASDescriptorBuffer {
+    fn get_parent_device(&self) -> Arc<vulkan_framework::device::Device> {
+        self.buffer.get_parent_device()
     }
 }
 
-impl From<Arc<DeferredHostOperationKHR>> for TLASLoading {
-    fn from(value: Arc<DeferredHostOperationKHR>) -> Self {
-        Self::CPU(value)
+impl BufferTrait for TLASDescriptorBuffer {
+    fn size(&self) -> u64 {
+        self.buffer.size()
     }
-}
 
-impl TLASLoading {
-    fn complete(&self) -> VulkanResult<bool> {
-        match self {
-            Self::CPU(_deferred) => todo!(),
-            Self::GPU(fence_waiter) => fence_waiter.complete(),
-        }
+    fn native_handle(&self) -> u64 {
+        self.buffer.native_handle()
     }
 }
 
 struct TLASStatus {
-    tlas: Arc<TopLevelAccelerationStructure>,
-    tlas_descriptor: Arc<AllocatedBuffer>,
+    // Rust drops fields in declaration order: wait before freeing the AS/scratch.
     loading: Option<TLASLoading>,
+    tlas: Arc<TopLevelAccelerationStructure>,
+    tlas_descriptor: Arc<TLASDescriptorBuffer>,
+    upload_timeline: Arc<Semaphore>,
 }
 
 pub enum TLASRebuildDevice {
@@ -143,26 +150,30 @@ impl TLASStatus {
         tlas: Arc<TopLevelAccelerationStructure>,
         tlas_descriptor: Arc<AllocatedBuffer>,
         loading: FenceWaiter,
+        fence: Arc<Fence>,
+        upload_timeline: Arc<Semaphore>,
+        blas: Vec<Arc<BottomLevelAccelerationStructure>>,
     ) -> Self {
-        let loading = Some(loading.into());
         Self {
+            loading: Some(TLASLoading {
+                _waiter: loading,
+                fence,
+            }),
             tlas,
-            tlas_descriptor,
-            loading,
+            tlas_descriptor: Arc::new(TLASDescriptorBuffer {
+                buffer: tlas_descriptor,
+                _blas: blas,
+            }),
+            upload_timeline,
         }
     }
 
-    pub fn new_cpu_loading(
-        tlas: Arc<TopLevelAccelerationStructure>,
-        tlas_descriptor: Arc<AllocatedBuffer>,
-        loading: Arc<DeferredHostOperationKHR>,
-    ) -> Self {
-        let loading = Some(loading.into());
-        Self {
-            tlas,
-            tlas_descriptor,
-            loading,
-        }
+    fn upload_wait(&self) -> SemaphoreWaitOp {
+        SemaphoreWaitOp::Timeline(
+            [PipelineStage::AllCommands].as_slice().into(),
+            self.upload_timeline.clone(),
+            1,
+        )
     }
 
     pub fn tlas(&self) -> Arc<TopLevelAccelerationStructure> {
@@ -174,22 +185,20 @@ impl TLASStatus {
     }
 
     pub fn wait_nonblocking(&mut self) -> RenderingResult<()> {
-        let Some(fence_waiter) = self.loading.take() else {
-            return Ok(());
-        };
-
-        if fence_waiter.complete()? {
-            drop(fence_waiter)
-        } else {
-            self.loading.replace(fence_waiter);
+        if let Some(loading) = &self.loading {
+            if loading.fence.is_signaled()? {
+                self.loading.take();
+            }
         }
 
         Ok(())
     }
 
     pub fn wait_blocking(&mut self) -> RenderingResult<()> {
-        drop(self.loading.take());
-
+        if let Some(loading) = &self.loading {
+            super::collection::wait_for_upload(&loading.fence)?;
+            self.loading.take();
+        }
         Ok(())
     }
 }
@@ -209,7 +218,7 @@ pub struct Manager {
     texture_manager: TextureManager,
     material_manager: MaterialManager,
 
-    current_mesh_to_material_map: Arc<AllocatedBuffer>,
+    current_mesh_to_material_map: Vec<u32>,
 
     tlas_loading_queue: Arc<Queue>,
     current_tlas: Option<TLASStatus>,
@@ -218,6 +227,7 @@ pub struct Manager {
 }
 
 /// This struct represents what the GPU has access to when indexing buffers
+#[repr(C)]
 struct TLASDescriptor {
     _index_buffer_addr: u64,
     _vertex_buffer_addr: u64,
@@ -259,17 +269,7 @@ impl Manager {
             Some(format!("{debug_name}->resource_management.stub_image_buffer").as_str()),
         )?;
 
-        let current_mesh_to_material_map = Buffer::new(
-            device.clone(),
-            ConcreteBufferDescriptor::new(
-                BufferUsage::from([BufferUseAs::TransferSrc].as_slice()),
-                (MAX_MESHES as u64) * 4u64,
-            ),
-            None,
-            Some(
-                format!("{debug_name}->resource_management.current_mesh_to_material_map").as_str(),
-            ),
-        )?;
+        let current_mesh_to_material_map = vec![0; MAX_MESHES as usize];
 
         // allocate resources
         let mut memory_allocator = memory_manager.lock().unwrap();
@@ -286,22 +286,6 @@ impl Manager {
         assert_eq!(alloc_result.len(), 1_usize);
         let stub_image_data = alloc_result.first().unwrap().buffer();
 
-        let alloc_result = memory_allocator
-            .allocate_resources(
-                &MemoryType::device_local_and_host_visible(),
-                &MemoryPoolFeatures::default(),
-                vec![current_mesh_to_material_map.into()],
-                MemoryManagementTags::default()
-                    .with_name("temp".to_string())
-                    .with_size(MemoryManagementTagSize::MediumSmall),
-            )
-            .inspect_err(|err| {
-                println!(
-                    "Unable to allocate buffer for instance to material associative map: {err}"
-                )
-            })?;
-        assert_eq!(alloc_result.len(), 1_usize);
-        let current_mesh_to_material_map = alloc_result.first().unwrap().buffer();
         drop(memory_allocator);
 
         {
@@ -993,25 +977,9 @@ impl Manager {
                 },
             );
 
-            // TODO: there can be the case where the mesh to matial of the previous frame is being copied
-            // to the frame-specific buffer while we modify the mapping loading the model for next frames:
-            // to avoid the risk of such race condition it would be best to clone the buffer into a new one
-            // and use that new buffer from this moment on.
-
-            // Register into the GPU the mesh->material association
-            {
-                let mem_map = MemoryMap::new(
-                    self.current_mesh_to_material_map
-                        .get_backing_memory_pool()
-                        .clone(),
-                )?;
-                let mut mem_range = mem_map.range::<u32>(
-                    self.current_mesh_to_material_map.clone() as Arc<dyn MemoryPoolBacked>,
-                )?;
-                let slice = mem_range.as_mut_slice();
-                assert_eq!(MAX_MESHES as usize, slice.len());
-                slice[mesh_index as usize] = material_index;
-            }
+            // The next recording captures a snapshot; older frames never read
+            // a host mapping that loading this model can overwrite.
+            self.current_mesh_to_material_map[mesh_index as usize] = material_index;
         }
 
         let blas_created = self.mesh_manager.wait_load_nonblock()?;
@@ -1042,8 +1010,14 @@ impl Manager {
         instance: InstanceDataType,
         device: TLASRebuildDevice,
     ) -> RenderingResult<()> {
-        let max_instances: usize = self
-            .objects
+        if matches!(device, TLASRebuildDevice::CPU) {
+            return Err(RenderingError::ResourceError(
+                ResourceError::UnsupportedHostTLASBuild,
+            ));
+        }
+        // Commit scene metadata only after the new build was successfully submitted.
+        let mut objects = self.objects.clone();
+        let max_instances: usize = objects
             .iter()
             .map(|loaded_obj| match loaded_obj {
                 Some((obj_meshes, obj_instances)) => {
@@ -1053,7 +1027,7 @@ impl Manager {
             })
             .sum();
 
-        let Some(loaded_mesh) = self.objects.get_mut(object) else {
+        let Some(loaded_mesh) = objects.get_mut(object) else {
             panic!()
             //return;
         };
@@ -1134,6 +1108,7 @@ impl Manager {
         self.mesh_manager.wait_load_blocking()?;
 
         let mut buffer_barriers = Vec::new();
+        let mut referenced_blas = Vec::new();
 
         // now recreate instances of the TLAS
         {
@@ -1175,7 +1150,7 @@ impl Manager {
             let descriptor = descriptor_ranges.as_mut_slice();
 
             let mut instance_num = 0_usize;
-            for obj in self.objects.iter() {
+            for obj in objects.iter() {
                 let Some((obj_mesh, obj_instances)) = obj else {
                     continue;
                 };
@@ -1187,6 +1162,7 @@ impl Manager {
                         .fetch_loaded(mesh_index as usize)
                         .unwrap()
                         .clone();
+                    referenced_blas.push(blas.clone());
                     for obj_instance in obj_instances.instances.iter() {
                         let transform = *obj_instance;
                         slice[instance_num] =
@@ -1214,8 +1190,14 @@ impl Manager {
 
                         buffer_barriers.push(
                             BufferMemoryBarrier::new(
-                                [PipelineStage::TopOfPipe].as_slice().into(),
-                                [].as_slice().into(),
+                                [PipelineStage::AccelerationStructureKHR(
+                                    PipelineStageAccelerationStructureKHR::Build,
+                                )]
+                                .as_slice()
+                                .into(),
+                                [MemoryAccessAs::AccelerationStructureWrite]
+                                    .as_slice()
+                                    .into(),
                                 [PipelineStage::AccelerationStructureKHR(
                                     PipelineStageAccelerationStructureKHR::Build,
                                 )]
@@ -1253,6 +1235,11 @@ impl Manager {
         // for the GPU (and/or CPU) to finish the previous operation.
         self.current_tlas = match device {
             TLASRebuildDevice::GPU => {
+                let upload_timeline = Semaphore::new_timeline(
+                    self.queue_family.get_parent_device(),
+                    0,
+                    Some("tlas.upload_timeline"),
+                )?;
                 let command_buffer = PrimaryCommandBuffer::new(
                     self.command_pool.clone(),
                     Some("successive_tlas_commandl_buffer"),
@@ -1314,21 +1301,15 @@ impl Manager {
                             [MemoryAccessAs::AccelerationStructureWrite]
                                 .as_slice()
                                 .into(),
-                            [PipelineStage::BottomOfPipe, PipelineStage::AllCommands]
-                                .as_slice()
-                                .into(),
-                            [
-                                MemoryAccessAs::AccelerationStructureRead,
-                                MemoryAccessAs::MemoryRead,
-                                MemoryAccessAs::ShaderRead,
-                            ]
+                            [PipelineStage::RayTracingPipelineKHR(
+                                PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                            )]
                             .as_slice()
                             .into(),
-                            BufferSubresourceRange::new(
-                                tlas.instance_buffer().buffer(),
-                                0,
-                                tlas.instance_buffer().buffer().size(),
-                            ),
+                            [MemoryAccessAs::AccelerationStructureRead]
+                                .as_slice()
+                                .into(),
+                            BufferSubresourceRange::new(tlas.buffer(), 0, tlas.buffer_size()),
                             self.queue_family.clone(),
                             self.queue_family.clone(),
                         )
@@ -1339,33 +1320,44 @@ impl Manager {
                             )]
                             .as_slice()
                             .into(),
-                            [MemoryAccessAs::MemoryWrite].as_slice().into(),
-                            [PipelineStage::BottomOfPipe].as_slice().into(),
-                            [MemoryAccessAs::MemoryRead].as_slice().into(),
+                            [MemoryAccessAs::AccelerationStructureWrite]
+                                .as_slice()
+                                .into(),
+                            [PipelineStage::RayTracingPipelineKHR(
+                                PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                            )]
+                            .as_slice()
+                            .into(),
+                            [MemoryAccessAs::AccelerationStructureRead]
+                                .as_slice()
+                                .into(),
                         )
                         .into(),
                     ]);
                 })?;
 
-                let fence_waiter = self.tlas_loading_queue.submit(
+                let waits: Vec<_> = self.mesh_manager.upload_wait().into_iter().collect();
+                let fence_waiter = self.tlas_loading_queue.submit_mixed(
                     [command_buffer as Arc<dyn CommandBufferTrait>].as_slice(),
-                    [].as_slice(),
-                    [].as_slice(),
-                    fence,
+                    &waits,
+                    &[SemaphoreSignalOp::Timeline(upload_timeline.clone(), 1)],
+                    fence.clone(),
                 )?;
 
                 Some(TLASStatus::new_gpu_loading(
                     tlas,
                     descriptors_buffer,
                     fence_waiter,
+                    fence,
+                    upload_timeline,
+                    referenced_blas,
                 ))
             }
-            TLASRebuildDevice::CPU => Some(TLASStatus::new_cpu_loading(
-                tlas.clone(),
-                descriptors_buffer,
-                DeferredHostOperationKHR::build_tlas(tlas, 0, max_instances)?,
-            )),
+            TLASRebuildDevice::CPU => {
+                unreachable!("host builds were rejected before mutating scene metadata")
+            }
         };
+        self.objects = objects;
 
         Ok(())
     }
@@ -1379,7 +1371,7 @@ impl Manager {
         self.material_manager.update_buffers(
             recorder,
             current_frame,
-            self.current_mesh_to_material_map.clone(),
+            &self.current_mesh_to_material_map,
             queue_family,
         );
     }
@@ -1416,6 +1408,9 @@ impl Manager {
         let Some(tlas) = &self.current_tlas else {
             return;
         };
+        if tlas.loading.is_some() {
+            return;
+        }
 
         // bind the updated materials descriptor sets (update happens by calling update_buffers):
         // WARNING: the update MUST have been happened before this method,
@@ -1613,6 +1608,19 @@ impl Manager {
         }
     }
 
+    /// Include these waits in each consuming submission, after any loading calls.
+    /// Host waits publish readiness; these waits publish memory across queues.
+    /// All consuming queues must belong to the loader's queue family.
+    pub fn loading_waits(&self) -> Vec<SemaphoreWaitOp> {
+        let mut waits: Vec<_> = self.texture_manager.upload_wait().into_iter().collect();
+        waits.extend(self.mesh_manager.upload_wait());
+        if let Some(tlas) = &self.current_tlas {
+            waits.push(tlas.upload_wait());
+        }
+        waits
+    }
+
+    /// Wait for all uploads and the current TLAS before exposing the scene to shaders.
     #[inline]
     pub fn wait_blocking(&mut self) -> RenderingResult<()> {
         self.texture_manager.wait_load_blocking()?;
@@ -1637,6 +1645,17 @@ impl Manager {
         Ok(())
     }
 
+    pub fn tlas_ready(
+        &self,
+    ) -> RenderingResult<(Arc<TopLevelAccelerationStructure>, Arc<dyn BufferTrait>)> {
+        match &self.current_tlas {
+            Some(tlas) if tlas.loading.is_none() => Ok((tlas.tlas(), tlas.tlas_def())),
+            _ => Err(RenderingError::ResourceError(ResourceError::TLASNotReady)),
+        }
+    }
+
+    /// Exports descriptor handles only; rendering still requires wait_blocking
+    /// and loading_waits. Prefer tlas_ready when publishing a ready scene.
     #[inline]
     pub fn tlas(&self) -> (Arc<TopLevelAccelerationStructure>, Arc<dyn BufferTrait>) {
         let tlas_ref = self.current_tlas.as_ref().unwrap();

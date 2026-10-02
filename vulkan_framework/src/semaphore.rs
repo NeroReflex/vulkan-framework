@@ -9,6 +9,7 @@ use crate::{
 pub struct Semaphore {
     device: Arc<Device>,
     semaphore: ash::vk::Semaphore,
+    semaphore_type: ash::vk::SemaphoreType,
 }
 
 impl Drop for Semaphore {
@@ -37,6 +38,11 @@ impl Semaphore {
     #[inline]
     pub fn native_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.semaphore)
+    }
+
+    /// Whether this semaphore carries a timeline payload rather than a binary signal.
+    pub fn is_timeline(&self) -> bool {
+        self.semaphore_type == ash::vk::SemaphoreType::TIMELINE
     }
 
     /**
@@ -80,9 +86,56 @@ impl Semaphore {
     pub fn new(device: Arc<Device>, debug_name: Option<&str>) -> VulkanResult<Arc<Self>> {
         let create_info = ash::vk::SemaphoreCreateInfo::default();
 
+        Self::create_semaphore(
+            device,
+            &create_info,
+            ash::vk::SemaphoreType::BINARY,
+            debug_name,
+        )
+    }
+
+    /**
+     * Creates a new timeline semaphore (core since Vulkan 1.2).
+     *
+     * Unlike binary semaphores a timeline semaphore carries a monotonically increasing u64 payload:
+     * a wait operation blocks until the payload reaches the requested value, and a signal operation
+     * sets the payload to the given value.
+     *
+     * A single submission is allowed to wait on the value K and to signal the value K+1 of the same
+     * timeline semaphore: this is the correct way to express a dependency between two consecutive
+     * submissions (eg. two frames reusing the same global illumination data). A binary semaphore
+     * cannot bootstrap this chain: its wait requires a previously submitted signal operation.
+     * Timeline signal values must increase in execution order, including across different queues;
+     * callers must order those signals with appropriate waits.
+     */
+    pub fn new_timeline(
+        device: Arc<Device>,
+        initial_value: u64,
+        debug_name: Option<&str>,
+    ) -> VulkanResult<Arc<Self>> {
+        let mut type_create_info = ash::vk::SemaphoreTypeCreateInfo::default()
+            .semaphore_type(ash::vk::SemaphoreType::TIMELINE)
+            .initial_value(initial_value);
+
+        let create_info = ash::vk::SemaphoreCreateInfo::default().push_next(&mut type_create_info);
+
+        Self::create_semaphore(
+            device,
+            &create_info,
+            ash::vk::SemaphoreType::TIMELINE,
+            debug_name,
+        )
+    }
+
+    fn create_semaphore(
+        device: Arc<Device>,
+        create_info: &ash::vk::SemaphoreCreateInfo,
+        semaphore_type: ash::vk::SemaphoreType,
+        debug_name: Option<&str>,
+    ) -> VulkanResult<Arc<Self>> {
         let semaphore = unsafe {
             device.ash_handle().create_semaphore(
-                &create_info,
+                create_info,
                 device.get_parent_instance().get_alloc_callbacks(),
             )
         }?;
@@ -113,6 +166,10 @@ impl Semaphore {
             }
         }
 
-        Ok(Arc::new(Self { device, semaphore }))
+        Ok(Arc::new(Self {
+            device,
+            semaphore,
+            semaphore_type,
+        }))
     }
 }

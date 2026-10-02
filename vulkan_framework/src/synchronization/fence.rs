@@ -1,14 +1,14 @@
 use std::{
     future::Future,
     pin::Pin,
-    sync::Arc,
-    task::{Context, Poll},
+    sync::{Arc, Mutex},
+    task::{Context, Poll, Waker},
     time::Duration,
 };
 
 use crate::{
     command_buffer::CommandBufferTrait,
-    fence::Fence,
+    fence::{Fence, FenceWaitFor, FenceWaiter},
     pipeline_stage::PipelineStages,
     prelude::{VulkanError, VulkanResult},
     queue::Queue,
@@ -17,42 +17,89 @@ use crate::{
 
 use super::thread::ThreadPool;
 
-pub struct SpinlockFenceWaiter<T>
-where
-    T: Sized + Copy,
-{
-    result: T,
-    fence: Option<Arc<Fence>>,
-    queue: Option<Arc<Queue>>,
-    semaphores: smallvec::SmallVec<[Arc<Semaphore>; 16]>,
+// Queue submissions must retain the original token: it owns the fence reservation,
+// rollback/completion semantics, command buffers and semaphores.
+enum PendingFence {
+    Submitted {
+        fence: Arc<Fence>,
+        _waiter: FenceWaiter,
+        _queue: Arc<Queue>,
+    },
+    External(ExternalFence),
+}
+
+impl PendingFence {
+    fn fence(&self) -> &Arc<Fence> {
+        match self {
+            Self::Submitted { fence, .. } => fence,
+            Self::External(external) => &external.fence,
+        }
+    }
+}
+
+struct ExternalFence {
+    fence: Arc<Fence>,
+    _queue: Option<Arc<Queue>>,
+    _semaphores: smallvec::SmallVec<[Arc<Semaphore>; 16]>,
     command_buffers: smallvec::SmallVec<[Arc<dyn CommandBufferTrait>; 8]>,
 }
 
-impl<T> Drop for SpinlockFenceWaiter<T>
-where
-    T: Sized + Copy,
-{
-    fn drop(&mut self) {
-        if let Some(_fence) = &self.fence {
-            panic!("Nooooooo you still have resources in use, please wait for the fence!!! :(");
+impl ExternalFence {
+    fn new(
+        queue: Option<Arc<Queue>>,
+        command_buffers: &[Arc<dyn CommandBufferTrait>],
+        semaphores: &[Arc<Semaphore>],
+        fence: Arc<Fence>,
+    ) -> Self {
+        Self {
+            fence,
+            _queue: queue,
+            _semaphores: semaphores.iter().cloned().collect(),
+            command_buffers: command_buffers.iter().cloned().collect(),
         }
     }
 }
 
-impl<T> SpinlockFenceWaiter<T>
-where
-    T: Sized + Copy,
-{
+impl Drop for ExternalFence {
+    fn drop(&mut self) {
+        loop {
+            match Fence::wait_for_fences(
+                std::slice::from_ref(&self.fence),
+                FenceWaitFor::All,
+                Duration::from_nanos(u64::MAX),
+            ) {
+                Ok(()) => break,
+                Err(err) if err.is_timeout() => continue,
+                Err(err) => panic!("Error while waiting for external fence: {err:?}"),
+            }
+        }
+        for command_buffer in &self.command_buffers {
+            command_buffer.mark_execution_complete().unwrap();
+        }
+        self.fence.reset().unwrap();
+    }
+}
+
+pub struct SpinlockFenceWaiter<T: Sized + Copy> {
+    result: T,
+    pending: Option<PendingFence>,
+}
+
+// No field is structurally pinned; T is returned by value, never projected as pinned.
+impl<T: Sized + Copy> Unpin for SpinlockFenceWaiter<T> {}
+
+impl<T: Sized + Copy> SpinlockFenceWaiter<T> {
     pub fn empty(result: T) -> Self {
         Self {
             result,
-            queue: None,
-            fence: None,
-            semaphores: smallvec::smallvec![],
-            command_buffers: smallvec::smallvec![],
+            pending: None,
         }
     }
 
+    /// Wait for externally initiated work (for example swapchain acquisition).
+    /// The caller must exclusively transfer completion/reset responsibility and
+    /// already-running command buffers. Do not use this with a Queue::submit token;
+    /// use new_by_submit instead. Dropping an unfinished waiter blocks for safety.
     pub fn new(
         queue: Option<Arc<Queue>>,
         command_buffers: &[Arc<dyn CommandBufferTrait>],
@@ -62,16 +109,12 @@ where
     ) -> Self {
         Self {
             result,
-            fence: Some(fence),
-            queue: queue,
-            semaphores: semaphores
-                .iter()
-                .cloned()
-                .collect::<smallvec::SmallVec<[Arc<Semaphore>; 16]>>(),
-            command_buffers: command_buffers
-                .iter()
-                .cloned()
-                .collect::<smallvec::SmallVec<[Arc<dyn CommandBufferTrait>; 8]>>(),
+            pending: Some(PendingFence::External(ExternalFence::new(
+                queue,
+                command_buffers,
+                semaphores,
+                fence,
+            ))),
         }
     }
 
@@ -83,140 +126,83 @@ where
         signal_semaphores: &[Arc<Semaphore>],
         fence: Arc<Fence>,
     ) -> VulkanResult<Self> {
-        match queue.submit(
+        let waiter = queue.submit(
             command_buffers,
             wait_semaphores,
             signal_semaphores,
             fence.clone(),
-        ) {
-            Ok(()) => {
-                let mut semaphores: smallvec::SmallVec<[Arc<Semaphore>; 16]> =
-                    smallvec::smallvec![];
-
-                for s in signal_semaphores.iter() {
-                    semaphores.push(s.clone())
-                }
-
-                for s in wait_semaphores {
-                    semaphores.push(s.1.clone())
-                }
-
-                Ok(Self::new(
-                    Some(queue),
-                    command_buffers,
-                    semaphores.as_slice(),
-                    fence,
-                    result,
-                ))
-            }
-            Err(err) => Err(err),
-        }
+        )?;
+        Ok(Self {
+            result,
+            pending: Some(PendingFence::Submitted {
+                fence,
+                _waiter: waiter,
+                _queue: queue,
+            }),
+        })
     }
-
-    /*
-        pub fn from_fence(fence: Arc<Fence>) -> Self {
-            Self {
-                fence: Some(fence),
-                queue: None,
-                command_buffers: smallvec::smallvec![],
-            }
-        }
-    */
 }
 
-impl<T> Future for SpinlockFenceWaiter<T>
-where
-    T: Sized + Copy,
-{
+impl<T: Sized + Copy> Future for SpinlockFenceWaiter<T> {
     type Output = VulkanResult<T>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        match &self.fence {
-            Some(fence) => {
-                // Vulkan only allows polling of the fence status and not a callback-wake feature, so we have to use a spin future.
-                // This is still better than blocking in async applications, since a smart-enough async engine
-                // can choose to run some other tasks between probing this one.
-
-                // Check if we are done without blocking
-                match fence.is_signaled() {
-                    Err(e) => return Poll::Ready(Err(e)),
-                    Ok(status) => {
-                        if status {
-                            return match fence.reset() {
-                                Ok(()) => {
-                                    // here I am gonna destroy the fence and the list of occupied resources so that they can finally be free
-                                    for cmd_buffer in self.command_buffers.iter() {
-                                        cmd_buffer.flag_execution_as_finished();
-                                    }
-
-                                    let result = unsafe {
-                                        let self_mut_ref = self.get_unchecked_mut();
-
-                                        self_mut_ref.fence = None;
-                                        self_mut_ref.queue = None;
-                                        self_mut_ref.command_buffers.clear();
-                                        self_mut_ref.semaphores.clear();
-
-                                        self_mut_ref.result
-                                    };
-
-                                    Poll::Ready(Ok(result))
-                                }
-                                Err(err) => Poll::Ready(Err(err)),
-                            };
-                        }
-                    }
+        let this = self.get_mut();
+        if let Some(pending) = &this.pending {
+            match pending.fence().is_signaled() {
+                Err(err) => return Poll::Ready(Err(err)),
+                Ok(false) => {
+                    cx.waker().wake_by_ref();
+                    return Poll::Pending;
                 }
-
-                // Otherwise spin
-                cx.waker().wake_by_ref();
-                Poll::Pending
+                Ok(true) => {}
             }
-            None => Poll::Ready(Ok(self.result)),
+            // The owning token completes the buffers and releases the reservation once.
+            drop(this.pending.take());
         }
+        Poll::Ready(Ok(this.result))
     }
 }
 
-// ====================================================================================================
+#[derive(Default)]
+struct ThreadedWaitState {
+    scheduled: bool,
+    cancelled: bool,
+    error: Option<VulkanError>,
+    waker: Option<Waker>,
+}
 
-pub struct ThreadedFenceWaiter<T>
-where
-    T: Sized + Copy,
-{
+pub struct ThreadedFenceWaiter<T: Sized + Copy> {
     pool: Arc<ThreadPool>,
     result: T,
-    fence: Option<Arc<Fence>>,
-    queue: Option<Arc<Queue>>,
-    semaphores: smallvec::SmallVec<[Arc<Semaphore>; 16]>,
-    command_buffers: smallvec::SmallVec<[Arc<dyn CommandBufferTrait>; 8]>,
+    pending: Option<PendingFence>,
+    state: Arc<Mutex<ThreadedWaitState>>,
 }
 
-impl<T> Drop for ThreadedFenceWaiter<T>
-where
-    T: Sized + Copy,
-{
+impl<T: Sized + Copy> Unpin for ThreadedFenceWaiter<T> {}
+
+impl<T: Sized + Copy> Drop for ThreadedFenceWaiter<T> {
     fn drop(&mut self) {
-        if let Some(_fence) = &self.fence {
-            panic!("Nooooooo you still have resources in use, please wait for the fence!!! :(");
-        }
+        // Serialize cancellation with the worker's native wait before the token
+        // resets its fence. A queued retry must not touch a subsequently reused fence.
+        let mut state = self.state.lock().unwrap();
+        state.cancelled = true;
+        state.waker = None;
     }
 }
 
-impl<T> ThreadedFenceWaiter<T>
-where
-    T: Sized + Copy,
-{
+impl<T: Sized + Copy> ThreadedFenceWaiter<T> {
     pub fn empty(pool: Arc<ThreadPool>, result: T) -> Self {
         Self {
             pool,
             result,
-            queue: None,
-            fence: None,
-            semaphores: smallvec::smallvec![],
-            command_buffers: smallvec::smallvec![],
+            pending: None,
+            state: Arc::new(Mutex::new(ThreadedWaitState::default())),
         }
     }
 
+    /// Same exclusive external-fence ownership contract as SpinlockFenceWaiter::new.
+    /// Dropping an unfinished waiter blocks until its work completes.
     pub fn new(
         pool: Arc<ThreadPool>,
         queue: Option<Arc<Queue>>,
@@ -225,20 +211,14 @@ where
         fence: Arc<Fence>,
         result: T,
     ) -> Self {
-        Self {
-            pool,
-            result,
-            fence: Some(fence),
-            queue: queue,
-            semaphores: semaphores
-                .iter()
-                .cloned()
-                .collect::<smallvec::SmallVec<[Arc<Semaphore>; 16]>>(),
-            command_buffers: command_buffers
-                .iter()
-                .cloned()
-                .collect::<smallvec::SmallVec<[Arc<dyn CommandBufferTrait>; 8]>>(),
-        }
+        let mut this = Self::empty(pool, result);
+        this.pending = Some(PendingFence::External(ExternalFence::new(
+            queue,
+            command_buffers,
+            semaphores,
+            fence,
+        )));
+        this
     }
 
     pub fn new_by_submit(
@@ -250,124 +230,80 @@ where
         signal_semaphores: &[Arc<Semaphore>],
         fence: Arc<Fence>,
     ) -> VulkanResult<Self> {
-        match queue.submit(
+        let waiter = queue.submit(
             command_buffers,
             wait_semaphores,
             signal_semaphores,
             fence.clone(),
-        ) {
-            Ok(()) => {
-                let mut semaphores: smallvec::SmallVec<[Arc<Semaphore>; 16]> =
-                    smallvec::smallvec![];
-
-                for s in signal_semaphores.iter() {
-                    semaphores.push(s.clone())
-                }
-
-                for s in wait_semaphores {
-                    semaphores.push(s.1.clone())
-                }
-
-                Ok(Self::new(
-                    pool,
-                    Some(queue),
-                    command_buffers,
-                    semaphores.as_slice(),
-                    fence,
-                    result,
-                ))
-            }
-            Err(err) => Err(err),
-        }
+        )?;
+        let mut this = Self::empty(pool, result);
+        this.pending = Some(PendingFence::Submitted {
+            fence,
+            _waiter: waiter,
+            _queue: queue,
+        });
+        Ok(this)
     }
-
-    /*
-        pub fn from_fence(fence: Arc<Fence>) -> Self {
-            Self {
-                fence: Some(fence),
-                queue: None,
-                command_buffers: smallvec::smallvec![],
-            }
-        }
-    */
 }
 
-impl<T> Future for ThreadedFenceWaiter<T>
-where
-    T: Sized + Copy,
-{
+impl<T: Sized + Copy> Future for ThreadedFenceWaiter<T> {
     type Output = VulkanResult<T>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        match &self.fence {
-            Some(fence) => {
-                // Vulkan only allows polling of the fence status and not a callback-wake feature, so we use a thread-waiting future.
-                // This will have another thread wait for the fence while the user code can continue executing, and since the waiting thread
-                // is derived from a pool the cost of the spawn is 0 and the only downside is the operation of telling one of those thread to execute
-                // the blocking wait
-
-                // Check if we are done without blocking
-                match fence.is_signaled() {
-                    Err(e) => return Poll::Ready(Err(e)),
-                    Ok(status) => {
-                        if status {
-                            return match fence.reset() {
-                                Ok(()) => {
-                                    // here I am gonna destroy the fence and the list of occupied resources so that they can finally be free
-                                    for cmd_buffer in self.command_buffers.iter() {
-                                        cmd_buffer.flag_execution_as_finished();
-                                    }
-
-                                    let result = unsafe {
-                                        let self_mut_ref = self.get_unchecked_mut();
-
-                                        self_mut_ref.fence = None;
-                                        self_mut_ref.queue = None;
-                                        self_mut_ref.command_buffers.clear();
-                                        self_mut_ref.semaphores.clear();
-
-                                        self_mut_ref.result
-                                    };
-
-                                    Poll::Ready(Ok(result))
-                                }
-                                Err(err) => Poll::Ready(Err(err)),
-                            };
+        let this = self.get_mut();
+        let Some(pending) = &this.pending else {
+            return Poll::Ready(Ok(this.result));
+        };
+        let mut state = this.state.lock().unwrap();
+        let status = match state.error.take() {
+            Some(err) => Err(err),
+            None => pending.fence().is_signaled(),
+        };
+        match status {
+            Err(err) => {
+                state.cancelled = true;
+                state.waker = None;
+                return Poll::Ready(Err(err));
+            }
+            Ok(true) => {
+                state.cancelled = true;
+                state.waker = None;
+                drop(state);
+                drop(this.pending.take());
+                return Poll::Ready(Ok(this.result));
+            }
+            Ok(false) => {}
+        }
+        state.waker = Some(cx.waker().clone());
+        if !state.scheduled {
+            state.scheduled = true;
+            let shared_state = this.state.clone();
+            let fence = pending.fence().clone();
+            this.pool.execute_retry(move || {
+                let mut state = shared_state.lock().unwrap();
+                if state.cancelled {
+                    return true;
+                }
+                match Fence::wait_for_fences(
+                    std::slice::from_ref(&fence),
+                    FenceWaitFor::All,
+                    Duration::from_millis(1),
+                ) {
+                    Err(err) if err.is_timeout() => false,
+                    result => {
+                        state.error = result.err();
+                        state.scheduled = false;
+                        let waker = state.waker.take();
+                        drop(state);
+                        // Wake on both completion and terminal errors, using the latest waker.
+                        if let Some(waker) = waker {
+                            waker.wake();
                         }
+                        true
                     }
                 }
-
-                // Otherwise spin
-                let waker = cx.waker().clone();
-
-                let fences_to_wait = [fence.clone()];
-                self.pool.execute_retry(move || {
-                    let waker_clone = waker.clone();
-
-                    match Fence::wait_for_fences(
-                        fences_to_wait.as_slice(),
-                        crate::fence::FenceWaitFor::All,
-                        Duration::from_nanos(100),
-                    ) {
-                        Ok(_) => {
-                            waker_clone.clone().wake_by_ref();
-
-                            true
-                        }
-                        Err(err) => {
-                            // if the error is a timeout error schedule re-calling by returning false
-                            if VulkanError::is_timeout(&err) {
-                                return false;
-                            }
-
-                            true
-                        }
-                    }
-                });
-
-                Poll::Pending
-            }
-            None => Poll::Ready(Ok(self.result)),
+            });
         }
+        Poll::Pending
     }
 }

@@ -1,9 +1,6 @@
 use std::{
     ops::DerefMut,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicU64, Ordering},
-    },
+    sync::{Arc, Mutex},
 };
 
 use vulkan_framework::{
@@ -26,8 +23,8 @@ use vulkan_framework::{
     memory_heap::MemoryType,
     memory_management::{MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait},
     memory_pool::MemoryPoolFeatures,
-    pipeline_stage::{PipelineStage, PipelineStages},
-    queue::Queue,
+    pipeline_stage::{PipelineStage, PipelineStageRayTracingPipelineKHR, PipelineStages},
+    queue::{Queue, SemaphoreWaitOp},
     queue_family::QueueFamilyOwned,
     sampler::{Filtering, MipmapMode, Sampler},
     shader_layout_binding::{BindingDescriptor, BindingType, NativeBindingType},
@@ -40,7 +37,7 @@ use crate::rendering::{
 };
 
 type DescriptorSetsType =
-    smallvec::SmallVec<[(AtomicU64, Arc<DescriptorSet>); MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
+    smallvec::SmallVec<[Mutex<(u64, Option<Arc<DescriptorSet>>)>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
 
 pub struct TextureManager {
     debug_name: String,
@@ -78,62 +75,61 @@ impl TextureManager {
         self.textures.wait_load_blocking()
     }
 
-    #[inline]
+    pub(crate) fn upload_wait(&self) -> Option<SemaphoreWaitOp> {
+        self.textures.upload_wait()
+    }
+
     pub fn texture_descriptor_set(&self, current_frame: usize) -> Arc<DescriptorSet> {
-        let (descriptor_set_status, descriptor_set) =
-            self.descriptor_sets.get(current_frame).unwrap();
-
-        let current_status = self.textures.status();
-
-        // Check if the descriptor set needs to be updated:
-        // new textures have been loaded in GPU memory since the last time it was used
-        let mix_status = descriptor_set_status.fetch_min(current_status, Ordering::SeqCst);
-        if mix_status != current_status {
-            // Update the descriptor set with available resources
-            let mut combined_images: smallvec::SmallVec<
-                [(ImageLayout, Arc<ImageView>, Arc<Sampler>); MAX_TEXTURES as usize],
-            > = smallvec::smallvec![];
-            for texture_index in 0..self.textures.size() {
-                let texture_mapping = match self.textures.fetch_loaded(texture_index) {
-                    Some(loaded_texture) => (
-                        ImageLayout::ShaderReadOnlyOptimal,
-                        loaded_texture.clone(),
-                        self.sampler.clone(),
-                    ),
-                    None => (
-                        ImageLayout::ShaderReadOnlyOptimal,
-                        self.textures
-                            .fetch_loaded(self.stub_texture_index() as usize)
-                            .unwrap()
-                            .clone(),
-                        self.sampler.clone(),
-                    ),
-                };
-
-                combined_images.push(texture_mapping);
+        let mut cache = self.descriptor_sets[current_frame].lock().unwrap();
+        let status = self.textures.status();
+        if cache.0 == status {
+            if let Some(set) = &cache.1 {
+                return set.clone();
             }
-
-            descriptor_set
-                .bind_resources(|binder| {
-                    binder
-                        .bind_combined_images_samplers(0, combined_images.as_slice())
-                        .unwrap();
-                })
-                .unwrap();
-
-            descriptor_set_status
-                .compare_exchange(
-                    mix_status,
-                    current_status,
-                    Ordering::SeqCst,
-                    Ordering::SeqCst,
-                )
-                .unwrap();
-
-            println!("Updated textures descriptor set {current_frame}");
         }
 
-        descriptor_set.clone()
+        // Replace rather than update: pending command buffers keep the old set
+        // and its referenced images alive, including textures removed meanwhile.
+        let pool = DescriptorPool::new(
+            self.descriptor_set_layout.get_parent_device(),
+            DescriptorPoolConcreteDescriptor::new(
+                DescriptorPoolSizesConcreteDescriptor::new(
+                    0,
+                    MAX_TEXTURES,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    None,
+                ),
+                1,
+            ),
+            Some("texture_manager_descriptor_pool"),
+        )
+        .unwrap();
+        let set = DescriptorSet::new(pool, self.descriptor_set_layout.clone()).unwrap();
+        let stub = self
+            .textures
+            .fetch_loaded(self.stub_texture_index() as usize)
+            .unwrap();
+        let images: Vec<_> = (0..self.textures.size())
+            .map(|index| {
+                (
+                    ImageLayout::ShaderReadOnlyOptimal,
+                    self.textures.fetch_loaded(index).unwrap_or(stub).clone(),
+                    self.sampler.clone(),
+                )
+            })
+            .collect();
+        set.bind_resources(|binder| {
+            binder.bind_combined_images_samplers(0, &images).unwrap();
+        })
+        .unwrap();
+        *cache = (status, Some(set.clone()));
+        set
     }
 
     #[inline]
@@ -150,26 +146,6 @@ impl TextureManager {
     ) -> RenderingResult<Self> {
         let queue_family = queue.get_parent_queue_family();
         let device = queue_family.get_parent_device();
-
-        let descriptor_pool = DescriptorPool::new(
-            device.clone(),
-            DescriptorPoolConcreteDescriptor::new(
-                DescriptorPoolSizesConcreteDescriptor::new(
-                    0,
-                    MAX_TEXTURES * frames_in_flight,
-                    0,
-                    MAX_TEXTURES * frames_in_flight,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    None,
-                ),
-                frames_in_flight,
-            ),
-            Some("texture_manager_descriptor_pool"),
-        )?;
 
         let descriptor_set_layout = DescriptorSetLayout::new(
             device.clone(),
@@ -188,11 +164,8 @@ impl TextureManager {
         )?;
 
         let mut descriptor_sets: DescriptorSetsType = smallvec::smallvec![];
-        for _ in 0..frames_in_flight as usize {
-            let descriptor_set =
-                DescriptorSet::new(descriptor_pool.clone(), descriptor_set_layout.clone())?;
-
-            descriptor_sets.push((AtomicU64::new(0), descriptor_set));
+        for _ in 0..frames_in_flight {
+            descriptor_sets.push(Mutex::new((0, None)));
         }
 
         let stub_image = Self::create_image(
@@ -237,6 +210,8 @@ impl TextureManager {
             ));
         };
         drop(allocator);
+        // Every unpopulated descriptor points here, including the first frame.
+        textures.wait_load_blocking()?;
 
         Ok(Self {
             debug_name,
@@ -349,7 +324,7 @@ impl TextureManager {
         // Wait for host to finish writing the buffer
         recorder.pipeline_barriers([BufferMemoryBarrier::new(
             [PipelineStage::Host].as_slice().into(),
-            [MemoryAccessAs::MemoryWrite].as_slice().into(),
+            [MemoryAccessAs::HostWrite].as_slice().into(),
             [PipelineStage::Transfer].as_slice().into(),
             [MemoryAccessAs::TransferRead].as_slice().into(),
             BufferSubresourceRange::new(image_data.clone(), 0u64, image_data.size()),
@@ -362,7 +337,7 @@ impl TextureManager {
             PipelineStages::from([PipelineStage::TopOfPipe].as_ref()),
             MemoryAccess::default(),
             PipelineStages::from([PipelineStage::Transfer].as_ref()),
-            MemoryAccess::from([MemoryAccessAs::MemoryWrite].as_slice()),
+            MemoryAccess::from([MemoryAccessAs::TransferWrite].as_slice()),
             ImageSubresourceRange::from(image.clone() as Arc<dyn ImageTrait>),
             ImageLayout::Undefined,
             ImageLayout::TransferDstOptimal,
@@ -381,9 +356,16 @@ impl TextureManager {
 
         recorder.pipeline_barriers([ImageMemoryBarrier::new(
             PipelineStages::from([PipelineStage::Transfer].as_ref()),
-            MemoryAccess::from([MemoryAccessAs::MemoryWrite].as_slice()),
-            PipelineStages::from([PipelineStage::BottomOfPipe].as_ref()),
-            MemoryAccess::default(),
+            MemoryAccess::from([MemoryAccessAs::TransferWrite].as_slice()),
+            [
+                PipelineStage::FragmentShader,
+                PipelineStage::RayTracingPipelineKHR(
+                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                ),
+            ]
+            .as_slice()
+            .into(),
+            [MemoryAccessAs::ShaderRead].as_slice().into(),
             ImageSubresourceRange::from(image),
             ImageLayout::TransferDstOptimal,
             ImageLayout::ShaderReadOnlyOptimal,
@@ -432,7 +414,7 @@ impl TextureManager {
     #[inline]
     pub fn remove(&mut self, index: u32) -> RenderingResult<()> {
         // Avoid removing the default texture
-        if index == 0 {
+        if index == self.stub_image {
             return Err(RenderingError::ResourceError(
                 ResourceError::AttemptedRemovalOfEmptyTexture,
             ));

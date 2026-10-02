@@ -451,6 +451,10 @@ impl TopLevelAccelerationStructure {
             &debug_name,
         )?;
 
+        // Allocate scratch before creating the raw handle so allocation failure cannot leak it.
+        let device_build_scratch_buffer =
+            DeviceScratchBuffer::new(memory_manager, build_scratch_buffer_size, allocation_tags)?;
+
         // If deviceAddress is not zero, createFlags must include VK_ACCELERATION_STRUCTURE_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT_KHR
         let create_info = ash::vk::AccelerationStructureCreateInfoKHR::default()
             .buffer(buffer.ash_handle())
@@ -467,9 +471,6 @@ impl TopLevelAccelerationStructure {
         }?;
 
         let blas_decl = smallvec::smallvec![*blas_decl];
-
-        let device_build_scratch_buffer =
-            DeviceScratchBuffer::new(memory_manager, build_scratch_buffer_size, allocation_tags)?;
 
         Ok(Arc::new(Self {
             blas_decl,

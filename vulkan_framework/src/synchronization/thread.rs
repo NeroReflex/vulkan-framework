@@ -1,5 +1,5 @@
 use crate::prelude::VulkanResult;
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc::RecvTimeoutError, Arc, Mutex};
 use std::time::Duration;
 
 type JobOnce = Box<dyn FnOnce() + 'static + Send>;
@@ -12,60 +12,43 @@ enum Message {
 }
 
 pub struct ThreadPool {
-    _workers: Vec<std::thread::JoinHandle<()>>,
+    workers: Vec<std::thread::JoinHandle<()>>,
     sender: std::sync::mpsc::Sender<Message>,
 }
 
 fn worker_loop(receiver: Arc<Mutex<std::sync::mpsc::Receiver<Message>>>) {
-    let mut scheduled_retry_jobs: Vec<Option<JobRetry>> = (0..8).map(|_| None).collect();
+    let mut scheduled_retry_jobs: Vec<JobRetry> = Vec::new();
     loop {
-        // Try one pending retry job before blocking for new work.
-        let mut completed = None;
-        for (i, maybe_job) in scheduled_retry_jobs.iter().enumerate() {
-            if let Some(job) = maybe_job {
-                if job() {
-                    completed = Some(i);
-                    break;
-                }
-            }
-        }
-        if let Some(i) = completed {
-            scheduled_retry_jobs[i] = None;
-        }
+        scheduled_retry_jobs.retain(|job| !job());
 
-        let has_retry = scheduled_retry_jobs.iter().any(|j| j.is_some());
-        let msg = {
-            let rx = receiver.lock().unwrap();
-            if has_retry {
-                rx.recv_timeout(Duration::from_micros(100)).ok()
-            } else {
-                rx.recv().ok()
+        // Never wait behind an idle worker holding the receiver lock: this worker
+        // may have fence retries that must progress even with no new messages.
+        let message = match receiver.try_lock() {
+            Ok(rx) => rx.recv_timeout(Duration::from_millis(1)),
+            Err(std::sync::TryLockError::WouldBlock) => {
+                std::thread::sleep(Duration::from_micros(100));
+                continue;
             }
+            Err(std::sync::TryLockError::Poisoned(_)) => break,
         };
-
-        match msg {
-            Some(Message::NewJob(job)) => job(),
-            Some(Message::NewRetryingJob(job)) => {
+        match message {
+            Ok(Message::NewJob(job)) => job(),
+            Ok(Message::NewRetryingJob(job)) => {
                 if !job() {
-                    for slot in &mut scheduled_retry_jobs {
-                        if slot.is_none() {
-                            *slot = Some(job);
-                            break;
-                        }
-                    }
+                    scheduled_retry_jobs.push(job);
                 }
             }
-            Some(Message::Quit) | None => {
-                if !has_retry {
-                    break;
-                }
-            }
+            Ok(Message::Quit) | Err(RecvTimeoutError::Disconnected) => break,
+            Err(RecvTimeoutError::Timeout) => {}
         }
     }
 }
 
 impl ThreadPool {
     pub fn new(max_workers: usize) -> VulkanResult<Arc<Self>> {
+        if max_workers == 0 {
+            return Err(ash::vk::Result::ERROR_INITIALIZATION_FAILED.into());
+        }
         let (tx, rx) = std::sync::mpsc::channel::<Message>();
         let receiver = Arc::new(Mutex::new(rx));
         let mut workers = Vec::with_capacity(max_workers);
@@ -75,12 +58,12 @@ impl ThreadPool {
             let handle = std::thread::Builder::new()
                 .name(format!("vulkan-pool-{}", i))
                 .spawn(move || worker_loop(recv))
-                .expect("failed to spawn vulkan thread pool worker");
+                .map_err(|_| ash::vk::Result::ERROR_INITIALIZATION_FAILED)?;
             workers.push(handle);
         }
 
         Ok(Arc::new(Self {
-            _workers: workers,
+            workers,
             sender: tx,
         }))
     }
@@ -102,9 +85,10 @@ impl ThreadPool {
 
 impl Drop for ThreadPool {
     fn drop(&mut self) {
-        for _ in &self._workers {
+        for _ in &self.workers {
             let _ = self.sender.send(Message::Quit);
         }
-        // Workers are joined when the JoinHandles drop.
+        // Handles detach; workers exit on Quit or disconnection. Joining here can
+        // deadlock if the final pool Arc is released inside one of its own jobs.
     }
 }

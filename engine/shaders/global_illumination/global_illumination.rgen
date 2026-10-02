@@ -70,7 +70,7 @@ void main() {
     const vec3 normal = texelFetch(gbuffer[1], texel_position, 0).xyz;
     const vec3 diffuse = texelFetch(gbuffer[2], texel_position, 0).xyz;
     const vec3 specular = texelFetch(gbuffer[3], texel_position, 0).xyz;
-    const float depth = texture(gbuffer_depth, vec3(float(texel_position.x) / float(resolution.x), float(texel_position.y) / float(resolution.y), 1.0));
+    const float depth = texelFetch(gbuffer_depth, texel_position, 0).r;
 
     const uvec4 instance_data = texelFetch(gbuffer_instance_id, texel_position, 0);
     const uint mesh_id = instance_data.x;

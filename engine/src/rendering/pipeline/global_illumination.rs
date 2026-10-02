@@ -230,6 +230,11 @@ const SURFELS_VPL_SPV: &[u32] = inline_spirv!(
 pub struct GILighting {
     queue_family: Arc<QueueFamily>,
 
+    /// Timeline semaphore used to chain consecutive frames: the submission of
+    /// the frame with counter N waits on the payload value N (signaled when
+    /// frame N-1 terminated) before touching the global illumination data of
+    /// the previous frame, and signals the payload value N+1 when its own
+    /// commands are done.
     raytracing_semaphore: Arc<Semaphore>,
 
     surfel_morton_pipeline: Arc<ComputePipeline>,
@@ -299,23 +304,13 @@ impl GILighting {
         self.gibuffer_descriptor_set_layout.clone()
     }
 
-    /// Returns the list of stages that has to wait on a specific semaphore
-    pub fn wait_semaphores(&self) -> (PipelineStages, Arc<Semaphore>) {
-        (
-            [
-                //PipelineStage::Transfer,
-                PipelineStage::ComputeShader,
-                //PipelineStage::RayTracingPipelineKHR(
-                //    PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                //),
-            ]
-            .as_slice()
-            .into(),
-            self.raytracing_semaphore.clone(),
-        )
-    }
-
-    pub fn signal_semaphores(&self) -> Arc<Semaphore> {
+    /// Returns the timeline semaphore used to reuse the global illumination
+    /// data computed by the previous frame: the submission of the frame with
+    /// counter N must wait at AllCommands on payload N and signal payload N+1
+    /// after the whole frame (see `Queue::submit_mixed`). The G-buffer and HDR
+    /// images are also shared, and final rendering still samples the GI images.
+    /// This submission counter is independent of the GI accumulation counter.
+    pub fn reuse_timeline(&self) -> Arc<Semaphore> {
         self.raytracing_semaphore.clone()
     }
 
@@ -657,7 +652,10 @@ impl GILighting {
             Buffer::new(
                 device.clone(),
                 ConcreteBufferDescriptor::new(
-                    [BufferUseAs::StorageBuffer].as_slice().into(),
+                    // TransferDst is required to zero-fill the buffer with vkCmdFillBuffer
+                    [BufferUseAs::StorageBuffer, BufferUseAs::TransferDst]
+                        .as_slice()
+                        .into(),
                     (MAX_SURFELS as u64) * (SURFEL_SIZE as u64),
                 ),
                 None,
@@ -667,9 +665,14 @@ impl GILighting {
             Buffer::new(
                 device.clone(),
                 ConcreteBufferDescriptor::new(
-                    [BufferUseAs::StorageBuffer].as_slice().into(),
-                    // the bhv is a binary tree of ordered surfels: hald the number of MAX_SURFELS
-                    ((BVH_NODE_SIZE as u64) * ((MAX_SURFELS as u64) >> 1u64)) - 1u64,
+                    // TransferDst is required to zero-fill the buffer with vkCmdFillBuffer
+                    [BufferUseAs::StorageBuffer, BufferUseAs::TransferDst]
+                        .as_slice()
+                        .into(),
+                    // the bvh is a binary tree of ordered surfels: half the number of
+                    // MAX_SURFELS nodes, each one BVH_NODE_SIZE bytes long (the size must
+                    // be a multiple of the node size or the last node gets truncated)
+                    (BVH_NODE_SIZE as u64) * ((MAX_SURFELS as u64) >> 1u64),
                 ),
                 None,
                 Some("bvh_pool"),
@@ -678,7 +681,10 @@ impl GILighting {
             Buffer::new(
                 device.clone(),
                 ConcreteBufferDescriptor::new(
-                    [BufferUseAs::StorageBuffer].as_slice().into(),
+                    // TransferDst is required to zero-fill the buffer with vkCmdFillBuffer
+                    [BufferUseAs::StorageBuffer, BufferUseAs::TransferDst]
+                        .as_slice()
+                        .into(),
                     // this is simply an array of uint(s)
                     (MAX_USABLE_SURFELS as u64) * 4u64,
                 ),
@@ -980,7 +986,8 @@ impl GILighting {
         let renderarea_width = render_area.width();
         let renderarea_height = render_area.height();
 
-        let raytracing_semaphore = Semaphore::new(device.clone(), Some("gi_lighting_semaphore"))?;
+        let raytracing_semaphore =
+            Semaphore::new_timeline(device.clone(), 0, Some("gi_reuse_timeline"))?;
 
         Ok(Self {
             queue_family,
@@ -1026,32 +1033,166 @@ impl GILighting {
             self.raytracing_surfel_stats_buffer.size(),
         );
 
-        recorder.pipeline_barriers([BufferMemoryBarrier::new(
-            [PipelineStage::TopOfPipe].as_slice().into(),
-            [].as_slice().into(),
-            [PipelineStage::Transfer].as_slice().into(),
-            [MemoryAccessAs::TransferWrite].as_slice().into(),
-            surfel_stats_srr.clone(),
-            self.queue_family.clone(),
-            self.queue_family.clone(),
-        )
-        .into()]);
+        let surfels_srr = BufferSubresourceRange::new(
+            self.raytracing_surfels.clone(),
+            0u64,
+            self.raytracing_surfels.size(),
+        );
+
+        let bvh_srr = BufferSubresourceRange::new(
+            self.raytracing_bvh.clone(),
+            0u64,
+            self.raytracing_bvh.size(),
+        );
+
+        let discovered_srr = BufferSubresourceRange::new(
+            self.raytracing_discovered.clone(),
+            0u64,
+            self.raytracing_discovered.size(),
+        );
+
+        recorder.pipeline_barriers([
+            BufferMemoryBarrier::new(
+                [PipelineStage::TopOfPipe].as_slice().into(),
+                [].as_slice().into(),
+                [PipelineStage::Transfer].as_slice().into(),
+                [MemoryAccessAs::TransferWrite].as_slice().into(),
+                surfel_stats_srr.clone(),
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into(),
+            BufferMemoryBarrier::new(
+                [PipelineStage::TopOfPipe].as_slice().into(),
+                [].as_slice().into(),
+                [PipelineStage::Transfer].as_slice().into(),
+                [MemoryAccessAs::TransferWrite].as_slice().into(),
+                surfels_srr.clone(),
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into(),
+            BufferMemoryBarrier::new(
+                [PipelineStage::TopOfPipe].as_slice().into(),
+                [].as_slice().into(),
+                [PipelineStage::Transfer].as_slice().into(),
+                [MemoryAccessAs::TransferWrite].as_slice().into(),
+                bvh_srr.clone(),
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into(),
+            BufferMemoryBarrier::new(
+                [PipelineStage::TopOfPipe].as_slice().into(),
+                [].as_slice().into(),
+                [PipelineStage::Transfer].as_slice().into(),
+                [MemoryAccessAs::TransferWrite].as_slice().into(),
+                discovered_srr.clone(),
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into(),
+        ]);
 
         assert!(MAX_SURFELS <= i32::MAX as u32);
 
-        let clear_val = [MAX_SURFELS as i32, 0i32, 0i32, 0i32];
+        let clear_val = [MAX_SURFELS as i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32];
         recorder.update_buffer(surfel_stats_srr.buffer(), 0, &clear_val);
 
-        recorder.pipeline_barriers([BufferMemoryBarrier::new(
-            [PipelineStage::Transfer].as_slice().into(),
-            [MemoryAccessAs::TransferWrite].as_slice().into(),
-            [PipelineStage::BottomOfPipe].as_slice().into(),
-            [MemoryAccessAs::MemoryRead].as_slice().into(),
-            surfel_stats_srr.clone(),
-            self.queue_family.clone(),
-            self.queue_family.clone(),
-        )
-        .into()]);
+        // The surfels, the surfel BVH and the discovered surfels buffers are read
+        // by shaders that loop over their content. Leaving those buffers with
+        // garbage content right after allocation can leave surfel lock bits set
+        // (or build cyclic BVH links) which hangs the GPU: zero is the
+        // "invalid/empty surfel" state every pass understands, therefore this
+        // initialization is mandatory for correctness.
+        recorder.fill_buffer(
+            self.raytracing_surfels.clone(),
+            0,
+            self.raytracing_surfels.size(),
+            0,
+        );
+        recorder.fill_buffer(
+            self.raytracing_bvh.clone(),
+            0,
+            self.raytracing_bvh.size(),
+            0,
+        );
+        recorder.fill_buffer(
+            self.raytracing_discovered.clone(),
+            0,
+            self.raytracing_discovered.size(),
+            0,
+        );
+
+        let consumers_stages: PipelineStages = [
+            PipelineStage::ComputeShader,
+            PipelineStage::RayTracingPipelineKHR(
+                PipelineStageRayTracingPipelineKHR::RayTracingShader,
+            ),
+        ]
+        .as_slice()
+        .into();
+
+        recorder.pipeline_barriers([
+            BufferMemoryBarrier::new(
+                [PipelineStage::Transfer].as_slice().into(),
+                [MemoryAccessAs::TransferWrite].as_slice().into(),
+                [PipelineStage::BottomOfPipe].as_slice().into(),
+                [MemoryAccessAs::MemoryRead].as_slice().into(),
+                surfel_stats_srr.clone(),
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into(),
+            BufferMemoryBarrier::new(
+                [PipelineStage::Transfer].as_slice().into(),
+                [MemoryAccessAs::TransferWrite].as_slice().into(),
+                consumers_stages.clone(),
+                [
+                    MemoryAccessAs::MemoryRead,
+                    MemoryAccessAs::ShaderRead,
+                    MemoryAccessAs::ShaderWrite,
+                ]
+                .as_slice()
+                .into(),
+                surfels_srr.clone(),
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into(),
+            BufferMemoryBarrier::new(
+                [PipelineStage::Transfer].as_slice().into(),
+                [MemoryAccessAs::TransferWrite].as_slice().into(),
+                consumers_stages.clone(),
+                [
+                    MemoryAccessAs::MemoryRead,
+                    MemoryAccessAs::ShaderRead,
+                    MemoryAccessAs::ShaderWrite,
+                ]
+                .as_slice()
+                .into(),
+                bvh_srr.clone(),
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into(),
+            BufferMemoryBarrier::new(
+                [PipelineStage::Transfer].as_slice().into(),
+                [MemoryAccessAs::TransferWrite].as_slice().into(),
+                consumers_stages,
+                [
+                    MemoryAccessAs::MemoryRead,
+                    MemoryAccessAs::ShaderRead,
+                    MemoryAccessAs::ShaderWrite,
+                ]
+                .as_slice()
+                .into(),
+                discovered_srr.clone(),
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into(),
+        ]);
     }
 
     pub fn record_rendering_commands(
@@ -1074,6 +1215,14 @@ impl GILighting {
         let dlbuffer_image_srr: ImageSubresourceRange = self.raytracing_dlbuffer.image().into();
         let overlapping_surfels_image_srr: ImageSubresourceRange =
             self.raytracing_overlapping.image().into();
+        let gi_shader_stages: PipelineStages = [
+            PipelineStage::ComputeShader,
+            PipelineStage::RayTracingPipelineKHR(
+                PipelineStageRayTracingPipelineKHR::RayTracingShader,
+            ),
+        ]
+        .as_slice()
+        .into();
 
         // clear images regarding surfels
         {
@@ -1159,11 +1308,7 @@ impl GILighting {
                 ImageMemoryBarrier::new(
                     [PipelineStage::Transfer].as_slice().into(),
                     [MemoryAccessAs::TransferWrite].as_slice().into(),
-                    [PipelineStage::RayTracingPipelineKHR(
-                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                    )]
-                    .as_slice()
-                    .into(),
+                    gi_shader_stages,
                     [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
                         .as_slice()
                         .into(),
@@ -1177,11 +1322,7 @@ impl GILighting {
                 ImageMemoryBarrier::new(
                     [PipelineStage::Transfer].as_slice().into(),
                     [MemoryAccessAs::TransferWrite].as_slice().into(),
-                    [PipelineStage::RayTracingPipelineKHR(
-                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                    )]
-                    .as_slice()
-                    .into(),
+                    gi_shader_stages,
                     [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
                         .as_slice()
                         .into(),
@@ -1196,13 +1337,9 @@ impl GILighting {
         } else {
             recorder.pipeline_barriers([
                 ImageMemoryBarrier::new(
-                    [PipelineStage::TopOfPipe].as_slice().into(),
-                    [].as_slice().into(),
-                    [PipelineStage::RayTracingPipelineKHR(
-                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                    )]
-                    .as_slice()
-                    .into(),
+                    [PipelineStage::FragmentShader].as_slice().into(),
+                    [MemoryAccessAs::ShaderRead].as_slice().into(),
+                    gi_shader_stages,
                     [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
                         .as_slice()
                         .into(),
@@ -1214,13 +1351,9 @@ impl GILighting {
                 )
                 .into(),
                 ImageMemoryBarrier::new(
-                    [PipelineStage::TopOfPipe].as_slice().into(),
-                    [].as_slice().into(),
-                    [PipelineStage::RayTracingPipelineKHR(
-                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                    )]
-                    .as_slice()
-                    .into(),
+                    [PipelineStage::FragmentShader].as_slice().into(),
+                    [MemoryAccessAs::ShaderRead].as_slice().into(),
+                    gi_shader_stages,
                     [MemoryAccessAs::ShaderRead, MemoryAccessAs::ShaderWrite]
                         .as_slice()
                         .into(),
@@ -1234,10 +1367,14 @@ impl GILighting {
             ]);
         }
 
+        // Include the mesh pass's G-buffer writes/layout transitions: discovery
+        // and VPL consume them in compute, not just in ray tracing. This also
+        // covers earlier same-queue scene builds; other queues still require a
+        // semaphore dependency or a completed loading wait before submission.
         recorder.pipeline_barriers([MemoryBarrier::new(
-            [PipelineStage::TopOfPipe].as_slice().into(),
-            [].as_slice().into(),
-            [PipelineStage::ComputeShader].as_slice().into(),
+            [PipelineStage::AllCommands].as_slice().into(),
+            [MemoryAccessAs::MemoryWrite].as_slice().into(),
+            gi_shader_stages,
             [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
                 .as_slice()
                 .into(),

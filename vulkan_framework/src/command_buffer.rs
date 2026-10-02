@@ -50,6 +50,9 @@ enum CommandBufferReferencedResource {
     ComputePipeline(Arc<ComputePipeline>),
     GraphicsPipeline(Arc<GraphicsPipeline>),
     RaytracingPipeline(Arc<RaytracingPipeline>),
+    RaytracingBindingTables(Arc<RaytracingBindingTables>),
+    BottomLevelAccelerationStructure(Arc<BottomLevelAccelerationStructure>),
+    TopLevelAccelerationStructure(Arc<TopLevelAccelerationStructure>),
     DescriptorSet(Arc<DescriptorSet>),
     PipelineLayout(Arc<PipelineLayout>),
     Image(Arc<dyn ImageTrait>),
@@ -69,6 +72,15 @@ impl CommandBufferReferencedResource {
             Self::Image(l0) => (0b0011u128 << 124u128) | (l0.native_handle() as u128),
             Self::GraphicsPipeline(l0) => (0b0101u128 << 124u128) | (l0.native_handle() as u128),
             Self::RaytracingPipeline(l0) => (0b0110u128 << 124u128) | (l0.native_handle() as u128),
+            Self::RaytracingBindingTables(l0) => {
+                (0b1000u128 << 124u128) | (Arc::as_ptr(l0) as usize as u128)
+            }
+            Self::BottomLevelAccelerationStructure(l0) => {
+                (0b1001u128 << 124u128) | (Arc::as_ptr(l0) as usize as u128)
+            }
+            Self::TopLevelAccelerationStructure(l0) => {
+                (0b1010u128 << 124u128) | (Arc::as_ptr(l0) as usize as u128)
+            }
             Self::Buffer(l0) => (0b0111u128 << 124u128) | (l0.native_handle() as u128),
             Self::ImageView(l0) => (0b0111u128 << 124u128) | (l0.native_handle() as u128),
         }
@@ -92,6 +104,16 @@ impl PartialEq for CommandBufferReferencedResource {
             }
             (Self::RaytracingPipeline(l0), Self::RaytracingPipeline(r0)) => {
                 l0.native_handle() == r0.native_handle()
+            }
+            (Self::RaytracingBindingTables(l0), Self::RaytracingBindingTables(r0)) => {
+                Arc::ptr_eq(l0, r0)
+            }
+            (
+                Self::BottomLevelAccelerationStructure(l0),
+                Self::BottomLevelAccelerationStructure(r0),
+            ) => Arc::ptr_eq(l0, r0),
+            (Self::TopLevelAccelerationStructure(l0), Self::TopLevelAccelerationStructure(r0)) => {
+                Arc::ptr_eq(l0, r0)
             }
             (Self::Image(l0), Self::Image(r0)) => l0.native_handle() == r0.native_handle(),
             (Self::Buffer(l0), Self::Buffer(r0)) => l0.native_handle() == r0.native_handle(),
@@ -120,7 +142,10 @@ impl<'a> CommandBufferRecorder<'a> {
      *
      * Before calling this function the TLAS instance buffer MUST be filled with references
      * to instances of Bottom Level Acceleration Structure(s) that the user wants to include in the
-     * acceleration structure to be built.
+     * acceleration structure to be built. The command buffer retains the TLAS owner,
+     * including its instance input, destination storage, and scratch buffers.
+     * Referenced BLAS owners must be kept alive by the caller: the instance buffer
+     * contains raw device addresses, not Rust ownership references.
      *
      * @param tlas Top Level Acceleration Structure to build
      * @param primitive_offset the number of consecutives BLAS instances to skip (on the instance buffer)
@@ -133,6 +158,10 @@ impl<'a> CommandBufferRecorder<'a> {
         primitive_count: u32,
     ) {
         assert!(tlas.allowed_building_devices() != AllowedBuildingDevice::HostOnly);
+        assert!(
+            tlas.buffer().get_parent_device() == self.device,
+            "TLAS belongs to another device"
+        );
 
         let (geometries, range_infos) = tlas
             .ash_build_info(primitive_offset, primitive_count)
@@ -171,6 +200,9 @@ impl<'a> CommandBufferRecorder<'a> {
                 ranges_collection.as_slice(),
             )
         }
+        // The owner keeps both the native AS handle and all build buffers alive.
+        self.used_resources
+            .insert(CommandBufferReferencedResource::TopLevelAccelerationStructure(tlas.clone()));
     }
 
     /*
@@ -180,6 +212,10 @@ impl<'a> CommandBufferRecorder<'a> {
      *   - transform buffer: TODO
      *   - index_buffer: the list of index to vertices stored in the vertex_buffer
      *   - vertex_buffer: the list of vertices that are referenced from the index_buffer
+     *
+     * The command buffer retains the BLAS owner, including destination storage,
+     * scratch, and vertex/index/transform inputs. This is a BUILD, not an UPDATE;
+     * there is no source acceleration structure.
      *
      * @param blas Bottom Level Acceleration Structure to build
      * @param primitive_offset the number of consecutives BLAS instances to skip (on the instance buffer)
@@ -195,7 +231,10 @@ impl<'a> CommandBufferRecorder<'a> {
     ) {
         assert!(blas.allowed_building_devices() != AllowedBuildingDevice::HostOnly);
 
-        // TODO: assert from same device
+        assert!(
+            blas.buffer().get_parent_device() == self.device,
+            "BLAS belongs to another device"
+        );
 
         let (geometries, range_infos) = blas
             .ash_build_info(
@@ -235,6 +274,9 @@ impl<'a> CommandBufferRecorder<'a> {
                 ranges_collection.as_slice(),
             )
         }
+        self.used_resources.insert(
+            CommandBufferReferencedResource::BottomLevelAccelerationStructure(blas.clone()),
+        );
     }
 
     pub fn trace_rays(
@@ -249,6 +291,13 @@ impl<'a> CommandBufferRecorder<'a> {
                 let miss_shader_binding_tables = binding_tables.ash_miss_strided();
                 let hit_shader_binding_tables = binding_tables.ash_closesthit_strided();
                 let callable_shader_binding_tables = binding_tables.ash_callable_strided();
+                assert!(
+                    binding_tables.get_parent_device() == self.device,
+                    "Shader binding tables belong to another device"
+                );
+                self.used_resources.insert(
+                    CommandBufferReferencedResource::RaytracingBindingTables(binding_tables),
+                );
 
                 unsafe {
                     rt_ext.cmd_trace_rays(
@@ -463,11 +512,10 @@ impl<'a> CommandBufferRecorder<'a> {
     /// Implemented using dynamic rendering: roughly equivalent to using a renderpass,
     /// except ImageViews are used directly and no framebuffer is required.
     ///
-    /// You are free to use less attachments than what the graphics pipeline supports,
-    /// and/or exclude the depth or stencil buffer.
-    ///
-    /// Color attachments will be transitioned to `ImageLayout::ColorAttachmentOptimal`
-    /// and depth/stencil attachments will be transitioned to `ImageLayout::DepthStencilAttachmentOptimal`.
+    /// Attachments must be compatible with the bound graphics pipeline.
+    /// The caller must transition color attachments to `ImageLayout::ColorAttachmentOptimal`
+    /// and depth/stencil attachments to `ImageLayout::DepthStencilAttachmentOptimal`,
+    /// and synchronize prior accesses before beginning rendering. This method records no barriers.
     pub fn graphics_rendering<T>(
         &mut self,
         render_extent: Image2DDimensions,
@@ -478,59 +526,41 @@ impl<'a> CommandBufferRecorder<'a> {
     ) -> T {
         let mut ash_color_attachments: smallvec::SmallVec<[ash::vk::RenderingAttachmentInfo; 8]> =
             smallvec::smallvec![];
-        for attachment in color_attachments.iter().cloned() {
+        for attachment in color_attachments {
             // TODO: check for dimensions to fit into the render_extent
 
             self.used_resources
                 .insert(CommandBufferReferencedResource::ImageView(
-                    attachment.image_view().clone(),
+                    attachment.image_view(),
                 ));
 
             ash_color_attachments.push(attachment.into());
         }
 
-        let render_area = ash::vk::Rect2D::default()
-            .offset(ash::vk::Offset2D::default().x(0).y(0))
-            .extent(
-                ash::vk::Extent2D::default()
-                    .width(render_extent.width())
-                    .height(render_extent.height()),
-            );
+        let ash_depth_attachment = depth_attachment.map(|attachment| {
+            self.used_resources
+                .insert(CommandBufferReferencedResource::ImageView(
+                    attachment.image_view(),
+                ));
+            ash::vk::RenderingAttachmentInfo::from(attachment)
+        });
+        let ash_stencil_attachment = stencil_attachment.map(|attachment| {
+            self.used_resources
+                .insert(CommandBufferReferencedResource::ImageView(
+                    attachment.image_view(),
+                ));
+            ash::vk::RenderingAttachmentInfo::from(attachment)
+        });
 
-        let mut render_info = ash::vk::RenderingInfo::default()
-            .color_attachments(ash_color_attachments.as_slice())
-            .layer_count(1)
-            .render_area(render_area);
-
-        let mut d_attachment = ash::vk::RenderingAttachmentInfo::default();
-        render_info = match depth_attachment {
-            Some(attachment) => {
-                // TODO: check for dimensions to fit into the render_extent
-
-                self.used_resources
-                    .insert(CommandBufferReferencedResource::ImageView(
-                        attachment.image_view().clone(),
-                    ));
-                d_attachment = attachment.clone().into();
-                render_info.depth_attachment(&d_attachment)
-            }
-            None => render_info,
-        };
-
-        let mut s_attachment = ash::vk::RenderingAttachmentInfo::default();
-        render_info = match stencil_attachment {
-            Some(attachment) => {
-                // TODO: check for dimensions to fit into the render_extent
-
-                self.used_resources
-                    .insert(CommandBufferReferencedResource::ImageView(
-                        attachment.image_view().clone(),
-                    ));
-                s_attachment = attachment.clone().into();
-                render_info.stencil_attachment(&s_attachment)
-            }
-            None => render_info,
-        };
+        // Keep all attachment storage alive and immobile through cmd_begin_rendering.
+        let render_info = crate::dynamic_rendering::rendering_info(
+            ash::vk::Extent2D::default()
+                .width(render_extent.width())
+                .height(render_extent.height()),
+            ash_color_attachments.as_slice(),
+            ash_depth_attachment.as_ref(),
+            ash_stencil_attachment.as_ref(),
+        );
 
         unsafe {
             self.device
@@ -576,6 +606,41 @@ impl<'a> CommandBufferRecorder<'a> {
                 ash::vk::Buffer::from_raw(dst.native_handle()),
                 offset,
                 std::slice::from_raw_parts(ptr as *const u8, bytes),
+            )
+        };
+    }
+
+    /// Fill `size` bytes of the given buffer with the repeated 4 bytes long `value`
+    /// pattern (vkCmdFillBuffer).
+    ///
+    /// Use this to initialize big buffers: unlike `update_buffer` there is no
+    /// 65536 bytes limit on the amount of data that can be written.
+    ///
+    /// WARNING: the buffer MUST be in the TRANSFER_WRITE usage state when this
+    /// command is executed (see the buffer memory barriers).
+    pub fn fill_buffer(&mut self, dst: Arc<dyn BufferTrait>, offset: u64, size: u64, value: u32) {
+        self.used_resources
+            .insert(CommandBufferReferencedResource::Buffer(dst.clone()));
+
+        if !offset.is_multiple_of(4) {
+            panic!("Not aligned offset given!");
+        }
+
+        if !size.is_multiple_of(4) {
+            panic!("Size not multiple of 4 given!");
+        }
+
+        if size == 0 {
+            panic!("Nothing to fill!");
+        }
+
+        unsafe {
+            self.device.ash_handle().cmd_fill_buffer(
+                self.command_buffer.ash_handle(),
+                ash::vk::Buffer::from_raw(dst.native_handle()),
+                offset,
+                size,
+                value,
             )
         };
     }
@@ -933,6 +998,9 @@ pub(crate) trait SubmittableCommandBufferTrait: Send + Sync {
     fn mark_execution_begin(&self) -> VulkanResult<()>;
 
     fn mark_execution_complete(&self) -> VulkanResult<()>;
+
+    /// Undo a reservation for a submission that never reached the queue.
+    fn mark_execution_cancel(&self) -> VulkanResult<()>;
 }
 
 pub trait CommandBufferTrait:
@@ -974,7 +1042,7 @@ impl CommandPoolOwned for PrimaryCommandBuffer {
 
 impl SubmittableCommandBufferTrait for PrimaryCommandBuffer {
     fn mark_execution_begin(&self) -> VulkanResult<()> {
-        let cb_status: u32 = self.processing.fetch_min(u32::MAX, Ordering::SeqCst);
+        let cb_status: u32 = self.processing.load(Ordering::SeqCst);
         let new_status = match cb_status {
             PRIMARY_COMMAND_BUFFER_STATUS_NO_COMMANDS => {
                 return Err(VulkanError::Framework(
@@ -1035,7 +1103,7 @@ impl SubmittableCommandBufferTrait for PrimaryCommandBuffer {
     }
 
     fn mark_execution_complete(&self) -> VulkanResult<()> {
-        let cb_status: u32 = self.processing.fetch_min(u32::MAX, Ordering::SeqCst);
+        let cb_status: u32 = self.processing.load(Ordering::SeqCst);
         let new_status = match cb_status {
             PRIMARY_COMMAND_BUFFER_STATUS_NO_COMMANDS => {
                 return Err(VulkanError::Framework(
@@ -1059,14 +1127,13 @@ impl SubmittableCommandBufferTrait for PrimaryCommandBuffer {
             }
             PRIMARY_COMMAND_BUFFER_STATUS_RUNNING => PRIMARY_COMMAND_BUFFER_STATUS_READY,
             PRIMARY_COMMAND_BUFFER_STATUS_RUNNING_ONE_TIME => {
-                match self.resources_in_use.lock() {
-                    Ok(mut lock) => lock.clear(),
-                    Err(err) => {
-                        return Err(VulkanError::Framework(FrameworkError::MutexError(format!(
-                            "{err}"
-                        ))))
-                    }
-                }
+                #[cfg(feature = "better_mutex")]
+                let mut resources = self.resources_in_use.lock();
+                #[cfg(not(feature = "better_mutex"))]
+                let mut resources = self.resources_in_use.lock().map_err(|err| {
+                    VulkanError::Framework(FrameworkError::MutexError(format!("{err}")))
+                })?;
+                resources.clear();
 
                 PRIMARY_COMMAND_BUFFER_STATUS_NO_COMMANDS
             }
@@ -1081,6 +1148,21 @@ impl SubmittableCommandBufferTrait for PrimaryCommandBuffer {
             .compare_exchange(cb_status, new_status, Ordering::SeqCst, Ordering::SeqCst)
             .map_err(|_| VulkanError::Framework(FrameworkError::CommandBufferInvalidState))?;
 
+        Ok(())
+    }
+
+    fn mark_execution_cancel(&self) -> VulkanResult<()> {
+        let status = self.processing.load(Ordering::SeqCst);
+        let ready_status = match status {
+            PRIMARY_COMMAND_BUFFER_STATUS_RUNNING => PRIMARY_COMMAND_BUFFER_STATUS_READY,
+            PRIMARY_COMMAND_BUFFER_STATUS_RUNNING_ONE_TIME => {
+                PRIMARY_COMMAND_BUFFER_STATUS_READY_ONE_TIME
+            }
+            _ => return Err(FrameworkError::CommandBufferInvalidState.into()),
+        };
+        self.processing
+            .compare_exchange(status, ready_status, Ordering::SeqCst, Ordering::SeqCst)
+            .map_err(|_| VulkanError::Framework(FrameworkError::CommandBufferInvalidState))?;
         Ok(())
     }
 }

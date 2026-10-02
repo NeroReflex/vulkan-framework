@@ -11,8 +11,8 @@ use vulkan_framework::{
     memory_management::{MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait},
     memory_pool::MemoryPoolFeatures,
     pipeline_stage::PipelineStage,
-    queue::Queue,
-    queue_family::{QueueFamily, QueueFamilyOwned},
+    queue::{Queue, SemaphoreWaitOp},
+    queue_family::QueueFamilyOwned,
 };
 
 use crate::{
@@ -110,8 +110,8 @@ impl DirectionalLights {
                 recorder.pipeline_barriers([BufferMemoryBarrier::new(
                     [PipelineStage::Transfer].as_slice().into(),
                     [MemoryAccessAs::TransferWrite].as_slice().into(),
-                    [PipelineStage::BottomOfPipe].as_slice().into(),
-                    [].as_slice().into(),
+                    [PipelineStage::Transfer].as_slice().into(),
+                    [MemoryAccessAs::TransferRead].as_slice().into(),
                     BufferSubresourceRange::new(buffer.clone() as Arc<dyn BufferTrait>, 0, 4 * 6),
                     self.queue.get_parent_queue_family(),
                     self.queue.get_parent_queue_family(),
@@ -142,6 +142,11 @@ impl DirectionalLights {
         F: FnMut(&Arc<AllocatedBuffer>),
     {
         self.lights.foreach_loaded_mut(fun);
+    }
+
+    /// Add these waits to the frame submission before copying the light buffers.
+    pub fn loading_waits(&self) -> Vec<SemaphoreWaitOp> {
+        self.lights.upload_wait().into_iter().collect()
     }
 
     #[inline]

@@ -5,7 +5,7 @@
     #define GBUFFER_DESCRIPTOR_SET 1
 #endif
 
-layout (set = GBUFFER_DESCRIPTOR_SET, binding = 0) uniform sampler2DShadow gbuffer_depth;
+layout (set = GBUFFER_DESCRIPTOR_SET, binding = 0) uniform sampler2D gbuffer_depth;
 
 layout (set = GBUFFER_DESCRIPTOR_SET, binding = 1) uniform usampler2D gbuffer_instance_id;
 

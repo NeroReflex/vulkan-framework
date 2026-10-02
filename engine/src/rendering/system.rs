@@ -11,6 +11,7 @@ use std::{
 use sdl2::VideoSubsystem;
 use vulkan_framework::{
     acceleration_structure::bottom_level::IDENTITY_MATRIX,
+    ash::vk,
     buffer::{
         AllocatedBuffer, Buffer, BufferSubresourceRange, BufferTrait, BufferUseAs,
         ConcreteBufferDescriptor,
@@ -33,7 +34,8 @@ use vulkan_framework::{
     memory_management::{DefaultMemoryManager, MemoryManagementTags, MemoryManagerTrait},
     memory_pool::MemoryPoolFeatures,
     pipeline_stage::{PipelineStage, PipelineStageRayTracingPipelineKHR, PipelineStages},
-    queue::Queue,
+    prelude::{FrameworkError, VulkanError},
+    queue::{Queue, SemaphoreSignalOp, SemaphoreWaitOp},
     queue_family::{ConcreteQueueFamilyDescriptor, QueueFamily, QueueFamilySupportedOperationType},
     semaphore::Semaphore,
     shader_layout_binding::{
@@ -68,6 +70,23 @@ type SwapchainImagesType =
     smallvec::SmallVec<[Arc<ImageSwapchainKHR>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
 type SwapchainImageViewsType = smallvec::SmallVec<[Arc<ImageView>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>;
 
+/// The stage after which the per-frame command buffer recording must stop.
+///
+/// This is used to bisect which rendering pass hangs the GPU by setting the
+/// ART_RTIC_STOP_AFTER environment variable to one of: none|mesh|gi|final|hdr|all.
+/// When the recording stops before the end of the pipeline the frame is neither
+/// presented nor acquired from the swapchain: only the workload and its fence
+/// are involved.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum StopAfter {
+    None,
+    Mesh,
+    Gi,
+    Final,
+    Hdr,
+    All,
+}
+
 pub struct System {
     swapchain: Option<(Arc<SwapchainKHR>, SwapchainImageViewsType)>,
 
@@ -76,6 +95,9 @@ pub struct System {
     rendering_fences: smallvec::SmallVec<[Arc<Fence>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
 
     current_frame: AtomicUsize,
+
+    debug_stop_after: StopAfter,
+    debug_no_present: bool,
 
     image_available_semaphores:
         smallvec::SmallVec<[Arc<Semaphore>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
@@ -223,7 +245,8 @@ impl System {
         // Update the TLAS and create a descriptor set for it:
         // this is very important as it define the geometry of the whole scene
         {
-            let (tlas, tlas_data) = manager.tlas();
+            manager.wait_blocking().unwrap();
+            let (tlas, tlas_data) = manager.tlas_ready().unwrap();
 
             // create the new descriptor set for RT pipelines
             let rt_descriptor_set = DescriptorSet::new(
@@ -262,13 +285,22 @@ impl System {
         let mut instance_extensions = vec![];
         let mut instance_layers = vec![];
 
-        // Enable vulkan debug utils on debug builds
+        // Enable vulkan debug utils on debug builds (unless ART_RTIC_NO_VALIDATION is set)
         #[cfg(debug_assertions)]
         {
-            println!("Running with debugging features enabled...");
-            instance_extensions.push(String::from("VK_EXT_debug_utils"));
-            instance_layers.push(String::from("VK_LAYER_KHRONOS_validation"));
-            //instance_layers.push(String::from("VK_LAYER_RENDERDOC_Capture"));
+            match std::env::var("ART_RTIC_NO_VALIDATION") {
+                Ok(value) if value != "0" => {
+                    println!(
+                        "Running WITHOUT the validation layer (ART_RTIC_NO_VALIDATION is set)"
+                    );
+                }
+                _ => {
+                    println!("Running with debugging features enabled...");
+                    instance_extensions.push(String::from("VK_EXT_debug_utils"));
+                    instance_layers.push(String::from("VK_LAYER_KHRONOS_validation"));
+                    //instance_layers.push(String::from("VK_LAYER_RENDERDOC_Capture"));
+                }
+            }
         }
 
         let engine_name = String::from("ArtRTic");
@@ -305,16 +337,26 @@ impl System {
                 .unwrap(),
         )?;
 
+        // Request distinct queues when available; a single-queue device uses aliases.
+        // Frame synchronization must work independently of the queue count.
+        let requested_queues = std::env::var("ART_RTIC_QUEUE_COUNT")
+            .ok()
+            .and_then(|value| value.parse::<u32>().ok())
+            .filter(|count| *count > 0)
+            .unwrap_or(preferred_frames_in_flight.max(1));
+        let queue_priorities = (0..requested_queues).map(|_| 1.0f32).collect::<Vec<_>>();
+
         let device = Device::new(
             surface.get_parent_instance(),
             [ConcreteQueueFamilyDescriptor::new(
                 vec![
                     QueueFamilySupportedOperationType::Graphics,
+                    QueueFamilySupportedOperationType::Compute,
                     QueueFamilySupportedOperationType::Transfer,
                     QueueFamilySupportedOperationType::Present(surface.clone()),
                 ]
                 .as_ref(),
-                [1.0f32].as_slice(),
+                queue_priorities.as_slice(),
             )]
             .as_slice(),
             Self::required_device_extensions().as_slice(),
@@ -331,18 +373,34 @@ impl System {
                     "Could not detect a compatible amount of swapchain images",
                 )))?;
 
-        // single queue for all tasks
-        let queue = Queue::new(
+        // one queue per frame in flight: the driver hands out distinct queues as
+        // long as the queue family has enough of them; when the family is
+        // exhausted its first queue is shared instead (which is always legal:
+        // the frames sharing it are simply executed in submission order)
+        let mut queues: smallvec::SmallVec<[Arc<Queue>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]> =
+            smallvec::smallvec![];
+        for index in 0..frames_in_flight {
+            match Queue::new(
                 queue_family.clone(),
-                Some(format!("queue").as_str()),
-            )?;
-
-        let mut queues = smallvec::smallvec![];
-        for _ in 0..frames_in_flight {
-            queues.push(queue.clone());
+                Some(format!("queues[{index}]").as_str()),
+            ) {
+                Ok(queue) => queues.push(queue),
+                Err(VulkanError::Framework(FrameworkError::TooManyQueues(_, _))) => {
+                    queues.push(queues[0].clone())
+                }
+                Err(err) => return Err(err.into()),
+            }
         }
 
-        let rendering_fences = (0..swapchain_images_count)
+        // the queue used for resource loading and one-time initialization work
+        let main_queue = queues[0].clone();
+
+        println!(
+            "Renderer configuration: {} queue(s), {frames_in_flight} frames in flight, at least {swapchain_images_count} swapchain images",
+            queue_family.max_queues().min(frames_in_flight as usize)
+        );
+
+        let rendering_fences = (0..frames_in_flight)
             .map(|idx| {
                 Fence::new(
                     device.clone(),
@@ -493,7 +551,7 @@ impl System {
         let memory_manager = Arc::new(Mutex::new(memory_manager));
 
         let obj_manager = ResourceManager::new(
-            queue.clone(),
+            main_queue.clone(),
             memory_manager.clone(),
             frames_in_flight,
             String::from("resource_manager"),
@@ -675,8 +733,6 @@ impl System {
 
         let rt_descriptor_set = None;
 
-        let main_queue = queue.clone(); // Queue::new(queue_family.clone(), Some("init_queue")).unwrap();
-
         let mesh_rendering = Arc::new(MeshRendering::new(
             memory_manager.clone(),
             obj_manager.textures_descriptor_set_layout(),
@@ -715,7 +771,7 @@ impl System {
 
         let resources_manager = Arc::new(Mutex::new(obj_manager));
         let lights_manager = Arc::new(Mutex::new(DirectionalLights::new(
-            queue.clone(),
+            main_queue.clone(),
             memory_manager.clone(),
             String::from("directional_lights"),
         )?));
@@ -732,20 +788,42 @@ impl System {
             renderquad.record_init_commands(recorder);
         })?;
 
-        let init_waiter = main_queue.submit(
-            &[init_command_buffer.clone()],
-            &[],
-            &[
-                mesh_rendering.signal_semaphores(),
-                global_illumination_lighting.signal_semaphores(),
-                hdr.signal_semaphores(),
-                renderquad.signal_semaphores(),
-            ],
-            init_fence.clone(),
-        )?;
+        // the init commands do not require any synchronization: the wait for
+        // this submission is what orders the resource loading and the first
+        // frame against the images/buffers initialization performed here
+        let init_waiter =
+            main_queue.submit(&[init_command_buffer.clone()], &[], &[], init_fence.clone())?;
 
         let frames_in_flight = (0..frames_in_flight).map(|_| Option::None).collect();
         let prev_frame_gi_reuse = 0;
+
+        // ART_RTIC_STOP_AFTER=none|mesh|gi|final|hdr|all is used to bisect
+        // which pass of the rendering pipeline hangs the GPU
+        let debug_stop_after = match std::env::var("ART_RTIC_STOP_AFTER")
+            .unwrap_or_default()
+            .to_lowercase()
+            .as_str()
+        {
+            "none" | "empty" => StopAfter::None,
+            "mesh" => StopAfter::Mesh,
+            "gi" => StopAfter::Gi,
+            "final" => StopAfter::Final,
+            "hdr" => StopAfter::Hdr,
+            _ => StopAfter::All,
+        };
+        println!("Renderer stage bisection stops after: {debug_stop_after:?}");
+
+        // ART_RTIC_NO_PRESENT=1 records and submits the whole frame (acquire and
+        // renderquad included) but never calls vkQueuePresentKHR: used to
+        // discriminate a device lost caused by the frame workload from one
+        // caused by the present operation itself. Expect the run to block on
+        // acquire after all the swapchain images have been acquired.
+        let debug_no_present = match std::env::var("ART_RTIC_NO_PRESENT") {
+            Ok(value) if value != "0" => true,
+            _ => false,
+        };
+        println!("Renderer no-present mode: {debug_no_present}");
+
         let active_camera = None;
 
         drop(init_waiter);
@@ -763,6 +841,9 @@ impl System {
             present_command_buffers,
 
             current_frame: AtomicUsize::new(0),
+
+            debug_stop_after,
+            debug_no_present,
 
             swapchain: None,
             present_ready,
@@ -795,45 +876,72 @@ impl System {
 
     pub fn recreate_swapchain(&mut self) -> RenderingResult<()> {
         let (new_width, new_height) = self.window.drawable_size();
+        if new_width == 0 || new_height == 0 {
+            return Ok(());
+        }
         let new_dimensions = Image2DDimensions::new(new_width, new_height);
         let render_queue_families = [self.queue_family()];
 
-        // create the new swapchain if none is present
+        // Render fences do not cover presentation. Finish both before releasing
+        // swapchain views or recycling presentation semaphores.
+        for frame in &mut self.frames_in_flight {
+            drop(frame.take());
+        }
+        self.device().wait_idle()?;
+
         let swapchain = match self.swapchain.take() {
-            Some((mut swapchain, images)) => {
-                drop(images);
-
-                match Arc::get_mut(&mut swapchain) {
-                    Some(_swapchain) => {
-                        // TODO: regenerate the swapchain with new dimensions
-                    }
-                    None => {
-                        // the swapchain (or one of its images) is currently in use
-                        // so warn the user about it.
-                        println!("The swapchain is not ready to be regenerated.");
-                    }
-                }
-
+            Some((mut swapchain, image_views)) => {
+                drop(image_views);
+                let Some(exclusive) = Arc::get_mut(&mut swapchain) else {
+                    return Err(RenderingError::Unknown(String::from(
+                        "Swapchain resources are still referenced after device idle",
+                    )));
+                };
+                exclusive.recreate_with_extent(new_dimensions)?;
                 swapchain
             }
-            None => SwapchainKHR::new(
-                self.surface.device_swapchain_info(),
-                render_queue_families.as_slice(),
-                PresentModeSwapchainKHR::FIFO,
-                self.surface.color_space(),
-                CompositeAlphaSwapchainKHR::Opaque,
-                SurfaceTransformSwapchainKHR::Identity,
-                true,
-                self.surface.final_format(),
-                ImageUsage::from([ImageUseAs::TransferDst, ImageUseAs::ColorAttachment].as_slice()),
-                new_dimensions,
-                self.surface.images_count(),
-                1,
-            )?,
+            None => {
+                let info = self.surface.device_swapchain_info();
+                let transform = if info.transform_supported(&SurfaceTransformSwapchainKHR::Identity)
+                {
+                    SurfaceTransformSwapchainKHR::Identity
+                } else {
+                    info.current_transform()
+                };
+                let alpha = [
+                    CompositeAlphaSwapchainKHR::Opaque,
+                    CompositeAlphaSwapchainKHR::PreMultiplied,
+                    CompositeAlphaSwapchainKHR::PostMultiplied,
+                    CompositeAlphaSwapchainKHR::Inherit,
+                ]
+                .into_iter()
+                .find(|alpha| info.composite_alpha_supported(alpha))
+                .ok_or_else(|| {
+                    RenderingError::Unknown(String::from("No supported composite alpha mode"))
+                })?;
+                SwapchainKHR::new(
+                    info,
+                    render_queue_families.as_slice(),
+                    PresentModeSwapchainKHR::FIFO,
+                    self.surface.color_space(),
+                    alpha,
+                    transform,
+                    true,
+                    self.surface.final_format(),
+                    ImageUsage::from([ImageUseAs::ColorAttachment].as_slice()),
+                    info.image_extent(new_dimensions),
+                    self.surface.images_count(),
+                    1,
+                )?
+            }
         };
 
+        // minImageCount is a request, not the number returned by the driver.
+        self.present_ready = (0..swapchain.images_count())
+            .map(|index| Semaphore::new(self.device(), Some(&format!("present_ready[{index}]"))))
+            .collect::<Result<_, _>>()?;
         let mut images = SwapchainImagesType::default();
-        for index in 0..self.surface.images_count() {
+        for index in 0..swapchain.images_count() {
             images.push(SwapchainKHR::image(swapchain.clone(), index)?);
         }
 
@@ -860,6 +968,10 @@ impl System {
     }
 
     pub fn render(&mut self, hdr: &HDR) -> RenderingResult<()> {
+        let (width, height) = self.window.drawable_size();
+        if width == 0 || height == 0 {
+            return Ok(());
+        }
         // Ensure the swapchain is available and evey resource tied to is is usable
         // create the new swapchain if none is present
         if self.swapchain.is_none() {
@@ -871,22 +983,55 @@ impl System {
             return Err(RenderingError::NotEnoughSwapchainImages);
         };
 
-        let current_frame = self.current_frame.fetch_add(1, Ordering::SeqCst);
-        let current_frame = current_frame % self.frames_in_flight.len();
+        // if there is no camera (active viewport) then there is nothing to be rendered:
+        // returning before acquiring a swapchain image (and before consuming a frame
+        // counter value) avoids leaving signaled semaphores and holes in the timeline
+        // semaphore value chain behind
+        let Some(camera) = &self.active_camera else {
+            return Ok(());
+        };
+
+        // if there is no raytracing descriptor set then there is no scene to be rendered
+        let Some(rt_descriptor_set) = &self.rt_descriptor_set else {
+            return Ok(());
+        };
+
+        // Only successful submissions advance the timeline; acquisition/recording
+        // errors must not leave an unsignaled value for the next frame to await.
+        let frame_counter = self.current_frame.load(Ordering::SeqCst);
+        let current_frame = frame_counter % self.frames_in_flight.len();
 
         // this will ensure the previous frame in flight (relative to the same swapchain image) has completed its execution
         drop(self.frames_in_flight[current_frame].take());
 
-        // swapchain_index is the index of the swapchain image relative to the specified swapchain
-        let (swapchain_index, swapchain_optimal) = swapchain.acquire_next_image_index(
-            Duration::from_nanos(u64::MAX),
-            Some(self.image_available_semaphores[current_frame].clone()),
-            None,
-        )?;
+        // When bisecting a GPU hang (ART_RTIC_STOP_AFTER != all) neither the
+        // acquire nor the present are performed: this way any number of frames
+        // can be submitted and waited on without ever involving the swapchain
+        // and its semaphores.
+        let full_frame = self.debug_stop_after == StopAfter::All;
 
-        // if there is no camera (active viewport) then there is nothing to be rendered
-        let Some(camera) = &self.active_camera else {
-            return Ok(());
+        // swapchain_index is the index of the swapchain image relative to the specified swapchain
+        let (swapchain_index, swapchain_optimal) = if full_frame {
+            if self.debug_no_present && frame_counter >= swapchain.images_count() as usize {
+                return Err(RenderingError::Unknown(String::from(
+                    "No-present diagnostic exhausted its swapchain images; refusing to block on acquire",
+                )));
+            }
+            match swapchain.acquire_next_image_index(
+                Duration::from_secs(1),
+                Some(self.image_available_semaphores[current_frame].clone()),
+                None,
+            ) {
+                Ok(image) => image,
+                Err(VulkanError::Vulkan(vk::Result::TIMEOUT)) => return Ok(()),
+                Err(VulkanError::Vulkan(vk::Result::ERROR_OUT_OF_DATE_KHR)) => {
+                    self.recreate_swapchain()?;
+                    return Ok(());
+                }
+                Err(err) => return Err(err.into()),
+            }
+        } else {
+            (0, true)
         };
 
         let camera_matrices = [
@@ -897,31 +1042,34 @@ impl System {
             ),
         ];
 
+        let mut frame_loading_waits = Vec::new();
         {
             let mut static_meshes_resources = self.resources_manager.lock().unwrap();
             let mut directional_lighting_resources = self.lights_manager.lock().unwrap();
 
-            static_meshes_resources.wait_nonblocking()?;
-            directional_lighting_resources.wait_nonblocking()?;
+            static_meshes_resources.wait_blocking()?;
+            directional_lighting_resources.wait_blocking()?;
+            frame_loading_waits.extend(static_meshes_resources.loading_waits());
+            frame_loading_waits.extend(directional_lighting_resources.loading_waits());
 
             let (texture_descriptor_set, material_descriptor_set) =
                 static_meshes_resources.static_mesh_descriptor_sets(current_frame);
 
-            // if there is no descriptor set then no element is on the scene, therefore there is
-            // simply nothing to be rendered.
-            let Some(rt_descriptor_set) = &self.rt_descriptor_set else {
-                return Ok(());
-            };
-
             let directional_lights = directional_lighting_resources.deref();
 
             // get the number of directional lights to compute and transfer into the buffer theirs directions
-            let lights_count = directional_lights.count();
+            assert!(directional_lights.count() <= MAX_DIRECTIONAL_LIGHTS);
             let size_of_light = 4u64 * 6u64;
 
             // here register the command buffer: command buffer at index i is associated with rendering_fences[i],
             // that I just awaited above, so thecommand buffer is surely NOT currently in use
             self.present_command_buffers[current_frame].record_one_time_submit(|recorder| {
+                // bisecting helper: when ART_RTIC_STOP_AFTER is "none" an empty
+                // command buffer is submitted to test the submission machinery
+                if self.debug_stop_after == StopAfter::None {
+                    return;
+                }
+
                 // Write status (view*projection matrix and directional lights) to GPU memory and
                 // wait for completion before using them to render the scene
                 {
@@ -948,7 +1096,7 @@ impl System {
                             BufferSubresourceRange::new(
                                 self.directional_light_buffers[current_frame].clone(),
                                 0,
-                                (lights_count as u64) * size_of_light,
+                                self.directional_light_buffers[current_frame].size(),
                             ),
                             self.queue_family.clone(),
                             self.queue_family.clone(),
@@ -1046,7 +1194,7 @@ impl System {
                             BufferSubresourceRange::new(
                                 self.directional_light_buffers[current_frame].clone(),
                                 0,
-                                size_of_light * (lights_count as u64),
+                                self.directional_light_buffers[current_frame].size(),
                             ),
                             self.queue_family.clone(),
                             self.queue_family.clone(),
@@ -1084,6 +1232,7 @@ impl System {
                     self.queue_family(),
                     [
                         PipelineStage::FragmentShader,
+                        PipelineStage::ComputeShader,
                         PipelineStage::RayTracingPipelineKHR(
                             PipelineStageRayTracingPipelineKHR::RayTracingShader,
                         ),
@@ -1096,10 +1245,15 @@ impl System {
                     recorder,
                 );
 
-                // make resources available for ray tracing pipeline(s)
+                if self.debug_stop_after == StopAfter::Mesh {
+                    return;
+                }
+
+                // Upload semaphore waits provide the cross-queue dependency;
+                // include actual producers for any work recorded on this queue.
                 recorder.pipeline_barriers([MemoryBarrier::new(
-                    [PipelineStage::TopOfPipe].as_slice().into(),
-                    [].as_slice().into(),
+                    [PipelineStage::AllCommands].as_slice().into(),
+                    [MemoryAccessAs::MemoryWrite].as_slice().into(),
                     [PipelineStage::RayTracingPipelineKHR(
                         PipelineStageRayTracingPipelineKHR::RayTracingShader,
                     )]
@@ -1130,6 +1284,10 @@ impl System {
                         recorder,
                     );
 
+                if self.debug_stop_after == StopAfter::Gi {
+                    return;
+                }
+
                 // make resources available for ray tracing pipeline(s)
                 recorder.pipeline_barriers([MemoryBarrier::new(
                     [PipelineStage::RayTracingPipelineKHR(
@@ -1155,12 +1313,20 @@ impl System {
                     recorder,
                 );
 
+                if self.debug_stop_after == StopAfter::Final {
+                    return;
+                }
+
                 let hdr_output_image = self.hdr.record_rendering_commands(
                     self.queue_family(),
                     hdr,
                     final_rendering_output_image,
                     recorder,
                 );
+
+                if self.debug_stop_after == StopAfter::Hdr {
+                    return;
+                }
 
                 // record commands to finalize the rendering image
                 self.renderquad.record_rendering_commands(
@@ -1176,39 +1342,68 @@ impl System {
         let frame_queue = self.queues[current_frame].clone();
 
         let present_semaphore = self.present_ready[swapchain_index as usize].clone();
-        let signal_semaphores = vec![
-            present_semaphore.clone(),
-            self.mesh_rendering.signal_semaphores(),
-            self.global_illumination_lighting.signal_semaphores(),
-            self.hdr.signal_semaphores(),
-        ];
-        let wait_semaphores = vec![
-            (
-                PipelineStages::from([PipelineStage::FragmentShader].as_slice()),
+
+        // The ordering between the passes of this frame (mesh rendering, global
+        // illumination, final rendering, HDR transform, renderquad) is already
+        // enforced by the order of the commands in the command buffer together
+        // with the pipeline barriers that have been recorded: semaphores are
+        // only required to synchronize operations that are external to this
+        // single submission, namely the swapchain image acquire/present and
+        // the previous frame (which shares the gbuffer, the global
+        // illumination and the HDR images with this one).
+        //
+        // Frame N waits on the timeline payload value N (signaled when the
+        // commands of frame N-1 terminated) and signals the payload value N+1
+        // for the frame that follows: a timeline semaphore is what makes
+        // waiting and signaling in the same submission legal, no matter how
+        // many queues the frames are submitted to.
+        let gi_reuse_timeline = self.global_illumination_lighting.reuse_timeline();
+        let timeline_wait_value = frame_counter as u64;
+
+        let mut wait_semaphores = frame_loading_waits;
+        if full_frame {
+            // the swapchain image has to be acquired before it can be used
+            wait_semaphores.push(SemaphoreWaitOp::Binary(
+                PipelineStages::from([PipelineStage::AllCommands].as_slice()),
                 self.image_available_semaphores[current_frame].clone(),
-            ),
-            self.mesh_rendering.wait_semaphores(),
-            self.global_illumination_lighting.wait_semaphores(),
-            self.hdr.wait_semaphores(),
-        ];
-        self.frames_in_flight[current_frame] = Some(frame_queue.submit(
+            ));
+        }
+
+        // wait for the whole previous frame to be over: its commands are
+        // the producers of the data this frame reuses
+        wait_semaphores.push(SemaphoreWaitOp::Timeline(
+            PipelineStages::from([PipelineStage::AllCommands].as_slice()),
+            gi_reuse_timeline.clone(),
+            timeline_wait_value,
+        ));
+
+        let mut signal_semaphores = vec![SemaphoreSignalOp::Timeline(
+            gi_reuse_timeline,
+            timeline_wait_value + 1u64,
+        )];
+        if full_frame && !self.debug_no_present {
+            signal_semaphores.insert(0, SemaphoreSignalOp::Binary(present_semaphore.clone()));
+        }
+
+        self.frames_in_flight[current_frame] = Some(frame_queue.submit_mixed(
             &[self.present_command_buffers[current_frame].clone()],
             wait_semaphores.as_slice(),
             signal_semaphores.as_slice(),
             self.rendering_fences[current_frame].clone(),
         )?);
 
-        swapchain.queue_present(frame_queue, swapchain_index, &[present_semaphore])?;
+        self.current_frame.fetch_add(1, Ordering::SeqCst);
 
-        // the swapchain is suboptimal: recreate a new one from the currently existing one!
-        if !swapchain_optimal {
-            // wait for all rendering work to terminate before recreating the swapchain
-            for frame_in_flight in 0..self.frames_in_flight.len() {
-                drop(self.frames_in_flight[frame_in_flight].take())
+        if full_frame && !self.debug_no_present {
+            let present_suboptimal =
+                match swapchain.queue_present(frame_queue, swapchain_index, &[present_semaphore]) {
+                    Ok(suboptimal) => suboptimal,
+                    Err(VulkanError::Vulkan(vk::Result::ERROR_OUT_OF_DATE_KHR)) => true,
+                    Err(err) => return Err(err.into()),
+                };
+            if !swapchain_optimal || present_suboptimal {
+                self.recreate_swapchain()?;
             }
-
-            // Regenerate the swapchain
-            Self::recreate_swapchain(self)?;
         }
 
         // The GI has been calculated for this frame: try to reuse it for the next frame

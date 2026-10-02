@@ -25,12 +25,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let sdl_mouse = sdl_context.mouse();
     sdl_mouse.set_relative_mouse_mode(true);
 
+    let preferred_frames = std::env::var("ART_RTIC_FRAMES_IN_FLIGHT")
+        .ok()
+        .and_then(|value| value.parse::<u32>().ok())
+        .filter(|count| *count > 0)
+        .unwrap_or(PREFERRED_FRAMES_IN_FLIGHT);
+    // A bounded smoke test exits normally, including GPU/resource teardown.
+    let max_frames = std::env::var("ART_RTIC_MAX_FRAMES")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok());
+    let mut rendered_frames = 0u64;
+
     let mut renderer = System::new(
         app_name,
         sdl_context.video().unwrap(),
         DEFAULT_WINDOW_WIDTH,
         DEFAULT_WINDOW_HEIGHT,
-        PREFERRED_FRAMES_IN_FLIGHT,
+        preferred_frames,
     )
     .map_err(|err| panic!("{err}"))
     .unwrap();
@@ -154,8 +165,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        renderer.render(&hdr).unwrap();
+        renderer.render(&hdr)?;
         frame_count += 1;
+        rendered_frames += 1;
+        if max_frames.is_some_and(|limit| rendered_frames >= limit) {
+            println!("Completed bounded run: {rendered_frames} frames");
+            break 'running;
+        }
 
         // Check if one second has passed
         if start_time.elapsed() >= Duration::from_millis(1000) {
