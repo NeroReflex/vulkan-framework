@@ -255,7 +255,7 @@ impl<'a> CommandBufferRecorder<'a> {
         // will be examined to check if it is NULL.
         let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::default()
             .geometries(geometries.as_slice())
-            .flags(ash::vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
+            .flags(blas.build_flags())
             .ty(ash::vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL)
             .mode(ash::vk::BuildAccelerationStructureModeKHR::BUILD)
             .src_acceleration_structure(ash::vk::AccelerationStructureKHR::null())
@@ -689,11 +689,12 @@ impl<'a> CommandBufferRecorder<'a> {
         dst_subresource: ImageSubresourceLayers,
         dst: Arc<dyn ImageTrait>,
         extent: ImageDimensions,
+        buffer_offset: u64,
     ) {
         let dst_offset = ash::vk::Offset3D::default().x(0).y(0).z(0);
 
         let regions = ash::vk::BufferImageCopy::default()
-            .buffer_offset(0u64)
+            .buffer_offset(buffer_offset)
             .image_offset(dst_offset)
             .image_extent(extent.ash_extent_3d())
             .image_subresource(dst_subresource.ash_subresource_layers());
@@ -711,6 +712,91 @@ impl<'a> CommandBufferRecorder<'a> {
                 ash::vk::Image::from_raw(dst.native_handle()),
                 dst_layout.into(),
                 &[regions],
+            );
+        }
+    }
+
+    pub fn copy_image_to_buffer(
+        &mut self,
+        src: Arc<dyn ImageTrait>,
+        src_layout: ImageLayout,
+        src_subresource: ImageSubresourceLayers,
+        dst: Arc<dyn BufferTrait>,
+        buffer_offset: u64,
+        extent: ImageDimensions,
+    ) {
+        let regions = ash::vk::BufferImageCopy::default()
+            .buffer_offset(buffer_offset)
+            .image_offset(ash::vk::Offset3D::default())
+            .image_extent(extent.ash_extent_3d())
+            .image_subresource(src_subresource.ash_subresource_layers());
+
+        self.used_resources
+            .insert(CommandBufferReferencedResource::Image(src.clone()));
+        self.used_resources
+            .insert(CommandBufferReferencedResource::Buffer(dst.clone()));
+
+        unsafe {
+            self.device.ash_handle().cmd_copy_image_to_buffer(
+                self.command_buffer.ash_handle(),
+                ash::vk::Image::from_raw(src.native_handle()),
+                src_layout.into(),
+                ash::vk::Buffer::from_raw(dst.native_handle()),
+                &[regions],
+            );
+        }
+    }
+
+    pub fn blit_image(
+        &mut self,
+        src: Arc<dyn ImageTrait>,
+        src_layout: ImageLayout,
+        src_extent: ImageDimensions,
+        dst: Arc<dyn ImageTrait>,
+        dst_layout: ImageLayout,
+        dst_extent: ImageDimensions,
+    ) {
+        let src_box = src_extent.ash_extent_3d();
+        let dst_box = dst_extent.ash_extent_3d();
+        let subresource = ash::vk::ImageSubresourceLayers::default()
+            .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
+            .mip_level(0)
+            .base_array_layer(0)
+            .layer_count(1);
+        let region = ash::vk::ImageBlit::default()
+            .src_subresource(subresource)
+            .src_offsets([
+                ash::vk::Offset3D::default(),
+                ash::vk::Offset3D {
+                    x: src_box.width as i32,
+                    y: src_box.height as i32,
+                    z: 1,
+                },
+            ])
+            .dst_subresource(subresource)
+            .dst_offsets([
+                ash::vk::Offset3D::default(),
+                ash::vk::Offset3D {
+                    x: dst_box.width as i32,
+                    y: dst_box.height as i32,
+                    z: 1,
+                },
+            ]);
+
+        self.used_resources
+            .insert(CommandBufferReferencedResource::Image(src.clone()));
+        self.used_resources
+            .insert(CommandBufferReferencedResource::Image(dst.clone()));
+
+        unsafe {
+            self.device.ash_handle().cmd_blit_image(
+                self.command_buffer.ash_handle(),
+                ash::vk::Image::from_raw(src.native_handle()),
+                src_layout.into(),
+                ash::vk::Image::from_raw(dst.native_handle()),
+                dst_layout.into(),
+                &[region],
+                ash::vk::Filter::LINEAR,
             );
         }
     }

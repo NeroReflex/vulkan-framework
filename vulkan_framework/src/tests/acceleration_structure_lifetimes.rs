@@ -173,6 +173,7 @@ fn setup() -> VulkanResult<Option<Fixture>> {
         MemoryManagementTags::default(),
         None,
         None,
+        ash::vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE,
     )?;
     let tlas = TopLevelAccelerationStructure::new(
         &mut memory,

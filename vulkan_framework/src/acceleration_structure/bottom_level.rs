@@ -384,8 +384,7 @@ pub struct BottomLevelAccelerationStructure {
     allowed_building_devices: AllowedBuildingDevice,
 
     device_build_scratch_buffer: Arc<DeviceScratchBuffer>,
-    // TODO: device_update_scratch_buffer: Arc<DeviceScratchBuffer>,
-
+    build_flags: ash::vk::BuildAccelerationStructureFlagsKHR,
     //builder: Arc<BottomLevelAccelerationStructureBuilder>,
 }
 
@@ -423,6 +422,7 @@ impl BottomLevelAccelerationStructure {
         vertex_buffer: &BottomLevelAccelerationStructureVertexBuffer,
         index_buffer: &BottomLevelAccelerationStructureIndexBuffer,
         transform_buffer: &BottomLevelAccelerationStructureTransformBuffer,
+        build_flags: ash::vk::BuildAccelerationStructureFlagsKHR,
     ) -> VulkanResult<u64> {
         let device = vertex_buffer.buffer().get_parent_device();
 
@@ -447,7 +447,7 @@ impl BottomLevelAccelerationStructure {
         // See https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
         let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::default()
             .geometries(geometries.as_slice())
-            .flags(ash::vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
+            .flags(build_flags)
             .ty(ash::vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL)
             .mode(BuildAccelerationStructureModeKHR::BUILD);
 
@@ -538,6 +538,7 @@ impl BottomLevelAccelerationStructure {
         vertex_buffer: &BottomLevelAccelerationStructureVertexBuffer,
         index_buffer: &BottomLevelAccelerationStructureIndexBuffer,
         transform_buffer: &BottomLevelAccelerationStructureTransformBuffer,
+        build_flags: ash::vk::BuildAccelerationStructureFlagsKHR,
     ) -> VulkanResult<u64> {
         let device = vertex_buffer.buffer().get_parent_device();
 
@@ -562,7 +563,7 @@ impl BottomLevelAccelerationStructure {
         // See https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/vkGetAccelerationStructureBuildSizesKHR.html
         let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::default()
             .geometries(geometries.as_slice())
-            .flags(ash::vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
+            .flags(build_flags)
             .ty(ash::vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL)
             .mode(BuildAccelerationStructureModeKHR::BUILD);
 
@@ -632,6 +633,11 @@ impl BottomLevelAccelerationStructure {
     }
 
     #[inline(always)]
+    pub fn build_flags(&self) -> ash::vk::BuildAccelerationStructureFlagsKHR {
+        self.build_flags
+    }
+
+    #[inline(always)]
     pub(crate) fn device_build_scratch_buffer(&self) -> Arc<DeviceScratchBuffer> {
         self.device_build_scratch_buffer.clone()
     }
@@ -695,6 +701,7 @@ impl BottomLevelAccelerationStructure {
         allocation_tags: MemoryManagementTags,
         sharing: Option<&[std::sync::Weak<QueueFamily>]>,
         debug_name: Option<&str>,
+        build_flags: ash::vk::BuildAccelerationStructureFlagsKHR,
     ) -> VulkanResult<Arc<Self>> {
         let device = memory_manager.get_parent_device();
 
@@ -716,6 +723,7 @@ impl BottomLevelAccelerationStructure {
             &vertex_buffer,
             &index_buffer,
             &transform_buffer,
+            build_flags,
         )?;
 
         let build_scratch_buffer_size = Self::query_minimum_build_scratch_buffer_size(
@@ -724,6 +732,7 @@ impl BottomLevelAccelerationStructure {
             &vertex_buffer,
             &index_buffer,
             &transform_buffer,
+            build_flags,
         )?;
 
         let (blas_buffer, _blas_buffer_device_addr) = Self::create_blas_buffer(
@@ -770,6 +779,7 @@ impl BottomLevelAccelerationStructure {
             transform_buffer,
             allowed_building_devices,
             device_build_scratch_buffer,
+            build_flags,
         }))
     }
 
