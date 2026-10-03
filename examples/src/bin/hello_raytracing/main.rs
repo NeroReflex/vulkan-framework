@@ -781,6 +781,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             raytracing_allocation_tags.clone(),
             None,
             Some("my_blas"),
+            vulkan_framework::ash::vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE,
         )
         .unwrap();
 
