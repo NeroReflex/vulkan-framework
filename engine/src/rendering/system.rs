@@ -53,6 +53,7 @@ use crate::{
     core::{camera::CameraTrait, hdr::HDR, lights::directional::DirectionalLight},
     rendering::{
         MAX_DIRECTIONAL_LIGHTS, MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingError, RenderingResult,
+        queues::map_queues_to_frames,
         pipeline::{
             final_rendering::FinalRendering, global_illumination::GILighting,
             hdr_transform::HDRTransform, mesh_rendering::MeshRendering, renderquad::RenderQuad,
@@ -339,13 +340,14 @@ impl System {
                 .unwrap(),
         )?;
 
-        // Request distinct queues when available; a single-queue device uses aliases.
-        // Frame synchronization must work independently of the queue count.
+        // Request one spare queue for uploads when the family can provide it.
+        // Device::new clamps this to the hardware queueCount. ART_RTIC_QUEUE_COUNT
+        // overrides the request for experiments (including a single shared queue).
         let requested_queues = std::env::var("ART_RTIC_QUEUE_COUNT")
             .ok()
             .and_then(|value| value.parse::<u32>().ok())
             .filter(|count| *count > 0)
-            .unwrap_or(preferred_frames_in_flight.max(1));
+            .unwrap_or(preferred_frames_in_flight.saturating_add(1).max(1));
         let queue_priorities = (0..requested_queues).map(|_| 1.0f32).collect::<Vec<_>>();
 
         let device = Device::new(
@@ -375,31 +377,43 @@ impl System {
                     "Could not detect a compatible amount of swapchain images",
                 )))?;
 
-        // one queue per frame in flight: the driver hands out distinct queues as
-        // long as the queue family has enough of them; when the family is
-        // exhausted its first queue is shared instead (which is always legal:
-        // the frames sharing it are simply executed in submission order)
-        let mut queues: smallvec::SmallVec<[Arc<Queue>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]> =
-            smallvec::smallvec![];
-        for index in 0..frames_in_flight {
+        // Drain distinct VkQueues (up to FIF+1) then map them onto frames.
+        // Overflow used to clone queues[0] for every leftover slot, which piled
+        // every extra frame onto the same handle and starved the others.
+        let want_unique = (frames_in_flight as usize)
+            .saturating_add(1)
+            .min(queue_family.max_queues().max(1));
+        let mut unique_queues: Vec<Arc<Queue>> = Vec::with_capacity(want_unique);
+        while unique_queues.len() < want_unique {
             match Queue::new(
                 queue_family.clone(),
-                Some(format!("queues[{index}]").as_str()),
+                Some(format!("unique_queue[{}]", unique_queues.len()).as_str()),
             ) {
-                Ok(queue) => queues.push(queue),
-                Err(VulkanError::Framework(FrameworkError::TooManyQueues(_, _))) => {
-                    queues.push(queues[0].clone())
-                }
+                Ok(queue) => unique_queues.push(queue),
+                Err(VulkanError::Framework(FrameworkError::TooManyQueues(_, _))) => break,
                 Err(err) => return Err(err.into()),
             }
         }
+        if unique_queues.is_empty() {
+            return Err(RenderingError::Unknown(String::from(
+                "Device exposed no queues that could be created",
+            )));
+        }
 
-        // the queue used for resource loading and one-time initialization work
-        let main_queue = queues[0].clone();
+        let (upload_index, frame_queue_indices) =
+            map_queues_to_frames(unique_queues.len(), frames_in_flight as usize);
+        let main_queue = unique_queues[upload_index].clone();
+        let queues: smallvec::SmallVec<[Arc<Queue>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]> =
+            frame_queue_indices
+                .iter()
+                .map(|&index| unique_queues[index].clone())
+                .collect();
 
         println!(
-            "Renderer configuration: {} queue(s), {frames_in_flight} frames in flight, at least {swapchain_images_count} swapchain images",
-            queue_family.max_queues().min(frames_in_flight as usize)
+            "Renderer configuration: {} unique queue(s) (upload on {}), {frames_in_flight} frames in flight mapped {:?}, at least {swapchain_images_count} swapchain images",
+            unique_queues.len(),
+            upload_index,
+            frame_queue_indices,
         );
 
         let rendering_fences = (0..frames_in_flight)
@@ -1366,15 +1380,25 @@ impl System {
         if full_frame {
             // the swapchain image has to be acquired before it can be used
             wait_semaphores.push(SemaphoreWaitOp::Binary(
-                PipelineStages::from([PipelineStage::AllCommands].as_slice()),
+                PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
                 self.image_available_semaphores[current_frame].clone(),
             ));
         }
 
-        // wait for the whole previous frame to be over: its commands are
-        // the producers of the data this frame reuses
+        // Shared gbuffer / GI / HDR live across frames. Wait only the stages that
+        // consume them so per-frame transfers (UBO uploads) can overlap the
+        // previous frame's shading. Transfer is intentionally omitted.
         wait_semaphores.push(SemaphoreWaitOp::Timeline(
-            PipelineStages::from([PipelineStage::AllCommands].as_slice()),
+            PipelineStages::from(
+                [
+                    PipelineStage::AllGraphics,
+                    PipelineStage::ComputeShader,
+                    PipelineStage::RayTracingPipelineKHR(
+                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                    ),
+                ]
+                .as_slice(),
+            ),
             gi_reuse_timeline.clone(),
             timeline_wait_value,
         ));

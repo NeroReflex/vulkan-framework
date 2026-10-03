@@ -153,7 +153,8 @@ pub struct Device {
     pub(crate) physical_device: ash::vk::PhysicalDevice,
     ray_tracing_info: Option<RaytracingInfo>,
     pub(crate) swapchain_exists: AtomicBool,
-    // Shared by queue aliases and device_wait_idle, which externally synchronizes all queues.
+    // Used by device_wait_idle. Queue submit/present use a per-Queue mutex so
+    // distinct VkQueues are not host-serialized with each other.
     pub(crate) queue_host_access: Arc<std::sync::Mutex<()>>,
 }
 

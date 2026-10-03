@@ -71,9 +71,10 @@ impl Queue {
         Ok(())
     }
 
-    /// Externally synchronize queue operations, including presentation, with submissions
-    /// through aliases and device-wide idle waits. Distinct queues share this host lock;
-    /// their GPU execution can still overlap.
+    /// Externally synchronize submissions and presentation on this VkQueue
+    /// (including aliases that clone this object). Distinct queues have
+    /// distinct locks so they can be submitted from the host in parallel;
+    /// their GPU work already overlaps once submitted.
     pub(crate) fn lock(&self) -> VulkanResult<MutexGuard<'_, ()>> {
         self.host_access
             .lock()
@@ -318,32 +319,33 @@ impl Queue {
                 let mut obj_name_bytes = vec![];
 
                 let device = queue_family.get_parent_device();
-                let host_access = device.queue_host_access.clone();
-                let _guard = device
-                    .queue_host_access
-                    .lock()
-                    .map_err(|err| crate::prelude::FrameworkError::MutexError(format!("{err}")))?;
+                let host_access = Arc::new(Mutex::new(()));
+                {
+                    let _guard = host_access.lock().map_err(|err| {
+                        crate::prelude::FrameworkError::MutexError(format!("{err}"))
+                    })?;
 
-                if let Some(ext) = device.ash_ext_debug_utils_ext() {
-                    if let Some(name) = debug_name {
-                        for name_ch in name.as_bytes().iter() {
-                            obj_name_bytes.push(*name_ch);
-                        }
-                        obj_name_bytes.push(0x00);
+                    if let Some(ext) = device.ash_ext_debug_utils_ext() {
+                        if let Some(name) = debug_name {
+                            for name_ch in name.as_bytes().iter() {
+                                obj_name_bytes.push(*name_ch);
+                            }
+                            obj_name_bytes.push(0x00);
 
-                        unsafe {
-                            let object_name = std::ffi::CStr::from_bytes_with_nul_unchecked(
-                                obj_name_bytes.as_slice(),
-                            );
-                            // set device name for debugging
-                            let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::default()
-                                .object_handle(queue)
-                                .object_name(object_name);
+                            unsafe {
+                                let object_name = std::ffi::CStr::from_bytes_with_nul_unchecked(
+                                    obj_name_bytes.as_slice(),
+                                );
+                                // set device name for debugging
+                                let dbg_info = ash::vk::DebugUtilsObjectNameInfoEXT::default()
+                                    .object_handle(queue)
+                                    .object_name(object_name);
 
-                            if let Err(err) = ext.set_debug_utils_object_name(&dbg_info) {
-                                #[cfg(debug_assertions)]
-                                {
-                                    println!("Error setting the Debug name for the newly created Queue, will use handle. Error: {}", err);
+                                if let Err(err) = ext.set_debug_utils_object_name(&dbg_info) {
+                                    #[cfg(debug_assertions)]
+                                    {
+                                        println!("Error setting the Debug name for the newly created Queue, will use handle. Error: {}", err);
+                                    }
                                 }
                             }
                         }

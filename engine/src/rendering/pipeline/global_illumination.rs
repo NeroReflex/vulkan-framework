@@ -306,9 +306,9 @@ impl GILighting {
 
     /// Returns the timeline semaphore used to reuse the global illumination
     /// data computed by the previous frame: the submission of the frame with
-    /// counter N must wait at AllCommands on payload N and signal payload N+1
-    /// after the whole frame (see `Queue::submit_mixed`). The G-buffer and HDR
-    /// images are also shared, and final rendering still samples the GI images.
+    /// counter N waits on payload N at the stages that consume the shared
+    /// gbuffer, GI, and HDR images, then signals payload N+1 (see
+    /// `Queue::submit_mixed`). Final rendering still samples the GI images.
     /// This submission counter is independent of the GI accumulation counter.
     pub fn reuse_timeline(&self) -> Arc<Semaphore> {
         self.raytracing_semaphore.clone()

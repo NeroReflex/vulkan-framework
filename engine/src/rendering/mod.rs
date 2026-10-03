@@ -1,4 +1,5 @@
 pub mod pipeline;
+pub mod queues;
 pub mod rendering_dimensions;
 pub mod resources;
 pub mod surface;
@@ -37,7 +38,7 @@ pub type RenderingResult<T> = Result<T, RenderingError>;
 
 /// Maximum number of frames in flight that avoids having to allocate
 /// memory on the heap for frame-specific resources
-pub(crate) const MAX_FRAMES_IN_FLIGHT_NO_MALLOC: usize = 4;
+pub(crate) const MAX_FRAMES_IN_FLIGHT_NO_MALLOC: usize = 8;
 
 pub(crate) const MAX_TEXTURES: u32 = 256;
 pub(crate) const MAX_MATERIALS: u32 = 128;
