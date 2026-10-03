@@ -57,6 +57,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut frame_count = 0;
     let mut event_pump = sdl_context.event_pump().unwrap();
     let mut last_frame_time = Instant::now();
+    let bench_wander = std::env::var("ART_RTIC_BENCH_WANDER")
+        .ok()
+        .is_some_and(|value| value != "0");
+    let mut frame_times_s = Vec::<f32>::new();
 
     let hdr = artrtic::core::hdr::HDR::default();
     let mut camera = SpectatorCamera::new(
@@ -112,7 +116,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 prev_frame_lock_key_was_pressed = false;
             }
 
-            if !locked {
+            if bench_wander {
+                // Frame-locked path so before/after compare the same views.
+                let t = rendered_frames as f32 * (1.0 / 60.0);
+                let step = move_units_per_second * (1.0 / 60.0);
+                camera.apply_horizontal_rotation((t * 0.85).sin() * 0.035);
+                camera.apply_vertical_rotation((t * 0.47).cos() * 0.012);
+                camera.apply_movement(camera.orientation(), step * (0.65 + 0.35 * (t * 0.31).sin()));
+                let strafe = glm::normalize(glm::cross(
+                    glm::Vec3::new(0.0, 1.0, 0.0),
+                    camera.orientation(),
+                ));
+                camera.apply_movement(strafe, step * 0.45 * (t * 0.23).cos());
+                renderer.change_camera(Arc::new(camera.clone()));
+            } else if !locked {
                 if new_keyboard_state.is_scancode_pressed(Scancode::W) {
                     camera.apply_movement(camera.orientation(), move_quantity);
 
@@ -158,14 +175,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let orientation_change = (new_mouse_pos - mouse_pos) * mous_coeff;
             mouse_pos = new_mouse_pos;
 
-            if !locked && ((orientation_change.x != 0.0) || (orientation_change.y != 0.0)) {
+            if !bench_wander && !locked && ((orientation_change.x != 0.0) || (orientation_change.y != 0.0)) {
                 camera.apply_horizontal_rotation(orientation_change.x);
                 camera.apply_vertical_rotation(orientation_change.y);
                 renderer.change_camera(Arc::new(camera.clone()));
             }
         }
 
+        let gpu_start = Instant::now();
         renderer.render(&hdr)?;
+        let frame_s = gpu_start.elapsed().as_secs_f32();
+        // Skip scene upload / pipeline warmup.
+        if rendered_frames >= 90 {
+            frame_times_s.push(frame_s);
+        }
         frame_count += 1;
         rendered_frames += 1;
         if max_frames.is_some_and(|limit| rendered_frames >= limit) {
@@ -181,5 +204,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    print_frame_stats(&frame_times_s);
     Ok(())
+}
+
+fn print_frame_stats(times: &[f32]) {
+    if times.is_empty() {
+        return;
+    }
+    let mut sorted = times.to_vec();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let n = sorted.len();
+    let sum: f32 = sorted.iter().sum();
+    let pct = |p: f32| sorted[(((n - 1) as f32) * p) as usize];
+    println!(
+        "Frame times ({n} frames after warmup): min {:.2}ms avg {:.2}ms p95 {:.2}ms p99 {:.2}ms max {:.2}ms ({:.1} FPS avg)",
+        sorted[0] * 1000.0,
+        (sum / n as f32) * 1000.0,
+        pct(0.95) * 1000.0,
+        pct(0.99) * 1000.0,
+        sorted[n - 1] * 1000.0,
+        n as f32 / sum
+    );
 }
