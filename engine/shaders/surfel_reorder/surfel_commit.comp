@@ -1,0 +1,62 @@
+#extension GL_EXT_debug_printf : enable
+
+#include "../config.glsl"
+#include "build_layout.glsl"
+
+// One workgroup: at most MAX_SURFELS_PER_FRAME new surfels.
+layout (local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+#define SURFEL_NO_IMAGES 1
+#define SURFELS_DESCRIPTOR_SET 0
+#include "../surfel.glsl"
+
+layout (set = SURFELS_DESCRIPTOR_SET, binding = 7, std430) buffer surfel_build_scratch {
+    uint build_words[];
+};
+
+shared uint snap_high_water;
+shared uint snap_holes;
+shared uint snap_fresh;
+
+void main() {
+    const uint lid = gl_LocalInvocationID.x;
+
+    if (lid == 0u) {
+        snap_high_water = uint(high_water);
+        snap_holes = build_words[HDR_HOLE_COUNT];
+        snap_fresh = uint(unordered_surfels);
+    }
+    barrier();
+
+    const uint committed_cap = uint(total_surfels) / 2u;
+    if (lid < snap_fresh) {
+        const uint upper_base = uint(total_surfels) / 2u;
+        const uint dst = lid < snap_holes
+            ? build_words[OFF_HOLES + lid]
+            : snap_high_water + (lid - snap_holes);
+        if (dst < committed_cap) {
+            surfels[dst] = surfels[upper_base + lid];
+            atomicAnd(surfels[dst].flags, ~SURFEL_FLAG_DEAD);
+        }
+    }
+
+    barrier();
+
+    if (lid == 0u) {
+        const uint room = committed_cap > snap_high_water ? committed_cap - snap_high_water : 0u;
+        const uint want_append = snap_fresh > snap_holes ? snap_fresh - snap_holes : 0u;
+        const uint appended = min(want_append, room);
+        const uint placed = min(snap_fresh, snap_holes + appended);
+        const uint live_before = snap_high_water - snap_holes;
+        high_water = int(snap_high_water + appended);
+        live_count = int(live_before + placed);
+        remaining_holes = snap_holes > snap_fresh ? snap_holes - snap_fresh : 0u;
+        unordered_surfels = 0;
+        atomicAnd(global_reserve_counter, 0u);
+        atomicAnd(discovered_surfels, 0u);
+    }
+
+    for (uint i = lid; i < MAX_USABLE_SURFELS; i += 256u) {
+        discovered[i] = USED_SURFEL_MISSING;
+    }
+}

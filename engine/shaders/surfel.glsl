@@ -6,7 +6,6 @@
 #include "config.glsl"
 #include "random.glsl"
 #include "math.glsl"
-#include "morton.glsl"
 #include "aabb.glsl"
 #include "compress.glsl"
 
@@ -14,9 +13,11 @@
 #define SURFELS_DESCRIPTOR_SET 5
 #endif
 
+#ifndef SURFEL_NO_IMAGES
 uniform layout (set = SURFELS_DESCRIPTOR_SET, binding = 4, r32ui) uimage2D surfelOverlappingImage;
 
 uniform layout (set = SURFELS_DESCRIPTOR_SET, binding = 5, rgba32f) image2D outputImage[2];
+#endif
 
 #define SURFELS_FULL        0xFFFFFFFFu
 #define SURFELS_MISSED      0xFFFFFFFEu
@@ -26,6 +27,9 @@ uniform layout (set = SURFELS_DESCRIPTOR_SET, binding = 5, rgba32f) image2D outp
 #define SURFEL_FLAG_LOCKED      (0x01u << 0u)
 #define SURFEL_FLAG_PRIMARY     (0x01u << 1u)
 #define SURFEL_FLAG_READY       (0x01u << 2u)
+#define SURFEL_FLAG_DEAD        (0x01u << 3u)
+
+#define SURFEL_GATHER_MAX 64u
 
 #define RADIANCE_THRESHOLD 1.0f
 
@@ -63,8 +67,6 @@ struct Surfel {
 
     uint flags;
 
-    uint morton;
-
     // the last time (in frames) this surfel has contributed to the scene
     uint latest_contribution;
 };
@@ -98,17 +100,18 @@ layout (set = SURFELS_DESCRIPTOR_SET, binding = 0, std430) coherent buffer surfe
     // Reserved slots in the top half; payload is readable only after READY is acquired.
     int unordered_surfels;
 
-    // number of ordered surfels (in the bottom half of surfels array)
-    int ordered_surfels;
+    // Live committed surfels. Indices are stable; the region may contain holes.
+    int live_count;
 
-    // used for intermediate calculations
-    int active_surfels;
+    // Exclusive end of the committed region (live or dead).
+    int high_water;
 
     uint global_reserve_counter;
 
     uint discovered_surfels;
 
-    uint padding_2;
+    // Dead slots still in [0, high_water) after the last commit.
+    uint remaining_holes;
     uint padding_3;
 };
 
@@ -126,12 +129,14 @@ layout (set = SURFELS_DESCRIPTOR_SET, binding = 2, std430) coherent buffer surfe
     BVHNode tree[];
 };
 
+#ifndef SURFEL_NO_DISCOVERED
 #ifdef DISCOVERED_IS_READONLY
 readonly
 #endif
 layout (set = SURFELS_DESCRIPTOR_SET, binding = 3, std430) /*coherent*/ buffer surfel_discovered {
     uint discovered[];
 };
+#endif
 
 #define NODE_IS_LEAF_FLAG 0x80000000u
 
@@ -257,9 +262,8 @@ uint count_discoveder_surfels() {
 }
 
 uint count_ordered_surfels() {
-    // ordered_surfels is never modified in raytrace shader,
-    // so avoid the expensive atomic read
-    return ordered_surfels;
+    // live_count is published by the compute build before ray tracing.
+    return uint(live_count);
 }
 
 uint count_unordered_surfels() {
@@ -273,8 +277,13 @@ uint count_unordered_surfels() {
 uint allocate_surfel(uint checked_surfels) {
     const int scanned = int(checked_surfels);
 
-    // check for free surfels left (leave the top-half untouched for reordering)
-    if ((count_ordered_surfels() + checked_surfels) >= (total_surfels / 2)) {
+    // Staging lives in the upper half. Commit fills leftover holes first,
+    // then appends up to the committed-half cap.
+    const uint committed_cap = uint(total_surfels) / 2u;
+    const uint append_room = committed_cap > uint(high_water)
+        ? committed_cap - uint(high_water)
+        : 0u;
+    if (checked_surfels >= remaining_holes + append_room) {
         return SURFELS_FULL;
     }
 
@@ -323,14 +332,10 @@ void init_surfel(
     in const vec3 normal,
     in const vec3 diffuse
 ) {
-    // Reservation gives this invocation exclusive ownership. Free-slot READY bits
-    // were cleared by the BVH pass before this dispatch could reserve any slots.
+    // Reservation gives this invocation exclusive ownership of an upper-half slot.
     atomicStore(surfels[surfel_id].flags, SURFEL_FLAG_LOCKED,
         gl_ScopeDevice, gl_StorageSemanticsBuffer, gl_SemanticsRelaxed);
 
-    // no need to store morton code, it will be computed on the next frame
-    // and for this frame it is in the unordered set anyway
-    surfels[surfel_id].morton         = 0;
     surfels[surfel_id].instance_id    = instance_id;
     surfels[surfel_id].position_x     = position.x;
     surfels[surfel_id].position_y     = position.y;
@@ -385,7 +390,7 @@ uint bvh_search(in const vec3 point) {
         bool traverseR = false;
 
         if (leftIsLeaf) {
-            if (point_inside_surfel(leftIdx, point)) {
+            if ((surfels[leftIdx].flags & SURFEL_FLAG_DEAD) == 0u && point_inside_surfel(leftIdx, point)) {
                 return leftIdx;
             }
         } else {
@@ -401,7 +406,7 @@ uint bvh_search(in const vec3 point) {
         }
 
         if (rightIsLeaf) {
-            if (point_inside_surfel(rightIdx, point)) {
+            if ((surfels[rightIdx].flags & SURFEL_FLAG_DEAD) == 0u && point_inside_surfel(rightIdx, point)) {
                 return rightIdx;
             }
         } else {
@@ -498,140 +503,96 @@ uint find_closest_surfel(in const vec3 point) {
     return closest_id;
 }
 
-uint binary_search_bound(const uint start, const uint size, uint key, bool upper_bound) {
-    // Returns lower_bound (first >= key) if upper_bound == false
-    // Returns upper_bound (first > key)  if upper_bound == true
-    uint lo = start;
-    uint hi = start + size; // one-past-end
-    while (lo < hi) {
-        uint mid = lo + ((hi - lo) >> 1);
-        uint v = surfels[mid].morton;
-        if (upper_bound) {
-            if (v <= key) {
-                lo = mid + 1;
-            } else {
-                hi = mid;
-            }
-        } else {
-            if (v < key) {
-                lo = mid + 1;
-            } else {
-                hi = mid;
-            }
-        }
-    }
-
-    // The loop already produces the requested bound. In particular, lo may be
-    // one-past-end, where there is no initialized surfel to inspect.
-    return lo; // in [start, start+size]
-}
-
-uvec2 binary_search_range(const uint start, const uint size, uint min_key, uint max_key) {
-    const uint lb = binary_search_bound(start, size, min_key, false);
-    const uint ub = binary_search_bound(start, size, max_key, true);
-
-    return uvec2(lb, ub);
-}
-
 bool is_too_close(vec3 point, float radius, uint surfel_id) {
     const vec3 surfel_center = vec3(surfels[surfel_id].position_x, surfels[surfel_id].position_y, surfels[surfel_id].position_z);
     const float surfel_radius = surfels[surfel_id].radius;
     return distance(point, surfel_center) < (radius + surfel_radius);
 }
 
-// This is the fast version to search surfels: take advantage of the fact that surfels are
-// partially ordered by morton code, and only newer surfels are unordered.
+bool sphere_hits_aabb(in const AABB box, in const vec3 point, in const float radius) {
+    const vec3 closest = clamp(point, box.vMin, box.vMax);
+    const vec3 delta = point - closest;
+    return dot(delta, delta) <= radius * radius;
+}
+
+bool surfel_sphere_overlaps(uint surfel_id, in const vec3 point, in const float radius) {
+    if ((surfels[surfel_id].flags & SURFEL_FLAG_DEAD) != 0u) {
+        return false;
+    }
+    const float combined = surfels[surfel_id].radius + radius;
+    const vec3 delta = surfelPosition(surfel_id) - point;
+    return dot(delta, delta) <= combined * combined;
+}
+
+// Committed surfels are found by a radius walk of the median-split tree.
 uint linear_search_ordered_surfel_for_allocation(
-    in const vec3 eye_position,
-    in const vec2 clip_planes,
     vec3 point,
     uint instance_id,
     float radius
 ) {
-    bool too_close = false;
-
-    // the new surfel can only be allocated if it is distant at least radius
-    // from the edge of another surfel. Se we have to search all surfels
-    // between begin_colliding_surfel_id and end_colliding_surfel_id and
-    // everything in the middle.
-    //
-    // To do this we calculate morton code of the set of points (called SP) that are
-    // "edge-most" of the sphere surfel.origin -> MAX_SURFEL_RADIUS + radius
-    // and the search range is min(SP) .. max(SP).
-    //
-    // This hopefully limits the number of surfels we have to check
-    // enough for the algorithm to be very fast.
-
-    const float search_radius = MAX_SURFEL_RADIUS + radius + 0.01; // add a bit of epsilon to avoid precision issues
-    vec3 directions[] = {
-        vec3(1.000000, 0.000000, 0.000000),
-        vec3(-1.000000, 0.000000, 0.000000),
-        vec3(0.000000, 1.000000, 0.000000),
-        vec3(0.000000, -1.000000, 0.000000),
-        vec3(0.000000, 0.000000, 1.000000),
-        vec3(0.000000, 0.000000, -1.000000),
-        vec3(0.707107, 0.707107, 0.000000),
-        vec3(0.707107, -0.707107, 0.000000),
-        vec3(-0.707107, 0.707107, 0.000000),
-        vec3(-0.707107, -0.707107, 0.000000),
-        vec3(0.707107, 0.000000, 0.707107),
-        vec3(0.707107, 0.000000, -0.707107),
-        vec3(-0.707107, 0.000000, 0.707107),
-        vec3(-0.707107, 0.000000, -0.707107),
-        vec3(0.000000, 0.707107, 0.707107),
-        vec3(0.000000, 0.707107, -0.707107),
-        vec3(0.000000, -0.707107, 0.707107),
-        vec3(0.000000, -0.707107, -0.707107),
-        vec3(0.577350, 0.577350, 0.577350),
-        vec3(0.577350, 0.577350, -0.577350),
-        vec3(0.577350, -0.577350, 0.577350),
-        vec3(0.577350, -0.577350, -0.577350),
-        vec3(-0.577350, 0.577350, 0.577350),
-        vec3(-0.577350, 0.577350, -0.577350),
-        vec3(-0.577350, -0.577350, 0.577350),
-        vec3(-0.577350, -0.577350, -0.577350),
-    };
-
-    const uint last_ordered_id = count_ordered_surfels();
-
-    uint min_morton = 0xFFFFFFFFu;
-    uint max_morton = 0u;
-    for (uint i = 0; i < 26; i++) {
-        const vec3 edge_point = point + (search_radius * directions[i]);
-        const uint morton = morton3D(eye_position, edge_point, clip_planes);
-        if (morton == MORTON_OUT_OF_SCALE) {
-            min_morton = 0;
-            max_morton = last_ordered_id;
-            break;
-        }
-
-        min_morton = min(min_morton, morton);
-        max_morton = max(max_morton, morton);
+    if (tree[0].left == tree[0].parent) {
+        return SURFELS_MISSED;
     }
 
-    const uvec2 selected_range = binary_search_range(0, last_ordered_id, min_morton, max_morton);
-    const uint begin_colliding_surfel_id = selected_range.x;
-    const uint end_colliding_surfel_id = selected_range.y;
-    for (uint i = begin_colliding_surfel_id; i < end_colliding_surfel_id; i++) {
-        if (surfels[i].morton == MORTON_OUT_OF_SCALE) {
-            // this is an ordered set and MORTON_OUT_OF_SCALE is both invalid and the highest possible value,
-            // so when the first one is found, we can stop searching
-            break;
-        } else if ((is_point_in_surfel(i, point)) && (surfels[i].instance_id == instance_id)) {
-            return i;
-        } else if (is_too_close(point, radius, i)) {
-            too_close = true;
-            // do not break, we want to check all surfels for matches,
-            // but we also want to know if we were too close to any of them
-            // to avoid allocating new ones
+    bool too_close = false;
+    uint stack[MAX_BVH_STACK_DEPTH];
+    int stack_depth = 0;
+    stack[stack_depth++] = 0u;
+
+    while (stack_depth > 0) {
+        const uint node = stack[--stack_depth];
+        const uint child_l = tree[node].left;
+        const uint child_r = tree[node].right;
+        const bool left_is_leaf = (child_l & NODE_IS_LEAF_FLAG) != 0u;
+        const bool right_is_leaf = (child_r & NODE_IS_LEAF_FLAG) != 0u;
+        const uint left_idx = child_l & ~NODE_IS_LEAF_FLAG;
+        const uint right_idx = child_r & ~NODE_IS_LEAF_FLAG;
+
+        if (left_is_leaf) {
+            if ((surfels[left_idx].flags & SURFEL_FLAG_DEAD) == 0u) {
+                if ((is_point_in_surfel(left_idx, point)) && (surfels[left_idx].instance_id == instance_id)) {
+                    return left_idx;
+                } else if (is_too_close(point, radius, left_idx)) {
+                    too_close = true;
+                }
+            }
+        } else {
+            const AABB left_box = compatAABB(
+                vec3(tree[left_idx].min_x, tree[left_idx].min_y, tree[left_idx].min_z),
+                vec3(tree[left_idx].max_x, tree[left_idx].max_y, tree[left_idx].max_z)
+            );
+            if (sphere_hits_aabb(left_box, point, radius) && stack_depth < MAX_BVH_STACK_DEPTH) {
+                stack[stack_depth++] = left_idx;
+            }
+        }
+
+        if (right_is_leaf && left_is_leaf && right_idx == left_idx) {
+            continue;
+        }
+
+        if (right_is_leaf) {
+            if ((surfels[right_idx].flags & SURFEL_FLAG_DEAD) == 0u) {
+                if ((is_point_in_surfel(right_idx, point)) && (surfels[right_idx].instance_id == instance_id)) {
+                    return right_idx;
+                } else if (is_too_close(point, radius, right_idx)) {
+                    too_close = true;
+                }
+            }
+        } else {
+            const AABB right_box = compatAABB(
+                vec3(tree[right_idx].min_x, tree[right_idx].min_y, tree[right_idx].min_z),
+                vec3(tree[right_idx].max_x, tree[right_idx].max_y, tree[right_idx].max_z)
+            );
+            if (sphere_hits_aabb(right_box, point, radius) && stack_depth < MAX_BVH_STACK_DEPTH) {
+                stack[stack_depth++] = right_idx;
+            }
         }
     }
 
     return too_close ? SURFELS_TOO_CLOSE : SURFELS_MISSED;
 }
 
-// This is the fast version to search surfels: take advantage of the fact that surfels are
-// partially ordered by morton code, and only newer surfels are unordered.
+// This frame's allocations live in a dense prefix of the upper half.
 uint linear_search_unordered_surfel_for_allocation(
     inout uint checked_surfels,
     vec3 point,
@@ -651,8 +612,6 @@ uint linear_search_unordered_surfel_for_allocation(
             pending_initialization = true;
             continue;
         }
-        // WARNING: here MORTON_OUT_OF_SCALE is not checked for
-        // because it's not something we could have allocated this frame
 
         if ((is_point_in_surfel(i, point)) && (surfels[i].instance_id == instance_id)) {
             return i;
@@ -789,8 +748,6 @@ uint find_surfel_or_allocate_new(
     // the ordered set won't change during this shader invocation,
     // so it's safe to do this work only once.
     const uint ordered_surfel_id_search_res = linear_search_ordered_surfel_for_allocation(
-        eye_position,
-        clip_planes,
         position,
         instance_id,
         radius

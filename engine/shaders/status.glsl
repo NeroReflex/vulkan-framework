@@ -1,8 +1,6 @@
 #ifndef _STATUS_
 #define _STATUS_
 
-#include "morton.glsl"
-
 #ifndef STATUS_DESCRIPTOR_SET
     #define STATUS_DESCRIPTOR_SET 2
 #endif

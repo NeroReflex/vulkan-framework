@@ -16,7 +16,6 @@
 #include "payload.glsl"
 #include "../random.glsl"
 #include "../math.glsl"
-#include "../morton.glsl"
 
 #define BVH_IS_READONLY
 #define DISCOVERED_IS_READONLY

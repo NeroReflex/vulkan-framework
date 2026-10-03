@@ -16,7 +16,6 @@
 #include "payload.glsl"
 #include "../random.glsl"
 #include "../math.glsl"
-#include "../morton.glsl"
 
 // in this context no surfel allocation or editing is permitted
 #define SURFEL_IS_READONLY
@@ -42,15 +41,6 @@ layout(location = 0) rayPayloadEXT hit_payload_t payload;
 vec3 contribution(in vec3 surface_color, in float light_intensity, in float diffuse_coefficient)
 {
     return surface_color * light_intensity * diffuse_coefficient;
-}
-
-// this function returns uvec2(split_element, elements_after)
-uvec2 find_split_range(in const vec3 eye_position, in const vec2 clip_space, const uint start, const uint size, vec3 point) {
-    const uint key = morton3D(eye_position, point, clip_space);
-
-    const uint index = binary_search_bound(start, size, key, false);
-
-    return uvec2(index, count_ordered_surfels() - index);
 }
 
 #define BIAS_PARAM 0.5

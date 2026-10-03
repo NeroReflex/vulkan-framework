@@ -11,7 +11,6 @@
 #include "../config.glsl"
 #include "../random.glsl"
 #include "../math.glsl"
-#include "../morton.glsl"
 
 #define STATUS_DESCRIPTOR_SET 0
 #include "../status.glsl"
@@ -41,20 +40,6 @@ void main() {
 
     // ================================
     // debug for the ordering to be correct
-#if SHOW_SURFELS
-    if (texel_position == uvec2(0, 0)) {
-        const uint available_surfels = count_ordered_surfels();
-        uint surfel_id = SURFELS_MISSED;
-        uint last_morton = 0;
-        for (uint i = 0; i < available_surfels; i++) {
-            if (last_morton > surfels[i].morton) {
-                // this should never happen
-                //debugPrintfEXT("MORTON SORT ERROR AT SURFEL %u %u > %u\n", i, last_morton, surfels[i].morton);
-            }
-            last_morton = surfels[i].morton;
-        }
-    }
-#endif
     // ================================
 
     // avoid checking out-of-bounds
