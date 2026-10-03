@@ -5,7 +5,12 @@
 #extension GL_EXT_ray_flags_primitive_culling : require
 #extension GL_EXT_nonuniform_qualifier : enable
 
+#ifndef ENABLE_DEBUG_PRINTF
+#define ENABLE_DEBUG_PRINTF 0
+#endif
+#if ENABLE_DEBUG_PRINTF
 #extension GL_EXT_debug_printf : enable
+#endif
 
 #include "../config.glsl"
 #include "payload.glsl"
@@ -59,7 +64,8 @@ void main() {
     //debugPrintfEXT("evaluating surfel_id %u %u/%u\n", surfel_id, gl_LaunchIDEXT.x, count_discoveder_surfels());
 
     if (!IS_SURFEL_VALID(surfel_id)) {
-        debugPrintfEXT("Invalid surfel_id %u detected!!!", surfel_id);
+        //debugPrintfEXT("Invalid surfel_id %u detected!!!", surfel_id);
+        return;
     }
 
     // This is MY surfel! I have the right to work on it!

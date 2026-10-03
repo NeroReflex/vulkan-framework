@@ -1,7 +1,12 @@
 #extension GL_GOOGLE_include_directive : enable
 #extension GL_EXT_nonuniform_qualifier : enable
 
+#ifndef ENABLE_DEBUG_PRINTF
+#define ENABLE_DEBUG_PRINTF 0
+#endif
+#if ENABLE_DEBUG_PRINTF
 #extension GL_EXT_debug_printf : enable
+#endif
 
 #include "../config.glsl"
 #include "../random.glsl"

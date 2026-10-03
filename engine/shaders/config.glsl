@@ -42,4 +42,11 @@
 
 #define MAX_BVH_STACK_DEPTH 24
 
+// Keep 0 unless you are actively debugging a shader: enabling the
+// GL_EXT_debug_printf extension makes GPU-AV instrument the pass, which
+// currently TDR's this pipeline (millions of invocations per frame).
+#ifndef ENABLE_DEBUG_PRINTF
+#define ENABLE_DEBUG_PRINTF 0
+#endif
+
 #endif // _CONFIG_

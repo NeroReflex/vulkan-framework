@@ -1,4 +1,9 @@
+#ifndef ENABLE_DEBUG_PRINTF
+#define ENABLE_DEBUG_PRINTF 0
+#endif
+#if ENABLE_DEBUG_PRINTF
 #extension GL_EXT_debug_printf : enable
+#endif
 
 #include "../config.glsl"
 

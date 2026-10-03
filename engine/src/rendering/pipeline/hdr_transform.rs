@@ -5,18 +5,13 @@ use inline_spirv::*;
 use vulkan_framework::{
     clear_values::ColorClearValues,
     command_buffer::CommandBufferRecorder,
-    descriptor_pool::{
-        DescriptorPool, DescriptorPoolConcreteDescriptor, DescriptorPoolSizesConcreteDescriptor,
-    },
-    descriptor_set::DescriptorSet,
     descriptor_set_layout::DescriptorSetLayout,
     dynamic_rendering::{
         AttachmentStoreOp, DynamicRendering, DynamicRenderingColorAttachment,
         DynamicRenderingColorDefinition, RenderingAttachmentSetup,
     },
     graphics_pipeline::{
-        CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline, PolygonMode,
-        Rasterizer, Scissor, Viewport,
+        CullMode, FrontFace, GraphicsPipeline, PolygonMode, Rasterizer, Scissor, Viewport,
     },
     image::{
         CommonImageFormat, ConcreteImageDescriptor, Image, Image2DDimensions, ImageFlags,
@@ -185,8 +180,6 @@ void main() {
 pub struct HDRTransform {
     semaphore: Arc<Semaphore>,
 
-    descriptor_set: Arc<DescriptorSet>,
-
     push_constant_size: u32,
     push_constant_access: ShaderStagesAccess,
     pipeline_layout: Arc<PipelineLayout>,
@@ -239,15 +232,6 @@ impl HDRTransform {
 
         let semaphore = Semaphore::new(device.clone(), Some("hdr_transform.semaphore"))?;
 
-        let descriptor_pool = DescriptorPool::new(
-            device.clone(),
-            DescriptorPoolConcreteDescriptor::new(
-                DescriptorPoolSizesConcreteDescriptor::new(0, 1, 0, 1, 0, 0, 0, 0, 0, None),
-                1,
-            ),
-            Some("hdr_transform.descriptor_pool"),
-        )?;
-
         let binding_descriptor = BindingDescriptor::new(
             ShaderStagesAccess::graphics(),
             BindingType::Native(NativeBindingType::CombinedImageSampler),
@@ -259,9 +243,6 @@ impl HDRTransform {
 
         let descriptor_set_layout =
             DescriptorSetLayout::new(device.clone(), binding_descriptors.as_slice())?;
-
-        let descriptor_set =
-            DescriptorSet::new(descriptor_pool.clone(), descriptor_set_layout.clone())?;
 
         let push_constant_size = 4u32 * 2u32;
         let push_constant_access = [ShaderStageAccessIn::Fragment].as_slice().into();
@@ -292,11 +273,7 @@ impl HDRTransform {
                 None,
             ),
             ImageMultisampling::SamplesPerPixel1,
-            Some(DepthConfiguration::new(
-                true,
-                DepthCompareOp::Always,
-                Some((0.0, 1.0)),
-            )),
+            None,
             Some(Viewport::new(
                 0.0f32,
                 0.0f32,
@@ -376,8 +353,6 @@ impl HDRTransform {
         Ok(Self {
             semaphore,
 
-            descriptor_set,
-
             push_constant_size,
             push_constant_access,
             pipeline_layout,
@@ -401,20 +376,13 @@ impl HDRTransform {
         input_image_view: Arc<ImageView>,
         recorder: &mut CommandBufferRecorder,
     ) -> Arc<ImageView> {
-        self.descriptor_set
-            .bind_resources(|binder| {
-                binder
-                    .bind_combined_images_samplers(
-                        0,
-                        &[(
-                            ImageLayout::ShaderReadOnlyOptimal,
-                            input_image_view,
-                            self.sampler.clone(),
-                        )],
-                    )
-                    .unwrap()
-            })
-            .unwrap();
+        let descriptor_set = super::sampled_image_descriptor_set(
+            self.descriptor_set_layout.clone(),
+            input_image_view,
+            self.sampler.clone(),
+            "hdr_transform.descriptor_pool",
+        )
+        .unwrap();
 
         let image_view = self.image_view.clone();
 
@@ -423,7 +391,7 @@ impl HDRTransform {
         recorder.pipeline_barriers([ImageMemoryBarrier::new(
             PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
             MemoryAccess::from([].as_slice()),
-            PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
+            PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
             MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
             image_view.image().into(),
             ImageLayout::Undefined,
@@ -448,7 +416,7 @@ impl HDRTransform {
                 recorder.bind_descriptor_sets_for_graphics_pipeline(
                     self.pipeline_layout.clone(),
                     0,
-                    &[self.descriptor_set.clone()],
+                    &[descriptor_set],
                 );
 
                 let push_constant = [hdr.gamma(), hdr.exposure()];

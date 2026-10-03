@@ -34,53 +34,29 @@ impl SurfaceHelper {
         self.images_count.to_owned()
     }
 
-    /**
-     * Return (frames_in_flight, swapchain_images) so that at least
-     * two swapchains can exists at any point in time.
-     */
+    /// Choose frame slots and a minimum image count, reserving an image for
+    /// presentation when the surface permits it.
     pub fn frames_in_flight(
         preferred_frames_in_flight: u32,
         device_swapchain_info: &DeviceSurfaceInfo,
     ) -> Option<(u32, u32)> {
-        let mut frames_in_flight = preferred_frames_in_flight;
-        let mut swapchain_images_count = preferred_frames_in_flight + 1;
-        let max_images = device_swapchain_info.max_image_count();
+        Self::choose_frame_counts(
+            preferred_frames_in_flight,
+            device_swapchain_info.min_image_count(),
+            device_swapchain_info.max_image_count(),
+        )
+    }
 
-        while frames_in_flight >= 1 {
-            match max_images == 0 {
-                true => {
-                    if swapchain_images_count >= frames_in_flight {
-                        break;
-                    }
-                }
-                false => {
-                    if max_images >= swapchain_images_count {
-                        break;
-                    }
-                }
-            }
-
-            // decrease the amount of needed resources
-            swapchain_images_count -= 1;
-            frames_in_flight -= 1;
-        }
-
-        if frames_in_flight < 1 {
+    pub(crate) fn choose_frame_counts(preferred: u32, min_images: u32, max_images: u32) -> Option<(u32, u32)> {
+        if preferred == 0 || min_images == 0 || (max_images != 0 && max_images < min_images) {
             return None;
         }
-
-        if !device_swapchain_info.image_count_supported(swapchain_images_count) {
-            println!(
-                "Image count {} not supported (max: {}, min: {})",
-                swapchain_images_count,
-                device_swapchain_info.max_image_count(),
-                device_swapchain_info.min_image_count()
-            );
-            swapchain_images_count = device_swapchain_info.min_image_count();
-            frames_in_flight = swapchain_images_count;
+        let mut images = preferred.saturating_add(1).max(min_images);
+        if max_images != 0 {
+            images = images.min(max_images);
         }
-
-        Some((frames_in_flight, swapchain_images_count))
+        let frames = preferred.min(images.saturating_sub(1).max(1));
+        Some((frames, images))
     }
 
     pub fn best_format(

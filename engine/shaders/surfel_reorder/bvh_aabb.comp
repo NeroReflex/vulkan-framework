@@ -1,4 +1,9 @@
+#ifndef ENABLE_DEBUG_PRINTF
+#define ENABLE_DEBUG_PRINTF 0
+#endif
+#if ENABLE_DEBUG_PRINTF
 #extension GL_EXT_debug_printf : enable
+#endif
 
 #include "../config.glsl"
 #include "../aabb.glsl"
@@ -12,11 +17,12 @@ void main() {
     const uint index_internal_nodes = gl_GlobalInvocationID.x;
 
     const uint surfels_count = count_ordered_surfels();
-    if (surfels_count == 0) {
+    if (surfels_count < 2) {
         return;
     }
 
-    if (index_internal_nodes >= surfels_count) {
+    // A binary BVH has N-1 internal nodes; slot N-1 may contain an older tree.
+    if (index_internal_nodes >= surfels_count - 1) {
         return;
     }
 

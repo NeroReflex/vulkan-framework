@@ -1,6 +1,8 @@
 #ifndef _SURFEL_
 #define _SURFEL_
 
+#extension GL_KHR_memory_scope_semantics : require
+
 #include "config.glsl"
 #include "random.glsl"
 #include "math.glsl"
@@ -19,9 +21,11 @@ uniform layout (set = SURFELS_DESCRIPTOR_SET, binding = 5, rgba32f) image2D outp
 #define SURFELS_FULL        0xFFFFFFFFu
 #define SURFELS_MISSED      0xFFFFFFFEu
 #define SURFELS_TOO_CLOSE   0xFFFFFFFDu
+#define SURFELS_BUSY        0xFFFFFFFCu
 
 #define SURFEL_FLAG_LOCKED      (0x01u << 0u)
 #define SURFEL_FLAG_PRIMARY     (0x01u << 1u)
+#define SURFEL_FLAG_READY       (0x01u << 2u)
 
 #define RADIANCE_THRESHOLD 1.0f
 
@@ -87,11 +91,11 @@ struct BVHNode {
     uint flags;
 };
 
-layout (set = SURFELS_DESCRIPTOR_SET, binding = 0, std430) /*coherent*/ buffer surfel_stats {
+layout (set = SURFELS_DESCRIPTOR_SET, binding = 0, std430) coherent buffer surfel_stats {
     // total number of surfels that can be allocated (max, immutable)
     int total_surfels;
 
-    // number of freshly spawned surfels (in the top half of surfels array)
+    // Reserved slots in the top half; payload is readable only after READY is acquired.
     int unordered_surfels;
 
     // number of ordered surfels (in the bottom half of surfels array)
@@ -111,7 +115,7 @@ layout (set = SURFELS_DESCRIPTOR_SET, binding = 0, std430) /*coherent*/ buffer s
 #ifdef SURFEL_IS_READONLY
 readonly
 #endif
-layout (set = SURFELS_DESCRIPTOR_SET, binding = 1, std430) /*coherent*/ buffer surfel_buffer_data {
+layout (set = SURFELS_DESCRIPTOR_SET, binding = 1, std430) coherent buffer surfel_buffer_data {
     Surfel surfels[];
 };
 
@@ -132,8 +136,13 @@ layout (set = SURFELS_DESCRIPTOR_SET, binding = 3, std430) /*coherent*/ buffer s
 #define NODE_IS_LEAF_FLAG 0x80000000u
 
 // =================== READ SURFEL HELPERS ========================
+uint surfel_flags_acquire(uint surfel_id) {
+    return atomicLoad(surfels[surfel_id].flags, gl_ScopeDevice,
+        gl_StorageSemanticsBuffer, gl_SemanticsAcquire);
+}
+
 bool surfel_is_primary(uint surfel_id) {
-    return (surfels[surfel_id].flags & SURFEL_FLAG_PRIMARY) != 0u;
+    return (surfel_flags_acquire(surfel_id) & SURFEL_FLAG_PRIMARY) != 0u;
 }
 
 vec3 surfelPosition(in Surfel s) {
@@ -254,12 +263,9 @@ uint count_ordered_surfels() {
 }
 
 uint count_unordered_surfels() {
-    // Once a new surfel is allocated, unordered_surfels is incremented,
-    // and a memoryBufferBarrier() is issued: making this value coherent again:
-    // avoid an expensive atomic read.
-    return unordered_surfels;
-
-    //return atomicMax(unordered_surfels, 0);
+    // This is a reservation count, not a publication fence for the slot payloads.
+    return uint(atomicLoad(unordered_surfels, gl_ScopeDevice,
+        gl_StorageSemanticsBuffer, gl_SemanticsRelaxed));
 }
 
 // Given the number of UNORDERED surfels already checked (to see if it would have been fitted into any of them),
@@ -272,7 +278,9 @@ uint allocate_surfel(uint checked_surfels) {
         return SURFELS_FULL;
     }
 
-    uint prev_allocated = atomicCompSwap(unordered_surfels, scanned, scanned + 1);
+    uint prev_allocated = atomicCompSwap(unordered_surfels, scanned, scanned + 1,
+        gl_ScopeDevice, gl_StorageSemanticsBuffer, gl_SemanticsRelaxed,
+        gl_StorageSemanticsBuffer, gl_SemanticsRelaxed);
 
     return prev_allocated == checked_surfels ? prev_allocated : SURFELS_MISSED;
 }
@@ -288,11 +296,21 @@ bool can_spawn_another_surfel() {
 
 #ifndef SURFEL_IS_READONLY
 bool lock_surfel(uint surfel_id) {
-    return (atomicOr(surfels[surfel_id].flags, SURFEL_FLAG_LOCKED) & SURFEL_FLAG_LOCKED) == 0u;
+    const uint flags = atomicLoad(surfels[surfel_id].flags, gl_ScopeDevice,
+        gl_StorageSemanticsBuffer, gl_SemanticsRelaxed);
+    if ((flags & (SURFEL_FLAG_READY | SURFEL_FLAG_LOCKED)) != SURFEL_FLAG_READY) {
+        return false;
+    }
+    // A single attempt: waiting for another invocation can deadlock a GPU subgroup.
+    return atomicCompSwap(surfels[surfel_id].flags, flags, flags | SURFEL_FLAG_LOCKED,
+        gl_ScopeDevice, gl_StorageSemanticsBuffer, gl_SemanticsAcquire,
+        gl_StorageSemanticsBuffer, gl_SemanticsRelaxed) == flags;
 }
 
 void unlock_surfel(uint surfel_id) {
-    atomicAnd(surfels[surfel_id].flags, ~SURFEL_FLAG_LOCKED);
+    // Publish payload writes before making the lock available, not after unlocking.
+    atomicAnd(surfels[surfel_id].flags, ~SURFEL_FLAG_LOCKED,
+        gl_ScopeDevice, gl_StorageSemanticsBuffer, gl_SemanticsRelease);
 }
 
 void init_surfel(
@@ -305,8 +323,10 @@ void init_surfel(
     in const vec3 normal,
     in const vec3 diffuse
 ) {
-    // flag it as currently locked
-    atomicOr(surfels[surfel_id].flags, SURFEL_FLAG_LOCKED);
+    // Reservation gives this invocation exclusive ownership. Free-slot READY bits
+    // were cleared by the BVH pass before this dispatch could reserve any slots.
+    atomicStore(surfels[surfel_id].flags, SURFEL_FLAG_LOCKED,
+        gl_ScopeDevice, gl_StorageSemanticsBuffer, gl_SemanticsRelaxed);
 
     // no need to store morton code, it will be computed on the next frame
     // and for this frame it is in the unordered set anyway
@@ -327,18 +347,15 @@ void init_surfel(
     surfels[surfel_id].direct_light_g = 0;
     surfels[surfel_id].direct_light_b = 0;
     surfels[surfel_id].contributions  = 0u;
+    surfels[surfel_id].frame_contributions = 0u;
+    surfels[surfel_id].latest_contribution = 0u;
 
-    // last_contribution is skipped: the morton compute shader will set it to 0
-
-    // set flags to 0 except the lock bit
-    atomicAnd(surfels[surfel_id].flags, SURFEL_FLAG_LOCKED);
-
-    // set all flags as requested (lock bit is special)
-    atomicOr(
-        surfels[surfel_id].flags,
-        flags & ((!allocate_locked) ? ~SURFEL_FLAG_LOCKED : 0xFFFFFFFFu));
-
-    // WARNING: exiting from this function, the surfel is still locked
+    // Geometry is immutable until the next reorder dispatch. Publish it even if
+    // the allocator keeps ownership of the mutable lighting fields.
+    const uint published_flags = (flags & ~(SURFEL_FLAG_LOCKED | SURFEL_FLAG_READY))
+        | SURFEL_FLAG_READY | (allocate_locked ? SURFEL_FLAG_LOCKED : 0u);
+    atomicStore(surfels[surfel_id].flags, published_flags,
+        gl_ScopeDevice, gl_StorageSemanticsBuffer, gl_SemanticsRelease);
 }
 #endif // SURFEL_IS_READONLY
 
@@ -504,16 +521,8 @@ uint binary_search_bound(const uint start, const uint size, uint key, bool upper
         }
     }
 
-    if (upper_bound) {
-        while (surfels[lo].morton == key && lo < (start + size)) {
-            lo += 1;
-        }
-    } else {
-        while (surfels[lo].morton == key && lo > start) {
-            lo -= 1;
-        }
-    }
-
+    // The loop already produces the requested bound. In particular, lo may be
+    // one-past-end, where there is no initialized surfel to inspect.
     return lo; // in [start, start+size]
 }
 
@@ -603,7 +612,7 @@ uint linear_search_ordered_surfel_for_allocation(
     const uvec2 selected_range = binary_search_range(0, last_ordered_id, min_morton, max_morton);
     const uint begin_colliding_surfel_id = selected_range.x;
     const uint end_colliding_surfel_id = selected_range.y;
-    for (uint i = begin_colliding_surfel_id; i <= end_colliding_surfel_id; i++) {
+    for (uint i = begin_colliding_surfel_id; i < end_colliding_surfel_id; i++) {
         if (surfels[i].morton == MORTON_OUT_OF_SCALE) {
             // this is an ordered set and MORTON_OUT_OF_SCALE is both invalid and the highest possible value,
             // so when the first one is found, we can stop searching
@@ -630,18 +639,18 @@ uint linear_search_unordered_surfel_for_allocation(
     float radius
 ) {
     bool too_close = false;
+    bool pending_initialization = false;
 
-    // This is very clever (and probably based on UB): the number of unordered surfels
-    // is only increase via atomic operations, but since this function reads it in a
-    // non-atomic way, it is VERY LIKELY to read a stale value, that will be updated
-    // only when a concurrently-allocating-surfel thread has committed the updated
-    // counter, as well as the new surfel position via a memoryBufferBarrier(), thus
-    // ensuring I won't spawn a new surfel that would be too close to an already allocated one
-    // simply because I haven't read that surfel yet.
+    // Snapshot reservations atomically, then acquire each slot's publication
+    // separately. Never read a reserved-but-uninitialized payload or wait on its owner.
     checked_surfels = count_unordered_surfels();
     const uint first_unordered_surfel_id = total_surfels / 2;
     const uint last_unordered_surfel_id = first_unordered_surfel_id + checked_surfels;
     for (uint i = first_unordered_surfel_id; i < last_unordered_surfel_id; i++) {
+        if ((surfel_flags_acquire(i) & SURFEL_FLAG_READY) == 0u) {
+            pending_initialization = true;
+            continue;
+        }
         // WARNING: here MORTON_OUT_OF_SCALE is not checked for
         // because it's not something we could have allocated this frame
 
@@ -657,6 +666,11 @@ uint linear_search_unordered_surfel_for_allocation(
         }
     }
 
+    // Unknown geometry might overlap the proposed allocation. Defer rather than
+    // creating a duplicate or spinning until its initialization finishes.
+    if (pending_initialization) {
+        return SURFELS_BUSY;
+    }
     return too_close ? SURFELS_TOO_CLOSE : SURFELS_MISSED;
 }
 
@@ -670,8 +684,7 @@ uint linear_search_unordered_surfel_for_allocation(
 //
 // WARNING: this function MUST be called only after successfully locking the surfel
 // via lock_surfel(), and the surfel MUST be unlocked after this function returns
-// via unlock_surfel(), MOREOVER the caller is responsible for placing memoryBarrierBuffer()
-// after unlocking the surfel, to ensure the changes are visible to other shader invocations.
+// via unlock_surfel(), which release-publishes the changes to other shader invocations.
 uint add_diffuse_sample_to_surfel(
     uint surfel_id,
     vec3 normal,
@@ -792,7 +805,8 @@ uint find_surfel_or_allocate_new(
     }
 
 #if FORCE_ALLOCATION
-    do {
+    // Retrying under contention is optional, but must never wait indefinitely on peers.
+    for (uint attempt = 0u; attempt < 8u; ++attempt) {
 #endif // FORCE_ALLOCATION
         // try to reuse an existing surfel from the unordered set
         // since the unordered set can change during this shader invocation,
@@ -806,7 +820,9 @@ uint find_surfel_or_allocate_new(
             instance_id,
             radius
         );
-        if ((surfel_search_res != SURFELS_MISSED) && (surfel_search_res != SURFELS_TOO_CLOSE)) {
+        if (surfel_search_res == SURFELS_BUSY) {
+            return REGISTER_SURFEL_IGNORED;
+        } else if ((surfel_search_res != SURFELS_MISSED) && (surfel_search_res != SURFELS_TOO_CLOSE)) {
             return surfel_search_res;
         } else if (surfel_search_res == SURFELS_TOO_CLOSE) {
             // we were too close to an existing surfel: do not allocate a new one
@@ -821,7 +837,9 @@ uint find_surfel_or_allocate_new(
             // A matching surfel was not found: try to allocate a new one
             uint surfel_allocation_id = allocate_surfel(checked_surfels);
             if (surfel_allocation_id == SURFELS_FULL) {
-                debugPrintfEXT("|FULL(%u)", checked_surfels);
+                // Do not debugPrintfEXT here: this is the common per-pixel path
+                // once MAX_SURFELS_PER_FRAME is reached. GPU-AV printf on every
+                // leftover invocation overflows the printf buffer and TDR's.
                 return REGISTER_SURFEL_FULL;
             } else if (surfel_allocation_id == SURFELS_MISSED) {
                 // here we continue the loop to search again
@@ -832,8 +850,6 @@ uint find_surfel_or_allocate_new(
             } else {
                 const uint surfel_id = (total_surfels / 2) + surfel_allocation_id;
                 init_surfel(surfel_id, allocate_locked, flags, instance_id, position, radius, normal, diffuse);
-                unlock_surfel(surfel_id);
-                memoryBarrierBuffer();
 
                 //debugPrintfEXT("clip_planes: vec2(%f, %f), distance: %f, radius: %f\n", clip_planes.x, clip_planes.y, distance(eye_position, position), radius);
 
@@ -842,11 +858,11 @@ uint find_surfel_or_allocate_new(
                 return surfel_id;
             }
         } else {
-            debugPrintfEXT("\nNICE FUCKUP");
+            //debugPrintfEXT("\nNICE FUCKUP");
             return REGISTER_SURFEL_VERY_BAD_BUG;
         }
 #if FORCE_ALLOCATION
-    } while (1 == 1);
+    }
 #endif // FORCE_ALLOCATION
 
 #else

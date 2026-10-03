@@ -1,4 +1,9 @@
+#ifndef ENABLE_DEBUG_PRINTF
+#define ENABLE_DEBUG_PRINTF 0
+#endif
+#if ENABLE_DEBUG_PRINTF
 #extension GL_EXT_debug_printf : enable
+#endif
 
 // This algorithm is a modified version of https://developer.nvidia.com/blog/thinking-parallel-part-iii-tree-construction-gpu
 // Also read "Fast BVH Construction on GPUs" https://luebke.us/publications/eg09.pdf

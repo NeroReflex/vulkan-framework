@@ -1,7 +1,12 @@
 #extension GL_GOOGLE_include_directive : enable
 #extension GL_EXT_nonuniform_qualifier : enable
 
+#ifndef ENABLE_DEBUG_PRINTF
+#define ENABLE_DEBUG_PRINTF 0
+#endif
+#if ENABLE_DEBUG_PRINTF
 #extension GL_EXT_debug_printf : enable
+#endif
 
 #include "../config.glsl"
 #include "../random.glsl"
@@ -44,8 +49,9 @@ void main() {
         for (uint i = 0; i < available_surfels; i++) {
             if (last_morton > surfels[i].morton) {
                 // this should never happen
-                debugPrintfEXT("MORTON SORT ERROR AT SURFEL %u %u > %u\n", i, last_morton, surfels[i].morton);
+                //debugPrintfEXT("MORTON SORT ERROR AT SURFEL %u %u > %u\n", i, last_morton, surfels[i].morton);
             }
+            last_morton = surfels[i].morton;
         }
     }
 #endif
@@ -154,9 +160,8 @@ void main() {
                 }
             }
             
-            if (i == MAX_USABLE_SURFELS) {
-                debugPrintfEXT("Reached maximum number of usable surfels on id(%u, %u)\n", gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
-            }
+            // Inner loop above shadows `i`; this never meant "scan exhausted".
+            // A per-pixel printf here also floods GPU-AV when the list is full.
         }
     }
 

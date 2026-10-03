@@ -16,8 +16,7 @@ use vulkan_framework::{
         DynamicRenderingColorDefinition, RenderingAttachmentSetup,
     },
     graphics_pipeline::{
-        CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline, PolygonMode,
-        Rasterizer, Scissor, Viewport,
+        CullMode, FrontFace, GraphicsPipeline, PolygonMode, Rasterizer, Scissor, Viewport,
     },
     image::{
         CommonImageFormat, ConcreteImageDescriptor, Image, Image1DTrait, Image2DDimensions,
@@ -163,11 +162,7 @@ impl FinalRendering {
                 None,
             ),
             ImageMultisampling::SamplesPerPixel1,
-            Some(DepthConfiguration::new(
-                true,
-                DepthCompareOp::Always,
-                Some((0.0, 1.0)),
-            )),
+            None,
             Some(Viewport::new(
                 0.0f32,
                 0.0f32,
@@ -214,7 +209,7 @@ impl FinalRendering {
         recorder.pipeline_barriers([ImageMemoryBarrier::new(
             PipelineStages::from([PipelineStage::TopOfPipe].as_slice()),
             MemoryAccess::from([].as_slice()),
-            PipelineStages::from([PipelineStage::AllGraphics].as_slice()),
+            PipelineStages::from([PipelineStage::ColorAttachmentOutput].as_slice()),
             MemoryAccess::from([MemoryAccessAs::ColorAttachmentWrite].as_slice()),
             image_srr.clone(),
             ImageLayout::Undefined,

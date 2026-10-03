@@ -5,10 +5,6 @@ use inline_spirv::*;
 use vulkan_framework::{
     clear_values::ColorClearValues,
     command_buffer::CommandBufferRecorder,
-    descriptor_pool::{
-        DescriptorPool, DescriptorPoolConcreteDescriptor, DescriptorPoolSizesConcreteDescriptor,
-    },
-    descriptor_set::DescriptorSet,
     descriptor_set_layout::DescriptorSetLayout,
     device::Device,
     dynamic_rendering::{
@@ -16,14 +12,13 @@ use vulkan_framework::{
         DynamicRenderingColorDefinition, RenderingAttachmentSetup,
     },
     graphics_pipeline::{
-        CullMode, DepthCompareOp, DepthConfiguration, FrontFace, GraphicsPipeline, PolygonMode,
-        Rasterizer, Scissor, Viewport,
+        CullMode, FrontFace, GraphicsPipeline, PolygonMode, Rasterizer, Scissor, Viewport,
     },
     image::{
         Image2DDimensions, ImageFormat, ImageLayout, ImageLayoutSwapchainKHR, ImageMultisampling,
     },
     image_view::ImageView,
-    memory_barriers::{ImageMemoryBarrier, MemoryAccessAs},
+    memory_barriers::{ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
     pipeline_layout::PipelineLayout,
     pipeline_stage::{PipelineStage, PipelineStages},
     queue_family::QueueFamily,
@@ -95,7 +90,7 @@ void main() {
 /// that will be presented to the screen.
 pub struct RenderQuad {
     semaphore: Arc<Semaphore>,
-    descriptor_set: Arc<DescriptorSet>,
+    descriptor_set_layout: Arc<DescriptorSetLayout>,
     pipeline_layout: Arc<PipelineLayout>,
     graphics_pipeline: Arc<GraphicsPipeline>,
     sampler: Arc<Sampler>,
@@ -128,15 +123,6 @@ impl RenderQuad {
     ) -> RenderingResult<Self> {
         let semaphore = Semaphore::new(device.clone(), Some("renderquad.semaphore"))?;
 
-        let descriptor_pool = DescriptorPool::new(
-            device.clone(),
-            DescriptorPoolConcreteDescriptor::new(
-                DescriptorPoolSizesConcreteDescriptor::new(0, 1, 0, 1, 0, 0, 0, 0, 0, None),
-                1,
-            ),
-            Some("renderquad.descriptor_pool"),
-        )?;
-
         let binding_descriptor = BindingDescriptor::new(
             ShaderStagesAccess::graphics(),
             BindingType::Native(NativeBindingType::CombinedImageSampler),
@@ -148,9 +134,6 @@ impl RenderQuad {
 
         let descriptor_set_layout =
             DescriptorSetLayout::new(device.clone(), binding_descriptors.as_slice())?;
-
-        let descriptor_set =
-            DescriptorSet::new(descriptor_pool.clone(), descriptor_set_layout.clone())?;
 
         let pipeline_layout = PipelineLayout::new(
             device.clone(),
@@ -171,11 +154,7 @@ impl RenderQuad {
                 None,
             ),
             ImageMultisampling::SamplesPerPixel1,
-            Some(DepthConfiguration::new(
-                true,
-                DepthCompareOp::Always,
-                Some((0.0, 1.0)),
-            )),
+            None,
             Some(Viewport::new(
                 0.0f32,
                 0.0f32,
@@ -209,7 +188,7 @@ impl RenderQuad {
 
         Ok(Self {
             semaphore,
-            descriptor_set,
+            descriptor_set_layout,
             pipeline_layout,
             graphics_pipeline,
             sampler,
@@ -226,20 +205,13 @@ impl RenderQuad {
         output_image_view: Arc<ImageView>,
         recorder: &mut CommandBufferRecorder,
     ) {
-        self.descriptor_set
-            .bind_resources(|binder| {
-                binder
-                    .bind_combined_images_samplers(
-                        0,
-                        &[(
-                            Self::image_input_layout(),
-                            input_image_view,
-                            self.sampler.clone(),
-                        )],
-                    )
-                    .unwrap()
-            })
-            .unwrap();
+        let descriptor_set = super::sampled_image_descriptor_set(
+            self.descriptor_set_layout.clone(),
+            input_image_view,
+            self.sampler.clone(),
+            "renderquad.descriptor_pool",
+        )
+        .unwrap();
 
         // Transition the final swapchain image into color attachment optimal layout,
         // so that the graphics pipeline has it in the best format, and the final barrier (*1)
@@ -248,7 +220,7 @@ impl RenderQuad {
         recorder.pipeline_barriers([ImageMemoryBarrier::new(
             [PipelineStage::TopOfPipe].as_slice().into(),
             [].as_slice().into(),
-            [PipelineStage::AllGraphics].as_slice().into(),
+            [PipelineStage::ColorAttachmentOutput].as_slice().into(),
             [MemoryAccessAs::ColorAttachmentWrite].as_slice().into(),
             output_image_view.image().into(),
             ImageLayout::Undefined,
@@ -273,7 +245,7 @@ impl RenderQuad {
                 recorder.bind_descriptor_sets_for_graphics_pipeline(
                     self.pipeline_layout.clone(),
                     0,
-                    &[self.descriptor_set.clone()],
+                    &[descriptor_set],
                 );
                 recorder.draw(0, 6, 0, 1);
             },
@@ -283,10 +255,10 @@ impl RenderQuad {
         // wait for the renderquad to complete the rendering so that we can then transition
         // the swapchain image in a layout that is suitable for presentation on the swapchain.
         recorder.pipeline_barriers([ImageMemoryBarrier::new(
-            [PipelineStage::AllGraphics].as_slice().into(),
+            [PipelineStage::ColorAttachmentOutput].as_slice().into(),
             [MemoryAccessAs::ColorAttachmentWrite].as_slice().into(),
             [PipelineStage::BottomOfPipe].as_slice().into(),
-            [MemoryAccessAs::MemoryRead].as_slice().into(),
+            MemoryAccess::default(),
             output_image_view.image().into(),
             ImageLayout::ColorAttachmentOptimal,
             ImageLayout::SwapchainKHR(ImageLayoutSwapchainKHR::PresentSrc),
