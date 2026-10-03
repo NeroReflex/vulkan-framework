@@ -26,8 +26,10 @@ use vulkan_framework::{
         MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait, UnallocatedResource,
     },
     memory_pool::{MemoryMap, MemoryPoolBacked, MemoryPoolFeatures},
-    pipeline_stage::{PipelineStage, PipelineStageAccelerationStructureKHR},
-    queue::Queue,
+    pipeline_stage::{
+        PipelineStage, PipelineStageAccelerationStructureKHR, PipelineStageRayTracingPipelineKHR,
+    },
+    queue::{Queue, SemaphoreWaitOp},
     queue_family::{QueueFamily, QueueFamilyOwned},
 };
 
@@ -64,6 +66,10 @@ impl MeshManager {
         self.meshes.foreach_loaded(function)
     }
 
+    pub(crate) fn upload_wait(&self) -> Option<SemaphoreWaitOp> {
+        self.meshes.upload_wait()
+    }
+
     #[inline]
     pub(crate) fn wait_load_nonblock(&mut self) -> RenderingResult<usize> {
         self.meshes.wait_load_nonblock()
@@ -75,11 +81,12 @@ impl MeshManager {
     }
 
     pub fn new(
-        queue_family: Arc<QueueFamily>,
+        queue: Arc<Queue>,
         memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
         frames_in_flight: u32,
         debug_name: String,
     ) -> RenderingResult<Self> {
+        let queue_family = queue.get_parent_queue_family();
         let device = queue_family.get_parent_device();
 
         let descriptor_pool = DescriptorPool::new(
@@ -102,11 +109,6 @@ impl MeshManager {
                 frames_in_flight,
             ),
             Some(format!("{debug_name}.mesh_manager.descriptor_pool").as_str()),
-        )?;
-
-        let queue = Queue::new(
-            queue_family.clone(),
-            Some(format!("{debug_name}.mesh_manager.queue").as_str()),
         )?;
 
         let meshes = LoadableResourcesCollection::new(
@@ -374,23 +376,28 @@ impl MeshManager {
                         [MemoryAccessAs::AccelerationStructureWrite]
                             .as_slice()
                             .into(),
-                        [PipelineStage::BottomOfPipe].as_slice().into(),
-                        [MemoryAccessAs::MemoryRead].as_slice().into(),
+                        [
+                            PipelineStage::AccelerationStructureKHR(
+                                PipelineStageAccelerationStructureKHR::Build,
+                            ),
+                            PipelineStage::RayTracingPipelineKHR(
+                                PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                            ),
+                        ]
+                        .as_slice()
+                        .into(),
+                        [MemoryAccessAs::AccelerationStructureRead]
+                            .as_slice()
+                            .into(),
                         BufferSubresourceRange::new(blas.buffer(), 0u64, blas.buffer_size()),
                         queue_family.clone(),
                         queue_family.clone(),
                     )
                     .into(),
                     BufferMemoryBarrier::new(
-                        [PipelineStage::AccelerationStructureKHR(
-                            PipelineStageAccelerationStructureKHR::Build,
-                        )]
-                        .as_slice()
-                        .into(),
-                        [MemoryAccessAs::AccelerationStructureRead]
-                            .as_slice()
-                            .into(),
-                        [PipelineStage::BottomOfPipe].as_slice().into(),
+                        [PipelineStage::Host].as_slice().into(),
+                        [MemoryAccessAs::HostWrite].as_slice().into(),
+                        [PipelineStage::AllCommands].as_slice().into(),
                         [MemoryAccessAs::MemoryRead].as_slice().into(),
                         BufferSubresourceRange::new(
                             vertex_buffer_raw.clone(),
@@ -402,15 +409,9 @@ impl MeshManager {
                     )
                     .into(),
                     BufferMemoryBarrier::new(
-                        [PipelineStage::AccelerationStructureKHR(
-                            PipelineStageAccelerationStructureKHR::Build,
-                        )]
-                        .as_slice()
-                        .into(),
-                        [MemoryAccessAs::AccelerationStructureRead]
-                            .as_slice()
-                            .into(),
-                        [PipelineStage::BottomOfPipe].as_slice().into(),
+                        [PipelineStage::Host].as_slice().into(),
+                        [MemoryAccessAs::HostWrite].as_slice().into(),
+                        [PipelineStage::AllCommands].as_slice().into(),
                         [MemoryAccessAs::MemoryRead].as_slice().into(),
                         BufferSubresourceRange::new(
                             index_buffer_raw.clone(),
@@ -422,15 +423,9 @@ impl MeshManager {
                     )
                     .into(),
                     BufferMemoryBarrier::new(
-                        [PipelineStage::AccelerationStructureKHR(
-                            PipelineStageAccelerationStructureKHR::Build,
-                        )]
-                        .as_slice()
-                        .into(),
-                        [MemoryAccessAs::AccelerationStructureRead]
-                            .as_slice()
-                            .into(),
-                        [PipelineStage::BottomOfPipe].as_slice().into(),
+                        [PipelineStage::Host].as_slice().into(),
+                        [MemoryAccessAs::HostWrite].as_slice().into(),
+                        [PipelineStage::AllCommands].as_slice().into(),
                         [MemoryAccessAs::MemoryRead].as_slice().into(),
                         BufferSubresourceRange::new(
                             transform_buffer_raw.clone(),

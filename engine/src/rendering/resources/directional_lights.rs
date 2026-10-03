@@ -11,8 +11,8 @@ use vulkan_framework::{
     memory_management::{MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait},
     memory_pool::MemoryPoolFeatures,
     pipeline_stage::PipelineStage,
-    queue::Queue,
-    queue_family::{QueueFamily, QueueFamilyOwned},
+    queue::{Queue, SemaphoreWaitOp},
+    queue_family::QueueFamilyOwned,
 };
 
 use crate::{
@@ -35,16 +35,16 @@ pub struct DirectionalLights {
 
 impl DirectionalLights {
     pub fn new(
-        queue_family: Arc<QueueFamily>,
+        queue: Arc<Queue>,
         memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
         debug_name: String,
     ) -> RenderingResult<Self> {
-        let queue = Queue::new(queue_family.clone(), Some("texture_manager.queue"))?;
+        let queue_family = queue.get_parent_queue_family();
 
         let lights = LoadableResourcesCollection::new(
             queue_family,
             MAX_DIRECTIONAL_LIGHTS,
-            String::from("texture_manager"),
+            String::from("directional_lights"),
         )?;
 
         Ok(Self {
@@ -110,8 +110,8 @@ impl DirectionalLights {
                 recorder.pipeline_barriers([BufferMemoryBarrier::new(
                     [PipelineStage::Transfer].as_slice().into(),
                     [MemoryAccessAs::TransferWrite].as_slice().into(),
-                    [PipelineStage::BottomOfPipe].as_slice().into(),
-                    [].as_slice().into(),
+                    [PipelineStage::Transfer].as_slice().into(),
+                    [MemoryAccessAs::TransferRead].as_slice().into(),
                     BufferSubresourceRange::new(buffer.clone() as Arc<dyn BufferTrait>, 0, 4 * 6),
                     self.queue.get_parent_queue_family(),
                     self.queue.get_parent_queue_family(),
@@ -142,6 +142,11 @@ impl DirectionalLights {
         F: FnMut(&Arc<AllocatedBuffer>),
     {
         self.lights.foreach_loaded_mut(fun);
+    }
+
+    /// Add these waits to the frame submission before copying the light buffers.
+    pub fn loading_waits(&self) -> Vec<SemaphoreWaitOp> {
+        self.lights.upload_wait().into_iter().collect()
     }
 
     #[inline]

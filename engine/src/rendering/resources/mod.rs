@@ -40,8 +40,49 @@ pub enum ResourceError {
 
     #[error("Missing vertex buffer data")]
     MissingVertexBuffer,
+
+    #[error("Resource index is out of range: {0}")]
+    ResourceIndexOutOfRange(usize),
+
+    #[error("Upload timeline counter exhausted")]
+    UploadCounterExhausted,
+
+    #[error("Resource content revision exhausted")]
+    RevisionExhausted,
+
+    #[error("No such directional light found: {0}")]
+    NoDirectionalLight(u32),
+
+    #[error("Host TLAS builds are not supported by the device-only resource loader")]
+    UnsupportedHostTLASBuild,
+
+    #[error("The scene acceleration structure is not ready")]
+    TLASNotReady,
 }
 
 pub type ResourceResult<T> = Result<T, ResourceError>;
+
+pub(super) fn next_revision(revision: u64) -> crate::rendering::RenderingResult<u64> {
+    revision.checked_add(1).ok_or_else(|| {
+        crate::rendering::RenderingError::ResourceError(ResourceError::RevisionExhausted)
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn revisions_are_monotonic_and_never_wrap() {
+        assert_eq!(next_revision(0).unwrap(), 1);
+        assert_eq!(next_revision(u64::MAX - 1).unwrap(), u64::MAX);
+        assert!(matches!(
+            next_revision(u64::MAX),
+            Err(crate::rendering::RenderingError::ResourceError(
+                ResourceError::RevisionExhausted
+            ))
+        ));
+    }
+}
 
 const SIZEOF_MATERIAL_DEFINITION: usize = std::mem::size_of::<MaterialGPU>();
