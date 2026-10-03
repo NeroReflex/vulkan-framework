@@ -7,6 +7,7 @@
 layout (local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
 #define SURFEL_NO_IMAGES 1
+#define SURFEL_NO_SCRATCH 1
 #define SURFELS_DESCRIPTOR_SET 0
 #include "../surfel.glsl"
 
@@ -54,6 +55,9 @@ void main() {
         unordered_surfels = 0;
         atomicAnd(global_reserve_counter, 0u);
         atomicAnd(discovered_surfels, 0u);
+        if (placed > 0u) {
+            atomicStore(index_topology_dirty, 1u, gl_ScopeDevice, gl_StorageSemanticsBuffer, gl_SemanticsRelease);
+        }
     }
 
     for (uint i = lid; i < MAX_USABLE_SURFELS; i += 256u) {

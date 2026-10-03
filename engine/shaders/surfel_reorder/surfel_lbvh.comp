@@ -1,0 +1,83 @@
+#extension GL_EXT_debug_printf : enable
+
+#include "../config.glsl"
+#include "build_layout.glsl"
+
+layout (local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+#define SURFEL_NO_IMAGES 1
+#define SURFEL_NO_DISCOVERED 1
+#define SURFEL_NO_SCRATCH 1
+#define SURFELS_DESCRIPTOR_SET 0
+#include "../surfel.glsl"
+
+layout (set = SURFELS_DESCRIPTOR_SET, binding = 7, std430) buffer surfel_build_scratch {
+    uint build_words[];
+};
+
+#include "karras.glsl"
+
+void main() {
+    const int n = int(build_words[HDR_KEY_COUNT]);
+    const uint gid = gl_GlobalInvocationID.x;
+    const uint internal_nodes = n <= 1 ? 1u : uint(n - 1);
+    if (n > 0 && gid < internal_nodes) {
+        tree[gid].flags = 0u;
+    }
+    if (build_words[HDR_BUILD_ACTIVE] == 0u) {
+        return;
+    }
+
+    if (n <= 1) {
+        if (gid == 0u) {
+            tree[0].parent = 0u;
+            tree[0].flags = 0u;
+            if (n == 1) {
+                tree[0].left = NODE_IS_LEAF_FLAG;
+                tree[0].right = NODE_IS_LEAF_FLAG;
+                build_words[OFF_LEAF_PARENT] = 0u;
+            } else {
+                tree[0].left = 0u;
+                tree[0].right = 0u;
+            }
+            build_words[HDR_ROOT] = 0u;
+        }
+        return;
+    }
+
+    if (gid >= uint(n - 1)) {
+        return;
+    }
+
+    const int i = int(gid);
+    int first;
+    int last;
+    determine_range(n, i, first, last);
+    const int split = find_split(n, first, last);
+
+    const uint left = (split == first)
+        ? (uint(split) | NODE_IS_LEAF_FLAG)
+        : uint(split);
+    const uint right = (split + 1 == last)
+        ? (uint(last) | NODE_IS_LEAF_FLAG)
+        : uint(split + 1);
+
+    tree[i].left = left;
+    tree[i].right = right;
+    tree[i].flags = 0u;
+    if (i == 0) {
+        tree[0].parent = 0u;
+        build_words[HDR_ROOT] = 0u;
+    }
+
+    if ((left & NODE_IS_LEAF_FLAG) != 0u) {
+        build_words[OFF_LEAF_PARENT + (left & ~NODE_IS_LEAF_FLAG)] = uint(i);
+    } else {
+        tree[left].parent = uint(i);
+    }
+    if ((right & NODE_IS_LEAF_FLAG) != 0u) {
+        build_words[OFF_LEAF_PARENT + (right & ~NODE_IS_LEAF_FLAG)] = uint(i);
+    } else {
+        tree[right].parent = uint(i);
+    }
+}

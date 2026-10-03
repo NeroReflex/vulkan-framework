@@ -8,6 +8,9 @@
 #include "math.glsl"
 #include "aabb.glsl"
 #include "compress.glsl"
+#ifndef SURFEL_NO_SCRATCH
+#include "surfel_reorder/build_layout.glsl"
+#endif
 
 #ifndef SURFELS_DESCRIPTOR_SET
 #define SURFELS_DESCRIPTOR_SET 5
@@ -69,27 +72,35 @@ struct Surfel {
 
     // the last time (in frames) this surfel has contributed to the scene
     uint latest_contribution;
+
+    // Center in the instance's local space. position_* is the world center
+    // written by surfel_world.comp. bone == 0xFFFFFFFF means a rigid instance.
+    float bind_x;
+    float bind_y;
+    float bind_z;
+    uint bone;
 };
 
-/**
- * Represents a binary tree node in a linearized bvh tree
- *
- * If you change this remember to also change TLAS_TreeNodeSize
- */
+// One cache line. Both child bounds sit in the parent so a walk tests
+// them without loading the child. 16 words; keep BVH_NODE_SIZE in sync.
 struct BVHNode {
-    // these are world positions
-    float min_x;
-    float min_y;
-    float min_z;
+    float lmin_x;
+    float lmin_y;
+    float lmin_z;
+    float lmax_x;
+    float lmax_y;
+    float lmax_z;
 
-    float max_x;
-    float max_y;
-    float max_z;
+    float rmin_x;
+    float rmin_y;
+    float rmin_z;
+    float rmax_x;
+    float rmax_y;
+    float rmax_z;
 
-    uint parent;
     uint left;
     uint right;
-
+    uint parent;
     uint flags;
 };
 
@@ -112,7 +123,8 @@ layout (set = SURFELS_DESCRIPTOR_SET, binding = 0, std430) coherent buffer surfe
 
     // Dead slots still in [0, high_water) after the last commit.
     uint remaining_holes;
-    uint padding_3;
+    // Set when surfels die or commit; cleared after a full index rebuild.
+    uint index_topology_dirty;
 };
 
 #ifdef SURFEL_IS_READONLY
@@ -125,7 +137,7 @@ layout (set = SURFELS_DESCRIPTOR_SET, binding = 1, std430) coherent buffer surfe
 #ifdef BVH_IS_READONLY
 readonly
 #endif
-layout (set = SURFELS_DESCRIPTOR_SET, binding = 2, std430) coherent buffer surfel_bvh {
+layout (set = SURFELS_DESCRIPTOR_SET, binding = 2, std430) buffer surfel_bvh {
     BVHNode tree[];
 };
 
@@ -138,7 +150,44 @@ layout (set = SURFELS_DESCRIPTOR_SET, binding = 3, std430) /*coherent*/ buffer s
 };
 #endif
 
+#ifndef SURFEL_NO_SCRATCH
+#ifdef SURFEL_IS_READONLY
+readonly
+#endif
+layout (set = SURFELS_DESCRIPTOR_SET, binding = 7, std430) buffer surfel_build_scratch {
+    uint build_words[];
+};
+#endif
+
+#define NODE_CAPACITY 4096u
+layout (set = SURFELS_DESCRIPTOR_SET, binding = 8, std430) readonly buffer NodeWorld {
+    mat4 world[NODE_CAPACITY];
+} node_world;
+
 #define NODE_IS_LEAF_FLAG 0x80000000u
+
+#ifndef SURFEL_NO_SCRATCH
+uint lbvh_key_count() {
+    return uint(max(live_count, 0));
+}
+
+uint lbvh_root_index() {
+    return 0u;
+}
+
+uint lbvh_leaf_surfel(uint child) {
+    const uint key = child & ~NODE_IS_LEAF_FLAG;
+    const uint n = lbvh_key_count();
+    if (key >= n) {
+        return 0xFFFFFFFFu;
+    }
+    return build_words[OFF_KEYS_A + key * KEY_STRIDE + 1u];
+}
+
+bool lbvh_empty() {
+    return lbvh_key_count() == 0u;
+}
+#endif
 
 // =================== READ SURFEL HELPERS ========================
 uint surfel_flags_acquire(uint surfel_id) {
@@ -355,6 +404,15 @@ void init_surfel(
     surfels[surfel_id].frame_contributions = 0u;
     surfels[surfel_id].latest_contribution = 0u;
 
+    vec3 bind_position = position;
+    if (instance_id < NODE_CAPACITY) {
+        bind_position = (inverse(node_world.world[instance_id]) * vec4(position, 1.0)).xyz;
+    }
+    surfels[surfel_id].bind_x = bind_position.x;
+    surfels[surfel_id].bind_y = bind_position.y;
+    surfels[surfel_id].bind_z = bind_position.z;
+    surfels[surfel_id].bone = 0xFFFFFFFFu;
+
     // Geometry is immutable until the next reorder dispatch. Publish it even if
     // the allocator keeps ownership of the mutable lighting fields.
     const uint published_flags = (flags & ~(SURFEL_FLAG_LOCKED | SURFEL_FLAG_READY))
@@ -364,143 +422,149 @@ void init_surfel(
 }
 #endif // SURFEL_IS_READONLY
 
+bool box_covers_point(in const AABB box, in const vec3 point) {
+    return box.vMin.x <= box.vMax.x
+        && point.x >= box.vMin.x && point.x <= box.vMax.x
+        && point.y >= box.vMin.y && point.y <= box.vMax.y
+        && point.z >= box.vMin.z && point.z <= box.vMax.z;
+}
+
+AABB left_bounds(uint node) {
+    return compatAABB(
+        vec3(tree[node].lmin_x, tree[node].lmin_y, tree[node].lmin_z),
+        vec3(tree[node].lmax_x, tree[node].lmax_y, tree[node].lmax_z)
+    );
+}
+
+AABB right_bounds(uint node) {
+    return compatAABB(
+        vec3(tree[node].rmin_x, tree[node].rmin_y, tree[node].rmin_z),
+        vec3(tree[node].rmax_x, tree[node].rmax_y, tree[node].rmax_z)
+    );
+}
+
+#define LBVH_WALK_LIMIT 64
+#define SURFEL_NEIGHBOR_CAP 8
+
+#ifndef SURFEL_NO_SCRATCH
+uint hash_bucket(ivec3 cell) {
+    uint h = uint(cell.x) * 73856093u ^ uint(cell.y) * 19349663u ^ uint(cell.z) * 83492791u;
+    return h & (HASH_BUCKETS - 1u);
+}
+
+float hash_cell_size(uint level) {
+    return 32.0 * float(1u << level);
+}
+
+// Linked list of surfels whose center falls in this cell. Chains are short
+// because each surfel is inserted once, into a bucket of its own radius level.
+uint hash_chain_head(uint level, ivec3 cell) {
+    return build_words[OFF_HASH_HEAD + level * HASH_BUCKETS + hash_bucket(cell)];
+}
+#endif
+
+void push_bvh(inout uint stack[MAX_BVH_STACK_DEPTH], inout int stack_depth, uint node) {
+    if (stack_depth < MAX_BVH_STACK_DEPTH) {
+        stack[stack_depth++] = node;
+    }
+}
+
 uint bvh_search(in const vec3 point) {
-    // BVH is empty: return a failure.
-    if (tree[0].left == tree[0].parent) {
+#ifndef SURFEL_NO_SCRATCH
+    if (lbvh_empty()) {
         return 0xFFFFFFFFu;
     }
-
-    uint stack[MAX_BVH_STACK_DEPTH];
-    int stackDepth = 0;
-
-    uint currentIndex = 0;
-    stack[stackDepth++] = currentIndex;
-
-    while (stackDepth > 0) {
-        const uint childR = tree[currentIndex].right;
-        const uint childL = tree[currentIndex].left;
-
-        const bool leftIsLeaf = (childL & NODE_IS_LEAF_FLAG) != 0;
-        const bool rightIsLeaf = (childR & NODE_IS_LEAF_FLAG) != 0;
-
-        const uint rightIdx = (childR & ~(NODE_IS_LEAF_FLAG));
-        const uint leftIdx = (childL & ~(NODE_IS_LEAF_FLAG));
-
-        bool traverseL = false;
-        bool traverseR = false;
-
-        if (leftIsLeaf) {
-            if ((surfels[leftIdx].flags & SURFEL_FLAG_DEAD) == 0u && point_inside_surfel(leftIdx, point)) {
-                return leftIdx;
-            }
-        } else {
-            const AABB leftAABB = compatAABB(
-                vec3(tree[leftIdx].min_x, tree[leftIdx].min_y, tree[leftIdx].min_z),
-                vec3(tree[leftIdx].max_x, tree[leftIdx].max_y, tree[leftIdx].max_z)
-            );
-
-            traverseL = AABBcontains(
-                leftAABB,
-                point
-            );
-        }
-
-        if (rightIsLeaf) {
-            if ((surfels[rightIdx].flags & SURFEL_FLAG_DEAD) == 0u && point_inside_surfel(rightIdx, point)) {
-                return rightIdx;
-            }
-        } else {
-            const AABB rightAABB = compatAABB(
-                vec3(tree[rightIdx].min_x, tree[rightIdx].min_y, tree[rightIdx].min_z),
-                vec3(tree[rightIdx].max_x, tree[rightIdx].max_y, tree[rightIdx].max_z)
-            );
-
-            traverseR = AABBcontains(
-                rightAABB,
-                point
-            );
-        }
-
-        if ((!traverseL) && (!traverseR)) {
-            currentIndex = stack[--stackDepth];
-        } else {
-            currentIndex = (traverseL) ? leftIdx : rightIdx;
-
-            if (traverseL && traverseR) {
-                //if (stackDepth == MAX_BVH_STACK_DEPTH) {
-                //    debugPrintfEXT("Max search stack depth reached.");
-                //}
-
-                stack[stackDepth++] = rightIdx;
+    for (uint level = 0u; level < HASH_LEVELS; ++level) {
+        const float cs = hash_cell_size(level);
+        const ivec3 base = ivec3(floor(point / cs));
+        for (int dz = -1; dz <= 1; ++dz) {
+            for (int dy = -1; dy <= 1; ++dy) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                    uint slot = hash_chain_head(level, base + ivec3(dx, dy, dz));
+                    for (uint hop = 0u; hop < 32u && slot != HASH_EMPTY && slot < BUILD_HALF; ++hop) {
+                        const uint surfel_id = build_words[OFF_HASH_IDS + slot];
+                        if (surfel_id != HASH_EMPTY
+                            && (surfels[surfel_id].flags & SURFEL_FLAG_DEAD) == 0u
+                            && point_inside_surfel(surfel_id, point)) {
+                            return surfel_id;
+                        }
+                        slot = build_words[OFF_HASH_NEXT + slot];
+                    }
+                }
             }
         }
     }
-
+#endif
     return 0xFFFFFFFFu;
 }
 
-// BVH-based closest surfel search
 uint find_closest_surfel(in const vec3 point) {
-    if (tree[0].left == tree[0].parent) {
+#ifndef SURFEL_NO_SCRATCH
+    if (lbvh_empty()) {
         return 0xFFFFFFFFu;
     }
-
-    uint stack[MAX_BVH_STACK_DEPTH];
-    int stackDepth = 0;
-    uint currentIndex = 0;
-    stack[stackDepth++] = currentIndex;
-
     float min_dist = 1e30;
     uint closest_id = 0xFFFFFFFFu;
-
-    while (stackDepth > 0) {
-        currentIndex = stack[--stackDepth];
-        const uint childR = tree[currentIndex].right;
-        const uint childL = tree[currentIndex].left;
-
-        const bool leftIsLeaf = (childL & NODE_IS_LEAF_FLAG) != 0;
-        const bool rightIsLeaf = (childR & NODE_IS_LEAF_FLAG) != 0;
-
-        const uint rightIdx = (childR & ~(NODE_IS_LEAF_FLAG));
-        const uint leftIdx = (childL & ~(NODE_IS_LEAF_FLAG));
-
-        // Check left child
-        if (leftIsLeaf) {
-            float d = distance(point, surfelPosition(leftIdx));
-            if (d < min_dist) {
-                min_dist = d;
-                closest_id = leftIdx;
-            }
-        } else {
-            const AABB leftAABB = compatAABB(
-                vec3(tree[leftIdx].min_x, tree[leftIdx].min_y, tree[leftIdx].min_z),
-                vec3(tree[leftIdx].max_x, tree[leftIdx].max_y, tree[leftIdx].max_z)
-            );
-            float aabb_dist = distanceAABBPoint(leftAABB, point);
-            if (aabb_dist < min_dist) {
-                stack[stackDepth++] = leftIdx;
-            }
-        }
-
-        // Check right child
-        if (rightIsLeaf) {
-            float d = distance(point, surfelPosition(rightIdx));
-            if (d < min_dist) {
-                min_dist = d;
-                closest_id = rightIdx;
-            }
-        } else {
-            const AABB rightAABB = compatAABB(
-                vec3(tree[rightIdx].min_x, tree[rightIdx].min_y, tree[rightIdx].min_z),
-                vec3(tree[rightIdx].max_x, tree[rightIdx].max_y, tree[rightIdx].max_z)
-            );
-            float aabb_dist = distanceAABBPoint(rightAABB, point);
-            if (aabb_dist < min_dist) {
-                stack[stackDepth++] = rightIdx;
+    for (uint level = 0u; level < HASH_LEVELS; ++level) {
+        const float cs = hash_cell_size(level);
+        const ivec3 base = ivec3(floor(point / cs));
+        for (int dz = -1; dz <= 1; ++dz) {
+            for (int dy = -1; dy <= 1; ++dy) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                    uint slot = hash_chain_head(level, base + ivec3(dx, dy, dz));
+                    for (uint hop = 0u; hop < 32u && slot != HASH_EMPTY && slot < BUILD_HALF; ++hop) {
+                        const uint surfel_id = build_words[OFF_HASH_IDS + slot];
+                        if (surfel_id != HASH_EMPTY && (surfels[surfel_id].flags & SURFEL_FLAG_DEAD) == 0u) {
+                            const float d = distance(point, surfelPosition(surfel_id));
+                            if (d < min_dist) {
+                                min_dist = d;
+                                closest_id = surfel_id;
+                            }
+                        }
+                        slot = build_words[OFF_HASH_NEXT + slot];
+                    }
+                }
             }
         }
     }
     return closest_id;
+#else
+    return 0xFFFFFFFFu;
+#endif
+}
+
+uint gather_nearby_surfels(in const vec3 point, in const float radius, inout uint neighbor_ids[SURFEL_NEIGHBOR_CAP]) {
+#ifndef SURFEL_NO_SCRATCH
+    if (lbvh_empty()) {
+        return 0u;
+    }
+    uint count = 0u;
+    const float radius_sq = radius * radius;
+    for (uint level = 0u; level < HASH_LEVELS && count < SURFEL_NEIGHBOR_CAP; ++level) {
+        const float cs = hash_cell_size(level);
+        const ivec3 base = ivec3(floor(point / cs));
+        for (int dz = -1; dz <= 1 && count < SURFEL_NEIGHBOR_CAP; ++dz) {
+            for (int dy = -1; dy <= 1 && count < SURFEL_NEIGHBOR_CAP; ++dy) {
+                for (int dx = -1; dx <= 1 && count < SURFEL_NEIGHBOR_CAP; ++dx) {
+                    uint slot = hash_chain_head(level, base + ivec3(dx, dy, dz));
+                    for (uint hop = 0u; hop < 32u && slot != HASH_EMPTY && slot < BUILD_HALF && count < SURFEL_NEIGHBOR_CAP; ++hop) {
+                        const uint surfel_id = build_words[OFF_HASH_IDS + slot];
+                        if (surfel_id != HASH_EMPTY && (surfels[surfel_id].flags & SURFEL_FLAG_DEAD) == 0u) {
+                            const vec3 delta = surfelPosition(surfel_id) - point;
+                            if (dot(delta, delta) <= radius_sq) {
+                                neighbor_ids[count++] = surfel_id;
+                            }
+                        }
+                        slot = build_words[OFF_HASH_NEXT + slot];
+                    }
+                }
+            }
+        }
+    }
+    return count;
+#else
+    return 0u;
+#endif
 }
 
 bool is_too_close(vec3 point, float radius, uint surfel_id) {
@@ -524,72 +588,45 @@ bool surfel_sphere_overlaps(uint surfel_id, in const vec3 point, in const float 
     return dot(delta, delta) <= combined * combined;
 }
 
-// Committed surfels are found by a radius walk of the median-split tree.
+// Committed surfels are found by a short hash-chain probe, not a tree walk.
 uint linear_search_ordered_surfel_for_allocation(
     vec3 point,
     uint instance_id,
     float radius
 ) {
-    if (tree[0].left == tree[0].parent) {
+#ifndef SURFEL_NO_SCRATCH
+    if (lbvh_empty()) {
         return SURFELS_MISSED;
     }
 
     bool too_close = false;
-    uint stack[MAX_BVH_STACK_DEPTH];
-    int stack_depth = 0;
-    stack[stack_depth++] = 0u;
-
-    while (stack_depth > 0) {
-        const uint node = stack[--stack_depth];
-        const uint child_l = tree[node].left;
-        const uint child_r = tree[node].right;
-        const bool left_is_leaf = (child_l & NODE_IS_LEAF_FLAG) != 0u;
-        const bool right_is_leaf = (child_r & NODE_IS_LEAF_FLAG) != 0u;
-        const uint left_idx = child_l & ~NODE_IS_LEAF_FLAG;
-        const uint right_idx = child_r & ~NODE_IS_LEAF_FLAG;
-
-        if (left_is_leaf) {
-            if ((surfels[left_idx].flags & SURFEL_FLAG_DEAD) == 0u) {
-                if ((is_point_in_surfel(left_idx, point)) && (surfels[left_idx].instance_id == instance_id)) {
-                    return left_idx;
-                } else if (is_too_close(point, radius, left_idx)) {
-                    too_close = true;
+    for (uint level = 0u; level < HASH_LEVELS; ++level) {
+        const float cs = hash_cell_size(level);
+        const ivec3 base = ivec3(floor(point / cs));
+        for (int dz = -1; dz <= 1; ++dz) {
+            for (int dy = -1; dy <= 1; ++dy) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                    uint slot = hash_chain_head(level, base + ivec3(dx, dy, dz));
+                    for (uint hop = 0u; hop < 32u && slot != HASH_EMPTY && slot < BUILD_HALF; ++hop) {
+                        const uint surfel_id = build_words[OFF_HASH_IDS + slot];
+                        if (surfel_id != HASH_EMPTY && (surfels[surfel_id].flags & SURFEL_FLAG_DEAD) == 0u) {
+                            if (is_point_in_surfel(surfel_id, point) && surfels[surfel_id].instance_id == instance_id) {
+                                return surfel_id;
+                            } else if (is_too_close(point, radius, surfel_id)) {
+                                too_close = true;
+                            }
+                        }
+                        slot = build_words[OFF_HASH_NEXT + slot];
+                    }
                 }
-            }
-        } else {
-            const AABB left_box = compatAABB(
-                vec3(tree[left_idx].min_x, tree[left_idx].min_y, tree[left_idx].min_z),
-                vec3(tree[left_idx].max_x, tree[left_idx].max_y, tree[left_idx].max_z)
-            );
-            if (sphere_hits_aabb(left_box, point, radius) && stack_depth < MAX_BVH_STACK_DEPTH) {
-                stack[stack_depth++] = left_idx;
-            }
-        }
-
-        if (right_is_leaf && left_is_leaf && right_idx == left_idx) {
-            continue;
-        }
-
-        if (right_is_leaf) {
-            if ((surfels[right_idx].flags & SURFEL_FLAG_DEAD) == 0u) {
-                if ((is_point_in_surfel(right_idx, point)) && (surfels[right_idx].instance_id == instance_id)) {
-                    return right_idx;
-                } else if (is_too_close(point, radius, right_idx)) {
-                    too_close = true;
-                }
-            }
-        } else {
-            const AABB right_box = compatAABB(
-                vec3(tree[right_idx].min_x, tree[right_idx].min_y, tree[right_idx].min_z),
-                vec3(tree[right_idx].max_x, tree[right_idx].max_y, tree[right_idx].max_z)
-            );
-            if (sphere_hits_aabb(right_box, point, radius) && stack_depth < MAX_BVH_STACK_DEPTH) {
-                stack[stack_depth++] = right_idx;
             }
         }
     }
 
     return too_close ? SURFELS_TOO_CLOSE : SURFELS_MISSED;
+#else
+    return SURFELS_MISSED;
+#endif
 }
 
 // This frame's allocations live in a dense prefix of the upper half.
@@ -665,12 +702,9 @@ uint add_diffuse_sample_to_surfel(
 #endif // SURFEL_IS_READONLY
 
 bool is_out_of_range(in const vec3 eye_position, in const vec3 surfel_center, in const vec2 clip_space) {
-    const float range = abs(clip_space.y) - abs(clip_space.x);
-
-    const vec3 min_allowed_position = eye_position - vec3(range);
-    const vec3 max_allowed_position = eye_position + vec3(range);
-
-    return any(lessThan(surfel_center, min_allowed_position)) || any(greaterThan(surfel_center, max_allowed_position));
+    // Far-plane distance only. The old eye-centered AABB slid with the camera
+    // and killed stable world surfels every frame while wandering.
+    return distance(eye_position, surfel_center) > abs(clip_space.y);
 }
 
 float radius_from_camera_distance(
@@ -694,6 +728,34 @@ float radius_from_camera_distance(
 }
 
 #define IS_SURFEL_VALID(surfel_id) (surfel_id < total_surfels)
+
+// Find an existing committed surfel at a surface point without allocating.
+uint find_committed_surfel_at(
+    in const vec3 eye_position,
+    in const vec2 clip_planes,
+    in const uint instance_id,
+    in const vec3 position
+) {
+#if ENABLE_SURFELS
+    if (is_out_of_range(eye_position, position, clip_planes)) {
+        return 0xFFFFFFFFu;
+    }
+    const float radius = radius_from_camera_distance(eye_position, clip_planes, position);
+    uint id = linear_search_ordered_surfel_for_allocation(position, instance_id, radius);
+    if (id != SURFELS_MISSED && id != SURFELS_TOO_CLOSE) {
+        return id;
+    }
+    if (id == SURFELS_TOO_CLOSE) {
+        return 0xFFFFFFFFu;
+    }
+    uint checked = 0u;
+    id = linear_search_unordered_surfel_for_allocation(checked, position, instance_id, radius);
+    if (id != SURFELS_MISSED && id != SURFELS_TOO_CLOSE && id != SURFELS_BUSY) {
+        return id;
+    }
+#endif
+    return 0xFFFFFFFFu;
+}
 
 #ifndef SURFEL_IS_READONLY
 

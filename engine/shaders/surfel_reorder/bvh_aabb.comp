@@ -1,100 +1,104 @@
 #extension GL_EXT_debug_printf : enable
+#extension GL_KHR_memory_scope_semantics : require
 
 #include "../config.glsl"
 #include "../aabb.glsl"
+#include "build_layout.glsl"
 
 layout (local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
 #define SURFEL_NO_IMAGES 1
 #define SURFEL_NO_DISCOVERED 1
+#define SURFEL_NO_SCRATCH 1
 #define SURFELS_DESCRIPTOR_SET 0
 #include "../surfel.glsl"
 
+layout (set = SURFELS_DESCRIPTOR_SET, binding = 7, std430) buffer surfel_build_scratch {
+    uint build_words[];
+};
+
+AABB leaf_box(uint key) {
+    const uint surfel_id = build_words[OFF_KEYS_A + key * KEY_STRIDE + 1u];
+    return surfelAABB(surfel_id);
+}
+
+AABB stored_union(uint node) {
+    const vec3 bmin = min(
+        vec3(tree[node].lmin_x, tree[node].lmin_y, tree[node].lmin_z),
+        vec3(tree[node].rmin_x, tree[node].rmin_y, tree[node].rmin_z)
+    );
+    const vec3 bmax = max(
+        vec3(tree[node].lmax_x, tree[node].lmax_y, tree[node].lmax_z),
+        vec3(tree[node].rmax_x, tree[node].rmax_y, tree[node].rmax_z)
+    );
+    return compatAABB(bmin, bmax);
+}
+
+AABB child_box(uint child) {
+    if ((child & NODE_IS_LEAF_FLAG) != 0u) {
+        return leaf_box(child & ~NODE_IS_LEAF_FLAG);
+    }
+    return stored_union(child);
+}
+
+void store_children(uint node, AABB left_box, AABB right_box) {
+    tree[node].lmin_x = left_box.vMin.x;
+    tree[node].lmin_y = left_box.vMin.y;
+    tree[node].lmin_z = left_box.vMin.z;
+    tree[node].lmax_x = left_box.vMax.x;
+    tree[node].lmax_y = left_box.vMax.y;
+    tree[node].lmax_z = left_box.vMax.z;
+    tree[node].rmin_x = right_box.vMin.x;
+    tree[node].rmin_y = right_box.vMin.y;
+    tree[node].rmin_z = right_box.vMin.z;
+    tree[node].rmax_x = right_box.vMax.x;
+    tree[node].rmax_y = right_box.vMax.y;
+    tree[node].rmax_z = right_box.vMax.z;
+}
+
 void main() {
-    const uint index_internal_nodes = gl_GlobalInvocationID.x;
-
-    const uint surfels_count = count_ordered_surfels();
-    if (surfels_count == 0) {
+    const uint n = build_words[HDR_KEY_COUNT];
+    const uint leaf = gl_GlobalInvocationID.x;
+    if (n == 0u || leaf >= n) {
         return;
     }
 
-    if (index_internal_nodes >= surfels_count) {
-        return;
-    }
-
-    // If this node doesn't have any leaf don't proceed:
-    // the algorithm fills AABBs starting from nodes with leafs
-    // attached and going upward.
-    if (
-        ((tree[index_internal_nodes].left & NODE_IS_LEAF_FLAG) == 0) &&
-        ((tree[index_internal_nodes].right & NODE_IS_LEAF_FLAG) == 0)
-    ) {
-        return;
-    }
-
-    uint currentTreeNode = index_internal_nodes;
-    uint previousTreeNode = surfels_count - 1;
-
-    while (currentTreeNode != previousTreeNode) {
-        const uint childL = tree[currentTreeNode].left;
-        const uint childR = tree[currentTreeNode].right;
-
-        const bool leftIsLeaf = (childL & NODE_IS_LEAF_FLAG) != 0;
-        const bool rightIsLeaf = (childR & NODE_IS_LEAF_FLAG) != 0;
-
-        const uint leftIdx = (childL & ~NODE_IS_LEAF_FLAG);
-        const uint rightIdx = (childR & ~NODE_IS_LEAF_FLAG);
-
-        AABB leftAABB;
-        AABB rightAABB;
-
-        // left is a leaf, so we need to get the AABB from the surfel itself
-        if (leftIsLeaf) {
-            leftAABB = surfelAABB(leftIdx);
-        } else {
-            // The sync[leftIdx] will be set after a memoryBarrier() therefore if it is NOT 1 then the value read is unreliable and thus I must exit
-            uint leftTreeNodeWasAdjusted = atomicCompSwap(tree[leftIdx].flags, 1, 1);
-            if (leftTreeNodeWasAdjusted != 1) {
-                break;
+    if (n == 1u) {
+        if (leaf == 0u) {
+            const AABB box = leaf_box(0u);
+            store_children(0u, box, box);
+            if (build_words[HDR_BUILD_ACTIVE] != 0u) {
+                atomicStore(index_topology_dirty, 0u, gl_ScopeDevice, gl_StorageSemanticsBuffer, gl_SemanticsRelease);
             }
+        }
+        return;
+    }
 
-            leftAABB = compatAABB(
-                vec3(tree[leftIdx].min_x, tree[leftIdx].min_y, tree[leftIdx].min_z),
-                vec3(tree[leftIdx].max_x, tree[leftIdx].max_y, tree[leftIdx].max_z)
-            );
+    uint node = build_words[OFF_LEAF_PARENT + leaf];
+    for (uint hop = 0u; hop < 96u; ++hop) {
+        const uint prev = atomicAdd(
+            tree[node].flags,
+            1u,
+            gl_ScopeDevice,
+            gl_StorageSemanticsBuffer,
+            gl_SemanticsAcquireRelease
+        );
+        if (prev != 1u) {
+            return;
         }
 
-        // right is a leaf, so we need to get the AABB from the surfel itself
-        if (rightIsLeaf) {
-            rightAABB = surfelAABB(rightIdx);
-        } else {
-            uint rightTreeNodeWasAdjusted = atomicCompSwap(tree[rightIdx].flags, 1, 1);
-            if (rightTreeNodeWasAdjusted != 1) {
-                break;
+        store_children(node, child_box(tree[node].left), child_box(tree[node].right));
+
+        if (node == 0u) {
+            if (build_words[HDR_BUILD_ACTIVE] != 0u) {
+                atomicStore(index_topology_dirty, 0u, gl_ScopeDevice, gl_StorageSemanticsBuffer, gl_SemanticsRelease);
             }
-
-            rightAABB = compatAABB(
-                vec3(tree[rightIdx].min_x, tree[rightIdx].min_y, tree[rightIdx].min_z),
-                vec3(tree[rightIdx].max_x, tree[rightIdx].max_y, tree[rightIdx].max_z)
-            );
+            return;
         }
-
-        tree[currentTreeNode].min_x = min(leftAABB.vMin.x, rightAABB.vMin.x);
-        tree[currentTreeNode].min_y = min(leftAABB.vMin.y, rightAABB.vMin.y);
-        tree[currentTreeNode].min_z = min(leftAABB.vMin.z, rightAABB.vMin.z);
-        tree[currentTreeNode].max_x = max(leftAABB.vMax.x, rightAABB.vMax.x);
-        tree[currentTreeNode].max_y = max(leftAABB.vMax.y, rightAABB.vMax.y);
-        tree[currentTreeNode].max_z = max(leftAABB.vMax.z, rightAABB.vMax.z);
-
-        // Make writes visible to other shader invocation(s)
-        memoryBarrierBuffer();
-
-        // Update the visibility bit so that when the check will be performed it will be one signaling that the value has been written and the memoryBarrier() has been performed
-        uint tmp = atomicCompSwap(tree[currentTreeNode].flags, 0, 1);
-
-        previousTreeNode = currentTreeNode;
-        currentTreeNode = tree[currentTreeNode].parent;
+        const uint parent = tree[node].parent;
+        if (parent == node) {
+            return;
+        }
+        node = parent;
     }
-
-    memoryBarrierBuffer();
 }

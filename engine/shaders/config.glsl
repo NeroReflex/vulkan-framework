@@ -40,8 +40,14 @@
 
 #define VIRTUAL_POINT_LIGHTS_PER_PIXEL 4u
 
-#define MAX_BVH_STACK_DEPTH 24
+#define MAX_BVH_STACK_DEPTH 96
 
+// Discovery must cover every pixel (surfel_rt reads overlapping per texel).
+#define SURFEL_DISCOVERY_QUERY_STRIDE 1u
+// VPL may use a coarser stride (2 = quarter dispatch count).
+#define SURFEL_VPL_QUERY_STRIDE 2u
+
+// Set to 1 only to time the surfel index without software ray tracing.
 // Keep 0 unless you are actively debugging a shader: enabling the
 // GL_EXT_debug_printf extension makes GPU-AV instrument the pass, which
 // currently TDR's this pipeline (millions of invocations per frame).

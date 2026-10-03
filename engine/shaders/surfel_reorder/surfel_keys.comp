@@ -1,0 +1,73 @@
+#extension GL_EXT_debug_printf : enable
+#extension GL_KHR_memory_scope_semantics : require
+
+#include "../config.glsl"
+#include "build_layout.glsl"
+
+layout (local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+layout (push_constant) uniform KeyPhase {
+    uint phase; // 0 clear heads, 1 insert live surfels
+} params;
+
+#define STATUS_DESCRIPTOR_SET 0
+#include "../status.glsl"
+
+#define SURFEL_NO_IMAGES 1
+#define SURFEL_NO_DISCOVERED 1
+#define SURFEL_NO_SCRATCH 1
+#define SURFELS_DESCRIPTOR_SET 1
+#include "../surfel.glsl"
+
+layout (set = SURFELS_DESCRIPTOR_SET, binding = 7, std430) coherent buffer surfel_build_scratch {
+    uint build_words[];
+};
+
+uint hash_bucket(ivec3 cell) {
+    uint h = uint(cell.x) * 73856093u ^ uint(cell.y) * 19349663u ^ uint(cell.z) * 83492791u;
+    return h & (HASH_BUCKETS - 1u);
+}
+
+uint surfel_level(float radius) {
+    if (radius < 32.0) return 0u;
+    if (radius < 64.0) return 1u;
+    return 2u;
+}
+
+float level_cell(uint level) {
+    return 32.0 * float(1u << level);
+}
+
+void main() {
+    if (build_words[HDR_BUILD_ACTIVE] == 0u) {
+        return;
+    }
+
+    const uint gid = gl_GlobalInvocationID.x;
+    const uint n = uint(max(live_count, 0));
+
+    if (params.phase == 0u) {
+        const uint heads = HASH_LEVELS * HASH_BUCKETS;
+        if (gid < heads) {
+            build_words[OFF_HASH_HEAD + gid] = HASH_EMPTY;
+        }
+        return;
+    }
+
+    if (gid == 0u) {
+        build_words[HDR_KEY_COUNT] = n;
+        atomicStore(index_topology_dirty, 0u, gl_ScopeDevice, gl_StorageSemanticsBuffer, gl_SemanticsRelease);
+    }
+    if (gid >= n || gid >= BUILD_HALF) {
+        return;
+    }
+
+    const uint surfel_id = build_words[OFF_IDS_A + gid];
+    const vec3 center = surfelPosition(surfel_id);
+    const uint level = surfel_level(surfels[surfel_id].radius);
+    const ivec3 cell = ivec3(floor(center / level_cell(level)));
+    const uint head = OFF_HASH_HEAD + level * HASH_BUCKETS + hash_bucket(cell);
+    const uint prev = atomicExchange(build_words[head], gid);
+    build_words[OFF_HASH_NEXT + gid] = prev;
+    build_words[OFF_HASH_IDS + gid] = surfel_id;
+}

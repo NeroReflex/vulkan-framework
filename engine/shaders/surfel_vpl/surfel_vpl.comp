@@ -29,7 +29,7 @@ layout (local_size_x = 32, local_size_y = 16, local_size_z = 1) in;
 void main() {
     const ivec2 resolution = imageSize(outputImage[0]);
 
-    const ivec2 texel_position = ivec2(gl_GlobalInvocationID.xy);
+    const ivec2 texel_position = ivec2(gl_GlobalInvocationID.xy) * int(SURFEL_VPL_QUERY_STRIDE);
 
     // avoid checking out-of-bounds
     bool enabled = !any(greaterThanEqual(texel_position, resolution));
@@ -39,6 +39,13 @@ void main() {
     return;
 #endif
 
+    // Sky and cleared pixels have no surface. A nearest-surfel walk from a
+    // far-plane point does not prune, so those threads must not enter the tree.
+    const uvec4 instance_data = enabled ? texelFetch(gbuffer_instance_id, texel_position, 0) : uvec4(0xFFFFFFFFu);
+    if (instance_data.x == 0xFFFFFFFFu) {
+        enabled = false;
+    }
+
     // Find nearby surfels and make them act as VPLs (light sources) on the current gbuffer texel
     if (enabled) {
         // Sample gbuffer for world position and normal
@@ -46,7 +53,7 @@ void main() {
         vec3 world_normal = texelFetch(gbuffer[1], texel_position, 0).xyz;
 
         // Find the closest surfel to the current texel position
-        uint surfel_id = find_closest_surfel(world_pos);
+        uint surfel_id = bvh_search(world_pos);
         if (surfel_id != 0xFFFFFFFFu) {
             vec3 vpl_light = projected_irradiance(surfel_id, world_pos, world_normal);
             // TODO: Accumulate vpl_light to outputImage or appropriate buffer

@@ -1,0 +1,40 @@
+// node-local surfels: write world centers before mark and again before the hash
+
+#include "../config.glsl"
+
+#define SURFEL_NO_IMAGES 1
+#define SURFEL_NO_DISCOVERED 1
+#define SURFEL_NO_SCRATCH 1
+#define SURFELS_DESCRIPTOR_SET 0
+#include "../surfel.glsl"
+
+#define BONE_RIGID 0xFFFFFFFFu
+#define BONE_CAPACITY 256u
+
+layout(set = SURFELS_DESCRIPTOR_SET, binding = 9, std430) readonly buffer BonePalette {
+    mat4 bone[BONE_CAPACITY];
+} bone_palette;
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= uint(total_surfels)) {
+        return;
+    }
+    if ((surfels[id].flags & SURFEL_FLAG_READY) == 0u) {
+        return;
+    }
+    vec3 local = vec3(surfels[id].bind_x, surfels[id].bind_y, surfels[id].bind_z);
+    vec3 world;
+    if (surfels[id].bone == BONE_RIGID) {
+        uint inst = min(surfels[id].instance_id, NODE_CAPACITY - 1u);
+        world = (node_world.world[inst] * vec4(local, 1.0)).xyz;
+    } else {
+        uint joint = min(surfels[id].bone, BONE_CAPACITY - 1u);
+        world = (bone_palette.bone[joint] * vec4(local, 1.0)).xyz;
+    }
+    surfels[id].position_x = world.x;
+    surfels[id].position_y = world.y;
+    surfels[id].position_z = world.z;
+}

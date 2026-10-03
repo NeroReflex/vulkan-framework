@@ -12,6 +12,7 @@ layout (push_constant) uniform PrefixParams {
 
 #define SURFEL_NO_IMAGES 1
 #define SURFEL_NO_DISCOVERED 1
+#define SURFEL_NO_SCRATCH 1
 #define SURFELS_DESCRIPTOR_SET 0
 #include "../surfel.glsl"
 
@@ -44,6 +45,12 @@ void exclusive_scan_workgroup(uint lid, uint value) {
 }
 
 void main() {
+    // Live-id compaction must match the last keys/radix/LBVH build; do not
+    // rewrite OFF_IDS_A when the index build is skipped this frame.
+    if (params.kind == 1u && build_words[HDR_BUILD_ACTIVE] == 0u) {
+        return;
+    }
+
     const uint lid = gl_LocalInvocationID.x;
     const uint gid = gl_GlobalInvocationID.x;
     const uint block = gl_WorkGroupID.x;
@@ -95,32 +102,5 @@ void main() {
             build_words[OFF_IDS_A + slot] = gid;
         }
         return;
-    }
-
-    // phase 3: publish the root of the median-split tree
-    if (gl_GlobalInvocationID.x != 0u) {
-        return;
-    }
-
-    const uint n = uint(live_count);
-    tree[0].flags = 0u;
-    tree[0].parent = 0u;
-    if (n == 0u) {
-        tree[0].left = 0u;
-        tree[0].right = 0u;
-        build_words[HDR_RANGE_COUNT] = 0u;
-    } else if (n == 1u) {
-        const uint id = build_words[OFF_IDS_A];
-        tree[0].left = id | NODE_IS_LEAF_FLAG;
-        tree[0].right = id | NODE_IS_LEAF_FLAG;
-        build_words[HDR_RANGE_COUNT] = 0u;
-    } else {
-        tree[0].left = 0u;
-        tree[0].right = 0u;
-        build_words[OFF_RANGES + 0u] = 0u;
-        build_words[OFF_RANGES + 1u] = n;
-        build_words[OFF_RANGES + 2u] = 0u;
-        build_words[OFF_RANGES + 3u] = 0u;
-        build_words[HDR_RANGE_COUNT] = 1u;
     }
 }

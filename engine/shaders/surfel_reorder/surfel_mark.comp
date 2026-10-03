@@ -9,6 +9,7 @@ layout (local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
 #define SURFEL_NO_IMAGES 1
 #define SURFEL_NO_DISCOVERED 1
+#define SURFEL_NO_SCRATCH 1
 #define SURFELS_DESCRIPTOR_SET 1
 #include "../surfel.glsl"
 
@@ -32,22 +33,22 @@ void main() {
     const vec3 eye_position = get_eye_position();
     const vec3 center = surfelPosition(surfel_id);
 
-    surfels[surfel_id].latest_contribution += 1u;
-
 #if DELETE_NOT_CONTRIBUTING_SURFELS
+    surfels[surfel_id].latest_contribution += 1u;
     if (surfels[surfel_id].latest_contribution >= DELETE_NOT_CONTRIBUTING_SURFELS) {
         atomicOr(surfels[surfel_id].flags, SURFEL_FLAG_DEAD);
+        atomicStore(index_topology_dirty, 1u, gl_ScopeDevice, gl_StorageSemanticsBuffer, gl_SemanticsRelease);
         return;
     }
 #endif
 
     const float ideal_radius = radius_from_camera_distance(eye_position, clip_space, center);
     if (abs(ideal_radius - surfels[surfel_id].radius) > DELETE_ON_RADIUS_DIFFERENCE) {
-        atomicOr(surfels[surfel_id].flags, SURFEL_FLAG_DEAD);
-        return;
+        surfels[surfel_id].radius = ideal_radius;
     }
 
     if (is_out_of_range(eye_position, center, clip_space)) {
         atomicOr(surfels[surfel_id].flags, SURFEL_FLAG_DEAD);
+        atomicStore(index_topology_dirty, 1u, gl_ScopeDevice, gl_StorageSemanticsBuffer, gl_SemanticsRelease);
     }
 }

@@ -40,11 +40,6 @@ void main() {
 
     const ivec2 texel_position = ivec2(gl_LaunchIDEXT.xy);
 
-    // surfels needs to be spawned just once per reusable frame
-    if (gi_data.gi_reuse_frames >= 2) {
-        return;
-    }
-
     const vec3 origin = texelFetch(gbuffer[0], texel_position, 0).xyz;
     const vec3 normal = texelFetch(gbuffer[1], texel_position, 0).xyz;
     const vec3 diffuse = texelFetch(gbuffer[2], texel_position, 0).xyz;
@@ -68,6 +63,14 @@ void main() {
     // Do nothing if there is nothing rendered on the pixel
     if ((depth >= DEPTH_IGNORE) || (mesh_id == 0xFFFFFFFFu) || (instance_id == 0xFFFFFFFFu)) {
         return;
+    }
+
+    // Discovery already matched this pixel. Skip a second hash probe.
+    if (gi_data.gi_reuse_frames >= 2u) {
+        const uint existing = imageLoad(surfelOverlappingImage, texel_position).r;
+        if (existing != 0xFFFFFFFFu) {
+            return;
+        }
     }
 
     // direct lighting: only compute it if the previous GI data cannot be reused
@@ -121,18 +124,22 @@ void main() {
         imageStore(outputImage[1], texel_position, vec4(lights_contribution, 1.0));
     }
 
-    // try to allocate a new surfel (or get the ID of an existing one)
     bool fresh_allocation = false;
-    const uint surfel_id = find_surfel_or_allocate_new(
-        eye_position,
-        clip_planes,
-        instance_id,
-        origin,
-        normal,
-        diffuse,
-        true,
-        fresh_allocation
-    );
+    uint surfel_id;
+    if (gi_data.gi_reuse_frames < 2u) {
+        surfel_id = find_surfel_or_allocate_new(
+            eye_position,
+            clip_planes,
+            instance_id,
+            origin,
+            normal,
+            diffuse,
+            true,
+            fresh_allocation
+        );
+    } else {
+        surfel_id = find_committed_surfel_at(eye_position, clip_planes, instance_id, origin);
+    }
 
     if (!IS_SURFEL_VALID(surfel_id)) {
         return;

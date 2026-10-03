@@ -1,0 +1,116 @@
+#extension GL_EXT_debug_printf : enable
+
+#include "../config.glsl"
+#include "build_layout.glsl"
+
+layout (local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+layout (push_constant) uniform RadixPass {
+    uint pass;  // 0..3
+    uint phase; // 0 histogram, 1 scan, 2 scatter
+} params;
+
+#define SURFEL_NO_IMAGES 1
+#define SURFEL_NO_DISCOVERED 1
+#define SURFEL_NO_SCRATCH 1
+#define SURFELS_DESCRIPTOR_SET 0
+#include "../surfel.glsl"
+
+layout (set = SURFELS_DESCRIPTOR_SET, binding = 7, std430) buffer surfel_build_scratch {
+    uint build_words[];
+};
+
+shared uint local_hist[256];
+shared uint local_morton[256];
+
+uint src_base() {
+    return (params.pass & 1u) == 0u ? OFF_KEYS_A : OFF_KEYS_B;
+}
+
+uint dst_base() {
+    return (params.pass & 1u) == 0u ? OFF_KEYS_B : OFF_KEYS_A;
+}
+
+uint digit_of(uint morton) {
+    return (morton >> (params.pass * 8u)) & 255u;
+}
+
+void main() {
+    if (build_words[HDR_BUILD_ACTIVE] == 0u) {
+        return;
+    }
+
+    const uint n = build_words[HDR_KEY_COUNT];
+    const uint lid = gl_LocalInvocationID.x;
+    const uint gid = gl_GlobalInvocationID.x;
+    const uint block = gl_WorkGroupID.x;
+
+    if (params.phase == 1u) {
+        if (block != 0u) {
+            return;
+        }
+        uint sum = 0u;
+        for (uint b = 0u; b < BUILD_BLOCKS; ++b) {
+            const uint h = build_words[OFF_RADIX_HIST + b * RADIX_BINS + lid];
+            build_words[OFF_RADIX_EXCL + b * RADIX_BINS + lid] = sum;
+            sum += h;
+        }
+        local_hist[lid] = sum;
+        barrier();
+        for (uint offset = 1u; offset < 256u; offset <<= 1u) {
+            uint val = local_hist[lid];
+            if (lid >= offset) {
+                val += local_hist[lid - offset];
+            }
+            barrier();
+            local_hist[lid] = val;
+            barrier();
+        }
+        build_words[OFF_DIGIT_BASE + lid] = local_hist[lid] - sum;
+        return;
+    }
+
+    const bool in_range = gid < n && block < BUILD_BLOCKS;
+    uint morton = 0u;
+    uint id = 0u;
+    uint digit = 0u;
+    if (in_range) {
+        morton = build_words[src_base() + gid * KEY_STRIDE];
+        id = build_words[src_base() + gid * KEY_STRIDE + 1u];
+        digit = digit_of(morton);
+    }
+
+    if (params.phase == 0u) {
+        local_hist[lid] = 0u;
+        barrier();
+        if (in_range) {
+            atomicAdd(local_hist[digit], 1u);
+        }
+        barrier();
+        if (block < BUILD_BLOCKS) {
+            build_words[OFF_RADIX_HIST + block * RADIX_BINS + lid] = local_hist[lid];
+        }
+        return;
+    }
+
+    uint rank = 0u;
+    if (in_range) {
+        local_morton[lid] = morton;
+    }
+    barrier();
+    if (in_range) {
+        for (uint i = 0u; i < lid; ++i) {
+            const uint earlier = block * 256u + i;
+            if (earlier < n && digit_of(local_morton[i]) == digit) {
+                rank += 1u;
+            }
+        }
+        const uint dst = build_words[OFF_DIGIT_BASE + digit]
+            + build_words[OFF_RADIX_EXCL + block * RADIX_BINS + digit]
+            + rank;
+        if (dst < n) {
+            build_words[dst_base() + dst * KEY_STRIDE] = morton;
+            build_words[dst_base() + dst * KEY_STRIDE + 1u] = id;
+        }
+    }
+}

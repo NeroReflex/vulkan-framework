@@ -1,0 +1,19 @@
+#extension GL_EXT_debug_printf : enable
+
+#include "../config.glsl"
+#include "build_layout.glsl"
+
+layout (local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+#define SURFEL_NO_IMAGES 1
+#define SURFEL_NO_DISCOVERED 1
+#define SURFELS_DESCRIPTOR_SET 0
+#include "../surfel.glsl"
+
+// Skip radix/Karras/refit when the live set and topology are unchanged.
+void main() {
+    const uint n = uint(max(live_count, 0));
+    const uint prev = build_words[HDR_KEY_COUNT];
+    const uint dirty = index_topology_dirty;
+    build_words[HDR_BUILD_ACTIVE] = (n != prev || dirty != 0u) ? 1u : 0u;
+}

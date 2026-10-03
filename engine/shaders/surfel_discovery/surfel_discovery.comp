@@ -18,7 +18,6 @@
 #define GBUFFER_DESCRIPTOR_SET 1
 #include "../gbuffer.glsl"
 
-#define SURFEL_IS_READONLY
 #define BVH_IS_READONLY
 #define SURFELS_DESCRIPTOR_SET 2
 #include "../surfel.glsl"
@@ -36,7 +35,7 @@ shared uint wgBase;     // base reserved index returned by atomicAdd
 void main() {
     const ivec2 resolution = imageSize(outputImage[0]);
 
-    const ivec2 texel_position = ivec2(gl_GlobalInvocationID.xy);
+    const ivec2 texel_position = ivec2(gl_GlobalInvocationID.xy) * int(SURFEL_DISCOVERY_QUERY_STRIDE);
 
     // ================================
     // debug for the ordering to be correct
@@ -64,7 +63,14 @@ void main() {
 
     // try a fast search for surfels that have been allocated any older frame
     // because the shader that spawns surfels from the gbuffer has yet to be executed
-    uint surfel_id = enabled ? bvh_search(origin) : 0xFFFFFFFFu;
+    uint surfel_id = 0xFFFFFFFFu;
+    if (enabled) {
+        const float radius = radius_from_camera_distance(eye_position, clip_planes, origin);
+        const uint found = linear_search_ordered_surfel_for_allocation(origin, instance_id, radius);
+        if (found != SURFELS_MISSED && found != SURFELS_TOO_CLOSE) {
+            surfel_id = found;
+        }
+    }
 
 #if POPULATE_VISIBLE_SURFELS_LIST
     // ---------- Per-workgroup gather + single atomic reservation ----------
@@ -155,7 +161,7 @@ void main() {
 #endif
 
     if ((surfel_id != 0xFFFFFFFFu) && (enabled)) {
-        // there is no surfel associated with this pixel
+        surfels[surfel_id].latest_contribution = 0u;
         imageStore(surfelOverlappingImage, texel_position, uvec4(surfel_id, 0, 0, 0));
     }
 }

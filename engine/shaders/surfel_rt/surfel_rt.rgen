@@ -127,18 +127,22 @@ void main() {
                 break;
             }
 
-            // query for surfel existance in the intersection point
             bool fresh_allocation = false;
-            const uint intersected_surfel_id = find_surfel_or_allocate_new(
-                eye_position,
-                clip_planes,
-                collisions[ray_depth].instance_id,
-                collisions[ray_depth].position,
-                collisions[ray_depth].triangle_normal,
-                collisions[ray_depth].diffuse,
-                true,
-                fresh_allocation
-            );
+            uint intersected_surfel_id = 0xFFFFFFFFu;
+            if (gi_data.gi_reuse_frames == 0u) {
+                intersected_surfel_id = find_surfel_or_allocate_new(
+                    eye_position,
+                    clip_planes,
+                    collisions[ray_depth].instance_id,
+                    collisions[ray_depth].position,
+                    collisions[ray_depth].triangle_normal,
+                    collisions[ray_depth].diffuse,
+                    true,
+                    fresh_allocation
+                );
+            } else {
+                intersected_surfel_id = bvh_search(collisions[ray_depth].position);
+            }
 
             // No surfel was either hit or freshly allocated: continue with the primary rays work
             if (!IS_SURFEL_VALID(intersected_surfel_id)) {
