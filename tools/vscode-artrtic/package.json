@@ -1,0 +1,27 @@
+{
+  "name": "artrtic-preview",
+  "displayName": "ArtRTic Preview",
+  "description": "Live JPEG preview of the ArtRTic engine over a localhost websocket",
+  "version": "0.1.0",
+  "publisher": "artrtic",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "artrtic.openPreview",
+        "title": "ArtRTic: Open Preview"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.0"
+  }
+}
