@@ -8,4 +8,5 @@ mod queue_concurrency;
 mod async_synchronization;
 mod submission_synchronization;
 mod submit_fence;
+mod swapchain;
 mod timeline_semaphore;
