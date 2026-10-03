@@ -23,10 +23,8 @@
             "cwd": "${workspaceFolder}",
             "env": {
                 "RUST_BACKTRACE": "full",
-                "VK_LAYER_PRINTF_ENABLE": "1",
-                "VK_LAYER_PRINTF_TO_STDOUT": "1",
-                "VK_LAYER_PRINTF_BUFFER_SIZE": "4194304"
-                //"ENABLE_VULKAN_RENDERDOC_CAPTURE": "1",
+                "ART_RTIC_SHADER_PRINTF": "1",
+                "VK_LAYER_SETTINGS": "khronos_validation.printf_enable=true,khronos_validation.printf_to_stdout=true,khronos_validation.printf_buffer_size=1048576,khronos_validation.gpuav_enable=false,khronos_validation.gpuav_shader_instrumentation=false"
             }
         },
         {

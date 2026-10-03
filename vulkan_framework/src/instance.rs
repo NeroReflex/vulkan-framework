@@ -160,10 +160,39 @@ impl Instance {
                 .application_name(CStr::from_ptr(data.as_ref().application_name.as_ptr()))
                 .engine_name(CStr::from_ptr(data.as_ref().engine_name.as_ptr()));
 
-            let create_info = ash::vk::InstanceCreateInfo::default()
+            let mut enabled_validation_features: Vec<ash::vk::ValidationFeatureEnableEXT> =
+                Vec::new();
+            if instance_layers
+                .iter()
+                .any(|layer| layer == "VK_LAYER_KHRONOS_validation")
+            {
+                // GPU-AV / debugPrintf rewrite shaders into an extra set.
+                // Without this the extra binding collides with application sets
+                // and ray tracing workloads TDR (ERROR_DEVICE_LOST).
+                enabled_validation_features.push(
+                    ash::vk::ValidationFeatureEnableEXT::GPU_ASSISTED_RESERVE_BINDING_SLOT,
+                );
+                let shader_printf = std::env::var("ART_RTIC_SHADER_PRINTF")
+                    .ok()
+                    .is_some_and(|value| value != "0")
+                    || std::env::var("VK_LAYER_PRINTF_ENABLE")
+                        .ok()
+                        .is_some_and(|value| value != "0");
+                if shader_printf {
+                    enabled_validation_features
+                        .push(ash::vk::ValidationFeatureEnableEXT::DEBUG_PRINTF);
+                }
+            }
+            let mut validation_features = ash::vk::ValidationFeaturesEXT::default()
+                .enabled_validation_features(enabled_validation_features.as_slice());
+
+            let mut create_info = ash::vk::InstanceCreateInfo::default()
                 .application_info(&app_info)
                 .enabled_extension_names(extensions_ptr.as_slice())
                 .enabled_layer_names(layers_ptr.as_slice());
+            if !enabled_validation_features.is_empty() {
+                create_info = create_info.push_next(&mut validation_features);
+            }
 
             let entry = ash::Entry::load()?;
 
