@@ -1,4 +1,7 @@
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{Arc, Mutex, MutexGuard},
+    time::Duration,
+};
 
 use crate::{
     command_buffer::CommandBufferTrait,
@@ -11,6 +14,7 @@ use crate::{
 pub struct Fence {
     device: Arc<Device>,
     fence: ash::vk::Fence,
+    submission_owned: Mutex<bool>,
 }
 
 impl Drop for Fence {
@@ -51,7 +55,39 @@ impl Fence {
         Ok(status)
     }
 
+    fn lock_submission(&self) -> VulkanResult<MutexGuard<'_, bool>> {
+        self.submission_owned
+            .lock()
+            .map_err(|err| FrameworkError::MutexError(format!("{err}")).into())
+    }
+
+    pub(crate) fn reserve_submission(&self) -> VulkanResult<()> {
+        let mut owned = self.lock_submission()?;
+        if *owned || self.is_signaled()? {
+            return Err(ash::vk::Result::ERROR_UNKNOWN.into());
+        }
+        *owned = true;
+        Ok(())
+    }
+
+    pub(crate) fn cancel_submission(&self) -> VulkanResult<()> {
+        *self.lock_submission()? = false;
+        Ok(())
+    }
+
+    fn finish_submission(&self) -> VulkanResult<()> {
+        let mut owned = self.lock_submission()?;
+        unsafe { self.device.ash_handle().reset_fences(&[self.fence]) }?;
+        *owned = false;
+        Ok(())
+    }
+
+    /// Reset an unowned fence. A submitted fence remains owned until its waiter is dropped.
     pub fn reset(&self) -> VulkanResult<()> {
+        let owned = self.lock_submission()?;
+        if *owned {
+            return Err(ash::vk::Result::ERROR_UNKNOWN.into());
+        }
         unsafe {
             self.get_parent_device()
                 .ash_handle()
@@ -66,7 +102,6 @@ impl Fence {
      */
     pub fn reset_fences(fences: &[Arc<Self>]) -> VulkanResult<()> {
         let mut device: Option<Arc<Device>> = None;
-        let mut native_fences = Vec::<ash::vk::Fence>::new();
         for fence in fences {
             match &device {
                 Some(dev) => {
@@ -78,10 +113,20 @@ impl Fence {
                 }
                 None => device = Some(fence.device.clone()),
             }
-
-            native_fences.push(fence.fence)
         }
 
+        // Stable lock order avoids deadlocking concurrent resets with reversed input order.
+        let mut ordered_fences: Vec<_> = fences.iter().collect();
+        ordered_fences.sort_unstable_by_key(|fence| fence.native_handle());
+        ordered_fences.dedup_by_key(|fence| fence.native_handle());
+        let guards: Vec<_> = ordered_fences
+            .iter()
+            .map(|fence| fence.lock_submission())
+            .collect::<VulkanResult<_>>()?;
+        if guards.iter().any(|owned| **owned) {
+            return Err(ash::vk::Result::ERROR_UNKNOWN.into());
+        }
+        let native_fences: Vec<_> = ordered_fences.iter().map(|fence| fence.fence).collect();
         match &device {
             Some(dev) => unsafe { dev.ash_handle().reset_fences(native_fences.as_ref()) }?,
             // list of fences are simply empty
@@ -191,7 +236,11 @@ impl Fence {
             }
         }
 
-        Ok(Arc::new(Self { device, fence }))
+        Ok(Arc::new(Self {
+            device,
+            fence,
+            submission_owned: Mutex::new(false),
+        }))
     }
 }
 
@@ -215,7 +264,7 @@ impl Drop for FenceWaiter {
                 Ok(_) => break,
                 Err(err) => match err.is_timeout() {
                     true => continue,
-                    false => panic!("Error while waiting for fence"),
+                    false => panic!("Error while waiting for fence: {err:?}"),
                 },
             }
         }
@@ -224,7 +273,7 @@ impl Drop for FenceWaiter {
             cb.mark_execution_complete().unwrap();
         }
 
-        self.fence.reset().unwrap()
+        self.fence.finish_submission().unwrap()
     }
 }
 
@@ -235,8 +284,6 @@ impl FenceWaiter {
         semaphores: FenceWaiterSemaphoresType,
     ) -> Self {
         let command_buffers = command_buffers.iter().cloned().collect();
-        let semaphores = semaphores.iter().cloned().collect();
-
         Self {
             fence,
             command_buffers,

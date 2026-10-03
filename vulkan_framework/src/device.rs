@@ -31,10 +31,11 @@ struct DeviceExtensions {
     external_memory_fd_khr_ext: Option<ash::khr::external_memory_fd::Device>,
 }
 
-struct DeviceData<'a> {
+struct DeviceData {
     selected_physical_device: ash::vk::PhysicalDevice,
     selected_device_features: ash::vk::PhysicalDeviceFeatures,
-    selected_queues: Vec<ash::vk::DeviceQueueCreateInfo<'a>>,
+    selected_queue_families: Vec<u32>,
+    selected_queue_priorities: Vec<Vec<f32>>,
     required_family_collection: Vec<Option<(u32, ConcreteQueueFamilyDescriptor)>>,
     supported_extension_names: Vec<String>,
     enabled_extensions: Vec<Arc<CString>>,
@@ -152,6 +153,8 @@ pub struct Device {
     pub(crate) physical_device: ash::vk::PhysicalDevice,
     ray_tracing_info: Option<RaytracingInfo>,
     pub(crate) swapchain_exists: AtomicBool,
+    // Shared by queue aliases and device_wait_idle, which externally synchronizes all queues.
+    pub(crate) queue_host_access: Arc<std::sync::Mutex<()>>,
 }
 
 impl PartialEq for Device {
@@ -239,6 +242,10 @@ impl Device {
     }
 
     pub fn wait_idle(&self) -> VulkanResult<()> {
+        let _guard = self
+            .queue_host_access
+            .lock()
+            .map_err(|err| VulkanError::Framework(FrameworkError::MutexError(format!("{err}"))))?;
         Ok(unsafe { self.device.device_wait_idle() }?)
     }
 
@@ -266,12 +273,14 @@ impl Device {
     where
         I: Iterator<Item = &'a QueueFamilySupportedOperationType>,
     {
-        /*
-        // this was undocumented and I forgot what it was supposed to mean.
-        if max_queues < queue_family.queue_count {
+        if queue_family.queue_count == 0 {
             return None;
         }
-        */
+
+        // NOTE: the number of queues requested by the descriptor is not checked here:
+        // device creation clamps the request to the queueCount actually exposed by
+        // this queue family (see Device::new), so devices exposing fewer queues than
+        // requested can still be used with a reduced amount of queues.
 
         let mut score = 0;
 
@@ -396,6 +405,21 @@ impl Device {
             .collect()
     }
 
+    pub(crate) fn select_queue_priorities(
+        priorities: &[f32],
+        available: u32,
+    ) -> VulkanResult<Vec<f32>> {
+        if available == 0
+            || priorities.is_empty()
+            || priorities
+                .iter()
+                .any(|priority| !(0.0..=1.0).contains(priority))
+        {
+            return Err(ash::vk::Result::ERROR_INITIALIZATION_FAILED.into());
+        }
+        Ok(priorities[..priorities.len().min(available as usize)].to_vec())
+    }
+
     /**
      * Creates a new device from the given instance if a suitable one is found.
      *
@@ -427,6 +451,10 @@ impl Device {
             return Err(VulkanError::Framework(
                 FrameworkError::MissingQueueDescriptor,
             ));
+        }
+
+        for descriptor in queue_descriptors {
+            Self::select_queue_priorities(descriptor.get_queue_priorities(), u32::MAX)?;
         }
 
         unsafe {
@@ -507,7 +535,8 @@ impl Device {
                     .get_physical_device_queue_family_properties(phy_device.to_owned());
 
                 // Check if all requested queues are supported
-                let mut selected_queues: Vec<ash::vk::DeviceQueueCreateInfo> = vec![];
+                let mut selected_queue_families: Vec<u32> = vec![];
+                let mut selected_queue_priorities: Vec<Vec<f32>> = vec![];
                 let mut required_family_collection = vec![];
 
                 let mut available_queue_families: Vec<(usize, &ash::vk::QueueFamilyProperties)> =
@@ -515,7 +544,7 @@ impl Device {
 
                 for current_requested_queue_family_descriptor in queue_descriptors.iter() {
                     // this is the currently selected queue family (queue_family, score)
-                    let mut selected_queue_family: Option<(usize, u16)> = None;
+                    let mut selected_queue_family: Option<(usize, (bool, u16))> = None;
 
                     // the following for loop will search for the best fit for requested capabilities
                     /*'suitable_queue_family_search:*/
@@ -531,8 +560,13 @@ impl Device {
                             family_index as u32,
                             current_requested_queue_family_descriptor.max_queues() as u32,
                         ) {
-                            // Found a suitable queue family.
-                            // Use this queue family if it's a better fit than the previous one
+                            // Prefer a full-count match before comparing capability fit.
+                            // Only clamp when no family can satisfy the requested count.
+                            let score = (
+                                (current_descriptor.queue_count as usize)
+                                    < current_requested_queue_family_descriptor.max_queues(),
+                                score,
+                            );
                             match selected_queue_family {
                                 Some((_, best_fit_queue_score)) => {
                                     if best_fit_queue_score > score {
@@ -551,17 +585,32 @@ impl Device {
                     // otherwise remove the current best fit from the queue of available queue_families to avoid choosing it two times
                     match selected_queue_family {
                         Some((family_index, _)) => {
-                            let queue_create_info = ash::vk::DeviceQueueCreateInfo::default()
-                                .queue_family_index(family_index as u32)
-                                .queue_priorities(
-                                    current_requested_queue_family_descriptor
-                                        .get_queue_priorities(),
-                                );
+                            // The selected queue family might expose fewer queues than the
+                            // amount that has been requested: asking for more queues than
+                            // the family provides is invalid
+                            // (VUID-vkDeviceQueueCreateInfo-queueCount-00384), therefore
+                            // the request is clamped to what the family actually offers.
+                            // QueueFamily::max_queues() will report the clamped amount so
+                            // that Queue creation fails gracefully (TooManyQueues) instead
+                            // of creating a device with an impossible queue configuration.
+                            let available_queues =
+                                queue_family_properties[family_index].queue_count;
+                            let requested_priorities =
+                                current_requested_queue_family_descriptor.get_queue_priorities();
+                            let clamped_priorities = Self::select_queue_priorities(
+                                requested_priorities,
+                                available_queues,
+                            )?;
 
-                            selected_queues.push(queue_create_info);
+                            selected_queue_families.push(family_index as u32);
+                            selected_queue_priorities.push(clamped_priorities.clone());
                             required_family_collection.push(Option::Some((
                                 family_index as u32,
-                                current_requested_queue_family_descriptor.clone(),
+                                ConcreteQueueFamilyDescriptor::new(
+                                    current_requested_queue_family_descriptor
+                                        .get_supported_operations(),
+                                    clamped_priorities.as_slice(),
+                                ),
                             )));
 
                             available_queue_families = available_queue_families.iter().filter_map(|(queue_family_index, queue_family_properties)| -> Option<(usize, &ash::vk::QueueFamilyProperties)> {
@@ -582,7 +631,8 @@ impl Device {
                 let currently_selected_device_data = DeviceData {
                     selected_physical_device: *phy_device,
                     selected_device_features: phy_device_features,
-                    selected_queues,
+                    selected_queue_families,
+                    selected_queue_priorities,
                     required_family_collection,
                     supported_extension_names,
                     enabled_extensions: enabled_extensions.clone(),
@@ -628,8 +678,22 @@ impl Device {
                 .map(|str| str.as_ptr())
                 .collect::<Vec<*const c_char>>();
 
+            // Build the queue create infos for the winning candidate: the clamped
+            // priorities are owned by the selected candidate data, therefore the
+            // borrows held by these create infos are valid until vkCreateDevice below.
+            let selected_queues: Vec<ash::vk::DeviceQueueCreateInfo> = selected_device
+                .selected_queue_families
+                .iter()
+                .zip(selected_device.selected_queue_priorities.iter())
+                .map(|(family_index, priorities)| {
+                    ash::vk::DeviceQueueCreateInfo::default()
+                        .queue_family_index(*family_index)
+                        .queue_priorities(priorities.as_slice())
+                })
+                .collect();
+
             let mut device_create_info_builder = ash::vk::DeviceCreateInfo::default()
-                .queue_create_infos(selected_device.selected_queues.as_slice())
+                .queue_create_infos(selected_queues.as_slice())
                 .enabled_extension_names(extensions_ptr.as_slice());
 
             let acceleration_structure_enabled = device_extensions.iter().any(|ext| {
@@ -700,6 +764,9 @@ impl Device {
             assert!(get_vulkan13_features.dynamic_rendering != 0);
 
             assert!(get_vulkan12_features.shader_sampled_image_array_non_uniform_indexing != 0);
+
+            // timeline semaphores (used to synchronize consecutive frames) must be available
+            assert!(get_vulkan12_features.timeline_semaphore != 0);
 
             // nVidia cannot build the AS on the host
             //assert!(accel_structure_features.acceleration_structure_host_commands != 0);
@@ -853,6 +920,7 @@ impl Device {
                 physical_device: selected_device.selected_physical_device,
                 ray_tracing_info: raytracing_info,
                 swapchain_exists: AtomicBool::new(false),
+                queue_host_access: Arc::new(std::sync::Mutex::new(())),
             }))
         }
     }

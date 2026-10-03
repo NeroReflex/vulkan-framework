@@ -7,6 +7,12 @@ use crate::queue_family::{ConcreteQueueFamilyDescriptor, QueueFamilySupportedOpe
 
 /// Test helper: create a minimal Instance + Device suitable for headless tests.
 pub fn setup_test_device() -> VulkanResult<(Arc<Instance>, Arc<Device>)> {
+    setup_test_device_with_queue_count(1)
+}
+
+pub fn setup_test_device_with_queue_count(
+    queue_count: usize,
+) -> VulkanResult<(Arc<Instance>, Arc<Device>)> {
     // Create instance without requesting validation layers or surface extensions
     let instance = Instance::new(
         &[],
@@ -15,9 +21,12 @@ pub fn setup_test_device() -> VulkanResult<(Arc<Instance>, Arc<Device>)> {
         &"test".to_string(),
     )?;
 
-    // Request a single compute-capable queue (no present/surface required)
-    let queue_descriptor =
-        ConcreteQueueFamilyDescriptor::new(&[QueueFamilySupportedOperationType::Compute], &[1.0]);
+    // Device creation clamps this request to the family's available queue count.
+    let priorities = vec![1.0; queue_count];
+    let queue_descriptor = ConcreteQueueFamilyDescriptor::new(
+        &[QueueFamilySupportedOperationType::Compute],
+        &priorities,
+    );
 
     let device = Device::new(
         instance.clone(),
