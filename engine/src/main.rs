@@ -103,6 +103,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Update camera position
         {
+            if let Some((dx, dy, forward, strafe)) = artrtic::preview::take_look() {
+                camera.apply_horizontal_rotation(dx);
+                camera.apply_vertical_rotation(dy);
+                camera.apply_movement(camera.orientation(), forward);
+                camera.apply_movement(glm::cross(camera.orientation(), camera.head()), strafe);
+            }
             let move_quantity = move_units_per_second * (coeff / 1000.0);
             let new_keyboard_state = event_pump.keyboard_state();
 
@@ -117,15 +123,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             if bench_wander {
-                // Frame-locked path so before/after compare the same views.
+                // Stay in the atrium: lock pitch, yaw and strafe on XZ, never look at sky.
                 let t = rendered_frames as f32 * (1.0 / 60.0);
                 let step = move_units_per_second * (1.0 / 60.0);
+                camera.set_vertical_angle(-0.03);
                 camera.apply_horizontal_rotation((t * 0.85).sin() * 0.035);
-                camera.apply_vertical_rotation((t * 0.47).cos() * 0.012);
-                camera.apply_movement(camera.orientation(), step * (0.65 + 0.35 * (t * 0.31).sin()));
+                let mut forward = camera.orientation();
+                forward.y = 0.0;
+                let forward_len = glm::length(forward);
+                if forward_len > 1e-4 {
+                    forward = glm::normalize(forward);
+                    camera.apply_movement(forward, step * (0.65 + 0.35 * (t * 0.31).sin()));
+                }
                 let strafe = glm::normalize(glm::cross(
                     glm::Vec3::new(0.0, 1.0, 0.0),
-                    camera.orientation(),
+                    forward,
                 ));
                 camera.apply_movement(strafe, step * 0.45 * (t * 0.23).cos());
                 renderer.change_camera(Arc::new(camera.clone()));

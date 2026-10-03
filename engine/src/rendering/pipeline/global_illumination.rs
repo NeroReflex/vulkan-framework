@@ -20,9 +20,9 @@ use vulkan_framework::{
     descriptor_set_layout::DescriptorSetLayout,
     device::DeviceOwned,
     image::{
-        CommonImageFormat, ConcreteImageDescriptor, Image, Image3DDimensions, ImageFlags,
-        ImageFormat, ImageLayout, ImageMultisampling, ImageSubresourceRange, ImageTiling,
-        ImageUseAs,
+        CommonImageFormat, ConcreteImageDescriptor, Image, Image2DDimensions, Image3DDimensions,
+        ImageAspect, ImageAspects, ImageDimensions, ImageFlags, ImageFormat, ImageLayout,
+        ImageMultisampling, ImageSubresourceLayers, ImageSubresourceRange, ImageTiling, ImageUseAs,
     },
     image_view::ImageView,
     memory_barriers::{
@@ -30,7 +30,7 @@ use vulkan_framework::{
     },
     memory_heap::MemoryType,
     memory_management::{MemoryManagementTagSize, MemoryManagementTags, MemoryManagerTrait},
-    memory_pool::MemoryPoolFeatures,
+    memory_pool::{MemoryMap, MemoryPoolBacked, MemoryPoolFeatures},
     pipeline_layout::{PipelineLayout, PipelineLayoutDependant},
     pipeline_stage::{PipelineStage, PipelineStageRayTracingPipelineKHR, PipelineStages},
     queue_family::QueueFamily,
@@ -47,6 +47,45 @@ use vulkan_framework::{
 
 use crate::rendering::{RenderingResult, rendering_dimensions::RenderingDimensions};
 
+const SURFEL_WORLD_SPV: &[u32] = inline_spirv!(
+    r#"
+#version 460
+// lbvh v42 node surfels
+
+#include "engine/shaders/surfel_reorder/surfel_world.comp"
+"#,
+    glsl,
+    comp,
+    vulkan1_2,
+    entry = "main"
+);
+
+const SKIN_ANIMATE_SPV: &[u32] = inline_spirv!(
+    r#"
+#version 460
+// lbvh v42 node surfels
+
+#include "engine/shaders/skin/animate.comp"
+"#,
+    glsl,
+    comp,
+    vulkan1_2,
+    entry = "main"
+);
+
+const SKIN_DEFORM_SPV: &[u32] = inline_spirv!(
+    r#"
+#version 460
+// lbvh v42 node surfels
+
+#include "engine/shaders/skin/deform.comp"
+"#,
+    glsl,
+    comp,
+    vulkan1_2,
+    entry = "main"
+);
+
 const SURFELS_MARK_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
@@ -62,6 +101,7 @@ const SURFELS_MARK_SPV: &[u32] = inline_spirv!(
 const SURFELS_PREFIX_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
+// lbvh v42 node surfels
 
 #include "engine/shaders/surfel_reorder/surfel_prefix.comp"
 "#,
@@ -83,11 +123,12 @@ const SURFELS_COMMIT_SPV: &[u32] = inline_spirv!(
     entry = "main"
 );
 
-const SURFELS_BVH_SPLIT_SPV: &[u32] = inline_spirv!(
+const SURFELS_INDEX_PLAN_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
+// lbvh v42 node surfels
 
-#include "engine/shaders/surfel_reorder/surfel_bvh_split.comp"
+#include "engine/shaders/surfel_reorder/surfel_index_plan.comp"
 "#,
     glsl,
     comp,
@@ -95,11 +136,38 @@ const SURFELS_BVH_SPLIT_SPV: &[u32] = inline_spirv!(
     entry = "main"
 );
 
-const SURFELS_BVH_COMPACT_SPV: &[u32] = inline_spirv!(
+const SURFELS_KEYS_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
+// lbvh v42 node surfels
 
-#include "engine/shaders/surfel_reorder/surfel_bvh_compact.comp"
+#include "engine/shaders/surfel_reorder/surfel_keys.comp"
+"#,
+    glsl,
+    comp,
+    vulkan1_2,
+    entry = "main"
+);
+
+const SURFELS_KEY_RADIX_SPV: &[u32] = inline_spirv!(
+    r#"
+#version 460
+// lbvh v42 node surfels
+
+#include "engine/shaders/surfel_reorder/surfel_key_radix.comp"
+"#,
+    glsl,
+    comp,
+    vulkan1_2,
+    entry = "main"
+);
+
+const SURFELS_LBVH_SPV: &[u32] = inline_spirv!(
+    r#"
+#version 460
+// lbvh v42 node surfels
+
+#include "engine/shaders/surfel_reorder/surfel_lbvh.comp"
 "#,
     glsl,
     comp,
@@ -110,6 +178,7 @@ const SURFELS_BVH_COMPACT_SPV: &[u32] = inline_spirv!(
 const BVH_AABB_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
+// lbvh v42 node surfels
 
 #include "engine/shaders/surfel_reorder/bvh_aabb.comp"
 "#,
@@ -122,6 +191,7 @@ const BVH_AABB_SPV: &[u32] = inline_spirv!(
 const SURFELS_DISCOVERY_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
+// lbvh v42 node surfels
 
 #include "engine/shaders/surfel_discovery/surfel_discovery.comp"
 "#,
@@ -134,6 +204,7 @@ const SURFELS_DISCOVERY_SPV: &[u32] = inline_spirv!(
 const SURFELS_SPAWN_RAYGEN_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
+// lbvh v42 node surfels
 
 #include "engine/shaders/surfel_spawn/surfel_spawn.rgen"
 "#,
@@ -170,6 +241,7 @@ const SURFELS_SPAWN_CHIT_SPV: &[u32] = inline_spirv!(
 const SURFELS_RT_RAYGEN_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
+// lbvh v42 node surfels
 
 #include "engine/shaders/surfel_rt/surfel_rt.rgen"
 "#,
@@ -206,6 +278,7 @@ const SURFELS_RT_CHIT_SPV: &[u32] = inline_spirv!(
 const RAYGEN_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
+// lbvh v42 node surfels
 
 #include "engine/shaders/global_illumination/global_illumination.rgen"
 "#,
@@ -242,6 +315,7 @@ const CHIT_SPV: &[u32] = inline_spirv!(
 const SURFELS_VPL_SPV: &[u32] = inline_spirv!(
     r#"
 #version 460
+// lbvh v42 node surfels
 
 #include "engine/shaders/surfel_vpl/surfel_vpl.comp"
 "#,
@@ -264,20 +338,36 @@ pub struct GILighting {
     surfel_mark_pipeline: Arc<ComputePipeline>,
     surfel_prefix_pipeline: Arc<ComputePipeline>,
     surfel_commit_pipeline: Arc<ComputePipeline>,
-    surfel_bvh_split_pipeline: Arc<ComputePipeline>,
-    surfel_bvh_compact_pipeline: Arc<ComputePipeline>,
+    surfel_index_plan_pipeline: Arc<ComputePipeline>,
+    surfel_keys_pipeline: Arc<ComputePipeline>,
+    surfel_key_radix_pipeline: Arc<ComputePipeline>,
+    surfel_lbvh_pipeline: Arc<ComputePipeline>,
     bvh_aabb_pipeline: Arc<ComputePipeline>,
     surfel_discovery_pipeline: Arc<ComputePipeline>,
     surfel_spawn_pipeline: Arc<RaytracingPipeline>,
     surfel_rt_pipeline: Arc<RaytracingPipeline>,
     raytracing_pipeline: Arc<RaytracingPipeline>,
     surfel_vpl_pipeline: Arc<ComputePipeline>,
+    surfel_world_pipeline: Arc<ComputePipeline>,
+    skin_animate_pipeline: Arc<ComputePipeline>,
+    skin_deform_pipeline: Arc<ComputePipeline>,
 
     raytracing_surfel_stats_buffer: Arc<AllocatedBuffer>,
     raytracing_surfels: Arc<AllocatedBuffer>,
     raytracing_bvh: Arc<AllocatedBuffer>,
     raytracing_discovered: Arc<AllocatedBuffer>,
     raytracing_build_scratch: Arc<AllocatedBuffer>,
+    node_world: Arc<AllocatedBuffer>,
+    bone_palette: Arc<AllocatedBuffer>,
+    node_matrices: Mutex<Vec<[f32; 16]>>,
+    bone_matrices: Mutex<Vec<[f32; 16]>>,
+    upload_nodes: Mutex<bool>,
+    upload_bones: Mutex<bool>,
+    mark_index_dirty: Mutex<bool>,
+    preview_image: Arc<ImageView>,
+    preview_buffer: Arc<AllocatedBuffer>,
+    preview_armed: Mutex<bool>,
+    preview_copies: Mutex<u32>,
     raytracing_overlapping: Arc<ImageView>,
     raytracing_gibuffer: Arc<ImageView>,
     raytracing_dlbuffer: Arc<ImageView>,
@@ -295,36 +385,58 @@ pub struct GILighting {
     renderarea_height: u32,
 }
 
-const BVH_AABB_GROUP_SIZE_X: u32 = 256;
 const SURFELS_DISCOVERY_GROUP_SIZE_X: u32 = 32;
 const SURFELS_DISCOVERY_GROUP_SIZE_Y: u32 = 16;
 const SURFELS_VPL_GROUP_SIZE_X: u32 = 32;
 const SURFELS_VPL_GROUP_SIZE_Y: u32 = 16;
 const SURFELS_BUILD_GROUP_SIZE_X: u32 = 256;
+// Keep in sync with SURFEL_*_QUERY_STRIDE in config.glsl
+fn identity_matrix() -> [f32; 16] {
+    [
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+    ]
+}
+
+fn identity_matrices(count: usize) -> Vec<[f32; 16]> {
+    vec![identity_matrix(); count]
+}
+
+const SURFEL_DISCOVERY_QUERY_STRIDE: u32 = 1;
+const SURFEL_VPL_QUERY_STRIDE: u32 = 2;
 
 const MAX_SURFELS: u32 = u32::pow(2, 16);
 
 // Keep in sync with glsl side (no morton field).
-const SURFEL_SIZE: u32 = 19 * 4;
+const SURFEL_SIZE: u32 = 23 * 4;
+const NODE_CAPACITY: usize = 4096;
+const BONE_CAPACITY: usize = 256;
+const PREVIEW_WIDTH: u32 = 640;
+const PREVIEW_HEIGHT: u32 = 360;
 
 const BUILD_HALF: u32 = MAX_SURFELS / 2;
 const BUILD_BLOCKS: u32 = BUILD_HALF / SURFELS_BUILD_GROUP_SIZE_X;
-const BUILD_OFF_BLOCK_SUMS: u32 = 8;
-const BUILD_OFF_BLOCK_EXCL: u32 = BUILD_OFF_BLOCK_SUMS + BUILD_BLOCKS;
-const BUILD_OFF_HOLES: u32 = BUILD_OFF_BLOCK_EXCL + BUILD_BLOCKS;
-const BUILD_OFF_IDS_A: u32 = BUILD_OFF_HOLES + BUILD_HALF;
-const BUILD_OFF_IDS_B: u32 = BUILD_OFF_IDS_A + BUILD_HALF;
-const BUILD_OFF_RANGES: u32 = BUILD_OFF_IDS_B + BUILD_HALF;
-const BUILD_RANGE_STRIDE: u32 = 4;
-const BUILD_RANGE_CAP: u32 = BUILD_HALF / 2;
-const BUILD_OFF_RANGES_NEXT: u32 = BUILD_OFF_RANGES + BUILD_RANGE_CAP * BUILD_RANGE_STRIDE;
-const BUILD_OFF_PENDING: u32 = BUILD_OFF_RANGES_NEXT + BUILD_RANGE_CAP * BUILD_RANGE_STRIDE;
-const BUILD_PENDING_STRIDE: u32 = 8;
-const BUILD_WORDS: u32 = BUILD_OFF_PENDING + BUILD_RANGE_CAP * BUILD_PENDING_STRIDE;
-const BUILD_SPLIT_ROUNDS: u32 = 16;
+const RADIX_PASSES: u32 = 4;
+// Must match engine/shaders/surfel_reorder/build_layout.glsl
+const BUILD_WORDS: u32 = {
+    const RADIX_BINS: u32 = 256;
+    const KEY_STRIDE: u32 = 2;
+    const OFF_BLOCK_SUMS: u32 = 8;
+    const OFF_BLOCK_EXCL: u32 = OFF_BLOCK_SUMS + BUILD_BLOCKS;
+    const OFF_HOLES: u32 = OFF_BLOCK_EXCL + BUILD_BLOCKS;
+    const OFF_IDS_A: u32 = OFF_HOLES + BUILD_HALF;
+    const OFF_KEYS_A: u32 = OFF_IDS_A + BUILD_HALF;
+    const OFF_KEYS_B: u32 = OFF_KEYS_A + BUILD_HALF * KEY_STRIDE;
+    const OFF_LEAF_PARENT: u32 = OFF_KEYS_B + BUILD_HALF * KEY_STRIDE;
+    const OFF_RADIX_HIST: u32 = OFF_LEAF_PARENT + BUILD_HALF;
+    const OFF_RADIX_EXCL: u32 = OFF_RADIX_HIST + BUILD_BLOCKS * RADIX_BINS;
+    const OFF_DIGIT_BASE: u32 = OFF_RADIX_EXCL + BUILD_BLOCKS * RADIX_BINS;
+    const OFF_BLOCK_AABB: u32 = OFF_DIGIT_BASE + RADIX_BINS;
+    const OFF_AABB: u32 = OFF_BLOCK_AABB + BUILD_BLOCKS * 6;
+    OFF_AABB + 6
+};
 
 // Keep in sync with glsl side
-const BVH_NODE_SIZE: u32 = 10 * 4;
+const BVH_NODE_SIZE: u32 = 16 * 4;
 
 // The maximum number of surfels that can be used as virtual point lights
 // in the global illumination pass: ideally this should be equal to MAX_SURFELS
@@ -442,9 +554,31 @@ impl GILighting {
                 // Binding 7: the occupancy tracker treats the two images at
                 // binding 5 as consuming slots 5 and 6.
                 BindingDescriptor::new(
-                    [ShaderStageAccessIn::Compute].as_slice().into(),
+                    [
+                        ShaderStageAccessIn::Compute,
+                        ShaderStageAccessIn::RayTracing(ShaderStageAccessInRayTracingKHR::RayGen),
+                    ]
+                    .as_slice()
+                    .into(),
                     BindingType::Native(NativeBindingType::StorageBuffer),
                     7,
+                    1,
+                ),
+                BindingDescriptor::new(
+                    [
+                        ShaderStageAccessIn::Compute,
+                        ShaderStageAccessIn::RayTracing(ShaderStageAccessInRayTracingKHR::RayGen),
+                    ]
+                    .as_slice()
+                    .into(),
+                    BindingType::Native(NativeBindingType::StorageBuffer),
+                    8,
+                    1,
+                ),
+                BindingDescriptor::new(
+                    [ShaderStageAccessIn::Compute].as_slice().into(),
+                    BindingType::Native(NativeBindingType::StorageBuffer),
+                    9,
                     1,
                 ),
             ]
@@ -467,6 +601,93 @@ impl GILighting {
                 )?,
                 (surfel_mark_compute_shader, None),
                 Some("surfel_mark_pipeline"),
+            )?
+        };
+
+        let surfel_world_pipeline = {
+            let shader = ComputeShader::new(device.clone(), SURFEL_WORLD_SPV)?;
+            ComputePipeline::new(
+                None,
+                PipelineLayout::new(
+                    device.clone(),
+                    [output_descriptor_set_layout.clone()].as_slice(),
+                    [].as_slice(),
+                    Some("surfel_world_pipeline_layout"),
+                )?,
+                (shader, None),
+                Some("surfel_world_pipeline"),
+            )?
+        };
+
+        let skin_animate_pipeline = {
+            let shader = ComputeShader::new(device.clone(), SKIN_ANIMATE_SPV)?;
+            let layout = DescriptorSetLayout::new(
+                device.clone(),
+                [
+                    BindingDescriptor::new(
+                        [ShaderStageAccessIn::Compute].as_slice().into(),
+                        BindingType::Native(NativeBindingType::StorageBuffer),
+                        0,
+                        1,
+                    ),
+                    BindingDescriptor::new(
+                        [ShaderStageAccessIn::Compute].as_slice().into(),
+                        BindingType::Native(NativeBindingType::StorageBuffer),
+                        1,
+                        1,
+                    ),
+                ]
+                .as_slice(),
+            )?;
+            ComputePipeline::new(
+                None,
+                PipelineLayout::new(
+                    device.clone(),
+                    [layout].as_slice(),
+                    [].as_slice(),
+                    Some("skin_animate_pipeline_layout"),
+                )?,
+                (shader, None),
+                Some("skin_animate_pipeline"),
+            )?
+        };
+
+        let skin_deform_pipeline = {
+            let shader = ComputeShader::new(device.clone(), SKIN_DEFORM_SPV)?;
+            let layout = DescriptorSetLayout::new(
+                device.clone(),
+                [
+                    BindingDescriptor::new(
+                        [ShaderStageAccessIn::Compute].as_slice().into(),
+                        BindingType::Native(NativeBindingType::StorageBuffer),
+                        0,
+                        1,
+                    ),
+                    BindingDescriptor::new(
+                        [ShaderStageAccessIn::Compute].as_slice().into(),
+                        BindingType::Native(NativeBindingType::StorageBuffer),
+                        1,
+                        1,
+                    ),
+                    BindingDescriptor::new(
+                        [ShaderStageAccessIn::Compute].as_slice().into(),
+                        BindingType::Native(NativeBindingType::StorageBuffer),
+                        2,
+                        1,
+                    ),
+                ]
+                .as_slice(),
+            )?;
+            ComputePipeline::new(
+                None,
+                PipelineLayout::new(
+                    device.clone(),
+                    [layout].as_slice(),
+                    [].as_slice(),
+                    Some("skin_deform_pipeline_layout"),
+                )?,
+                (shader, None),
+                Some("skin_deform_pipeline"),
             )?
         };
 
@@ -508,35 +729,80 @@ impl GILighting {
             )?
         };
 
-        let surfel_bvh_split_pipeline = {
-            let surfel_bvh_split_compute_shader =
-                ComputeShader::new(device.clone(), SURFELS_BVH_SPLIT_SPV)?;
+        let surfel_index_plan_pipeline = {
+            let shader = ComputeShader::new(device.clone(), SURFELS_INDEX_PLAN_SPV)?;
             ComputePipeline::new(
                 None,
                 PipelineLayout::new(
                     device.clone(),
                     [output_descriptor_set_layout.clone()].as_slice(),
                     [].as_slice(),
-                    Some("surfel_bvh_split_pipeline_layout"),
+                    Some("surfel_index_plan_pipeline_layout"),
                 )?,
-                (surfel_bvh_split_compute_shader, None),
-                Some("surfel_bvh_split_pipeline"),
+                (shader, None),
+                Some("surfel_index_plan_pipeline"),
             )?
         };
 
-        let surfel_bvh_compact_pipeline = {
-            let surfel_bvh_compact_compute_shader =
-                ComputeShader::new(device.clone(), SURFELS_BVH_COMPACT_SPV)?;
+        let radix_push: vulkan_framework::shader_stage_access::ShaderStagesAccess =
+            [ShaderStageAccessIn::Compute].as_slice().into();
+        let surfel_keys_pipeline = {
+            let surfel_keys_compute_shader = ComputeShader::new(device.clone(), SURFELS_KEYS_SPV)?;
+            ComputePipeline::new(
+                None,
+                PipelineLayout::new(
+                    device.clone(),
+                    [
+                        status_descriptor_set_layout.clone(),
+                        output_descriptor_set_layout.clone(),
+                    ]
+                    .as_slice(),
+                    [vulkan_framework::push_constant_range::PushConstanRange::new(
+                        0,
+                        4,
+                        radix_push.clone(),
+                    )]
+                    .as_slice(),
+                    Some("surfel_keys_pipeline_layout"),
+                )?,
+                (surfel_keys_compute_shader, None),
+                Some("surfel_keys_pipeline"),
+            )?
+        };
+
+        let surfel_key_radix_pipeline = {
+            let surfel_key_radix_compute_shader =
+                ComputeShader::new(device.clone(), SURFELS_KEY_RADIX_SPV)?;
+            ComputePipeline::new(
+                None,
+                PipelineLayout::new(
+                    device.clone(),
+                    [output_descriptor_set_layout.clone()].as_slice(),
+                    [vulkan_framework::push_constant_range::PushConstanRange::new(
+                        0,
+                        8,
+                        radix_push,
+                    )]
+                    .as_slice(),
+                    Some("surfel_key_radix_pipeline_layout"),
+                )?,
+                (surfel_key_radix_compute_shader, None),
+                Some("surfel_key_radix_pipeline"),
+            )?
+        };
+
+        let surfel_lbvh_pipeline = {
+            let surfel_lbvh_compute_shader = ComputeShader::new(device.clone(), SURFELS_LBVH_SPV)?;
             ComputePipeline::new(
                 None,
                 PipelineLayout::new(
                     device.clone(),
                     [output_descriptor_set_layout.clone()].as_slice(),
                     [].as_slice(),
-                    Some("surfel_bvh_compact_pipeline_layout"),
+                    Some("surfel_lbvh_pipeline_layout"),
                 )?,
-                (surfel_bvh_compact_compute_shader, None),
-                Some("surfel_bvh_compact_pipeline"),
+                (surfel_lbvh_compute_shader, None),
+                Some("surfel_lbvh_pipeline"),
             )?
         };
 
@@ -674,6 +940,7 @@ impl GILighting {
                 ConcreteImageDescriptor::new(
                     render_area.into(),
                     [
+                        ImageUseAs::TransferSrc,
                         ImageUseAs::TransferDst,
                         ImageUseAs::Storage,
                         ImageUseAs::Sampled,
@@ -931,7 +1198,7 @@ impl GILighting {
         let output_descriptor_pool = DescriptorPool::new(
             device.clone(),
             DescriptorPoolConcreteDescriptor::new(
-                DescriptorPoolSizesConcreteDescriptor::new(0, 0, 0, 3, 0, 0, 5, 0, 0, None),
+                DescriptorPoolSizesConcreteDescriptor::new(0, 0, 0, 3, 0, 0, 7, 0, 0, None),
                 1,
             ),
             Some("gi_lighting_descriptor_pool"),
@@ -941,6 +1208,98 @@ impl GILighting {
             output_descriptor_pool.clone(),
             output_descriptor_set_layout.clone(),
         )?;
+
+        let (node_world, bone_palette, preview_image, preview_buffer) = {
+            let mut mem_manager = memory_manager.lock().unwrap();
+            let matrix_bytes = (NODE_CAPACITY as u64) * 64;
+            let bone_bytes = (BONE_CAPACITY as u64) * 64;
+            let matrix_usage = [BufferUseAs::StorageBuffer, BufferUseAs::TransferDst]
+                .as_slice()
+                .into();
+            let bone_usage = [BufferUseAs::StorageBuffer, BufferUseAs::TransferDst]
+                .as_slice()
+                .into();
+            let allocated = mem_manager.allocate_resources(
+                &MemoryType::device_local(),
+                &MemoryPoolFeatures::new(false),
+                vec![
+                    Buffer::new(
+                        device.clone(),
+                        ConcreteBufferDescriptor::new(matrix_usage, matrix_bytes),
+                        None,
+                        Some("node_world"),
+                    )?
+                    .into(),
+                    Buffer::new(
+                        device.clone(),
+                        ConcreteBufferDescriptor::new(bone_usage, bone_bytes),
+                        None,
+                        Some("bone_palette"),
+                    )?
+                    .into(),
+                    Image::new(
+                        device.clone(),
+                        ConcreteImageDescriptor::new(
+                            Image2DDimensions::new(PREVIEW_WIDTH, PREVIEW_HEIGHT).into(),
+                            [
+                                ImageUseAs::TransferSrc,
+                                ImageUseAs::TransferDst,
+                                ImageUseAs::Sampled,
+                            ]
+                                .as_slice()
+                                .into(),
+                            ImageMultisampling::SamplesPerPixel1,
+                            1,
+                            1,
+                            ImageFormat::from(CommonImageFormat::r32g32b32a32_sfloat),
+                            ImageFlags::empty(),
+                            ImageTiling::Optimal,
+                        ),
+                        None,
+                        Some("preview_image"),
+                    )?
+                    .into(),
+                ],
+                MemoryManagementTags::default()
+                    .with_name("node_and_preview".to_string())
+                    .with_size(MemoryManagementTagSize::MediumSmall),
+            )?;
+            let preview_readback = mem_manager.allocate_resources(
+                &MemoryType::device_local_and_host_visible(),
+                &MemoryPoolFeatures::default(),
+                vec![Buffer::new(
+                    device.clone(),
+                    ConcreteBufferDescriptor::new(
+                        [BufferUseAs::TransferDst].as_slice().into(),
+                        (PREVIEW_WIDTH as u64) * (PREVIEW_HEIGHT as u64) * 16,
+                    ),
+                    None,
+                    Some("preview_readback"),
+                )?
+                .into()],
+                MemoryManagementTags::default()
+                    .with_name("preview_readback".to_string())
+                    .with_size(MemoryManagementTagSize::MediumSmall),
+            )?;
+            let preview_image = ImageView::new(
+                allocated[2].image(),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some("preview_image_view"),
+            )?;
+            (
+                allocated[0].buffer(),
+                allocated[1].buffer(),
+                preview_image,
+                preview_readback[0].buffer(),
+            )
+        };
 
         output_descriptor_set.bind_resources(|binder| {
             binder
@@ -995,6 +1354,20 @@ impl GILighting {
                         None,
                     )]
                     .as_slice(),
+                )
+                .unwrap();
+
+            binder
+                .bind_storage_buffers(
+                    8,
+                    [(node_world.clone() as Arc<dyn BufferTrait>, None, None)].as_slice(),
+                )
+                .unwrap();
+
+            binder
+                .bind_storage_buffers(
+                    9,
+                    [(bone_palette.clone() as Arc<dyn BufferTrait>, None, None)].as_slice(),
                 )
                 .unwrap();
 
@@ -1099,20 +1472,36 @@ impl GILighting {
             surfel_mark_pipeline,
             surfel_prefix_pipeline,
             surfel_commit_pipeline,
-            surfel_bvh_split_pipeline,
-            surfel_bvh_compact_pipeline,
+            surfel_index_plan_pipeline,
+            surfel_keys_pipeline,
+            surfel_key_radix_pipeline,
+            surfel_lbvh_pipeline,
             bvh_aabb_pipeline,
             surfel_discovery_pipeline,
             surfel_spawn_pipeline,
             surfel_rt_pipeline,
             raytracing_pipeline,
             surfel_vpl_pipeline,
+            surfel_world_pipeline,
+            skin_animate_pipeline,
+            skin_deform_pipeline,
 
             raytracing_surfel_stats_buffer,
             raytracing_surfels,
             raytracing_bvh,
             raytracing_discovered,
             raytracing_build_scratch,
+            node_world,
+            bone_palette,
+            node_matrices: Mutex::new(identity_matrices(NODE_CAPACITY)),
+            bone_matrices: Mutex::new(identity_matrices(BONE_CAPACITY)),
+            upload_nodes: Mutex::new(true),
+            upload_bones: Mutex::new(true),
+            mark_index_dirty: Mutex::new(false),
+            preview_image,
+            preview_buffer,
+            preview_armed: Mutex::new(false),
+            preview_copies: Mutex::new(0),
             raytracing_overlapping,
             raytracing_gibuffer,
             raytracing_dlbuffer,
@@ -1131,6 +1520,57 @@ impl GILighting {
             renderarea_width,
             renderarea_height,
         })
+    }
+
+    fn barrier_bvh_publish(&self, recorder: &mut CommandBufferRecorder) {
+        let bvh_range = BufferSubresourceRange::new(
+            self.raytracing_bvh.clone(),
+            0u64,
+            self.raytracing_bvh.size(),
+        );
+        let scratch_range = BufferSubresourceRange::new(
+            self.raytracing_build_scratch.clone(),
+            0u64,
+            self.raytracing_build_scratch.size(),
+        );
+        let consumers: PipelineStages = [
+            PipelineStage::ComputeShader,
+            PipelineStage::RayTracingPipelineKHR(
+                PipelineStageRayTracingPipelineKHR::RayTracingShader,
+            ),
+        ]
+        .as_slice()
+        .into();
+        let read_access = [
+            MemoryAccessAs::ShaderRead,
+            MemoryAccessAs::ShaderWrite,
+        ]
+        .as_slice()
+        .into();
+        recorder.pipeline_barriers([
+            BufferMemoryBarrier::new(
+                [PipelineStage::ComputeShader].as_slice().into(),
+                [MemoryAccessAs::ShaderWrite].as_slice().into(),
+                consumers.clone(),
+                read_access,
+                bvh_range,
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into(),
+            BufferMemoryBarrier::new(
+                [PipelineStage::ComputeShader].as_slice().into(),
+                [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
+                    .as_slice()
+                    .into(),
+                consumers,
+                read_access,
+                scratch_range,
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into(),
+        ]);
     }
 
     fn barrier_compute(recorder: &mut CommandBufferRecorder) {
@@ -1174,6 +1614,319 @@ impl GILighting {
             1
         };
         recorder.dispatch(groups, 1, 1);
+    }
+
+    fn dispatch_index_plan(&self, recorder: &mut CommandBufferRecorder) {
+        recorder.bind_compute_pipeline(self.surfel_index_plan_pipeline.clone());
+        recorder.bind_descriptor_sets_for_compute_pipeline(
+            self.surfel_index_plan_pipeline.get_parent_pipeline_layout(),
+            0,
+            [self.output_descriptor_set.clone()].as_slice(),
+        );
+        recorder.dispatch(1, 1, 1);
+    }
+
+    fn dispatch_keys(
+        &self,
+        recorder: &mut CommandBufferRecorder,
+        status_descriptor_set: Arc<DescriptorSet>,
+    ) {
+        let layout = self.surfel_keys_pipeline.get_parent_pipeline_layout();
+        recorder.bind_compute_pipeline(self.surfel_keys_pipeline.clone());
+        recorder.bind_descriptor_sets_for_compute_pipeline(
+            layout.clone(),
+            0,
+            [
+                status_descriptor_set,
+                self.output_descriptor_set.clone(),
+            ]
+            .as_slice(),
+        );
+        for phase in 0u32..2 {
+            let params = [phase];
+            let bytes = unsafe {
+                std::slice::from_raw_parts(
+                    params.as_ptr() as *const u8,
+                    std::mem::size_of_val(&params),
+                )
+            };
+            recorder.push_constant(
+                layout.clone(),
+                [ShaderStageAccessIn::Compute].as_slice().into(),
+                0,
+                bytes,
+            );
+            let groups = if phase == 0 {
+                (3 * 8192 + 255) / 256
+            } else {
+                BUILD_BLOCKS
+            };
+            recorder.dispatch(groups, 1, 1);
+            Self::barrier_compute(recorder);
+        }
+    }
+
+    fn dispatch_radix(&self, recorder: &mut CommandBufferRecorder, pass: u32) {
+        let layout = self
+            .surfel_key_radix_pipeline
+            .get_parent_pipeline_layout();
+        recorder.bind_compute_pipeline(self.surfel_key_radix_pipeline.clone());
+        recorder.bind_descriptor_sets_for_compute_pipeline(
+            layout.clone(),
+            0,
+            [self.output_descriptor_set.clone()].as_slice(),
+        );
+        for phase in 0u32..3 {
+            let params = [pass, phase];
+            let bytes = unsafe {
+                std::slice::from_raw_parts(
+                    params.as_ptr() as *const u8,
+                    std::mem::size_of_val(&params),
+                )
+            };
+            recorder.push_constant(
+                layout.clone(),
+                [ShaderStageAccessIn::Compute].as_slice().into(),
+                0,
+                bytes,
+            );
+            let groups = if phase == 1 { 1 } else { BUILD_BLOCKS };
+            recorder.dispatch(groups, 1, 1);
+            Self::barrier_compute(recorder);
+        }
+    }
+
+    fn upload_mat4s(
+        recorder: &mut CommandBufferRecorder,
+        buffer: Arc<AllocatedBuffer>,
+        matrices: &[[f32; 16]],
+    ) {
+        const CHUNK: usize = 1024;
+        for (index, chunk) in matrices.chunks(CHUNK).enumerate() {
+            recorder.update_buffer(
+                buffer.clone() as Arc<dyn BufferTrait>,
+                (index * CHUNK * 64) as u64,
+                chunk,
+            );
+        }
+    }
+
+    fn record_transform_upload(&self, recorder: &mut CommandBufferRecorder) {
+        let upload_nodes = {
+            let mut flag = self.upload_nodes.lock().unwrap();
+            let upload = *flag;
+            *flag = false;
+            upload
+        };
+        let upload_bones = {
+            let mut flag = self.upload_bones.lock().unwrap();
+            let upload = *flag;
+            *flag = false;
+            upload
+        };
+        if upload_nodes {
+            let matrices = self.node_matrices.lock().unwrap().clone();
+            Self::upload_mat4s(recorder, self.node_world.clone(), &matrices);
+        }
+        if upload_bones {
+            let matrices = self.bone_matrices.lock().unwrap().clone();
+            Self::upload_mat4s(recorder, self.bone_palette.clone(), &matrices);
+        }
+        if upload_nodes || upload_bones {
+            let mut barriers = Vec::new();
+            if upload_nodes {
+                barriers.push(
+                    BufferMemoryBarrier::new(
+                        [PipelineStage::Transfer].as_slice().into(),
+                        [MemoryAccessAs::TransferWrite].as_slice().into(),
+                        [PipelineStage::ComputeShader].as_slice().into(),
+                        [MemoryAccessAs::ShaderRead].as_slice().into(),
+                        BufferSubresourceRange::new(
+                            self.node_world.clone(),
+                            0,
+                            self.node_world.size(),
+                        ),
+                        self.queue_family.clone(),
+                        self.queue_family.clone(),
+                    )
+                    .into(),
+                );
+            }
+            if upload_bones {
+                barriers.push(
+                    BufferMemoryBarrier::new(
+                        [PipelineStage::Transfer].as_slice().into(),
+                        [MemoryAccessAs::TransferWrite].as_slice().into(),
+                        [PipelineStage::ComputeShader].as_slice().into(),
+                        [MemoryAccessAs::ShaderRead].as_slice().into(),
+                        BufferSubresourceRange::new(
+                            self.bone_palette.clone(),
+                            0,
+                            self.bone_palette.size(),
+                        ),
+                        self.queue_family.clone(),
+                        self.queue_family.clone(),
+                    )
+                    .into(),
+                );
+            }
+            recorder.pipeline_barriers(barriers);
+        }
+        if *self.mark_index_dirty.lock().unwrap() {
+            let dirty = [1u32];
+            recorder.update_buffer(
+                self.raytracing_surfel_stats_buffer.clone() as Arc<dyn BufferTrait>,
+                28,
+                &dirty,
+            );
+            *self.mark_index_dirty.lock().unwrap() = false;
+        }
+    }
+
+    fn dispatch_world(&self, recorder: &mut CommandBufferRecorder) {
+        let _ = (&self.skin_animate_pipeline, &self.skin_deform_pipeline);
+        recorder.bind_compute_pipeline(self.surfel_world_pipeline.clone());
+        recorder.bind_descriptor_sets_for_compute_pipeline(
+            self.surfel_world_pipeline.get_parent_pipeline_layout(),
+            0,
+            [self.output_descriptor_set.clone()].as_slice(),
+        );
+        recorder.dispatch((MAX_SURFELS + 255) / 256, 1, 1);
+    }
+
+    pub fn set_node_matrices(&self, matrices: &[[f32; 16]]) {
+        let mut stored = self.node_matrices.lock().unwrap();
+        for (slot, matrix) in matrices.iter().take(NODE_CAPACITY).enumerate() {
+            stored[slot] = *matrix;
+        }
+        *self.upload_nodes.lock().unwrap() = true;
+    }
+
+    pub fn set_bone_palette(&self, matrices: &[[f32; 16]]) {
+        let mut stored = self.bone_matrices.lock().unwrap();
+        for (slot, matrix) in matrices.iter().take(BONE_CAPACITY).enumerate() {
+            stored[slot] = *matrix;
+        }
+        *self.upload_bones.lock().unwrap() = true;
+        *self.mark_index_dirty.lock().unwrap() = true;
+    }
+
+    pub fn mark_surfel_index_dirty(&self) {
+        *self.mark_index_dirty.lock().unwrap() = true;
+    }
+
+    pub fn arm_preview(&self) {
+        *self.preview_armed.lock().unwrap() = true;
+    }
+
+    pub fn preview_copies(&self) -> u32 {
+        *self.preview_copies.lock().unwrap()
+    }
+
+    pub fn read_preview_rgba(&self) -> Option<Vec<u8>> {
+        let map = MemoryMap::new(self.preview_buffer.get_backing_memory_pool()).ok()?;
+        let range = map
+            .range::<u8>(self.preview_buffer.clone() as Arc<dyn MemoryPoolBacked>)
+            .ok()?;
+        Some(range.as_slice().to_vec())
+    }
+
+    fn record_preview(&self, recorder: &mut CommandBufferRecorder) {
+        let armed = {
+            let mut flag = self.preview_armed.lock().unwrap();
+            let armed = *flag;
+            *flag = false;
+            armed
+        };
+        if !armed {
+            return;
+        }
+        let src = self.raytracing_gibuffer.image();
+        let dst = self.preview_image.image();
+        let src_range = ImageSubresourceRange::from(src.clone() as Arc<dyn vulkan_framework::image::ImageTrait>);
+        let dst_range = ImageSubresourceRange::from(dst.clone() as Arc<dyn vulkan_framework::image::ImageTrait>);
+        recorder.pipeline_barriers([
+            ImageMemoryBarrier::new(
+                [
+                    PipelineStage::ComputeShader,
+                    PipelineStage::RayTracingPipelineKHR(
+                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                    ),
+                ]
+                .as_slice()
+                .into(),
+                [MemoryAccessAs::ShaderWrite, MemoryAccessAs::ShaderRead]
+                    .as_slice()
+                    .into(),
+                [PipelineStage::Transfer].as_slice().into(),
+                [MemoryAccessAs::TransferRead].as_slice().into(),
+                src_range,
+                ImageLayout::General,
+                ImageLayout::General,
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into(),
+            ImageMemoryBarrier::new(
+                [PipelineStage::TopOfPipe].as_slice().into(),
+                [].as_slice().into(),
+                [PipelineStage::Transfer].as_slice().into(),
+                [MemoryAccessAs::TransferWrite].as_slice().into(),
+                dst_range.clone(),
+                ImageLayout::Undefined,
+                ImageLayout::TransferDstOptimal,
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into(),
+        ]);
+        recorder.blit_image(
+            src.clone(),
+            ImageLayout::General,
+            ImageDimensions::from(Image2DDimensions::new(
+                self.renderarea_width,
+                self.renderarea_height,
+            )),
+            dst.clone(),
+            ImageLayout::TransferDstOptimal,
+            ImageDimensions::from(Image2DDimensions::new(PREVIEW_WIDTH, PREVIEW_HEIGHT)),
+        );
+        recorder.pipeline_barriers([ImageMemoryBarrier::new(
+            [PipelineStage::Transfer].as_slice().into(),
+            [MemoryAccessAs::TransferWrite].as_slice().into(),
+            [PipelineStage::Transfer].as_slice().into(),
+            [MemoryAccessAs::TransferRead].as_slice().into(),
+            dst_range,
+            ImageLayout::TransferDstOptimal,
+            ImageLayout::TransferSrcOptimal,
+            self.queue_family.clone(),
+            self.queue_family.clone(),
+        )
+        .into()]);
+        recorder.copy_image_to_buffer(
+            dst,
+            ImageLayout::TransferSrcOptimal,
+            ImageSubresourceLayers::new(
+                ImageAspects::from([ImageAspect::Color].as_ref()),
+                0,
+                0,
+                1,
+            ),
+            self.preview_buffer.clone() as Arc<dyn BufferTrait>,
+            0,
+            ImageDimensions::from(Image2DDimensions::new(PREVIEW_WIDTH, PREVIEW_HEIGHT)),
+        );
+        recorder.pipeline_barriers([BufferMemoryBarrier::new(
+            [PipelineStage::Transfer].as_slice().into(),
+            [MemoryAccessAs::TransferWrite].as_slice().into(),
+            [PipelineStage::Host].as_slice().into(),
+            [MemoryAccessAs::HostRead].as_slice().into(),
+            BufferSubresourceRange::new(self.preview_buffer.clone(), 0, self.preview_buffer.size()),
+            self.queue_family.clone(),
+            self.queue_family.clone(),
+        )
+        .into()]);
+        *self.preview_copies.lock().unwrap() += 1;
     }
 
     pub fn record_init_commands(&self, recorder: &mut CommandBufferRecorder) {
@@ -1262,8 +2015,9 @@ impl GILighting {
 
         assert!(MAX_SURFELS <= i32::MAX as u32);
 
-        let clear_val = [MAX_SURFELS as i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32];
+        let clear_val = [MAX_SURFELS as i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 1i32];
         recorder.update_buffer(surfel_stats_srr.buffer(), 0, &clear_val);
+        self.record_transform_upload(recorder);
 
         // The surfels, the surfel BVH and the discovered surfels buffers are read
         // by shaders that loop over their content. Leaving those buffers with
@@ -1569,9 +2323,12 @@ impl GILighting {
         )
         .into()]);
 
-        // Mark deaths in place, commit last frame's upper-half spawns into
-        // holes, then rebuild a median-split tree over stable ids. This avoids
-        // permuting the whole Surfel array every frame.
+        // World centers, then mark. Commit copies newborns, then world centers
+        // again so the hash inserts the positions mark and queries will see.
+        self.record_transform_upload(recorder);
+        self.dispatch_world(recorder);
+        Self::barrier_compute(recorder);
+
         {
             recorder.bind_compute_pipeline(self.surfel_mark_pipeline.clone());
             recorder.bind_descriptor_sets_for_compute_pipeline(
@@ -1605,45 +2362,19 @@ impl GILighting {
         }
 
         Self::barrier_compute(recorder);
+
+        self.dispatch_world(recorder);
+        Self::barrier_compute(recorder);
+
+        self.dispatch_index_plan(recorder);
+        Self::barrier_compute(recorder);
         self.dispatch_prefix(recorder, 0, 1);
         Self::barrier_compute(recorder);
         self.dispatch_prefix(recorder, 1, 1);
         Self::barrier_compute(recorder);
         self.dispatch_prefix(recorder, 2, 1);
         Self::barrier_compute(recorder);
-        self.dispatch_prefix(recorder, 3, 1);
-        Self::barrier_compute(recorder);
-
-        for _ in 0..BUILD_SPLIT_ROUNDS {
-            recorder.bind_compute_pipeline(self.surfel_bvh_split_pipeline.clone());
-            recorder.bind_descriptor_sets_for_compute_pipeline(
-                self.surfel_bvh_split_pipeline.get_parent_pipeline_layout(),
-                0,
-                [self.output_descriptor_set.clone()].as_slice(),
-            );
-            recorder.dispatch(BUILD_RANGE_CAP, 1, 1);
-            Self::barrier_compute(recorder);
-
-            recorder.bind_compute_pipeline(self.surfel_bvh_compact_pipeline.clone());
-            recorder.bind_descriptor_sets_for_compute_pipeline(
-                self.surfel_bvh_compact_pipeline.get_parent_pipeline_layout(),
-                0,
-                [self.output_descriptor_set.clone()].as_slice(),
-            );
-            recorder.dispatch(1, 1, 1);
-            Self::barrier_compute(recorder);
-        }
-
-        for _ in 0..BUILD_SPLIT_ROUNDS {
-            recorder.bind_compute_pipeline(self.bvh_aabb_pipeline.clone());
-            recorder.bind_descriptor_sets_for_compute_pipeline(
-                self.bvh_aabb_pipeline.get_parent_pipeline_layout(),
-                0,
-                [self.output_descriptor_set.clone()].as_slice(),
-            );
-            recorder.dispatch((MAX_SURFELS >> 1) / BVH_AABB_GROUP_SIZE_X, 1, 1);
-            Self::barrier_compute(recorder);
-        }
+        self.dispatch_keys(recorder, status_descriptor_set.clone());
 
         recorder.pipeline_barriers([MemoryBarrier::new(
             [PipelineStage::ComputeShader].as_slice().into(),
@@ -1656,6 +2387,8 @@ impl GILighting {
                 .into(),
         )
         .into()]);
+
+        self.barrier_bvh_publish(recorder);
 
         // this step will discover surfels on screen
         {
@@ -1672,9 +2405,11 @@ impl GILighting {
             );
 
             // discover surfels being used in this frame
+            let qw = self.renderarea_width / SURFEL_DISCOVERY_QUERY_STRIDE;
+            let qh = self.renderarea_height / SURFEL_DISCOVERY_QUERY_STRIDE;
             recorder.dispatch(
-                (self.renderarea_width / SURFELS_DISCOVERY_GROUP_SIZE_X) + 1,
-                (self.renderarea_height / SURFELS_DISCOVERY_GROUP_SIZE_Y) + 1,
+                (qw / SURFELS_DISCOVERY_GROUP_SIZE_X) + 1,
+                (qh / SURFELS_DISCOVERY_GROUP_SIZE_Y) + 1,
                 1,
             );
         }
@@ -1830,12 +2565,16 @@ impl GILighting {
             );
 
             // discover surfels being used in this frame
+            let qw = self.renderarea_width / SURFEL_VPL_QUERY_STRIDE;
+            let qh = self.renderarea_height / SURFEL_VPL_QUERY_STRIDE;
             recorder.dispatch(
-                (self.renderarea_width / SURFELS_VPL_GROUP_SIZE_X) + 1,
-                (self.renderarea_height / SURFELS_VPL_GROUP_SIZE_Y) + 1,
+                (qw / SURFELS_VPL_GROUP_SIZE_X) + 1,
+                (qh / SURFELS_VPL_GROUP_SIZE_Y) + 1,
                 1,
             );
         }
+
+        self.record_preview(recorder);
 
         recorder.pipeline_barriers([
             ImageMemoryBarrier::new(
