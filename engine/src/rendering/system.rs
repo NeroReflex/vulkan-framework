@@ -143,6 +143,8 @@ pub struct System {
 
     frames_in_flight: smallvec::SmallVec<[Option<FenceWaiter>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
 
+    scene: crate::scene::SceneGraph,
+
     // It is VERY important that the window is dropped early
     // Otherwise it will be impossible to destroy the swapchain
     window: sdl2::video::Window,
@@ -191,86 +193,121 @@ impl System {
         self.queue_family.clone()
     }
 
-    pub fn test(&mut self) {
+    pub fn load_scene_file(&mut self, path: &std::path::Path) -> RenderingResult<()> {
+        let text = std::fs::read_to_string(path)?;
+        let scene_base = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+        let mut scene = crate::scene::load_scene_json(&text).map_err(RenderingError::Unknown)?;
         let mut manager = self.resources_manager.lock().unwrap();
+        let worlds: Vec<_> = (0..scene.nodes().len()).map(|index| scene.world(index)).collect();
+        for (index, world) in worlds.into_iter().enumerate() {
+            let Some(object_path) = scene.nodes()[index].object.clone() else {
+                continue;
+            };
+            let tar_path = std::path::Path::new(&object_path);
+            let resolved = if tar_path.is_absolute() {
+                tar_path.to_path_buf()
+            } else {
+                scene_base.join(tar_path)
+            };
+            let slot = manager.load_object(resolved, IDENTITY_MATRIX)?;
+            let matrix = vk::TransformMatrixKHR {
+                matrix: world.to_vulkan_rows(),
+            };
+            manager.add_instance(slot, matrix, TLASRebuildDevice::GPU)?;
+            scene.nodes_mut()[index].object_slot = Some(slot);
+        }
+        let columns = manager.instance_column_matrices();
+        drop(manager);
+        self.global_illumination_lighting
+            .set_node_matrices(&columns);
+        scene.take_moved();
+        self.scene = scene;
+        Ok(())
+    }
 
-        let sponza_object_id = manager
-            .load_object(PathBuf::from("crytek_sponza.tar"), IDENTITY_MATRIX)
-            .unwrap();
+    fn sync_scene(&mut self) {
+        if !self.scene.take_moved() {
+            return;
+        }
+        let mut manager = self.resources_manager.lock().unwrap();
+        let mut changed = false;
+        let count = self.scene.nodes().len();
+        for index in 0..count {
+            let Some(slot) = self.scene.nodes()[index].object_slot else {
+                continue;
+            };
+            let matrix = vk::TransformMatrixKHR {
+                matrix: self.scene.world(index).to_vulkan_rows(),
+            };
+            if manager.replace_instance(slot, 0, matrix) {
+                changed = true;
+            }
+        }
+        if changed {
+            if manager.rebuild_tlas_now().is_ok() {
+                let columns = manager.instance_column_matrices();
+                self.global_illumination_lighting.set_node_matrices(&columns);
+                self.global_illumination_lighting.mark_surfel_index_dirty();
+            }
+        }
+    }
 
-        manager
-            .add_instance(sponza_object_id, IDENTITY_MATRIX, TLASRebuildDevice::GPU)
-            .unwrap();
+    pub fn test(&mut self) {
+        if std::path::Path::new("scene.json").exists() {
+            self.load_scene_file(std::path::Path::new("scene.json"))
+                .unwrap();
+        } else {
+            let mut manager = self.resources_manager.lock().unwrap();
 
-        /*
-        scene->addDirectionalLight(
-            NeroReflex::PBRenderer::Core::Lighting::DirectionalLight(
-                glm::vec3(0.0f, -1.0, 0.0f),
-                glm::vec3(1.0, 1.0, 1.0),
-                glm::float32(10.2f)
-            )
-        );
-        scene->addDirectionalLight(
-            NeroReflex::PBRenderer::Core::Lighting::DirectionalLight(
-                glm::vec3(0, +0.947768, 0.318959),
-                glm::vec3(1.0, 1.0, 1.0),
-                glm::float32(10.2f)
-            )
-        );
-        scene->addDirectionalLight(
-            NeroReflex::PBRenderer::Core::Lighting::DirectionalLight(
-                glm::vec3(0.0, -0.98, 0.6),
-                glm::vec3(1.0, 1.0, 0.90),
-                glm::float32(10.2f)
-            )
-        );
-        */
+            let sponza_object_id = manager
+                .load_object(PathBuf::from("crytek_sponza.tar"), IDENTITY_MATRIX)
+                .unwrap();
 
+            manager
+                .add_instance(sponza_object_id, IDENTITY_MATRIX, TLASRebuildDevice::GPU)
+                .unwrap();
+        }
+
+        self.commit_raytracing_scene();
+    }
+
+    /// Default Sponza lighting and TLAS binding for RT. Required after any scene load.
+    fn commit_raytracing_scene(&mut self) {
         let mut lights = self.lights_manager.lock().unwrap();
-        {
-            lights
-                .load(DirectionalLight::new(
-                    glm::Vec3::new(-0.6, -0.98, 0.00000001),
-                    glm::Vec3::new(80.2, 80.2, 80.2),
-                ))
-                .unwrap();
+        lights
+            .load(DirectionalLight::new(
+                glm::Vec3::new(-0.6, -0.98, 0.00000001),
+                glm::Vec3::new(80.2, 80.2, 80.2),
+            ))
+            .unwrap();
+        lights
+            .load(DirectionalLight::new(
+                glm::Vec3::new(0.0, -0.98, 0.6),
+                glm::Vec3::new(80.0, 80.0, 80.0),
+            ))
+            .unwrap();
+        self.prev_frame_gi_reuse = 0;
 
-            lights
-                .load(DirectionalLight::new(
-                    glm::Vec3::new(0.0, -0.98, 0.6),
-                    glm::Vec3::new(80.0, 80.0, 80.0),
-                ))
-                .unwrap();
+        let mut manager = self.resources_manager.lock().unwrap();
+        manager.wait_blocking().unwrap();
+        let (tlas, tlas_data) = manager.tlas_ready().unwrap();
 
-            self.prev_frame_gi_reuse = 0;
-        }
-
-        // Update the TLAS and create a descriptor set for it:
-        // this is very important as it define the geometry of the whole scene
-        {
-            manager.wait_blocking().unwrap();
-            let (tlas, tlas_data) = manager.tlas_ready().unwrap();
-
-            // create the new descriptor set for RT pipelines
-            let rt_descriptor_set = DescriptorSet::new(
-                self.rt_descriptor_pool.clone(),
-                self.rt_descriptor_set_layout.clone(),
-            )
+        let rt_descriptor_set = DescriptorSet::new(
+            self.rt_descriptor_pool.clone(),
+            self.rt_descriptor_set_layout.clone(),
+        )
+        .unwrap();
+        rt_descriptor_set
+            .bind_resources(|binder| {
+                binder
+                    .bind_storage_buffers(0, [(tlas_data.clone(), None, None)].as_slice())
+                    .unwrap();
+                binder.bind_tlas(1, [tlas.clone()].as_slice()).unwrap();
+            })
             .unwrap();
 
-            // bind TLAS data to the new descriptor set
-            rt_descriptor_set
-                .bind_resources(|binder| {
-                    binder
-                        .bind_storage_buffers(0, [(tlas_data.clone(), None, None)].as_slice())
-                        .unwrap();
-                    binder.bind_tlas(1, [tlas.clone()].as_slice()).unwrap();
-                })
-                .unwrap();
-
-            self.rt_descriptor_set = Some(rt_descriptor_set);
-            self.prev_frame_gi_reuse = 0;
-        }
+        self.rt_descriptor_set = Some(rt_descriptor_set);
+        self.prev_frame_gi_reuse = 0;
     }
 
     pub fn change_camera(&mut self, camera: Arc<dyn CameraTrait>) {
@@ -844,6 +881,8 @@ impl System {
 
         drop(init_waiter);
 
+        crate::preview::start();
+
         Ok(Self {
             queue_family,
 
@@ -887,6 +926,7 @@ impl System {
             active_camera,
 
             prev_frame_gi_reuse,
+            scene: crate::scene::SceneGraph::new(),
         })
     }
 
@@ -994,6 +1034,20 @@ impl System {
             Self::recreate_swapchain(self)?;
         }
 
+        let frame_counter = self.current_frame.load(Ordering::SeqCst);
+        let current_frame = frame_counter % self.frames_in_flight.len();
+        drop(self.frames_in_flight[current_frame].take());
+
+        if crate::preview::enabled() && current_frame == 0 {
+            if self.global_illumination_lighting.preview_copies() > 0 {
+                if let Some(rgba) = self.global_illumination_lighting.read_preview_rgba() {
+                    crate::preview::publish_rgba(640, 360, &rgba);
+                }
+            }
+            self.global_illumination_lighting.arm_preview();
+        }
+        self.sync_scene();
+
         // if there is still no swapchain then somethign has gone horribly wrong
         let Some((swapchain, swapchain_imageviews)) = &self.swapchain else {
             return Err(RenderingError::NotEnoughSwapchainImages);
@@ -1014,11 +1068,6 @@ impl System {
 
         // Only successful submissions advance the timeline; acquisition/recording
         // errors must not leave an unsignaled value for the next frame to await.
-        let frame_counter = self.current_frame.load(Ordering::SeqCst);
-        let current_frame = frame_counter % self.frames_in_flight.len();
-
-        // this will ensure the previous frame in flight (relative to the same swapchain image) has completed its execution
-        drop(self.frames_in_flight[current_frame].take());
 
         // When bisecting a GPU hang (ART_RTIC_STOP_AFTER != all) neither the
         // acquire nor the present are performed: this way any number of frames

@@ -1,0 +1,46 @@
+// Applies the palette to the skinned position stream. The BLAS for this mesh
+// is rebuilt with PREFER_FAST_BUILD from the written positions.
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+struct SkinVertex {
+    vec4 position_joint;
+    vec4 normal;
+    vec4 uv_weights;
+    uvec4 joints;
+};
+
+layout(set = 0, binding = 0, std430) readonly buffer Palette {
+    mat4 bone[];
+} palette;
+
+layout(set = 0, binding = 1, std430) readonly buffer Source {
+    SkinVertex vertices[];
+} source;
+
+layout(set = 0, binding = 2, std430) writeonly buffer Deformed {
+    vec4 positions[];
+} deformed;
+
+void main() {
+    uint index = gl_GlobalInvocationID.x;
+    if (index >= uint(source.vertices.length())) {
+        return;
+    }
+    SkinVertex vertex = source.vertices[index];
+    vec3 rest = vertex.position_joint.xyz;
+    vec4 blended = vec4(0.0);
+    float weights[4] = float[4](
+        vertex.uv_weights.z,
+        vertex.uv_weights.w,
+        vertex.position_joint.w,
+        vertex.normal.w
+    );
+    for (uint i = 0u; i < 4u; ++i) {
+        uint joint = vertex.joints[i];
+        if (joint < uint(palette.bone.length())) {
+            blended += weights[i] * (palette.bone[joint] * vec4(rest, 1.0));
+        }
+    }
+    deformed.positions[index] = vec4(blended.xyz, 1.0);
+}

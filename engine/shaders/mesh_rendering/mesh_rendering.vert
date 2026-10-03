@@ -1,3 +1,5 @@
+#include "../row3x4.glsl"
+
 layout (location = 0) in vec3 vertex_position_modelspace;
 layout (location = 1) in vec3 vertex_normal_modelspace;
 layout (location = 2) in vec2 vertex_texture;
@@ -26,8 +28,8 @@ layout(push_constant) uniform MeshData {
 } mesh_data;
 
 void main() {
-    const mat4 LoadMatrix = mat4(mesh_data.load_matrix[0], mesh_data.load_matrix[1], mesh_data.load_matrix[2], vec4(0.0, 0.0, 0.0, 1.0));
-    const mat4 InstanceMatrix = mat4(ModelMatrix_first_row, ModelMatrix_second_row, ModelMatrix_third_row, vec4(0.0, 0.0, 0.0, 1.0));
+    const mat4 LoadMatrix = row_major_3x4(mesh_data.load_matrix[0], mesh_data.load_matrix[1], mesh_data.load_matrix[2]);
+    const mat4 InstanceMatrix = row_major_3x4(ModelMatrix_first_row, ModelMatrix_second_row, ModelMatrix_third_row);
 
     const mat4 ModelMatrix = InstanceMatrix * LoadMatrix;
 

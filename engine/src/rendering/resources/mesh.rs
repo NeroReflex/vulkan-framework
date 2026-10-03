@@ -37,6 +37,17 @@ use crate::rendering::{
     MAX_MESHES, RenderingError, RenderingResult, resources::collection::LoadableResourcesCollection,
 };
 
+pub fn acceleration_structure_build_flags(
+    skinned: bool,
+) -> vulkan_framework::ash::vk::BuildAccelerationStructureFlagsKHR {
+    if skinned {
+        vulkan_framework::ash::vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_BUILD
+            | vulkan_framework::ash::vk::BuildAccelerationStructureFlagsKHR::ALLOW_UPDATE
+    } else {
+        vulkan_framework::ash::vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE
+    }
+}
+
 type MeshType = Arc<BottomLevelAccelerationStructure>;
 
 pub struct MeshManager {
@@ -241,6 +252,7 @@ impl MeshManager {
         index_buffer: BottomLevelAccelerationStructureIndexBuffer,
         transform_buffer: BottomLevelAccelerationStructureTransformBuffer,
         debug_name: String,
+        skinned: bool,
     ) -> RenderingResult<Arc<BottomLevelAccelerationStructure>> {
         let blas = BottomLevelAccelerationStructure::new(
             memory_manager,
@@ -251,6 +263,7 @@ impl MeshManager {
             Self::allocation_tags(),
             None,
             Some(debug_name.as_str()),
+            acceleration_structure_build_flags(skinned),
         )?;
 
         Ok(blas)
@@ -261,6 +274,7 @@ impl MeshManager {
         vertex_buffer: BottomLevelAccelerationStructureVertexBuffer,
         index_buffer: BottomLevelAccelerationStructureIndexBuffer,
         transform_buffer: BottomLevelAccelerationStructureTransformBuffer,
+        skinned: bool,
     ) -> RenderingResult<u32> {
         let queue = self.queue.clone();
         let queue_family = queue.get_parent_queue_family();
@@ -287,6 +301,7 @@ impl MeshManager {
                     index_buffer,
                     transform_buffer,
                     debug_name,
+                    skinned,
                 )
             },
             |recorder, _, blas| {
@@ -448,5 +463,20 @@ impl MeshManager {
         };
 
         Ok(blas_index)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::acceleration_structure_build_flags;
+    use vulkan_framework::ash::vk::BuildAccelerationStructureFlagsKHR;
+
+    #[test]
+    fn static_meshes_prefer_fast_trace_and_skinned_meshes_prefer_fast_build() {
+        let static_flags = acceleration_structure_build_flags(false);
+        assert!(static_flags.contains(BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE));
+        let skinned = acceleration_structure_build_flags(true);
+        assert!(skinned.contains(BuildAccelerationStructureFlagsKHR::PREFER_FAST_BUILD));
+        assert!(skinned.contains(BuildAccelerationStructureFlagsKHR::ALLOW_UPDATE));
     }
 }
