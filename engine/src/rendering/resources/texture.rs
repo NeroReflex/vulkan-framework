@@ -12,11 +12,12 @@ use vulkan_framework::{
     descriptor_set::DescriptorSet,
     descriptor_set_layout::DescriptorSetLayout,
     device::{Device, DeviceOwned},
+    ash::vk,
     image::{
-        CommonImageFormat, ConcreteImageDescriptor, Image, Image2DDimensions, ImageAspect,
-        ImageAspects, ImageFlags, ImageFormat, ImageLayout, ImageMultisampling,
-        ImageSubresourceLayers, ImageSubresourceRange, ImageTiling, ImageTrait, ImageUsage,
-        ImageUseAs,
+        CommonImageFormat, ConcreteImageDescriptor, Image, Image1DTrait, Image2DDimensions,
+        Image2DTrait, ImageAspect, ImageAspects, ImageDimensions, ImageFlags, ImageFormat,
+        ImageLayout, ImageMultisampling, ImageSubresourceLayers, ImageSubresourceRange,
+        ImageTiling, ImageTrait, ImageUsage, ImageUseAs,
     },
     image_view::ImageView,
     memory_barriers::{BufferMemoryBarrier, ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
@@ -31,9 +32,12 @@ use vulkan_framework::{
     shader_stage_access::{ShaderStageAccessIn, ShaderStageAccessInRayTracingKHR},
 };
 
-use crate::rendering::{
-    MAX_FRAMES_IN_FLIGHT_NO_MALLOC, MAX_TEXTURES, RenderingError, RenderingResult,
-    resources::{ResourceError, collection::LoadableResourcesCollection},
+use crate::{
+    core::texture::block::mip_chain,
+    rendering::{
+        MAX_FRAMES_IN_FLIGHT_NO_MALLOC, MAX_TEXTURES, RenderingError, RenderingResult,
+        resources::{ResourceError, collection::LoadableResourcesCollection},
+    },
 };
 
 type DescriptorSetsType =
@@ -346,13 +350,41 @@ impl TextureManager {
         )
         .into()]);
 
-        recorder.copy_buffer_to_image(
-            image_data,
-            ImageLayout::TransferDstOptimal,
-            ImageSubresourceLayers::new(ImageAspects::from([ImageAspect::Color].as_ref()), 0, 0, 1),
-            image.clone(),
-            image.dimensions(),
-        );
+        let base = Image2DDimensions::try_from(image.dimensions())
+            .expect("texture upload requires a 2D image");
+        let format = vk::Format::from(image.format());
+        let levels = image.mip_levels_count().max(1);
+        if let Some(chain) = mip_chain(format, base.width(), base.height(), levels) {
+            for (level, mip) in chain.iter().enumerate() {
+                recorder.copy_buffer_to_image(
+                    image_data.clone(),
+                    ImageLayout::TransferDstOptimal,
+                    ImageSubresourceLayers::new(
+                        ImageAspects::from([ImageAspect::Color].as_ref()),
+                        level as u32,
+                        0,
+                        1,
+                    ),
+                    image.clone(),
+                    ImageDimensions::from(Image2DDimensions::new(mip.width, mip.height)),
+                    mip.offset,
+                );
+            }
+        } else {
+            recorder.copy_buffer_to_image(
+                image_data,
+                ImageLayout::TransferDstOptimal,
+                ImageSubresourceLayers::new(
+                    ImageAspects::from([ImageAspect::Color].as_ref()),
+                    0,
+                    0,
+                    1,
+                ),
+                image.clone(),
+                image.dimensions(),
+                0,
+            );
+        }
 
         recorder.pipeline_barriers([ImageMemoryBarrier::new(
             PipelineStages::from([PipelineStage::Transfer].as_ref()),

@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
     io::Read,
-    mem::MaybeUninit,
     ops::DerefMut,
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -11,7 +10,7 @@ use tar::Archive;
 
 use crate::{
     EmbeddedAssets,
-    core::texture::directdraw_surface::{DDSHeader, DDSHeaderDXT10, DirectDrawSurface},
+    core::texture::{cooked_texture, ktx2},
     rendering::{
         MAX_MESHES, RenderingError, RenderingResult,
         resources::{ResourceError, SIZEOF_MATERIAL_DEFINITION, materials::MaterialManager},
@@ -353,13 +352,29 @@ impl Manager {
     ) -> RenderingResult<usize> {
         let device = self.queue_family.get_parent_device();
 
-        #[derive(Default, Clone)]
+        #[derive(Clone)]
         struct TextureDecl {
             width: Option<u32>,
             height: Option<u32>,
             miplevel: Option<u32>,
             data: Option<Arc<AllocatedBuffer>>,
             format: Option<vulkan_framework::ash::vk::Format>,
+            /// Set once the payload is in the mapped GPU buffer and the upload
+            /// has been submitted. Later archive entries then overlap that copy.
+            gpu_id: Option<u32>,
+        }
+
+        impl Default for TextureDecl {
+            fn default() -> Self {
+                Self {
+                    width: None,
+                    height: None,
+                    miplevel: None,
+                    data: None,
+                    format: None,
+                    gpu_id: None,
+                }
+            }
         }
 
         #[derive(Default, Clone)]
@@ -374,6 +389,7 @@ impl Manager {
         struct ModelDecl {
             material_name: Option<String>,
             indexes: Option<BottomLevelAccelerationStructureIndexBuffer>,
+            skinned: bool,
         }
 
         let mut textures: HashMap<String, TextureDecl> = HashMap::new();
@@ -432,74 +448,25 @@ impl Manager {
                         match *property {
                             "data" => {
                                 let total_size = file.header().size()?;
+                                let cooked_header =
+                                    cooked_texture::read_header(&mut file, total_size).unwrap();
+                                let read_size = cooked_header.prefix_bytes;
+                                let ktx_placements = cooked_header.ktx_placements.clone();
 
-                                // a DDS fine begins with 0x44 0x44 0x53 0x20
-                                let mut header = [0x00u8, 0x00u8, 0x00u8, 0x00u8];
-                                let mut read_size = 0u64;
-                                file.read_exact(&mut header).unwrap();
-                                read_size += 4;
+                                texture_decl.format = Some(cooked_header.format);
+                                texture_decl.width = Some(cooked_header.width);
+                                texture_decl.height = Some(cooked_header.height);
+                                texture_decl.miplevel = Some(cooked_header.mip_levels);
 
-                                if header[0] == 0x44
-                                    && header[1] == 0x44
-                                    && header[2] == 0x53
-                                    && header[3] == 0x20
-                                {
-                                    let mut dds_uninitialized_header =
-                                        MaybeUninit::<DDSHeader>::uninit();
-                                    let dds_header_slice = unsafe {
-                                        std::slice::from_raw_parts_mut(
-                                            dds_uninitialized_header.as_mut_ptr()
-                                                as *mut std::ffi::c_void
-                                                as *mut u8,
-                                            std::mem::size_of::<DDSHeader>(),
-                                        )
-                                    };
-                                    file.read_exact(dds_header_slice).unwrap();
-                                    read_size += std::mem::size_of::<DDSHeader>() as u64;
-                                    let dds_header =
-                                        unsafe { dds_uninitialized_header.assume_init() };
-
-                                    let dds_dxt10_header = if dds_header
-                                        .is_followed_by_dxt10_header()
-                                    {
-                                        let mut dxt10_uninitialized_header =
-                                            MaybeUninit::<DDSHeaderDXT10>::uninit();
-                                        let dx10_header_slice = unsafe {
-                                            std::slice::from_raw_parts_mut(
-                                                dxt10_uninitialized_header.as_mut_ptr()
-                                                    as *mut std::ffi::c_void
-                                                    as *mut u8,
-                                                std::mem::size_of::<DDSHeaderDXT10>(),
-                                            )
-                                        };
-                                        assert_eq!(
-                                            std::mem::size_of::<DDSHeaderDXT10>(),
-                                            dx10_header_slice.len()
-                                        );
-                                        file.read_exact(dx10_header_slice).unwrap();
-                                        read_size += std::mem::size_of::<DDSHeaderDXT10>() as u64;
-                                        Some(unsafe { dxt10_uninitialized_header.assume_init() })
-                                    } else {
-                                        None
-                                    };
-
-                                    let surface_header =
-                                        DirectDrawSurface::new(dds_header, dds_dxt10_header);
-
-                                    texture_decl.format = Some(surface_header.vulkan_format());
-                                    texture_decl.height = Some(surface_header.height());
-                                    texture_decl.width = Some(surface_header.width());
-                                    texture_decl.miplevel = Some(surface_header.mip_map_count());
-                                } else {
-                                    panic!("Only DDS is supported for now");
-                                }
+                                let payload_bytes =
+                                    cooked_header.payload_bytes(total_size);
 
                                 // Allocate the buffer that will be used to upload the vertex data to the vulkan device
                                 let buffer = Buffer::new(
                                     device.clone(),
                                     ConcreteBufferDescriptor::new(
                                         BufferUsage::from([BufferUseAs::TransferSrc].as_slice()),
-                                        total_size - read_size,
+                                        payload_bytes,
                                     ),
                                     None,
                                     Some(
@@ -531,51 +498,62 @@ impl Manager {
                                     let mut range = mem_map
                                         .range::<u8>(buffer.clone() as Arc<dyn MemoryPoolBacked>)?;
                                     let slice = range.as_mut_slice();
-                                    file.read_exact(slice).unwrap();
+                                    if let Some(placements) = &ktx_placements {
+                                        let mut cursor = read_size;
+                                        let mut window = [0u8; 8192];
+                                        while cursor < total_size {
+                                            let read = file.read(&mut window).unwrap();
+                                            if read == 0 {
+                                                break;
+                                            }
+                                            ktx2::scatter(
+                                                slice,
+                                                cursor,
+                                                &window[..read],
+                                                placements,
+                                            );
+                                            cursor += read as u64;
+                                        }
+                                    } else {
+                                        file.read_exact(slice).unwrap();
+                                    }
                                 }
 
                                 texture_decl.data.replace(buffer);
                             }
-                            "height.txt" => {
-                                let mut read_result = String::new();
-                                let read_data = file.read_to_string(&mut read_result)?;
-                                if read_data > 16 {
-                                    panic!("invalid file!");
-                                }
-
-                                texture_decl
-                                    .height
-                                    .replace(read_result.parse::<u32>().unwrap());
-                            }
-                            "width.txt" => {
-                                let mut read_result = String::new();
-                                let read_data = file.read_to_string(&mut read_result)?;
-                                if read_data > 16 {
-                                    panic!("invalid file!");
-                                }
-
-                                texture_decl
-                                    .width
-                                    .replace(read_result.parse::<u32>().unwrap());
-                            }
-                            "miplevel.txt" => {
-                                let mut read_result = String::new();
-                                let read_data = file.read_to_string(&mut read_result)?;
-                                if read_data > 16 {
-                                    panic!("invalid file!");
-                                }
-
-                                texture_decl
-                                    .miplevel
-                                    .replace(read_result.parse::<u32>().unwrap());
-                            }
+                            "width.txt" | "height.txt" | "miplevel.txt" => continue,
                             "" => continue,
                             _ => println!(
                                 "WARNING: unrecognised property for texture {texture_name}: {property}"
                             ),
                         };
 
-                        textures.insert(texture_name, texture_decl);
+                        textures.insert(texture_name.clone(), texture_decl);
+                        if let Some(decl) = textures.get_mut(&texture_name) {
+                            if decl.gpu_id.is_none() {
+                                if let (
+                                    Some(width),
+                                    Some(height),
+                                    Some(miplevel),
+                                    Some(format),
+                                    Some(data),
+                                ) = (
+                                    decl.width,
+                                    decl.height,
+                                    decl.miplevel,
+                                    decl.format,
+                                    decl.data.clone(),
+                                ) {
+                                    let id = self.texture_manager.load(
+                                        format.into(),
+                                        Image2DDimensions::new(width, height),
+                                        miplevel,
+                                        data,
+                                    )?;
+                                    decl.gpu_id = Some(id);
+                                }
+                            }
+                        }
                     }
                     "materials" => {
                         let material_name = String::from(*obj_name);
@@ -675,6 +653,7 @@ impl Manager {
                                     name = String::from(n);
                                 }
 
+                                materials.entry(name.clone()).or_default();
                                 model_decl.material_name.replace(name);
                             }
                             // TODO: "transform" => { /* for the initial model matrix */}
@@ -721,6 +700,9 @@ impl Manager {
                                 }
 
                                 model_decl.indexes.replace(index_buffer);
+                            }
+                            "skin" => {
+                                model_decl.skinned = true;
                             }
                             "" => continue,
                             _ => println!(
@@ -789,14 +771,15 @@ impl Manager {
 
         let mut loaded_textures: HashMap<String, LoadedTexture> = HashMap::new();
         for (k, v) in textures.into_iter() {
-            let texture_id = match (&v.width, &v.height, &v.miplevel, &v.format, &v.data) {
+            let texture_id = if let Some(id) = v.gpu_id {
+                id
+            } else {
+                match (&v.width, &v.height, &v.miplevel, &v.format, &v.data) {
                 (Some(width), Some(height), Some(miplevel), Some(format), Some(data)) => {
-                    //println!("Loaded texture {k} at id {texture_id}");
-
                     self.texture_manager.load(
                         format.into(),
                         Image2DDimensions::new(*width, *height),
-                        *miplevel,
+                        (*miplevel).max(1),
                         data.clone(),
                     )?
                 }
@@ -804,6 +787,7 @@ impl Manager {
                     return Err(crate::rendering::RenderingError::ResourceError(
                         ResourceError::IncompleteTexture(k.clone()),
                     ));
+                }
                 }
             };
 
@@ -967,6 +951,7 @@ impl Manager {
                 )?,
                 index_buffer,
                 transform_buffer,
+                v.skinned,
             )?;
 
             loaded_models.insert(
@@ -1042,7 +1027,23 @@ impl Manager {
 
         assert!((max_instances + meshes_count) < (u32::MAX as usize));
 
-        let max_instances = max_instances as u32 + meshes_count as u32;
+        self.rebuild_tlas(objects, device)
+    }
+
+    fn rebuild_tlas(
+        &mut self,
+        objects: LoadedMeshesType,
+        device: TLASRebuildDevice,
+    ) -> RenderingResult<()> {
+        let max_instances: u32 = objects
+            .iter()
+            .map(|loaded_obj| match loaded_obj {
+                Some((obj_meshes, obj_instances)) => {
+                    obj_meshes.meshes.len() * obj_instances.instances.len()
+                }
+                None => 0_usize,
+            })
+            .sum::<usize>() as u32;
         let blas_decl = TopLevelBLASGroupDecl::new();
         let instance_unallocated_buffer = Buffer::new(
             self.queue_family.get_parent_device(),
@@ -1358,8 +1359,46 @@ impl Manager {
             }
         };
         self.objects = objects;
-
         Ok(())
+    }
+
+    pub fn replace_instance(
+        &mut self,
+        object: usize,
+        instance_index: usize,
+        instance: InstanceDataType,
+    ) -> bool {
+        let Some(Some((_, instances))) = self.objects.get_mut(object) else {
+            return false;
+        };
+        if instance_index >= instances.instances.len() {
+            return false;
+        }
+        if instances.instances[instance_index].matrix == instance.matrix {
+            return false;
+        }
+        instances.instances[instance_index] = instance;
+        true
+    }
+
+    pub fn rebuild_tlas_now(&mut self) -> RenderingResult<()> {
+        let objects = self.objects.clone();
+        self.rebuild_tlas(objects, TLASRebuildDevice::GPU)
+    }
+
+    pub fn instance_column_matrices(&self) -> Vec<[f32; 16]> {
+        let mut columns = Vec::new();
+        for object in &self.objects {
+            let Some((meshes, instances)) = object else {
+                continue;
+            };
+            for _mesh in &meshes.meshes {
+                for instance in &instances.instances {
+                    columns.push(crate::scene::Mat4::from_vulkan_rows(&instance.matrix).columns);
+                }
+            }
+        }
+        columns
     }
 
     pub fn update_buffers(

@@ -1,3 +1,4 @@
+pub mod archive_layout;
 pub mod collection;
 pub mod directional_lights;
 pub mod materials;

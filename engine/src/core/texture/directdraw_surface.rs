@@ -89,6 +89,16 @@ impl DDSHeader {
         self.mip_map_count
     }
 
+    /// DDS stores `0` when only the base level is present (see UNIVR `dds_header.cpp`).
+    pub fn mip_level_count(&self) -> u32 {
+        let count = self.mip_map_count;
+        if count == 0 {
+            1
+        } else {
+            count
+        }
+    }
+
     pub fn is_followed_by_dxt10_header(&self) -> bool {
         ((self.ddspf.flags & DDS_PIXELFORMAT_FLAG_FOURCC) != 0u32)
             && (self.ddspf.four_cc == DDS_FOURCC_DX10)
@@ -120,6 +130,10 @@ impl DirectDrawSurface {
 
     pub fn mip_map_count(&self) -> u32 {
         self.header.mip_map_count()
+    }
+
+    pub fn mip_level_count(&self) -> u32 {
+        self.header.mip_level_count()
     }
 
     pub fn vulkan_format(&self) -> vulkan_framework::ash::vk::Format {
@@ -161,7 +175,7 @@ impl DirectDrawSurface {
                         DXGIFormat::BC7Typeless => {
                             vulkan_framework::ash::vk::Format::BC7_UNORM_BLOCK
                         }
-                        DXGIFormat::BC7Unorm => vulkan_framework::ash::vk::Format::BC7_SRGB_BLOCK,
+                        DXGIFormat::BC7Unorm => vulkan_framework::ash::vk::Format::BC7_UNORM_BLOCK,
                         DXGIFormat::BC7UnormSrgb => {
                             vulkan_framework::ash::vk::Format::BC7_SRGB_BLOCK
                         }
@@ -181,5 +195,60 @@ impl DirectDrawSurface {
         } else {
             vulkan_framework::ash::vk::Format::UNDEFINED
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use vulkan_framework::ash::vk;
+
+    fn dx10_bc7(format: DXGIFormat) -> DirectDrawSurface {
+        let header = DDSHeader {
+            size: 124,
+            flags: 0,
+            height: 8,
+            width: 8,
+            pitch_or_linear_size: 0,
+            depth: 0,
+            mip_map_count: 2,
+            reserved1: [0; 11],
+            ddspf: DDSPixelFormat {
+                size: 32,
+                flags: DDS_PIXELFORMAT_FLAG_FOURCC,
+                four_cc: DDS_FOURCC_DX10,
+                rgb_bit_count: 0,
+                rb_bit_mask: 0,
+                gb_bit_mask: 0,
+                bb_bit_mask: 0,
+                ab_bit_mask: 0,
+            },
+            caps: 0,
+            caps2: 0,
+            caps3: 0,
+            caps4: 0,
+            reserved2: 0,
+        };
+        let dx10 = DDSHeaderDXT10 {
+            format,
+            dimensions: D3D10ResourceDimension::Texture2D,
+            flags: 0,
+            array_size: 1,
+            flags2: 0,
+        };
+        DirectDrawSurface::new(header, Some(dx10))
+    }
+
+    #[test]
+    fn bc7_dx10_headers_map_to_vulkan_block_formats() {
+        assert_eq!(
+            dx10_bc7(DXGIFormat::BC7UnormSrgb).vulkan_format(),
+            vk::Format::BC7_SRGB_BLOCK
+        );
+        assert_eq!(
+            dx10_bc7(DXGIFormat::BC7Unorm).vulkan_format(),
+            vk::Format::BC7_UNORM_BLOCK
+        );
+        assert_eq!(dx10_bc7(DXGIFormat::BC7UnormSrgb).mip_level_count(), 2);
     }
 }
