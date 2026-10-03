@@ -3,3 +3,7 @@
 /*.tar
 /*.txt
 /*.html
+/*.bak
+/tools/blender_artrtic/bin/*
+!/tools/blender_artrtic/bin/.gitkeep
+/scene.json
