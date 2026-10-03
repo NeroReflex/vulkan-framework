@@ -367,6 +367,29 @@ where
     }
 }
 
+pub(crate) fn non_coherent_flush_range(
+    offset: u64,
+    size: u64,
+    allocation_size: u64,
+    atom_size: u64,
+) -> VulkanResult<(u64, u64)> {
+    let end = offset
+        .checked_add(size)
+        .filter(|end| *end <= allocation_size)
+        .ok_or(vk::Result::ERROR_INITIALIZATION_FAILED)?;
+    if size == 0 || !atom_size.is_power_of_two() {
+        return Err(vk::Result::ERROR_INITIALIZATION_FAILED.into());
+    }
+    let aligned_offset = offset & !(atom_size - 1);
+    // A range reaching the allocation end may have a non-multiple size.
+    let aligned_end = end
+        .checked_add(atom_size - 1)
+        .map(|end| end & !(atom_size - 1))
+        .unwrap_or(allocation_size)
+        .min(allocation_size);
+    Ok((aligned_offset, aligned_end - aligned_offset))
+}
+
 impl<'mem, T> Drop for MemoryMappedRange<'mem, T>
 where
     T: Sized,
@@ -379,10 +402,28 @@ where
                 .get_parent_memory_heap()
                 .is_coherent()
         {
+            let device = self
+                .memory_map
+                .memory_pool
+                .get_parent_memory_heap()
+                .get_parent_device();
+            let properties = unsafe {
+                device
+                    .get_parent_instance()
+                    .ash_handle()
+                    .get_physical_device_properties(device.physical_device)
+            };
+            let (offset, size) = non_coherent_flush_range(
+                self.offset,
+                self.size,
+                self.memory_map.memory_pool.allocator.total_size(),
+                properties.limits.non_coherent_atom_size,
+            )
+            .unwrap();
             let mapped_mem_range = ash::vk::MappedMemoryRange::default()
                 .memory(self.memory_map.memory_pool.memory)
-                .offset(self.offset)
-                .size(self.size);
+                .offset(offset)
+                .size(size);
 
             unsafe {
                 self.memory_map

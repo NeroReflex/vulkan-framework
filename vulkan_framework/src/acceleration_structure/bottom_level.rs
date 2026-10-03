@@ -577,12 +577,8 @@ impl BottomLevelAccelerationStructure {
             )
         };
 
-        match device.ray_tracing_info() {
-            Some(rt_info) => Ok((blas_size_info.build_scratch_size
-                + ((rt_info.min_acceleration_structure_scratch_offset_alignment() as u64) - 1u64))
-                & !((rt_info.min_acceleration_structure_scratch_offset_alignment() as u64) - 1u64)),
-            None => Ok(blas_size_info.build_scratch_size),
-        }
+        // DeviceScratchBuffer pads the allocation and aligns its actual device address.
+        Ok(blas_size_info.build_scratch_size)
     }
 
     #[inline]
