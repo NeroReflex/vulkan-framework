@@ -1,0 +1,13 @@
+[package]
+name = "artrtic_imgui"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+imgui = "0.8"
+sdl2 = "^0"
+inline-spirv = "*"
+vulkan_framework = { path = "../vulkan_framework" }
+
+[build-dependencies]
+cc = "1"
