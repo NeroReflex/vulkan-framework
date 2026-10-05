@@ -1,11 +1,18 @@
 //! Rigid scene graph. Node transforms are column-major 4x4 matrices, matching
 //! the GLSL `mat4` the mesh shader builds from a Vulkan row-major 3x4.
 
-mod skin;
+mod animation;
 mod file;
+mod skin;
+mod skin_gpu;
 
-pub use file::load_scene_json;
+pub use animation::{AnimationClipInfo, AnimationPlayState};
+pub use file::{load_scene_json, save_scene_json};
 pub use skin::{palette_from_locals, BoneLocal};
+pub use skin_gpu::{
+    AnimationGpuChannel, ArmatureGpuElement, SkeletonGpuElement, MAX_ANIMATION_CHANNELS,
+    MAX_ANIMATION_KEYS_PER_CHANNEL,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Mat4 {
@@ -130,6 +137,51 @@ impl SceneGraph {
     }
 
     pub fn mark_moved(&mut self) {
+        self.moved = true;
+    }
+
+    pub fn find_by_name(&self, name: &str) -> Option<usize> {
+        self.nodes.iter().position(|node| node.name == name)
+    }
+
+    /// Removes `root` and every descendant. Remaining parent indices are remapped.
+    pub fn remove_subtree(&mut self, root: usize) {
+        if root >= self.nodes.len() {
+            return;
+        }
+        let mut remove = std::collections::HashSet::new();
+        remove.insert(root);
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for (index, node) in self.nodes.iter().enumerate() {
+                if remove.contains(&index) {
+                    continue;
+                }
+                if let Some(parent) = node.parent {
+                    if remove.contains(&parent) {
+                        remove.insert(index);
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        let mut new_nodes = Vec::new();
+        let mut remap = std::collections::HashMap::new();
+        for (index, node) in self.nodes.iter().enumerate() {
+            if remove.contains(&index) {
+                continue;
+            }
+            remap.insert(index, new_nodes.len());
+            new_nodes.push(node.clone());
+        }
+        for node in &mut new_nodes {
+            if let Some(parent) = node.parent {
+                node.parent = remap.get(&parent).copied();
+            }
+        }
+        self.nodes = new_nodes;
         self.moved = true;
     }
 }

@@ -1,0 +1,47 @@
+// Bind-pose armature walk (UNIVR animate_bind_pose.comp). Root: parent_index == self.
+
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+struct SkeletonGPUElement {
+    mat4 offset_matrix;
+    uint armature_node_index;
+};
+
+struct ArmatureGPUElement {
+    mat4 transform;
+    uint parent_index;
+};
+
+layout(set = 0, binding = 0, std430) readonly buffer OriginalSkeletonBuffer {
+    SkeletonGPUElement bones[];
+} original_skeleton;
+
+layout(set = 0, binding = 1, std430) writeonly buffer PerFrameSkeletonBuffer {
+    mat4 offset_matrix[];
+} per_frame_skeleton;
+
+layout(set = 0, binding = 2, std430) readonly buffer ArmatureBuffer {
+    ArmatureGPUElement armature[];
+} armature_data;
+
+void main() {
+    uint boneIndex = gl_GlobalInvocationID.x;
+    uint nbones = uint(original_skeleton.bones.length());
+    if (boneIndex >= nbones) return;
+
+    uint current_armature_index = original_skeleton.bones[boneIndex].armature_node_index;
+    mat4 current_transform = mat4(1.0);
+
+    while (true) {
+        mat4 local = armature_data.armature[current_armature_index].transform;
+        current_transform = local * current_transform;
+        uint parent_index = armature_data.armature[current_armature_index].parent_index;
+        if (parent_index == current_armature_index) {
+            break;
+        }
+        current_armature_index = parent_index;
+    }
+
+    per_frame_skeleton.offset_matrix[boneIndex] =
+        current_transform * original_skeleton.bones[boneIndex].offset_matrix;
+}

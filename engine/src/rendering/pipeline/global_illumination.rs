@@ -46,6 +46,7 @@ use vulkan_framework::{
 };
 
 use crate::rendering::{RenderingResult, rendering_dimensions::RenderingDimensions};
+use crate::rendering::resources::skin_asset::SkinnedAsset;
 
 const SURFEL_WORLD_SPV: &[u32] = inline_spirv!(
     r#"
@@ -53,6 +54,30 @@ const SURFEL_WORLD_SPV: &[u32] = inline_spirv!(
 // lbvh v42 node surfels
 
 #include "engine/shaders/surfel_reorder/surfel_world.comp"
+"#,
+    glsl,
+    comp,
+    vulkan1_2,
+    entry = "main"
+);
+
+const SKIN_ANIMATE_CHANNELS_SPV: &[u32] = inline_spirv!(
+    r#"
+#version 460
+
+#include "engine/shaders/skin/animate_channels.comp"
+"#,
+    glsl,
+    comp,
+    vulkan1_2,
+    entry = "main"
+);
+
+const SKIN_ANIMATE_BIND_POSE_SPV: &[u32] = inline_spirv!(
+    r#"
+#version 460
+
+#include "engine/shaders/skin/animate_bind_pose.comp"
 "#,
     glsl,
     comp,
@@ -349,6 +374,8 @@ pub struct GILighting {
     raytracing_pipeline: Arc<RaytracingPipeline>,
     surfel_vpl_pipeline: Arc<ComputePipeline>,
     surfel_world_pipeline: Arc<ComputePipeline>,
+    skin_animate_channels_pipeline: Arc<ComputePipeline>,
+    skin_bind_pose_pipeline: Arc<ComputePipeline>,
     skin_animate_pipeline: Arc<ComputePipeline>,
     skin_deform_pipeline: Arc<ComputePipeline>,
 
@@ -403,6 +430,9 @@ fn identity_matrices(count: usize) -> Vec<[f32; 16]> {
 
 const SURFEL_DISCOVERY_QUERY_STRIDE: u32 = 1;
 const SURFEL_VPL_QUERY_STRIDE: u32 = 2;
+
+const SKIN_CHANNELS_GROUP_SIZE: u32 = 32;
+const SKIN_PALETTE_GROUP_SIZE: u32 = 64;
 
 const MAX_SURFELS: u32 = u32::pow(2, 16);
 
@@ -616,6 +646,61 @@ impl GILighting {
                 )?,
                 (shader, None),
                 Some("surfel_world_pipeline"),
+            )?
+        };
+
+        let skin_storage_bindings = |count: u32| {
+            (0..count)
+                .map(|binding| {
+                    BindingDescriptor::new(
+                        [ShaderStageAccessIn::Compute].as_slice().into(),
+                        BindingType::Native(NativeBindingType::StorageBuffer),
+                        binding,
+                        1,
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+
+        let skin_animate_channels_pipeline = {
+            let shader = ComputeShader::new(device.clone(), SKIN_ANIMATE_CHANNELS_SPV)?;
+            let layout = DescriptorSetLayout::new(
+                device.clone(),
+                skin_storage_bindings(4).as_slice(),
+            )?;
+            let push = [ShaderStageAccessIn::Compute].as_slice().into();
+            ComputePipeline::new(
+                None,
+                PipelineLayout::new(
+                    device.clone(),
+                    [layout].as_slice(),
+                    [vulkan_framework::push_constant_range::PushConstanRange::new(
+                        0, 8, push,
+                    )]
+                    .as_slice(),
+                    Some("skin_animate_channels_pipeline_layout"),
+                )?,
+                (shader, None),
+                Some("skin_animate_channels_pipeline"),
+            )?
+        };
+
+        let skin_bind_pose_pipeline = {
+            let shader = ComputeShader::new(device.clone(), SKIN_ANIMATE_BIND_POSE_SPV)?;
+            let layout = DescriptorSetLayout::new(
+                device.clone(),
+                skin_storage_bindings(3).as_slice(),
+            )?;
+            ComputePipeline::new(
+                None,
+                PipelineLayout::new(
+                    device.clone(),
+                    [layout].as_slice(),
+                    [].as_slice(),
+                    Some("skin_bind_pose_pipeline_layout"),
+                )?,
+                (shader, None),
+                Some("skin_bind_pose_pipeline"),
             )?
         };
 
@@ -1483,6 +1568,8 @@ impl GILighting {
             raytracing_pipeline,
             surfel_vpl_pipeline,
             surfel_world_pipeline,
+            skin_animate_channels_pipeline,
+            skin_bind_pose_pipeline,
             skin_animate_pipeline,
             skin_deform_pipeline,
 
@@ -1783,8 +1870,98 @@ impl GILighting {
         }
     }
 
+    pub fn dispatch_skinned_asset(
+        &self,
+        recorder: &mut CommandBufferRecorder,
+        asset: &mut SkinnedAsset,
+    ) -> RenderingResult<()> {
+        asset.bind_palette(self.bone_palette.clone())?;
+        let view = asset.dispatch_view();
+        if view.bone_count == 0 {
+            return Ok(());
+        }
+        let bone_groups =
+            (view.bone_count + SKIN_CHANNELS_GROUP_SIZE - 1) / SKIN_CHANNELS_GROUP_SIZE;
+
+        if view.animated {
+            let Some(channels_set) = view.channels_set else {
+                return Ok(());
+            };
+            recorder.bind_compute_pipeline(self.skin_animate_channels_pipeline.clone());
+            recorder.bind_descriptor_sets_for_compute_pipeline(
+                self.skin_animate_channels_pipeline.get_parent_pipeline_layout(),
+                0,
+                [channels_set].as_slice(),
+            );
+            let mut push = [0u8; 8];
+            push[0..4].copy_from_slice(&view.time_ticks.to_le_bytes());
+            push[4..8].copy_from_slice(&view.channel_count.to_le_bytes());
+            recorder.push_constant(
+                self.skin_animate_channels_pipeline.get_parent_pipeline_layout(),
+                [ShaderStageAccessIn::Compute].as_slice().into(),
+                0,
+                &push,
+            );
+            recorder.dispatch(bone_groups.max(1), 1, 1);
+        } else {
+            recorder.bind_compute_pipeline(self.skin_bind_pose_pipeline.clone());
+            recorder.bind_descriptor_sets_for_compute_pipeline(
+                self.skin_bind_pose_pipeline.get_parent_pipeline_layout(),
+                0,
+                [view.bind_pose_set].as_slice(),
+            );
+            recorder.dispatch(bone_groups.max(1), 1, 1);
+        }
+
+        recorder.pipeline_barriers([BufferMemoryBarrier::new(
+            [PipelineStage::ComputeShader].as_slice().into(),
+            [MemoryAccessAs::ShaderWrite].as_slice().into(),
+            [PipelineStage::ComputeShader].as_slice().into(),
+            [MemoryAccessAs::ShaderRead].as_slice().into(),
+            BufferSubresourceRange::new(view.per_frame.clone(), 0, view.per_frame.size()),
+            self.queue_family.clone(),
+            self.queue_family.clone(),
+        )
+        .into()]);
+
+        recorder.bind_compute_pipeline(self.skin_animate_pipeline.clone());
+        recorder.bind_descriptor_sets_for_compute_pipeline(
+            self.skin_animate_pipeline.get_parent_pipeline_layout(),
+            0,
+            [view.palette_set].as_slice(),
+        );
+        let palette_groups =
+            (view.bone_count + SKIN_PALETTE_GROUP_SIZE - 1) / SKIN_PALETTE_GROUP_SIZE;
+        recorder.dispatch(palette_groups.max(1), 1, 1);
+
+        recorder.pipeline_barriers([
+            BufferMemoryBarrier::new(
+                [PipelineStage::ComputeShader].as_slice().into(),
+                [MemoryAccessAs::ShaderWrite].as_slice().into(),
+                [PipelineStage::ComputeShader].as_slice().into(),
+                [MemoryAccessAs::ShaderRead].as_slice().into(),
+                BufferSubresourceRange::new(self.bone_palette.clone(), 0, self.bone_palette.size()),
+                self.queue_family.clone(),
+                self.queue_family.clone(),
+            )
+            .into(),
+        ]);
+
+        recorder.bind_compute_pipeline(self.skin_deform_pipeline.clone());
+        recorder.bind_descriptor_sets_for_compute_pipeline(
+            self.skin_deform_pipeline.get_parent_pipeline_layout(),
+            0,
+            [view.deform_set].as_slice(),
+        );
+        let deform_groups =
+            (view.vertex_count + SKIN_PALETTE_GROUP_SIZE - 1) / SKIN_PALETTE_GROUP_SIZE;
+        recorder.dispatch(deform_groups.max(1), 1, 1);
+
+        *self.mark_index_dirty.lock().unwrap() = true;
+        Ok(())
+    }
+
     fn dispatch_world(&self, recorder: &mut CommandBufferRecorder) {
-        let _ = (&self.skin_animate_pipeline, &self.skin_deform_pipeline);
         recorder.bind_compute_pipeline(self.surfel_world_pipeline.clone());
         recorder.bind_descriptor_sets_for_compute_pipeline(
             self.surfel_world_pipeline.get_parent_pipeline_layout(),

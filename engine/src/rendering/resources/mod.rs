@@ -4,6 +4,7 @@ pub mod directional_lights;
 pub mod materials;
 pub mod mesh;
 pub mod object;
+pub mod skin_asset;
 pub mod texture;
 
 use thiserror::Error;

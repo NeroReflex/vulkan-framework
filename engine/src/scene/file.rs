@@ -1,4 +1,6 @@
-use serde::Deserialize;
+use std::{fs, path::Path};
+
+use serde::{Deserialize, Serialize};
 
 use super::{Mat4, Node, SceneGraph};
 
@@ -43,6 +45,40 @@ pub fn load_scene_json(text: &str) -> Result<SceneGraph, String> {
         }
     }
     Ok(scene)
+}
+
+#[derive(Serialize)]
+struct SceneFileOut {
+    nodes: Vec<SceneNodeFileOut>,
+}
+
+#[derive(Serialize)]
+struct SceneNodeFileOut {
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    parent: Option<String>,
+    translation: [f32; 3],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    object: Option<String>,
+}
+
+pub fn save_scene_json(scene: &SceneGraph, path: &Path) -> Result<(), String> {
+    let nodes = scene.nodes();
+    let mut out = Vec::new();
+    for (index, node) in nodes.iter().enumerate() {
+        let parent = node.parent.map(|parent_index| nodes[parent_index].name.clone());
+        let translation = node.local.transform_point([0.0, 0.0, 0.0]);
+        out.push(SceneNodeFileOut {
+            name: node.name.clone(),
+            parent,
+            translation,
+            object: node.object.clone(),
+        });
+    }
+    let text = serde_json::to_string_pretty(&SceneFileOut { nodes: out })
+        .map_err(|err| err.to_string())?;
+    fs::write(path, text).map_err(|err| err.to_string())?;
+    Ok(())
 }
 
 #[cfg(test)]

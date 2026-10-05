@@ -1,0 +1,214 @@
+// Channel sampling + armature walk (UNIVR animate.comp). Root: parent_index == self.
+
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+#define MAX_ANIMATION_KEYS_PER_CHANNEL 64u
+#define MAX_ANIMATION_CHANNELS 128u
+
+struct SkeletonGPUElement {
+    mat4 offset_matrix;
+    uint armature_node_index;
+};
+
+struct ArmatureGPUElement {
+    mat4 transform;
+    uint parent_index;
+};
+
+struct AnimationGPUChannel {
+    uint armature_element_index;
+
+    uint position_key_count;
+    float position_key_times[MAX_ANIMATION_KEYS_PER_CHANNEL];
+    float position_key_value_x[MAX_ANIMATION_KEYS_PER_CHANNEL];
+    float position_key_value_y[MAX_ANIMATION_KEYS_PER_CHANNEL];
+    float position_key_value_z[MAX_ANIMATION_KEYS_PER_CHANNEL];
+
+    uint rotation_key_count;
+    float rotation_key_times[MAX_ANIMATION_KEYS_PER_CHANNEL];
+    float rotation_key_value_x[MAX_ANIMATION_KEYS_PER_CHANNEL];
+    float rotation_key_value_y[MAX_ANIMATION_KEYS_PER_CHANNEL];
+    float rotation_key_value_z[MAX_ANIMATION_KEYS_PER_CHANNEL];
+    float rotation_key_value_w[MAX_ANIMATION_KEYS_PER_CHANNEL];
+
+    uint scaling_key_count;
+    float scaling_key_times[MAX_ANIMATION_KEYS_PER_CHANNEL];
+    float scaling_key_value_x[MAX_ANIMATION_KEYS_PER_CHANNEL];
+    float scaling_key_value_y[MAX_ANIMATION_KEYS_PER_CHANNEL];
+    float scaling_key_value_z[MAX_ANIMATION_KEYS_PER_CHANNEL];
+};
+
+layout(set = 0, binding = 0, std430) readonly buffer OriginalSkeletonBuffer {
+    SkeletonGPUElement bones[];
+} original_skeleton;
+
+layout(set = 0, binding = 1, std430) writeonly buffer PerFrameSkeletonBuffer {
+    mat4 offset_matrix[];
+} per_frame_skeleton;
+
+layout(set = 0, binding = 2, std430) readonly buffer ArmatureBuffer {
+    ArmatureGPUElement armature[];
+} armature_data;
+
+layout(set = 0, binding = 3, std430) readonly buffer AnimationBuffer {
+    AnimationGPUChannel animation[];
+} animation_data;
+
+layout(push_constant) uniform Push {
+    float u_DeltaTime;
+    uint u_AnimationChannelCount;
+} push;
+
+vec4 quat_from_xyz(vec3 v) {
+    float t = 1.0 - dot(v, v);
+    float w = (t > 0.0) ? sqrt(t) : 0.0;
+    return normalize(vec4(v, w));
+}
+
+mat4 mat4_from_trs(vec3 t, vec4 q, vec3 s) {
+    float x = q.x, y = q.y, z = q.z, w = q.w;
+    float x2 = x + x;
+    float y2 = y + y;
+    float z2 = z + z;
+
+    float xx = x * x2;
+    float xy = x * y2;
+    float xz = x * z2;
+    float yy = y * y2;
+    float yz = y * z2;
+    float zz = z * z2;
+    float wx = w * x2;
+    float wy = w * y2;
+    float wz = w * z2;
+
+    mat4 R = mat4(
+        1.0 - (yy + zz), xy + wz, xz - wy, 0.0,
+        xy - wz, 1.0 - (xx + zz), yz + wx, 0.0,
+        xz + wy, yz - wx, 1.0 - (xx + yy), 0.0,
+        0.0, 0.0, 0.0, 1.0
+    );
+
+    mat4 S = mat4(
+        s.x, 0.0, 0.0, 0.0,
+        0.0, s.y, 0.0, 0.0,
+        0.0, 0.0, s.z, 0.0,
+        0.0, 0.0, 0.0, 1.0
+    );
+
+    mat4 T = mat4(
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        t.x, t.y, t.z, 1.0
+    );
+
+    return T * R * S;
+}
+
+float find_key_interval_uint(uint count, float times[MAX_ANIMATION_KEYS_PER_CHANNEL], float t, out uint idx) {
+    if (count == 0u) { idx = 0u; return 0.0; }
+    if (t <= times[0]) { idx = 0u; return 0.0; }
+    uint last = count - 1u;
+    if (t >= times[last]) { idx = last; return 0.0; }
+    for (uint i = 0u; i < last; ++i) {
+        if (t >= times[i] && t < times[i + 1u]) {
+            idx = i;
+            float denom = times[i + 1u] - times[i];
+            return (denom > 0.0) ? ((t - times[i]) / denom) : 0.0;
+        }
+    }
+    idx = last;
+    return 0.0;
+}
+
+vec3 sample_position(in AnimationGPUChannel ch, float t) {
+    if (ch.position_key_count == 0u) return vec3(0.0);
+    uint i; float a = find_key_interval_uint(ch.position_key_count, ch.position_key_times, t, i);
+    if (a == 0.0 && i == ch.position_key_count - 1u) {
+        return vec3(ch.position_key_value_x[i], ch.position_key_value_y[i], ch.position_key_value_z[i]);
+    }
+    vec3 v0 = vec3(ch.position_key_value_x[i], ch.position_key_value_y[i], ch.position_key_value_z[i]);
+    vec3 v1 = vec3(ch.position_key_value_x[i + 1u], ch.position_key_value_y[i + 1u], ch.position_key_value_z[i + 1u]);
+    return mix(v0, v1, a);
+}
+
+vec3 sample_scaling(in AnimationGPUChannel ch, float t) {
+    if (ch.scaling_key_count == 0u) return vec3(1.0);
+    uint i; float a = find_key_interval_uint(ch.scaling_key_count, ch.scaling_key_times, t, i);
+    if (a == 0.0 && i == ch.scaling_key_count - 1u) {
+        return vec3(ch.scaling_key_value_x[i], ch.scaling_key_value_y[i], ch.scaling_key_value_z[i]);
+    }
+    vec3 s0 = vec3(ch.scaling_key_value_x[i], ch.scaling_key_value_y[i], ch.scaling_key_value_z[i]);
+    vec3 s1 = vec3(ch.scaling_key_value_x[i + 1u], ch.scaling_key_value_y[i + 1u], ch.scaling_key_value_z[i + 1u]);
+    return mix(s0, s1, a);
+}
+
+vec4 quat_slerp(vec4 a, vec4 b, float t) {
+    float cosom = dot(a, b);
+    if (cosom < 0.0) { b = -b; cosom = -cosom; }
+    const float THRESH = 0.9995;
+    if (cosom > THRESH) {
+        vec4 res = a + t * (b - a);
+        return normalize(res);
+    }
+    float omega = acos(clamp(cosom, -1.0, 1.0));
+    float sinom = sin(omega);
+    float s1 = sin((1.0 - t) * omega) / sinom;
+    float s2 = sin(t * omega) / sinom;
+    return a * s1 + b * s2;
+}
+
+vec4 sample_rotation(in AnimationGPUChannel ch, float t) {
+    if (ch.rotation_key_count == 0u) return vec4(0.0, 0.0, 0.0, 1.0);
+    uint i; float a = find_key_interval_uint(ch.rotation_key_count, ch.rotation_key_times, t, i);
+    vec4 q0 = vec4(ch.rotation_key_value_x[i], ch.rotation_key_value_y[i], ch.rotation_key_value_z[i], ch.rotation_key_value_w[i]);
+    q0 = normalize(q0);
+    if (a == 0.0 && i == ch.rotation_key_count - 1u) return q0;
+    vec4 q1 = vec4(ch.rotation_key_value_x[i + 1u], ch.rotation_key_value_y[i + 1u], ch.rotation_key_value_z[i + 1u], ch.rotation_key_value_w[i + 1u]);
+    q1 = normalize(q1);
+    return quat_slerp(q0, q1, a);
+}
+
+uint find_channel_for_node(uint node_index) {
+    uint maxCount = min(push.u_AnimationChannelCount, MAX_ANIMATION_CHANNELS);
+    for (uint ci = 0u; ci < maxCount; ++ci) {
+        AnimationGPUChannel ach = animation_data.animation[ci];
+        if (ach.armature_element_index == node_index) {
+            if (ach.position_key_count == 0u && ach.rotation_key_count == 0u && ach.scaling_key_count == 0u) continue;
+            return ci;
+        }
+    }
+    return uint(-1);
+}
+
+void main() {
+    uint boneIndex = gl_GlobalInvocationID.x;
+    uint nbones = uint(original_skeleton.bones.length());
+    if (boneIndex >= nbones) return;
+
+    uint armature_starting_index = original_skeleton.bones[boneIndex].armature_node_index;
+    uint current_armature_index = armature_starting_index;
+    mat4 current_transform = mat4(1.0);
+
+    while (true) {
+        uint ch_idx = find_channel_for_node(current_armature_index);
+        mat4 local = armature_data.armature[current_armature_index].transform;
+        if (ch_idx != uint(-1)) {
+            AnimationGPUChannel ch = animation_data.animation[ch_idx];
+            vec3 pos = sample_position(ch, push.u_DeltaTime);
+            vec4 rot = sample_rotation(ch, push.u_DeltaTime);
+            vec3 scl = sample_scaling(ch, push.u_DeltaTime);
+            local = mat4_from_trs(pos, rot, scl);
+        }
+
+        current_transform = local * current_transform;
+        uint parent_index = armature_data.armature[current_armature_index].parent_index;
+        if (parent_index == current_armature_index) {
+            break;
+        }
+        current_armature_index = parent_index;
+    }
+
+    per_frame_skeleton.offset_matrix[boneIndex] =
+        current_transform * original_skeleton.bones[boneIndex].offset_matrix;
+}

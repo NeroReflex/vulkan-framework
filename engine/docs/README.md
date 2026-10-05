@@ -18,6 +18,7 @@ The speed comes from chapter 4. Surfels are not walked in a tree. Each live surf
 10. [Legacy tree](10-legacy-bvh.md) — shaders that still build, and the dispatch that no longer calls them.
 11. [Changing it safely](11-maintenance.md) — invariants, atomics, and the mistakes that bring back popping or a stall.
 12. [Moving surfels](12-moving-surfels.md) — node-local centers, the world-center pass, and skinned BLASes.
+13. [Skinning](13-skinning.md) — tar skeleton layout, compute chain, and barriers.
 
 ## Source map
 

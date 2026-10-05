@@ -17,7 +17,8 @@ use crate::{
     },
 };
 
-use super::{mesh::MeshManager, texture::TextureManager};
+use super::{mesh::MeshManager, skin_asset::{SkinnedAsset, SkinnedTarLoader, SkinDispatchView}, texture::TextureManager};
+use super::archive_layout::{classify, ArchiveEntry};
 
 use vulkan_framework::{
     acceleration_structure::{
@@ -223,6 +224,7 @@ pub struct Manager {
     current_tlas: Option<TLASStatus>,
 
     objects: LoadedMeshesType,
+    skinned_assets: Vec<Option<SkinnedAsset>>,
 }
 
 /// This struct represents what the GPU has access to when indexing buffers
@@ -319,6 +321,10 @@ impl Manager {
         for _ in 0..objects.capacity() {
             objects.push(None);
         }
+        let mut skinned_assets = Vec::with_capacity(MAX_MESHES as usize);
+        for _ in 0..MAX_MESHES as usize {
+            skinned_assets.push(None);
+        }
 
         let tlas_loading_queue = queue.clone();
         let current_tlas = None;
@@ -342,7 +348,63 @@ impl Manager {
             current_tlas,
 
             objects,
+            skinned_assets,
         })
+    }
+
+    pub fn list_animations(&self, object: usize) -> Vec<String> {
+        self.skinned_assets
+            .get(object)
+            .and_then(|asset| asset.as_ref())
+            .map(|asset| asset.clip_names())
+            .unwrap_or_default()
+    }
+
+    pub fn clear_object_instances(&mut self, object: usize) -> RenderingResult<()> {
+        let mut objects = self.objects.clone();
+        let Some(Some((_, instances))) = objects.get_mut(object) else {
+            return Err(RenderingError::ResourceError(ResourceError::NoMesh(object)));
+        };
+        instances.instances.clear();
+        self.rebuild_tlas(objects, TLASRebuildDevice::GPU)?;
+        Ok(())
+    }
+
+    pub fn play_animation(&mut self, object: usize, name: &str) -> RenderingResult<()> {
+        let Some(asset) = self.skinned_assets.get_mut(object).and_then(|slot| slot.as_mut()) else {
+            return Err(RenderingError::ResourceError(ResourceError::NoMesh(object)));
+        };
+        if !asset.clips.contains_key(name) {
+            return Err(RenderingError::ResourceError(ResourceError::InvalidObjectFormat));
+        }
+        asset.play_state.clip = Some(name.to_string());
+        asset.play_state.time_seconds = 0.0;
+        Ok(())
+    }
+
+    pub fn advance_animations(&mut self, delta_seconds: f32) {
+        for asset in self.skinned_assets.iter_mut().flatten() {
+            asset.play_state.advance(delta_seconds, &asset.clips);
+        }
+    }
+
+    pub fn skin_dispatch_views(&mut self) -> Vec<SkinDispatchView<'_>> {
+        self.skinned_assets
+            .iter_mut()
+            .flatten()
+            .map(|asset| asset.dispatch_view())
+            .collect()
+    }
+
+    pub fn record_skinning(
+        &mut self,
+        gi: &crate::rendering::pipeline::global_illumination::GILighting,
+        recorder: &mut CommandBufferRecorder,
+    ) -> RenderingResult<()> {
+        for asset in self.skinned_assets.iter_mut().flatten() {
+            gi.dispatch_skinned_asset(recorder, asset)?;
+        }
+        Ok(())
     }
 
     pub fn load_object(
@@ -397,6 +459,7 @@ impl Manager {
         let mut models: HashMap<String, ModelDecl> = HashMap::new();
         let mut vertex_buffer: Option<(BottomLevelVerticesTopologyDecl, Arc<AllocatedBuffer>)> =
             Option::None;
+        let mut skin_loader = SkinnedTarLoader::default();
 
         if !file.exists() {
             panic!("File doesn't exists!");
@@ -424,6 +487,23 @@ impl Manager {
                 true => String::from(&path_str[2..]),
                 false => String::from(path_str),
             };
+
+            if let Some(entry) = classify(&path_trimmed) {
+                match entry {
+                    ArchiveEntry::SkeletonOriginal
+                    | ArchiveEntry::SkeletonArmature
+                    | ArchiveEntry::SkinnedVertexBuffer
+                    | ArchiveEntry::Meta
+                    | ArchiveEntry::Manifest
+                    | ArchiveEntry::AnimationChannels(_) => {
+                        let size = file.header().size()?;
+                        skin_loader.ingest(&path_trimmed, &mut file, size)?;
+                        continue;
+                    }
+                    _ => {}
+                }
+            }
+
             let splitted_path = path_trimmed.split('/').collect::<Vec<_>>();
             if splitted_path.is_empty() {
                 println!("Invalid file name {:?}", file.header().path()?);
@@ -982,6 +1062,12 @@ impl Manager {
 
             self.objects[allocation_index] = Some((mesh, MeshInstances { instances: vec![] }));
 
+            if skin_loader.is_skinned_archive() {
+                let mut memory_manager = self.memory_manager.lock().unwrap();
+                let skinned = skin_loader.finish(device.clone(), memory_manager.deref_mut())?;
+                self.skinned_assets[allocation_index] = Some(skinned);
+            }
+
             return Ok(allocation_index);
         }
 
@@ -1035,7 +1121,7 @@ impl Manager {
         objects: LoadedMeshesType,
         device: TLASRebuildDevice,
     ) -> RenderingResult<()> {
-        let max_instances: u32 = objects
+        let instance_count: u32 = objects
             .iter()
             .map(|loaded_obj| match loaded_obj {
                 Some((obj_meshes, obj_instances)) => {
@@ -1044,12 +1130,14 @@ impl Manager {
                 None => 0_usize,
             })
             .sum::<usize>() as u32;
+        // Vulkan buffer descriptors must have non-zero size even when the scene has no instances.
+        let buffer_instance_capacity = instance_count.max(1);
         let blas_decl = TopLevelBLASGroupDecl::new();
         let instance_unallocated_buffer = Buffer::new(
             self.queue_family.get_parent_device(),
             TopLevelAccelerationStructureInstanceBuffer::template(
                 &blas_decl,
-                max_instances,
+                buffer_instance_capacity,
                 [BufferUseAs::VertexBuffer].as_slice().into(),
             ),
             None,
@@ -1060,7 +1148,8 @@ impl Manager {
             self.queue_family.get_parent_device(),
             ConcreteBufferDescriptor::new(
                 [BufferUseAs::StorageBuffer].as_slice().into(),
-                (core::mem::size_of::<TLASDescriptor>() as u64) * (max_instances as u64),
+                (core::mem::size_of::<TLASDescriptor>() as u64)
+                    * (buffer_instance_capacity as u64),
             ),
             None,
             Some("instance_buffer"),
@@ -1082,7 +1171,7 @@ impl Manager {
 
             let tlas_buffer = TopLevelAccelerationStructureInstanceBuffer::new(
                 blas_decl,
-                max_instances,
+                buffer_instance_capacity,
                 instance_allocated_data[0].buffer(),
             )?;
 
@@ -1290,7 +1379,7 @@ impl Manager {
 
                     recorder.pipeline_barriers(buffer_barriers);
 
-                    recorder.build_tlas(tlas.clone(), 0, max_instances);
+                    recorder.build_tlas(tlas.clone(), 0, instance_count);
 
                     recorder.pipeline_barriers([
                         BufferMemoryBarrier::new(

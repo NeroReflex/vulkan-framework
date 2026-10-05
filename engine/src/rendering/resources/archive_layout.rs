@@ -14,6 +14,11 @@ pub enum ArchiveEntry {
     ModelIndexes(String),
     ModelMaterial(String),
     ModelSkin(String),
+    SkeletonOriginal,
+    SkeletonArmature,
+    AnimationChannels(String),
+    Meta,
+    Manifest,
 }
 
 pub fn classify(path: &str) -> Option<ArchiveEntry> {
@@ -23,6 +28,20 @@ pub fn classify(path: &str) -> Option<ArchiveEntry> {
     match kind {
         "vertex_buffer" => Some(ArchiveEntry::VertexBuffer),
         "skinned_vertex_buffer" => Some(ArchiveEntry::SkinnedVertexBuffer),
+        "skeleton" => match parts.next()? {
+            "original" => Some(ArchiveEntry::SkeletonOriginal),
+            "armature" => Some(ArchiveEntry::SkeletonArmature),
+            _ => None,
+        },
+        "animations" => {
+            let name = parts.next()?.to_string();
+            match parts.next()? {
+                "channels" => Some(ArchiveEntry::AnimationChannels(name)),
+                _ => None,
+            }
+        }
+        "meta" => Some(ArchiveEntry::Meta),
+        "manifest" => Some(ArchiveEntry::Manifest),
         "textures" => {
             let name = parts.next()?.to_string();
             match parts.next()? {
@@ -79,6 +98,20 @@ mod tests {
             classify("./models/floor/skin"),
             Some(ArchiveEntry::ModelSkin("floor".into()))
         );
+        assert_eq!(
+            classify("skeleton/original"),
+            Some(ArchiveEntry::SkeletonOriginal)
+        );
+        assert_eq!(
+            classify("./skeleton/armature"),
+            Some(ArchiveEntry::SkeletonArmature)
+        );
+        assert_eq!(
+            classify("animations/Jump/channels"),
+            Some(ArchiveEntry::AnimationChannels("Jump".into()))
+        );
+        assert_eq!(classify("meta"), Some(ArchiveEntry::Meta));
+        assert_eq!(classify("./manifest"), Some(ArchiveEntry::Manifest));
     }
 
     #[test]

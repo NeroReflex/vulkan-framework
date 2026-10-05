@@ -31,7 +31,9 @@ use vulkan_framework::{
     instance::InstanceOwned,
     memory_barriers::{BufferMemoryBarrier, MemoryAccessAs, MemoryBarrier},
     memory_heap::MemoryType,
-    memory_management::{DefaultMemoryManager, MemoryManagementTags, MemoryManagerTrait},
+    memory_management::{
+        DefaultMemoryManager, MemoryManagementTags, MemoryManagerTrait,
+    },
     memory_pool::MemoryPoolFeatures,
     pipeline_stage::{PipelineStage, PipelineStageRayTracingPipelineKHR, PipelineStages},
     prelude::{FrameworkError, VulkanError},
@@ -244,11 +246,14 @@ impl System {
             }
         }
         if changed {
-            if manager.rebuild_tlas_now().is_ok() {
-                let columns = manager.instance_column_matrices();
-                self.global_illumination_lighting.set_node_matrices(&columns);
-                self.global_illumination_lighting.mark_surfel_index_dirty();
-            }
+            let _ = manager.rebuild_tlas_now();
+            let columns = manager.instance_column_matrices();
+            drop(manager);
+            self.global_illumination_lighting.set_node_matrices(&columns);
+            self.global_illumination_lighting.mark_surfel_index_dirty();
+            // Same as a camera cut: GI buffers only clear when reuse is 0; RT must bind the new TLAS.
+            self.prev_frame_gi_reuse = 0;
+            self.commit_raytracing_scene();
         }
     }
 
@@ -289,8 +294,13 @@ impl System {
         self.prev_frame_gi_reuse = 0;
 
         let mut manager = self.resources_manager.lock().unwrap();
-        manager.wait_blocking().unwrap();
-        let (tlas, tlas_data) = manager.tlas_ready().unwrap();
+        if manager.wait_blocking().is_err() {
+            return;
+        }
+        let (tlas, tlas_data) = match manager.tlas_ready() {
+            Ok(ready) => ready,
+            Err(_) => return,
+        };
 
         let rt_descriptor_set = DescriptorSet::new(
             self.rt_descriptor_pool.clone(),
@@ -847,7 +857,8 @@ impl System {
         let init_waiter =
             main_queue.submit(&[init_command_buffer.clone()], &[], &[], init_fence.clone())?;
 
-        let frames_in_flight = (0..frames_in_flight).map(|_| Option::None).collect();
+        let frames_in_flight: smallvec::SmallVec<[Option<FenceWaiter>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]> =
+            (0..frames_in_flight).map(|_| Option::None).collect();
         let prev_frame_gi_reuse = 0;
 
         // ART_RTIC_STOP_AFTER=none|mesh|gi|final|hdr|all is used to bisect
@@ -1289,6 +1300,14 @@ impl System {
                     ]);
                 }
 
+                static_meshes_resources.advance_animations(1.0 / 60.0);
+                if let Err(err) = static_meshes_resources.record_skinning(
+                    &self.global_illumination_lighting,
+                    recorder,
+                ) {
+                    panic!("skinning dispatch failed: {err}");
+                }
+
                 // Record rendering commands to generate the gbuffer (position, normal and texture) for each
                 // pixel in the final image: this solves the visibility problem and provides data for later stager
                 // along the GPU pipeline
@@ -1393,7 +1412,6 @@ impl System {
                     return;
                 }
 
-                // record commands to finalize the rendering image
                 self.renderquad.record_rendering_commands(
                     self.queue_family(),
                     swapchain.images_extent(),
