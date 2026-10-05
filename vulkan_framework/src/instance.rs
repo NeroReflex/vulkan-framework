@@ -166,12 +166,6 @@ impl Instance {
                 .iter()
                 .any(|layer| layer == "VK_LAYER_KHRONOS_validation")
             {
-                // GPU-AV / debugPrintf rewrite shaders into an extra set.
-                // Without this the extra binding collides with application sets
-                // and ray tracing workloads TDR (ERROR_DEVICE_LOST).
-                enabled_validation_features.push(
-                    ash::vk::ValidationFeatureEnableEXT::GPU_ASSISTED_RESERVE_BINDING_SLOT,
-                );
                 let shader_printf = std::env::var("ART_RTIC_SHADER_PRINTF")
                     .ok()
                     .is_some_and(|value| value != "0")
@@ -179,6 +173,11 @@ impl Instance {
                         .ok()
                         .is_some_and(|value| value != "0");
                 if shader_printf {
+                    // debugPrintf rewrites shaders into an extra set; reserve a slot so
+                    // application descriptor sets do not collide (see ValidationFeaturesEXT).
+                    enabled_validation_features.push(
+                        ash::vk::ValidationFeatureEnableEXT::GPU_ASSISTED_RESERVE_BINDING_SLOT,
+                    );
                     enabled_validation_features
                         .push(ash::vk::ValidationFeatureEnableEXT::DEBUG_PRINTF);
                 }

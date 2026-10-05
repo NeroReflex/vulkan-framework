@@ -55,11 +55,22 @@ impl From<AttachmentStoreOp> for crate::ash::vk::AttachmentStoreOp {
 #[derive(Clone, PartialEq, Eq)]
 pub struct DynamicRenderingColorDefinition {
     format: ImageFormat,
+    alpha_blend: bool,
 }
 
 impl DynamicRenderingColorDefinition {
     pub fn new(format: ImageFormat) -> Self {
-        Self { format }
+        Self {
+            format,
+            alpha_blend: false,
+        }
+    }
+
+    pub fn new_with_alpha_blend(format: ImageFormat) -> Self {
+        Self {
+            format,
+            alpha_blend: true,
+        }
     }
 
     pub fn format(&self) -> ImageFormat {
@@ -74,8 +85,8 @@ impl From<&DynamicRenderingColorDefinition> for crate::ash::vk::Format {
 }
 
 impl From<&DynamicRenderingColorDefinition> for crate::ash::vk::PipelineColorBlendAttachmentState {
-    fn from(_val: &DynamicRenderingColorDefinition) -> Self {
-        ash::vk::PipelineColorBlendAttachmentState::default()
+    fn from(val: &DynamicRenderingColorDefinition) -> Self {
+        let mut color_blend = ash::vk::PipelineColorBlendAttachmentState::default()
             .color_write_mask(ash::vk::ColorComponentFlags::RGBA)
             .blend_enable(false)
             .src_color_blend_factor(ash::vk::BlendFactor::ONE)
@@ -83,7 +94,19 @@ impl From<&DynamicRenderingColorDefinition> for crate::ash::vk::PipelineColorBle
             .color_blend_op(ash::vk::BlendOp::ADD)
             .src_alpha_blend_factor(ash::vk::BlendFactor::ONE)
             .dst_alpha_blend_factor(ash::vk::BlendFactor::ONE)
-            .alpha_blend_op(ash::vk::BlendOp::ADD)
+            .alpha_blend_op(ash::vk::BlendOp::ADD);
+        
+        if val.alpha_blend {
+            color_blend.blend_enable = 1u32;
+            color_blend.src_color_blend_factor = ash::vk::BlendFactor::SRC_ALPHA;
+            color_blend.dst_color_blend_factor = ash::vk::BlendFactor::ONE_MINUS_SRC_ALPHA;
+            color_blend.color_blend_op = ash::vk::BlendOp::ADD;
+            color_blend.src_alpha_blend_factor = ash::vk::BlendFactor::ONE;
+            color_blend.dst_alpha_blend_factor = ash::vk::BlendFactor::ONE_MINUS_SRC_ALPHA;
+            color_blend.alpha_blend_op = ash::vk::BlendOp::ADD;
+        }
+
+        color_blend
     }
 }
 

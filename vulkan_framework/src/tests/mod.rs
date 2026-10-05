@@ -1,4 +1,5 @@
 mod acceleration_structure_lifetimes;
+mod animate_channels_dispatch;
 mod binding_tables;
 mod buffer_copy_map;
 mod common;
