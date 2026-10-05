@@ -3,6 +3,7 @@ pub mod global_illumination;
 pub mod hdr_transform;
 pub mod mesh_rendering;
 pub mod renderquad;
+pub mod ui_composite;
 
 use std::sync::Arc;
 

@@ -87,6 +87,7 @@ pub enum StopAfter {
     Gi,
     Final,
     Hdr,
+    Ui,
     All,
 }
 
@@ -146,6 +147,9 @@ pub struct System {
     frames_in_flight: smallvec::SmallVec<[Option<FenceWaiter>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
 
     scene: crate::scene::SceneGraph,
+    scene_base: PathBuf,
+    memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
+    ui: Option<crate::ui::UiLayer>,
 
     // It is VERY important that the window is dropped early
     // Otherwise it will be impossible to destroy the swapchain
@@ -187,6 +191,82 @@ impl System {
         self.resources_manager.clone()
     }
 
+    pub fn list_animations(&self, object_slot: usize) -> Vec<String> {
+        self.resources_manager
+            .lock()
+            .unwrap()
+            .list_animations(object_slot)
+    }
+
+    pub fn play_animation(&mut self, object_slot: usize, name: &str) -> RenderingResult<()> {
+        self.resources_manager
+            .lock()
+            .unwrap()
+            .play_animation(object_slot, name)
+    }
+
+    pub fn scene(&self) -> &crate::scene::SceneGraph {
+        &self.scene
+    }
+
+    pub fn scene_mut(&mut self) -> &mut crate::scene::SceneGraph {
+        &mut self.scene
+    }
+
+    pub fn ui_layer_mut(&mut self) -> Option<&mut crate::ui::UiLayer> {
+        self.ui.as_mut()
+    }
+
+    pub fn attach_object_to_node(
+        &mut self,
+        node_index: usize,
+        tar_path: &std::path::Path,
+    ) -> RenderingResult<()> {
+        let resolved = if tar_path.is_absolute() {
+            tar_path.to_path_buf()
+        } else {
+            self.scene_base.join(tar_path)
+        };
+        let world = self.scene.world(node_index);
+        let mut manager = self.resources_manager.lock().unwrap();
+        let slot = manager.load_object(resolved, IDENTITY_MATRIX)?;
+        let matrix = vk::TransformMatrixKHR {
+            matrix: world.to_vulkan_rows(),
+        };
+        manager.add_instance(slot, matrix, TLASRebuildDevice::GPU)?;
+        let columns = manager.instance_column_matrices();
+        drop(manager);
+        self.global_illumination_lighting.set_node_matrices(&columns);
+        let node = &mut self.scene.nodes_mut()[node_index];
+        node.object = Some(tar_path.to_string_lossy().into_owned());
+        node.object_slot = Some(slot);
+        self.scene.mark_moved();
+        self.commit_raytracing_scene();
+        Ok(())
+    }
+
+    pub fn save_scene_file(&self, path: &std::path::Path) -> Result<(), String> {
+        crate::scene::save_scene_json(&self.scene, path)
+    }
+
+    pub fn detach_object(&mut self, object_slot: usize) -> RenderingResult<()> {
+        {
+            let mut manager = self.resources_manager.lock().unwrap();
+            manager.clear_object_instances(object_slot)?;
+            manager.wait_blocking()?;
+        }
+        let columns = self
+            .resources_manager
+            .lock()
+            .unwrap()
+            .instance_column_matrices();
+        self.global_illumination_lighting.set_node_matrices(&columns);
+        self.global_illumination_lighting.mark_surfel_index_dirty();
+        self.scene.mark_moved();
+        self.commit_raytracing_scene();
+        Ok(())
+    }
+
     pub fn device(&self) -> Arc<vulkan_framework::device::Device> {
         self.queue_family().get_parent_device()
     }
@@ -224,6 +304,10 @@ impl System {
             .set_node_matrices(&columns);
         scene.take_moved();
         self.scene = scene;
+        self.scene_base = scene_base.to_path_buf();
+        if let Some(ui) = &mut self.ui {
+            ui.scene_base = self.scene_base.clone();
+        }
         Ok(())
     }
 
@@ -873,6 +957,7 @@ impl System {
             "gi" => StopAfter::Gi,
             "final" => StopAfter::Final,
             "hdr" => StopAfter::Hdr,
+            "ui" => StopAfter::Ui,
             _ => StopAfter::All,
         };
         println!("Renderer stage bisection stops after: {debug_stop_after:?}");
@@ -893,6 +978,27 @@ impl System {
         drop(init_waiter);
 
         crate::preview::start();
+
+        let ui = if matches!(std::env::var("ART_RTIC_NO_UI").ok().as_deref(), Some("1")) {
+            None
+        } else {
+            let mut memory = memory_manager.lock().unwrap();
+            match crate::ui::UiLayer::new(
+                &window,
+                device.clone(),
+                &mut *memory,
+                crate::ui::output_format(),
+                window.drawable_size().0.max(1),
+                window.drawable_size().1.max(1),
+                frames_in_flight.len(),
+            ) {
+                Ok(layer) => Some(layer),
+                Err(err) => {
+                    eprintln!("UI disabled: init failed: {err}");
+                    None
+                }
+            }
+        };
 
         Ok(Self {
             queue_family,
@@ -938,7 +1044,22 @@ impl System {
 
             prev_frame_gi_reuse,
             scene: crate::scene::SceneGraph::new(),
+            scene_base: PathBuf::from("."),
+            memory_manager,
+            ui,
         })
+    }
+
+    pub fn build_ui_frame(&mut self, mouse_state: &sdl2::mouse::MouseState) {
+        let window = std::ptr::from_ref(&self.window);
+        let mut ui_layer = self.ui.take();
+        if let Some(ui) = &mut ui_layer {
+            if let Ok(mut memory) = self.memory_manager.lock() {
+                let _ = ui.ensure_framebuffer_size(unsafe { &*window }, &mut *memory);
+            }
+            ui.build_frame(unsafe { &*window }, mouse_state, self);
+        }
+        self.ui = ui_layer;
     }
 
     pub fn recreate_swapchain(&mut self) -> RenderingResult<()> {
@@ -1030,6 +1151,12 @@ impl System {
         }
 
         self.swapchain = Some((swapchain, image_views));
+
+        if let Some(ui) = &mut self.ui {
+            if let Ok(mut memory) = self.memory_manager.lock() {
+                let _ = ui.ensure_framebuffer_size(&self.window, &mut *memory);
+            }
+        }
 
         Ok(())
     }
@@ -1137,12 +1264,18 @@ impl System {
             assert!(directional_lights.count() <= MAX_DIRECTIONAL_LIGHTS);
             let size_of_light = 4u64 * 6u64;
 
+            let mut ui_layer = self.ui.take();
+            let memory_manager = self.memory_manager.clone();
+            let queue_family = self.queue_family.clone();
+            let debug_stop_after = self.debug_stop_after;
+            let swapchain_extent = swapchain.images_extent();
+
             // here register the command buffer: command buffer at index i is associated with rendering_fences[i],
             // that I just awaited above, so thecommand buffer is surely NOT currently in use
-            self.present_command_buffers[current_frame].record_one_time_submit(|recorder| {
+            let record_result = self.present_command_buffers[current_frame].record_one_time_submit(|recorder| {
                 // bisecting helper: when ART_RTIC_STOP_AFTER is "none" an empty
                 // command buffer is submitted to test the submission machinery
-                if self.debug_stop_after == StopAfter::None {
+                if debug_stop_after == StopAfter::None {
                     return;
                 }
 
@@ -1329,7 +1462,7 @@ impl System {
                     recorder,
                 );
 
-                if self.debug_stop_after == StopAfter::Mesh {
+                if debug_stop_after == StopAfter::Mesh {
                     return;
                 }
 
@@ -1368,7 +1501,7 @@ impl System {
                         recorder,
                     );
 
-                if self.debug_stop_after == StopAfter::Gi {
+                if debug_stop_after == StopAfter::Gi {
                     return;
                 }
 
@@ -1397,7 +1530,7 @@ impl System {
                     recorder,
                 );
 
-                if self.debug_stop_after == StopAfter::Final {
+                if debug_stop_after == StopAfter::Final {
                     return;
                 }
 
@@ -1408,18 +1541,39 @@ impl System {
                     recorder,
                 );
 
-                if self.debug_stop_after == StopAfter::Hdr {
+                if debug_stop_after == StopAfter::Hdr {
                     return;
                 }
 
+                let present_source = match &mut ui_layer {
+                    None => hdr_output_image.clone(),
+                    Some(ui) => {
+                        if debug_stop_after == StopAfter::Ui {
+                            return;
+                        }
+                        let mut memory = memory_manager.lock().unwrap();
+                        ui.record_gpu(
+                            current_frame,
+                            swapchain_extent,
+                            &mut *memory,
+                            queue_family.clone(),
+                            recorder,
+                            hdr_output_image.clone(),
+                        )
+                        .expect("UI record failed")
+                    }
+                };
+
                 self.renderquad.record_rendering_commands(
                     self.queue_family(),
-                    swapchain.images_extent(),
-                    hdr_output_image,
+                    swapchain_extent,
+                    present_source,
                     swapchain_imageviews[swapchain_index as usize].clone(),
                     recorder,
                 );
-            })?
+            });
+            self.ui = ui_layer;
+            record_result?
         };
 
         let frame_queue = self.queues[current_frame].clone();

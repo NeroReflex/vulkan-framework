@@ -23,7 +23,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let sdl_context = sdl2::init().unwrap();
     let sdl_mouse = sdl_context.mouse();
-    sdl_mouse.set_relative_mouse_mode(true);
+    // Relative mode breaks ImGui hit-testing (mouse position stops updating). Toggle per frame.
+    sdl_mouse.set_relative_mouse_mode(false);
 
     let preferred_frames = std::env::var("ART_RTIC_FRAMES_IN_FLIGHT")
         .ok()
@@ -81,6 +82,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mouse_state = event_pump.mouse_state();
     let mut mouse_pos = glm::vec2(mouse_state.x() as f32, mouse_state.y() as f32);
+    let mut mouse_rel = glm::vec2(0.0f32, 0.0f32);
 
     //let mut total_elapsed_time_in_seconds = 0.0;
 
@@ -89,6 +91,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         last_frame_time = Instant::now();
         let mous_coeff = mouse_sensitivity_per_millisecond * coeff;
         for event in event_pump.poll_iter() {
+            if let sdl2::event::Event::MouseMotion { xrel, yrel, .. } = event {
+                mouse_rel.x += xrel as f32;
+                mouse_rel.y += yrel as f32;
+            }
+            if let Some(ui) = renderer.ui_layer_mut() {
+                ui.handle_event(&event);
+            }
             match event {
                 sdl2::event::Event::Quit { .. }
                 | sdl2::event::Event::KeyDown {
@@ -100,6 +109,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 _ => {}
             }
         }
+
+        renderer.build_ui_frame(&event_pump.mouse_state());
+
+        let ui_wants_mouse = renderer
+            .ui_layer_mut()
+            .is_some_and(|ui| ui.wants_capture_mouse());
+        let ui_camera_locked = renderer
+            .ui_layer_mut()
+            .is_some_and(|ui| ui.camera_locked);
+
+        // Never use SDL relative mouse mode: it freezes/warps coordinates and breaks ImGui
+        // window dragging (Scene panel flies off-screen on title-bar click). FPS look uses
+        // accumulated MouseMotion xrel/yrel instead.
+        let fps_mouse = !bench_wander && !locked && !ui_wants_mouse && !ui_camera_locked;
 
         // Update camera position
         {
@@ -141,7 +164,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ));
                 camera.apply_movement(strafe, step * 0.45 * (t * 0.23).cos());
                 renderer.change_camera(Arc::new(camera.clone()));
-            } else if !locked {
+            } else if !locked && !ui_wants_mouse && !ui_camera_locked {
                 if new_keyboard_state.is_scancode_pressed(Scancode::W) {
                     camera.apply_movement(camera.orientation(), move_quantity);
 
@@ -182,12 +205,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Update the mouse position
         {
-            let new_mouse_state = event_pump.mouse_state();
-            let new_mouse_pos = glm::vec2(new_mouse_state.x() as f32, new_mouse_state.y() as f32);
-            let orientation_change = (new_mouse_pos - mouse_pos) * mous_coeff;
-            mouse_pos = new_mouse_pos;
+            let orientation_change = if fps_mouse {
+                let delta = mouse_rel * mous_coeff;
+                mouse_rel = glm::vec2(0.0, 0.0);
+                delta
+            } else {
+                let new_mouse_state = event_pump.mouse_state();
+                let new_mouse_pos =
+                    glm::vec2(new_mouse_state.x() as f32, new_mouse_state.y() as f32);
+                let delta = (new_mouse_pos - mouse_pos) * mous_coeff;
+                mouse_pos = new_mouse_pos;
+                delta
+            };
 
-            if !bench_wander && !locked && ((orientation_change.x != 0.0) || (orientation_change.y != 0.0)) {
+            if !bench_wander
+                && !locked
+                && !ui_wants_mouse
+                && !ui_camera_locked
+                && (orientation_change.x != 0.0 || orientation_change.y != 0.0)
+            {
                 camera.apply_horizontal_rotation(orientation_change.x);
                 camera.apply_vertical_rotation(orientation_change.y);
                 renderer.change_camera(Arc::new(camera.clone()));
