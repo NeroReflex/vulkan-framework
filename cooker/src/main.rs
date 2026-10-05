@@ -6,8 +6,10 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+mod fbx;
 mod obj;
 mod repack;
+mod skin_format;
 mod tar_out;
 mod tools;
 
@@ -89,6 +91,20 @@ fn main() {
                 std::process::exit(1);
             });
         }
+        "fbx" => {
+            let input = args.next().unwrap_or_else(|| {
+                eprintln!("usage: artrtic-cook fbx <in.fbx> <out.tar>");
+                std::process::exit(2);
+            });
+            let output = args.next().unwrap_or_else(|| {
+                eprintln!("usage: artrtic-cook fbx <in.fbx> <out.tar>");
+                std::process::exit(2);
+            });
+            fbx::pack_fbx(Path::new(&input), Path::new(&output)).unwrap_or_else(|err| {
+                eprintln!("fbx pack failed: {err}");
+                std::process::exit(1);
+            });
+        }
         "validate" => {
             let input = args.next().unwrap_or_else(|| {
                 eprintln!("usage: artrtic-cook validate <object.tar>");
@@ -124,6 +140,7 @@ fn print_usage() {
     eprintln!("  artrtic-cook repack <in.tar> <out.tar>");
     eprintln!("  artrtic-cook validate <object.tar>");
     eprintln!("  artrtic-cook obj <scene_dir> <out.tar>");
+    eprintln!("  artrtic-cook fbx <in.fbx> <out.tar>");
 }
 
 pub fn cook_manifest(manifest: &Manifest, out_path: &Path) -> Result<(), String> {
