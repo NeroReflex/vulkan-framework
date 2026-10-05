@@ -95,8 +95,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 mouse_rel.x += xrel as f32;
                 mouse_rel.y += yrel as f32;
             }
-            if let Some(ui) = renderer.ui_layer_mut() {
-                ui.handle_event(&event);
+            if renderer.ui_visible() {
+                if let Some(ui) = renderer.ui_layer_mut() {
+                    ui.handle_event(&event);
+                }
+            }
+            if matches!(
+                event,
+                sdl2::event::Event::KeyDown {
+                    keycode: Some(sdl2::keyboard::Keycode::Backslash),
+                    repeat: false,
+                    ..
+                }
+            ) {
+                renderer.toggle_ui();
             }
             match event {
                 sdl2::event::Event::Quit { .. }
@@ -112,20 +124,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         renderer.build_ui_frame(&event_pump.mouse_state());
 
-        let ui_wants_mouse = renderer
-            .ui_layer_mut()
-            .is_some_and(|ui| ui.wants_capture_mouse());
-        let ui_camera_locked = renderer
-            .ui_layer_mut()
-            .is_some_and(|ui| ui.camera_locked);
+        let ui_active = renderer.ui_visible();
 
         // Never use SDL relative mouse mode: it freezes/warps coordinates and breaks ImGui
         // window dragging (Scene panel flies off-screen on title-bar click). FPS look uses
         // accumulated MouseMotion xrel/yrel instead.
-        let fps_mouse = !bench_wander && !locked && !ui_wants_mouse && !ui_camera_locked;
+        let fps_mouse = !bench_wander && !locked && !ui_active;
 
-        // Update camera position
-        {
+        if ui_active {
+            mouse_rel = glm::vec2(0.0, 0.0);
+        }
+
+        // Update camera position (disabled while the editor UI is visible).
+        if !ui_active {
             if let Some((dx, dy, forward, strafe)) = artrtic::preview::take_look() {
                 camera.apply_horizontal_rotation(dx);
                 camera.apply_vertical_rotation(dy);
@@ -140,13 +151,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             {
                 locked = !locked;
                 prev_frame_lock_key_was_pressed = true;
-                //sdl_mouse.set_relative_mouse_mode(locked);
             } else if !new_keyboard_state.is_scancode_pressed(Scancode::Space) {
                 prev_frame_lock_key_was_pressed = false;
             }
 
             if bench_wander {
-                // Stay in the atrium: lock pitch, yaw and strafe on XZ, never look at sky.
                 let t = rendered_frames as f32 * (1.0 / 60.0);
                 let step = move_units_per_second * (1.0 / 60.0);
                 camera.set_vertical_angle(-0.03);
@@ -164,19 +173,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ));
                 camera.apply_movement(strafe, step * 0.45 * (t * 0.23).cos());
                 renderer.change_camera(Arc::new(camera.clone()));
-            } else if !locked && !ui_wants_mouse && !ui_camera_locked {
+            } else if !locked {
+                let new_keyboard_state = event_pump.keyboard_state();
                 if new_keyboard_state.is_scancode_pressed(Scancode::W) {
                     camera.apply_movement(camera.orientation(), move_quantity);
-
                     renderer.change_camera(Arc::new(camera.clone()));
                 }
-
                 if new_keyboard_state.is_scancode_pressed(Scancode::S) {
                     camera.apply_movement(camera.orientation(), -move_quantity);
-
                     renderer.change_camera(Arc::new(camera.clone()));
                 }
-
                 if new_keyboard_state.is_scancode_pressed(Scancode::D) {
                     camera.apply_movement(
                         glm::normalize(glm::cross(
@@ -185,10 +191,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         )),
                         move_quantity,
                     );
-
                     renderer.change_camera(Arc::new(camera.clone()));
                 }
-
                 if new_keyboard_state.is_scancode_pressed(Scancode::A) {
                     camera.apply_movement(
                         glm::normalize(glm::cross(
@@ -197,14 +201,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         )),
                         -move_quantity,
                     );
-
                     renderer.change_camera(Arc::new(camera.clone()));
                 }
             }
-        }
 
-        // Update the mouse position
-        {
             let orientation_change = if fps_mouse {
                 let delta = mouse_rel * mous_coeff;
                 mouse_rel = glm::vec2(0.0, 0.0);
@@ -220,8 +220,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             if !bench_wander
                 && !locked
-                && !ui_wants_mouse
-                && !ui_camera_locked
                 && (orientation_change.x != 0.0 || orientation_change.y != 0.0)
             {
                 camera.apply_horizontal_rotation(orientation_change.x);

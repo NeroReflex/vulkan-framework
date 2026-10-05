@@ -38,6 +38,7 @@ pub struct UiLayer {
     cli_buffer: String,
     selected_node: Option<usize>,
     pub camera_locked: bool,
+    pub visible: bool,
     mesh_path_buf: String,
     scene_save_path: String,
     framebuffer_width: u32,
@@ -46,7 +47,7 @@ pub struct UiLayer {
     device: Arc<vulkan_framework::device::Device>,
     /// Window-relative cursor from SDL pointer events (logical client coordinates).
     cursor_pos: Option<[f32; 2]>,
-    draw_snapshot: Option<UiDrawSnapshot>,
+    pub(crate) draw_snapshot: Option<UiDrawSnapshot>,
 }
 
 impl UiLayer {
@@ -118,6 +119,7 @@ impl UiLayer {
             cli_buffer: String::new(),
             selected_node: None,
             camera_locked: false,
+            visible: true,
             mesh_path_buf: String::new(),
             scene_save_path: String::from("scene.json"),
             framebuffer_width: width,
@@ -244,6 +246,11 @@ impl UiLayer {
             mouse_state.y() as f32,
         ]);
         self.input.prepare_io(self.imgui.io_mut(), window, mouse_state, mouse_pos);
+        {
+            let io = self.imgui.io_mut();
+            io.want_capture_mouse = true;
+            io.want_capture_keyboard = true;
+        }
         let ui = self.imgui.frame();
         // One shell window — two sibling ImGui windows were sharing focus/geometry when the
         // Scene title bar was clicked (Console appeared to "steal" Scene's layout).
@@ -343,6 +350,18 @@ impl UiLayer {
                                     attach_error = Some(format!("save failed: {err}"));
                                 }
                             }
+                        }
+                    });
+                ui.text("Debug");
+                ui.separator();
+                ChildWindow::new("Debug body##artrtic_debug_body")
+                    .border(true)
+                    .size([0.0, 72.0])
+                    .movable(false)
+                    .build(&ui, || {
+                        let mut show_surfels = system.debug_state().show_surfels();
+                        if ui.checkbox("Show surfels", &mut show_surfels) {
+                            system.debug_state().set_show_surfels(show_surfels);
                         }
                     });
                 ui.text("Console");

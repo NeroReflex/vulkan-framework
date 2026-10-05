@@ -1,9 +1,12 @@
+pub mod debug_state;
 pub mod pipeline;
 pub mod queues;
 pub mod rendering_dimensions;
 pub mod resources;
 pub mod surface;
 pub mod system;
+
+pub use debug_state::{DebugState, DEBUG_FLAG_SHOW_SURFELS};
 
 use sdl2::video::WindowBuildError;
 use thiserror::Error;

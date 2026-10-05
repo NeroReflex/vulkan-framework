@@ -1,4 +1,5 @@
 #include "../config.glsl"
+#include "../debug.glsl"
 
 layout (location = 0) out vec4 outColor;
 
@@ -24,6 +25,11 @@ void main() {
     vec3 out_vDiffuseAlbedo = directional_light_received + global_illumination_received;
     #if SHOW_SURFELS
         if (in_overlappingSurfel.x != 0xFFFFFFFFu) {
+            out_vDiffuseAlbedo += vec3(250.0, 0.0, 0.0);
+        }
+    #else
+        if ((debug_data.flags & DEBUG_SHOW_SURFELS) != 0u
+            && in_overlappingSurfel.x != 0xFFFFFFFFu) {
             out_vDiffuseAlbedo += vec3(250.0, 0.0, 0.0);
         }
     #endif

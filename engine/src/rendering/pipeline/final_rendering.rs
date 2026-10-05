@@ -72,6 +72,7 @@ impl FinalRendering {
         memory_manager: Arc<Mutex<dyn MemoryManagerTrait>>,
         gbuffer_descriptor_set_layout: Arc<DescriptorSetLayout>,
         gibuffer_descriptor_set_layout: Arc<DescriptorSetLayout>,
+        debug_descriptor_set_layout: Arc<DescriptorSetLayout>,
         render_area: &RenderingDimensions,
         frames_in_flight: u32,
     ) -> RenderingResult<Self> {
@@ -146,6 +147,7 @@ impl FinalRendering {
             &[
                 gbuffer_descriptor_set_layout,
                 gibuffer_descriptor_set_layout,
+                debug_descriptor_set_layout,
             ],
             &[],
             Some("final_rendering.pipeline_layout"),
@@ -198,6 +200,7 @@ impl FinalRendering {
         queue_family: Arc<QueueFamily>,
         gbuffer_descriptor_set: Arc<DescriptorSet>,
         gibuffer_descriptor_set: Arc<DescriptorSet>,
+        debug_descriptor_set: Arc<DescriptorSet>,
         current_frame: usize,
         recorder: &mut CommandBufferRecorder,
     ) -> Arc<ImageView> {
@@ -235,7 +238,8 @@ impl FinalRendering {
                 recorder.bind_descriptor_sets_for_graphics_pipeline(
                     self.graphics_pipeline.get_parent_pipeline_layout(),
                     0,
-                    [gbuffer_descriptor_set, gibuffer_descriptor_set].as_slice(),
+                    [gbuffer_descriptor_set, gibuffer_descriptor_set, debug_descriptor_set]
+                        .as_slice(),
                 );
 
                 recorder.draw(0, 6, 0, 1);

@@ -122,6 +122,11 @@ pub struct System {
         smallvec::SmallVec<[Arc<AllocatedBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
     status_buffers: smallvec::SmallVec<[Arc<AllocatedBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
 
+    debug_descriptor_sets:
+        smallvec::SmallVec<[Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
+    debug_buffers: smallvec::SmallVec<[Arc<AllocatedBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
+    debug: crate::rendering::DebugState,
+
     rt_descriptor_set_layout: Arc<DescriptorSetLayout>,
     rt_descriptor_pool: Arc<DescriptorPool>,
     rt_descriptor_set: Option<Arc<DescriptorSet>>,
@@ -215,6 +220,20 @@ impl System {
 
     pub fn ui_layer_mut(&mut self) -> Option<&mut crate::ui::UiLayer> {
         self.ui.as_mut()
+    }
+
+    pub fn ui_visible(&self) -> bool {
+        self.ui.as_ref().is_some_and(|layer| layer.visible)
+    }
+
+    pub fn toggle_ui(&mut self) {
+        if let Some(layer) = &mut self.ui {
+            layer.visible = !layer.visible;
+        }
+    }
+
+    pub fn debug_state(&mut self) -> &mut crate::rendering::DebugState {
+        &mut self.debug
     }
 
     pub fn attach_object_to_node(
@@ -600,6 +619,7 @@ impl System {
         let mut view_projection_unallocated_buffers = vec![];
         let mut directional_lights_unallocated = vec![];
         let mut status_buffer_unallocated = vec![];
+        let mut debug_buffer_unallocated = vec![];
         for index in 0..frames_in_flight {
             view_projection_unallocated_buffers.push(
                 Buffer::new(
@@ -644,6 +664,21 @@ impl System {
                     ),
                     None,
                     Some(format!("status_buffers[{index}]").as_str()),
+                )?
+                .into(),
+            );
+
+            debug_buffer_unallocated.push(
+                Buffer::new(
+                    device.clone(),
+                    ConcreteBufferDescriptor::new(
+                        [BufferUseAs::UniformBuffer, BufferUseAs::TransferDst]
+                            .as_slice()
+                            .into(),
+                        4u64 * 8u64,
+                    ),
+                    None,
+                    Some(format!("debug_buffers[{index}]").as_str()),
                 )?
                 .into(),
             );
@@ -694,6 +729,74 @@ impl System {
             .into_iter()
             .map(|r| r.buffer())
             .collect();
+
+        let debug_buffers: smallvec::SmallVec<
+            [Arc<AllocatedBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
+        > = memory_manager
+            .allocate_resources(
+                &MemoryType::device_local_and_host_visible(),
+                &MemoryPoolFeatures::default(),
+                debug_buffer_unallocated,
+                MemoryManagementTags::default().with_exclusivity(true),
+            )?
+            .into_iter()
+            .map(|r| r.buffer())
+            .collect();
+
+        let debug_descriptor_set_layout = DescriptorSetLayout::new(
+            device.clone(),
+            [BindingDescriptor::new(
+                [ShaderStageAccessIn::Fragment].as_slice().into(),
+                BindingType::Native(NativeBindingType::UniformBuffer),
+                0,
+                1,
+            )]
+            .as_slice(),
+        )?;
+
+        let debug_descriptors_pool = DescriptorPool::new(
+            device.clone(),
+            DescriptorPoolConcreteDescriptor::new(
+                DescriptorPoolSizesConcreteDescriptor::new(
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    frames_in_flight,
+                    0,
+                    0,
+                    None,
+                ),
+                frames_in_flight,
+            ),
+            Some("debug_descriptors_pool"),
+        )?;
+
+        let mut debug_descriptor_sets = smallvec::SmallVec::<
+            [Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
+        >::with_capacity(frames_in_flight as usize);
+        for index in 0..(frames_in_flight as usize) {
+            let debug_descriptor_set = DescriptorSet::new(
+                debug_descriptors_pool.clone(),
+                debug_descriptor_set_layout.clone(),
+            )?;
+            debug_descriptor_set.bind_resources(|binder| {
+                binder
+                    .bind_uniform_buffer(
+                        0,
+                        [(
+                            debug_buffers[index].clone() as Arc<dyn BufferTrait>,
+                            None,
+                            None,
+                        )]
+                        .as_slice(),
+                    )
+                    .unwrap();
+            })?;
+            debug_descriptor_sets.push(debug_descriptor_set);
+        }
 
         let memory_manager = Arc::new(Mutex::new(memory_manager));
 
@@ -903,6 +1006,7 @@ impl System {
             memory_manager.clone(),
             mesh_rendering.descriptor_set_layout(),
             global_illumination_lighting.descriptor_set_layout(),
+            debug_descriptor_set_layout.clone(),
             &render_area,
             frames_in_flight,
         )?);
@@ -1027,6 +1131,9 @@ impl System {
             view_projection_buffers,
             directional_light_buffers,
             status_buffers,
+            debug_descriptor_sets,
+            debug_buffers,
+            debug: crate::rendering::DebugState::default(),
 
             rt_descriptor_set_layout,
             rt_descriptor_pool,
@@ -1054,10 +1161,14 @@ impl System {
         let window = std::ptr::from_ref(&self.window);
         let mut ui_layer = self.ui.take();
         if let Some(ui) = &mut ui_layer {
-            if let Ok(mut memory) = self.memory_manager.lock() {
-                let _ = ui.ensure_framebuffer_size(unsafe { &*window }, &mut *memory);
+            if ui.visible {
+                if let Ok(mut memory) = self.memory_manager.lock() {
+                    let _ = ui.ensure_framebuffer_size(unsafe { &*window }, &mut *memory);
+                }
+                ui.build_frame(unsafe { &*window }, mouse_state, self);
+            } else {
+                ui.draw_snapshot = None;
             }
-            ui.build_frame(unsafe { &*window }, mouse_state, self);
         }
         self.ui = ui_layer;
     }
@@ -1325,6 +1436,20 @@ impl System {
                             self.queue_family.clone(),
                         )
                         .into(),
+                        BufferMemoryBarrier::new(
+                            [PipelineStage::TopOfPipe].as_slice().into(),
+                            [].as_slice().into(),
+                            [PipelineStage::Transfer].as_slice().into(),
+                            [MemoryAccessAs::TransferWrite].as_slice().into(),
+                            BufferSubresourceRange::new(
+                                self.debug_buffers[current_frame].clone(),
+                                0,
+                                self.debug_buffers[current_frame].size(),
+                            ),
+                            self.queue_family.clone(),
+                            self.queue_family.clone(),
+                        )
+                        .into(),
                     ]);
 
                     recorder.update_buffer(
@@ -1337,6 +1462,23 @@ impl System {
                         self.status_buffers[current_frame].clone(),
                         0,
                         [self.prev_frame_gi_reuse].as_slice(),
+                    );
+
+                    let debug_block = self.debug.gpu_block();
+                    recorder.update_buffer(
+                        self.debug_buffers[current_frame].clone(),
+                        0,
+                        [
+                            debug_block.flags,
+                            debug_block.padding[0],
+                            debug_block.padding[1],
+                            debug_block.padding[2],
+                            debug_block.padding[3],
+                            debug_block.padding[4],
+                            debug_block.padding[5],
+                            debug_block.padding[6],
+                        ]
+                        .as_slice(),
                     );
 
                     let mut light_index = 0u64;
@@ -1425,6 +1567,20 @@ impl System {
                                 self.status_buffers[current_frame].clone(),
                                 0,
                                 self.status_buffers[current_frame].size(),
+                            ),
+                            self.queue_family.clone(),
+                            self.queue_family.clone(),
+                        )
+                        .into(),
+                        BufferMemoryBarrier::new(
+                            [PipelineStage::Transfer].as_slice().into(),
+                            [MemoryAccessAs::TransferWrite].as_slice().into(),
+                            [PipelineStage::AllGraphics].as_slice().into(),
+                            [MemoryAccessAs::UniformRead].as_slice().into(),
+                            BufferSubresourceRange::new(
+                                self.debug_buffers[current_frame].clone(),
+                                0,
+                                self.debug_buffers[current_frame].size(),
                             ),
                             self.queue_family.clone(),
                             self.queue_family.clone(),
@@ -1526,6 +1682,7 @@ impl System {
                     self.queue_family(),
                     gbuffer_descriptor_set,
                     gibuffer_descriptor_set,
+                    self.debug_descriptor_sets[current_frame].clone(),
                     current_frame,
                     recorder,
                 );
@@ -1548,9 +1705,11 @@ impl System {
                 let present_source = match &mut ui_layer {
                     None => hdr_output_image.clone(),
                     Some(ui) => {
-                        if debug_stop_after == StopAfter::Ui {
+                        if !ui.visible {
+                            hdr_output_image.clone()
+                        } else if debug_stop_after == StopAfter::Ui {
                             return;
-                        }
+                        } else {
                         let mut memory = memory_manager.lock().unwrap();
                         ui.record_gpu(
                             current_frame,
@@ -1561,6 +1720,7 @@ impl System {
                             hdr_output_image.clone(),
                         )
                         .expect("UI record failed")
+                        }
                     }
                 };
 
