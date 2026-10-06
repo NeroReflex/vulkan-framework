@@ -13,6 +13,13 @@ layout (local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 #define SURFELS_DESCRIPTOR_SET 1
 #include "../surfel.glsl"
 
+// Keep in sync with surfel_keys.comp
+uint surfel_level(float radius) {
+    if (radius < 32.0) return 0u;
+    if (radius < 64.0) return 1u;
+    return 2u;
+}
+
 // Mark committed surfels that should leave the tree. Indices do not change.
 void main() {
     const uint surfel_id = gl_GlobalInvocationID.x;
@@ -43,8 +50,23 @@ void main() {
 #endif
 
     const float ideal_radius = radius_from_camera_distance(eye_position, clip_space, center);
-    if (abs(ideal_radius - surfels[surfel_id].radius) > DELETE_ON_RADIUS_DIFFERENCE) {
-        surfels[surfel_id].radius = ideal_radius;
+    const float stored_radius = surfels[surfel_id].radius;
+    if (abs(ideal_radius - stored_radius) > DELETE_ON_RADIUS_DIFFERENCE) {
+        // Step toward ideal radius without snapping to far-plane size in one frame.
+        float new_radius = stored_radius;
+        if (ideal_radius > stored_radius) {
+            new_radius = min(ideal_radius, stored_radius + DELETE_ON_RADIUS_DIFFERENCE);
+        } else {
+            new_radius = max(ideal_radius, stored_radius - DELETE_ON_RADIUS_DIFFERENCE);
+        }
+        new_radius = clamp(new_radius, MIN_SURFEL_RADIUS, MAX_SURFEL_RADIUS);
+        const uint old_level = surfel_level(stored_radius);
+        const uint new_level = surfel_level(new_radius);
+        surfels[surfel_id].radius = new_radius;
+        // Rebuild the hash only when the bucket level changes — not on every radius tick.
+        if (old_level != new_level) {
+            atomicStore(index_topology_dirty, 1u, gl_ScopeDevice, gl_StorageSemanticsBuffer, gl_SemanticsRelease);
+        }
     }
 
     if (is_out_of_range(eye_position, center, clip_space)) {

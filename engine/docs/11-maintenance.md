@@ -30,7 +30,7 @@ Hash insert atomics are spread across buckets. They are not the open-scene cost.
 
 Mark may store a new radius without setting `index_topology_dirty`. The surfel stays in the level chosen at the last insert. Queries probe every level, but only a 3×3×3 at that level's cell size. If the radius grows across a level boundary (32 or 64) and the hash is not rebuilt, a point can lie inside the new sphere and outside the 3×3×3 of the old fine cell.
 
-If you need radius updates to be exact, set `index_topology_dirty` in that branch of mark. The following frame pays for a hash rebuild, which is cheap next to a full-screen probe.
+Mark steps radius toward the ideal by at most `DELETE_ON_RADIUS_DIFFERENCE` per frame (avoids a one-frame jump to the far-plane size). Set `index_topology_dirty` only when `surfel_level` changes after that step, not on every radius edit.
 
 ## Far plane
 
