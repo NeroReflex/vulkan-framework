@@ -43,7 +43,13 @@
 #define SURFEL_KERNEL_MIN_COS 0.5
 #define SURFEL_KERNEL_PLANE_FRACTION 0.25
 
+// Still frames after which a GI_FLAG_CONVERGE cache settles (cache_settled).
+#define SURFEL_SETTLE_FRAMES 128u
+// A settled cache stops spawning offscreen surfels after this many more frames.
+#define SURFEL_SETTLE_SPAWN_FRAMES 256u
+
 // EMA floors: the running mean is exact until 1/alpha samples, then forgets.
+// A settled cache drops them.
 #define EMA_MIN_ALPHA_DIRECT 0.05
 #define EMA_MIN_ALPHA_INDIRECT 0.03
 #define EMA_MIN_ALPHA_AREA 0.02
@@ -94,5 +100,6 @@
 #define GI_FLAG_RESET (1u << 5u)
 #define GI_FLAG_SPAWN (1u << 6u)
 #define GI_FLAG_ACCUMULATE (1u << 7u)
+#define GI_FLAG_CONVERGE (1u << 8u)
 
 #endif // _CONFIG_

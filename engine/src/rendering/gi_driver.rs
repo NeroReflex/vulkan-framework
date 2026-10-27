@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use crate::rendering::{
     debug_state::DebugState,
     pipeline::global_illumination::{
-        GI_FLAG_ACCUMULATE, GI_FLAG_CAPTURE, GI_FLAG_MULTIBOUNCE, GI_FLAG_REFERENCE,
+        GI_FLAG_ACCUMULATE, GI_FLAG_CAPTURE, GI_FLAG_CONVERGE, GI_FLAG_MULTIBOUNCE, GI_FLAG_REFERENCE,
         GI_FLAG_SPATIAL, GI_FLAG_SPAWN, GI_FLAG_TEMPORAL, GILighting, GiReadback,
     },
 };
@@ -146,6 +146,7 @@ impl GiDriver {
         gi: &GILighting,
         debug: &DebugState,
         reuse: u32,
+        scene_animating: bool,
         view: &glm::Mat4,
         proj: &glm::Mat4,
         eye: glm::Vec3,
@@ -157,7 +158,7 @@ impl GiDriver {
         let mut pose = [0.0f32; 32];
         pose[..16].copy_from_slice(&view_cols);
         pose[16..].copy_from_slice(&proj_cols);
-        if reuse == 0 || self.last_pose != Some(pose) {
+        if reuse == 0 || scene_animating || self.last_pose != Some(pose) {
             self.still_frames = 0;
         } else {
             self.still_frames = self.still_frames.saturating_add(1);
@@ -184,6 +185,9 @@ impl GiDriver {
         }
         if settings.spawn {
             flags |= GI_FLAG_SPAWN;
+        }
+        if settings.converge {
+            flags |= GI_FLAG_CONVERGE;
         }
         let capture_now = self.capture_frames.contains(&self.frame_index);
         let selftest_now = self.selftest_frames.contains(&self.frame_index);

@@ -356,7 +356,7 @@ impl UiLayer {
                 ui.separator();
                 ChildWindow::new("Debug body##artrtic_debug_body")
                     .border(true)
-                    .size([0.0, 230.0])
+                    .size([0.0, 254.0])
                     .movable(false)
                     .build(&ui, || {
                         use crate::rendering::debug_state::ViewMode;
@@ -380,11 +380,14 @@ impl UiLayer {
                         ui.checkbox("ReSTIR spatial reuse", &mut gi.spatial_reuse);
                         ui.checkbox("Accumulate indirect", &mut gi.accumulate);
                         ui.checkbox("Spawn surfels", &mut gi.spawn);
+                        ui.checkbox("Converge when still", &mut gi.converge);
                         ui.checkbox("Path traced reference", &mut gi.reference);
                         let after = *gi;
-                        // The reference only adds a pass; every other switch changes what the history means.
+                        // The reference and convergence only change how long the history is
+                        // kept; every other switch changes what it means.
                         let mut history_before = before;
                         history_before.reference = after.reference;
+                        history_before.converge = after.converge;
                         if history_before != after {
                             system.reset_gi_accumulation();
                         }

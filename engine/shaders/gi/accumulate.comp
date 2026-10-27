@@ -1,5 +1,6 @@
 // Temporal accumulation of the per-pixel indirect irradiance: a running mean
-// over at most ACCUM_MAX_HISTORY reprojected frames.
+// over at most ACCUM_MAX_HISTORY reprojected frames, or a growing window once
+// the surfel cache is stable (GI_FLAG_CONVERGE and a still view).
 #include "compute.glsl"
 #include "pixel.glsl"
 #include "reservoir.glsl"
@@ -32,6 +33,9 @@ void main() {
             count = h.a;
         }
     }
-    count = min(count + 1.0, ACCUM_MAX_HISTORY);
+    // Once the cache is stable the window grows with every frame: a running
+    // mean over the frames since then, like the reference.
+    const float window = ACCUM_MAX_HISTORY + float(cache_stable_frames());
+    count = min(count + 1.0, window);
     imageStore(gi_images[IMG_EIND], px, vec4(mix(history, sample_e, 1.0 / count), count));
 }

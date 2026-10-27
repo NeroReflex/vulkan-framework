@@ -183,9 +183,20 @@ pub fn write_capture(dir: &Path, readback: &GiReadback) -> std::io::Result<()> {
         .map(|p| p[3])
         .collect();
 
+    let accumulated_frames = RgbImage {
+        width: w,
+        height: h,
+        data: readback
+            .f32s(ReadbackItem::EInd)
+            .chunks_exact(4)
+            .map(|p| [p[3]; 3])
+            .collect(),
+    };
+
     let tag = format!("f{:05}", readback.frame_index);
     e_dir.write_pfm(&dir.join(format!("{tag}_e_dir.pfm")))?;
     e_ind.write_pfm(&dir.join(format!("{tag}_e_ind.pfm")))?;
+    accumulated_frames.write_pfm(&dir.join(format!("{tag}_e_ind_frames.pfm")))?;
     e_ref.write_pfm(&dir.join(format!("{tag}_e_ref.pfm")))?;
     albedo.write_pfm(&dir.join(format!("{tag}_albedo.pfm")))?;
 

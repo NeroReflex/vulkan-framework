@@ -35,6 +35,7 @@ pub const ST_SPAWN_FAILED: usize = 12;
 pub const ST_DOOMED: usize = 13;
 pub const ST_MAX_FLUX: usize = 14;
 pub const ST_PREV_MAX_FLUX: usize = 15;
+pub const ST_STABLE_FRAMES: usize = 16;
 
 /// Byte size of `Surfel` (std430) and offsets of the fields the self-test reads.
 pub const SURFEL_STRIDE: usize = 128;

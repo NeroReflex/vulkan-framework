@@ -29,12 +29,21 @@ void main() {
     // Calculate position of the current fragment
     //vec4 vPosition_worldspace = vec4((in_vPosition_worldspace_minus_eye_position + in_eyePosition_worldspace).xyz, 1.0);
 
-    vec3 dFdxPos = dFdx( in_vPosition_worldspace_minus_eye_position.xyz );
-	vec3 dFdyPos = dFdy( in_vPosition_worldspace_minus_eye_position.xyz );
-	const vec3 facenormal = cross(dFdxPos, dFdyPos);
+    const vec3 to_fragment = in_vPosition_worldspace_minus_eye_position.xyz;
+    vec3 facenormal = cross(dFdx(to_fragment), dFdy(to_fragment));
+    // The rasterized side of a triangle is the one facing the eye.
+    if (dot(facenormal, to_fragment) > 0.0) {
+        facenormal = -facenormal;
+    }
 
     // The normal can either be calculated or provided from the mesh. Just pick the provided one if it is valid.
-    const vec3 bestNormal = normalize(length(in_vNormal_worldspace.xyz) < 0.000001f ? facenormal : in_vNormal_worldspace.xyz);
+    vec3 bestNormal = normalize(length(in_vNormal_worldspace.xyz) < 0.000001f ? facenormal : in_vNormal_worldspace.xyz);
+    // Shading normals belong to the visible side even where they point slightly
+    // away from the eye (silhouettes of smooth edges): flipping them by the view
+    // direction would turn those pixels inside out.
+    if (dot(bestNormal, facenormal) < 0.0) {
+        bestNormal = -bestNormal;
+    }
 
     const uint material_id = material_for_mesh[mesh_data.mesh_id].material_index;
     const uint diffuse_texture_index = info[material_id].diffuse_texture_index;

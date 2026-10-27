@@ -48,13 +48,15 @@ flowchart TD
 
 Hardware ray tracing happens only in the three ray generation passes: surfel update, shade, and reference. All of them use the closest-hit shader `gi/hit.rchit`. It returns the interpolated shading normal facing the ray, the albedo sampled with `textureLod`, the instance id, and the hit distance.
 
+The mesh pass orients the G-buffer normal by the side of the triangle that is rasterized: it builds the face normal from screen-space derivatives, turns it toward the eye, and flips the interpolated normal onto that side. Turning the interpolated normal itself toward the eye looks equivalent but is not. At silhouettes the smooth normal can face away from the eye while the triangle faces it, so the normal ends up pointing into the surface and the pixel gets no light at all. Material textures are sampled with their full mip chain and 16× anisotropy.
+
 ## Counters that control history
 
 Three numbers in the status block (`gi_data`, chapter 2) decide what may be reused.
 
 - **`gi_reuse_frames`** is `prev_frame_gi_reuse` in `system.rs`. It is 0 on the first frame and after `reset_gi_accumulation()`, a scene change, or a TLAS rebuild. Otherwise it counts frames. When it is 0, the GI images are cleared, the pool is reset, and temporal reuse and accumulation are skipped for that frame. Moving the camera does **not** reset it: surfels live in world space and every per-pixel history is reprojected.
 - **`frame_index`** increases by one every recorded frame. Its parity selects which alive list and which reservoir buffer are this frame's output. It also seeds every random number generator.
-- **`still_frames`** counts frames with an unchanged view and projection. 0 restarts the reference accumulation.
+- **`still_frames`** counts frames with an unchanged view and projection while no skinned clip plays. 0 restarts the reference accumulation. With `GI_FLAG_CONVERGE` it also lets the surfel cache settle and the image converge (chapter 9).
 
 The UI toggles (chapter 10) call `reset_gi_accumulation()` when they change what the history means. Turning the reference on or off does not, because the reference only adds a pass.
 

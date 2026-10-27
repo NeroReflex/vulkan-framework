@@ -40,6 +40,7 @@ cargo test --lib gi_math
 `ART_RTIC_CAPTURE=dir@f1,f2` (default frame 600) turns on the reference path tracer and writes, for each listed frame:
 
 - `fNNNNN_e_dir.pfm`, `_e_ind.pfm`, `_e_ref.pfm`, `_albedo.pfm`: 32-bit float images;
+- `_e_ind_frames.pfm`: how many frames each pixel's accumulated indirect light averages;
 - `_final.jpg`, `_reference.jpg`, `_indirect.jpg`, `_reference_indirect.jpg`, `_surfels.jpg`: Reinhard-tonemapped previews.
 
 The reference (`gi/reference.rgen`) is a Lambertian path tracer with cosine sampling and next-event estimation of the directional lights:
@@ -79,17 +80,19 @@ GI GPU ms (avg of 120): total ... | maintain | grid | surfel update | coverage+s
 
 ## Measured results
 
-RTX 4080 Laptop GPU, Sponza, 1920 × 1080 render area. Accuracy runs use the debug build with the validation layer on; timing runs use the release build.
+RTX 4080 Laptop GPU, Sponza, 1920 × 1080 render area. Accuracy runs use the debug build with the validation layer on, except the 4000-frame run; timing runs use the release build. All runs keep the default "converge when still".
 
 | Run | Bias | Block RMSE | Blocks within 10% | Median block ratio |
 |---|---|---|---|---|
-| default pose, 1 bounce, frame 600 | -1.5% to -2.7% | 23–24% | 89–90% | 1.01 |
-| default pose, multibounce, frame 600 / 1200 | -3.4% / -3.0% | 17–18% | 85–88% | 0.99 |
-| pose `-500,250,0,-14.1,0.25`, 1 bounce | -1.1% | 9.3% | 94% | 1.00 |
-| same pose, multibounce | -2.8% | 8.9% | 87% | 0.99 |
+| default pose, 1 bounce, frame 600 / 1200 | +0.7% / +0.1% | 23% | 89–91% | 1.03–1.04 |
+| default pose, multibounce, frame 600 / 1000 / 4000 (release) | -0.3% / -0.6% / -1.1% | 15% | 90–91% | 1.01–1.02 |
+| pose `-500,250,0,-14.1,0.25`, 1 bounce, frame 600 / 1200 | -0.1% / -0.6% | 8.2% | 96% | 1.01 |
+| same pose, multibounce, frame 600 / 1200 | -1.3% / -1.7% | 8.0% | 91% | 1.00 |
 
-The bias range is the spread over repeated runs. The remaining error is concentrated in the near field of thin, intensely lit features, such as the wall just above the lit top of the default view's arches. The surfel's disk emits the right power but spreads it over its whole radius, so the glow is softer and dimmer than in the reference. Fixing it would take a per-surfel emission centroid, which means a larger surfel record.
+Convergence, default pose with multibounce: the cache stops changing about 250 frames after the camera stops. From then on, the change of the image between two captures shrinks as \(1/\sqrt{N}\): 9.2% per pixel (1.0% on 16 × 16 blocks) from frame 1000 to 2000, and 6.1% (0.5%) from 2000 to 4000. The reference's own changes over the same intervals are 3.6% and 2.5%. The block error against the reference stays at 15% because it is the cache's error, not noise.
+
+That error is concentrated in the near field of thin, intensely lit features, such as the wall just above the lit top of the default view's arches. The surfel's disk emits the right power but spreads it over its whole radius, so the glow is softer and dimmer than in the reference. Fixing it would take a per-surfel emission centroid, which means a larger surfel record.
 
 Self-test passes at frames 5, 150, 300, 600, and 1200 at fixed poses, and at 300, 900, 1500, and 1790 during a wander run. Over that run the pool stays between 46 000 and 57 000 surfels with 0 failed spawns, and coverage stays ≥ 99.9% once warmed up. The validation layer reports no errors.
 
-Over a 1500-frame wander, unthrottled, the GI section costs 6.6–8.2 ms. The whole frame averages 9.0 ms (111 FPS), with p99 at 11.4 ms and no drift. The biggest passes are spatial reuse (1.2–1.8 ms), coverage (1.0–1.4 ms), surfel update (1.3–1.4 ms), temporal reuse (1.0–1.8 ms), and shade (0.9 ms). The grid build is 0.07 ms, and light CDF plus presampling is 0.06 ms. With vsync the frame is locked at 60 FPS, with the maximum frame at 18.5 ms.
+Over a 1500-frame wander, unthrottled, the GI section costs 6.1–8.7 ms. The whole frame averages 9.5 ms (105 FPS), with p99 at 11.3 ms and no drift. The biggest passes are spatial reuse (1.2–1.8 ms), coverage (1.0–1.4 ms), surfel update (1.3–1.4 ms), temporal reuse (1.0–1.8 ms), and shade (0.9 ms). The grid build is 0.07 ms, and light CDF plus presampling is 0.06 ms. With vsync the frame is locked at 60 FPS, with the maximum frame at 18.5 ms.

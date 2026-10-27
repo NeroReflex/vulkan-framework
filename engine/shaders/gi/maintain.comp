@@ -26,7 +26,7 @@ void main() {
         n = normalize(transpose(inverse(mat3(model))) * decompress_unit_vec(surfels[id].normal_bind));
         keep = distance(get_eye_position(), p) <= SURFEL_MAX_DISTANCE;
     }
-    if (keep) {
+    if (keep && !cache_settled()) {
         const bool pressure = uint(state[ST_FREE_AT_BEGIN]) < MAX_SURFELS / SURFEL_PRESSURE_DIVISOR;
         const uint limit = pressure ? SURFEL_PRESSURE_UNSEEN_FRAMES : SURFEL_UNSEEN_FRAMES;
         keep = gi_data.frame_index - surfels[id].last_seen <= limit;

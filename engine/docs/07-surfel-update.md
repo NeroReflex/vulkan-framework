@@ -1,12 +1,13 @@
 # 7. Surfel update
 
-`gi/surfel_update.rgen` launches one invocation per survivor (`ST_SURVIVORS`). Every frame it refreshes three estimates per surfel, all of them exponential moving averages (EMA):
+`gi/surfel_update.rgen` launches one invocation per survivor (`ST_SURVIVORS`). Every frame it refreshes four estimates per surfel, all of them exponential moving averages (EMA):
 
 - direct irradiance \(\bar E_\text{dir}\), with floor \(\alpha = 0.05\);
 - partition-of-unity area \(A\), with floor \(\alpha = 0.02\);
+- albedo \(\rho\) of the surface under the disk, with the area's count;
 - indirect irradiance \(\bar E_\text{ind}\), with floor \(\alpha = 0.03\).
 
-The EMA uses \(\alpha = \max(1/(n+1), \alpha_\text{min})\). It is the exact running mean for the first \(1/\alpha_\text{min}\) samples and forgets old ones after that, which lets the cache follow moving lights and geometry.
+The EMA uses \(\alpha = \max(1/(n+1), \alpha_\text{min})\). It is the exact running mean for the first \(1/\alpha_\text{min}\) samples and forgets old ones after that, which lets the cache follow moving lights and geometry. Once a still view's cache is stable (chapter 9), the floor is dropped and the count keeps growing, so the estimates become running means that converge.
 
 ## One disk sample, on the surface
 
@@ -25,13 +26,15 @@ The hit point of the second ray is where the surface actually is under `q`. That
 
 \(a = \pi r^2 \cdot [q \text{ on surface}] \cdot k_\text{self}(q) / \sum_k k_k(q)\) (chapter 5). A surfel on a thin strip, such as the lit top of an arch, ends up with roughly the strip's area under its disk. Its emitted power is then right even though its disk is wider than the strip.
 
+The albedo found by the `-n` ray at an on-surface `q` feeds the albedo EMA. A surfel's light is then \(\rho/\pi\) times its irradiance, with the mean albedo under its disk rather than the single texel it was born on. A born-on texel can be a dark seam or a bright fleck, and on a textured curtain that varies from surfel to surfel.
+
 ## Indirect light and discovery
 
 Every surfel that is on screen (touched by coverage within 2 frames) traces one cosine-weighted ray from `ou`. With multibounce on, every other surfel traces one too. Where it lands:
 
 - **The cache covers the hit** (`w_lit > 0`): the sample is \(\pi L_\text{cache}(h)\). The hit's dominant surfel gets its `last_seen` refreshed (chapter 3).
 - **The cache does not cover the hit.**
-  - If the shooting surfel is on screen, spawning is on, the pool is not under pressure, and fewer than `SURFEL_RAY_SPAWN_BUDGET` (256) ray spawns happened this frame, a surfel is spawned at the hit. Its radius is \(\min(r^\*(d), 0.5\,t)\), where `t` is the ray length. The cap keeps the light that a surfel sees from very close by from being smeared over a disk larger than the gap it crosses. The newborn is marked as not on screen, so its own rays do not spawn further surfels.
+  - If the shooting surfel is on screen, spawning is on, the pool is not under pressure, and fewer than `SURFEL_RAY_SPAWN_BUDGET` (256) ray spawns happened this frame, a surfel is spawned at the hit. A settled cache stops these spawns `SURFEL_SETTLE_SPAWN_FRAMES` (256) frames after it settled (chapter 9). Its radius is \(\min(r^\*(d), 0.5\,t)\), where `t` is the ray length. The cap keeps the light that a surfel sees from very close by from being smeared over a disk larger than the gap it crosses. The newborn is marked as not on screen, so its own rays do not spawn further surfels.
   - The radiance at the hit is computed directly: \(L(h_1) = \tfrac{\rho_1}{\pi} E_\text{dir}(h_1) + \rho_1 L(h_2)\), where \(h_2\) is found by a cosine ray from \(h_1\). The recursion continues until a hit is covered by the cache, which then supplies \(L\), or for at most `SURFEL_PATH_CONTINUATION` (3) bounces. Without that continuation, every uncovered hit would lose its own indirect light. In Sponza, adding it moved the multibounce bias from about -5% to -3%.
 
 The indirect EMA is updated only when multibounce is on. Without multibounce, \(\bar E_\text{ind} = 0\) and surfels only carry direct light, which makes the image exactly one bounce. The discovery rays still run in that mode, because offscreen surfaces are lights for the first bounce too.

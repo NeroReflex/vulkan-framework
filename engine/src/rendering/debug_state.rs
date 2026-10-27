@@ -76,6 +76,8 @@ pub struct GiSettings {
     pub spatial_reuse: bool,
     pub accumulate: bool,
     pub spawn: bool,
+    /// Let the surfel cache settle while the view is still, so the image converges.
+    pub converge: bool,
     /// Run the path traced reference every frame (expensive).
     pub reference: bool,
 }
@@ -88,6 +90,7 @@ impl Default for GiSettings {
             spatial_reuse: true,
             accumulate: true,
             spawn: true,
+            converge: true,
             reference: false,
         }
     }
@@ -101,7 +104,7 @@ pub struct DebugState {
 }
 
 impl GiSettings {
-    /// Defaults with `ART_RTIC_GI_DISABLE=multibounce,temporal,spatial,accumulate,spawn`
+    /// Defaults with `ART_RTIC_GI_DISABLE=multibounce,temporal,spatial,accumulate,spawn,converge`
     /// switches turned off and `ART_RTIC_GI_REFERENCE=1` turning the reference on.
     pub fn from_env() -> Self {
         let mut settings = Self::default();
@@ -113,6 +116,7 @@ impl GiSettings {
                     "spatial" => settings.spatial_reuse = false,
                     "accumulate" => settings.accumulate = false,
                     "spawn" => settings.spawn = false,
+                    "converge" => settings.converge = false,
                     "" => {}
                     other => eprintln!("ART_RTIC_GI_DISABLE: unknown switch {other}"),
                 }

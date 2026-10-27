@@ -1,6 +1,8 @@
 // Initial RIS over RESTIR_INITIAL_CANDIDATES flux-proportional surfels, then
 // merge with the reprojected reservoir of the previous frame. The target is
 // the unshadowed irradiance luminance; weights are Z-normalized.
+// A stable cache skips the temporal merge: the accumulation then averages
+// independent frames, while a reused sample would repeat for many frames.
 #include "compute.glsl"
 #include "pixel.glsl"
 #include "reservoir.glsl"
@@ -49,7 +51,8 @@ void main() {
         y_rec = light_rec[y];
     }
 
-    const bool temporal = (gi_data.flags & GI_FLAG_TEMPORAL) != 0u && gi_data.gi_reuse_frames > 0u;
+    const bool temporal = (gi_data.flags & GI_FLAG_TEMPORAL) != 0u && gi_data.gi_reuse_frames > 0u
+        && cache_stable_frames() == 0u;
     ivec2 q;
     if (temporal && reproject(x, q)) {
         const Reservoir prev = reservoirs[res_index(res_previous(), q)];

@@ -16,7 +16,7 @@ Nothing in this pipeline sorts or moves surfels. A surfel keeps its slot from bi
 6. [Coverage and spawn](06-coverage-and-spawn.md) — how the screen gets covered, and how over-coverage is pruned.
 7. [Surfel update](07-surfel-update.md) — direct light, area, indirect light, and offscreen surfels.
 8. [Surfel lights](08-surfel-lights.md) — radiance, the disk geometry term, the integer flux CDF, and light tiles.
-9. [ReSTIR](09-restir.md) — initial candidates, temporal and spatial reuse, Z-normalization, shading, and accumulation.
+9. [ReSTIR](09-restir.md) — initial candidates, temporal and spatial reuse, Z-normalization, shading, accumulation, and how a still view converges.
 10. [Composite](10-composite.md) — final shading, debug views, HDR, UI, and present.
 11. [Testing](11-testing.md) — the path-traced reference, captures, the compare tool, the self-test, timings, and measured results.
 12. [Changing it safely](12-maintenance.md) — invariants, the mistakes that were already made once, and shader build quirks.

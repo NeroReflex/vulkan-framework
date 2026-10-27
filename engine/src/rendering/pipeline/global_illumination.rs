@@ -310,6 +310,7 @@ pub const GI_FLAG_CAPTURE: u32 = 1 << 4;
 pub const GI_FLAG_RESET: u32 = 1 << 5;
 pub const GI_FLAG_SPAWN: u32 = 1 << 6;
 pub const GI_FLAG_ACCUMULATE: u32 = 1 << 7;
+pub const GI_FLAG_CONVERGE: u32 = 1 << 8;
 
 /// Storage images of the GI set (`IMG_*` in gi/surfels.glsl).
 pub const IMG_EIND: usize = 0;

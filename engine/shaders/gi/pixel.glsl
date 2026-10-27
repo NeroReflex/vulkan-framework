@@ -11,8 +11,9 @@ bool in_render_area(ivec2 px) {
     return all(greaterThanEqual(px, ivec2(0))) && all(lessThan(px, render_size()));
 }
 
-// Reads the primary hit of a pixel. The normal is turned towards the eye so
-// that two-sided geometry is lit on the visible side.
+// Reads the primary hit of a pixel. The G-buffer normal is already on the
+// visible side of the triangle (mesh_rendering.frag); it may point slightly away
+// from the eye at smooth silhouettes and must not be flipped by the view.
 bool load_pixel(ivec2 px, out vec3 pos, out vec3 n, out vec3 albedo, out uint inst) {
     pos = vec3(0.0);
     n = vec3(0.0, 1.0, 0.0);
@@ -32,9 +33,6 @@ bool load_pixel(ivec2 px, out vec3 pos, out vec3 n, out vec3 albedo, out uint in
         return false;
     }
     n = raw_n / len;
-    if (dot(n, get_eye_position() - pos) < 0.0) {
-        n = -n;
-    }
     albedo = texelFetch(gbuffer[2], px, 0).rgb;
     inst = ids.y;
     return true;

@@ -10,8 +10,8 @@ Every GI pass binds the same surfel descriptor set. It is declared once in `engi
 |---|---|
 | `gi_reuse_frames` | frames since the history was invalidated (chapter 1) |
 | `frame_index` | frame counter; parity selects ping-pong buffers |
-| `still_frames` | frames with an unchanged pose; 0 restarts the reference |
-| `flags` | `GI_FLAG_*`: multibounce, reference, temporal, spatial, capture, reset, spawn, accumulate |
+| `still_frames` | frames with an unchanged pose and no skinned clip playing; 0 restarts the reference |
+| `flags` | `GI_FLAG_*`: multibounce, reference, temporal, spatial, capture, reset, spawn, accumulate, converge |
 | `reference_bounces` | 8 with multibounce, 1 without |
 | `render_width`, `render_height` | render area (1920 × 1080) |
 | `pixel_angle` | angle one pixel subtends at the image center: `2 atan(1 / P[1][1]) / H` |
@@ -29,7 +29,7 @@ Every GI pass binds the same surfel descriptor set. It is declared once in `engi
 | `bind_position`, `normal_bind` | init | center and normal in the instance's space |
 | `instance_id`, `instance_generation`, `bone` | init | what the surfel is attached to (chapter 13) |
 | `generation` | init | bumped every time the slot is allocated |
-| `albedo` | init | albedo of the surface it was born on |
+| `albedo` | init, update | mean albedo of the surface under the disk (EMA, shares `area_n`) |
 | `area`, `area_n` | update | partition-of-unity area (EMA) and sample count |
 | `e_dir`, `e_dir_n` | update | direct irradiance (EMA) and sample count |
 | `e_ind`, `e_ind_n` | update | indirect irradiance (EMA) and sample count |
@@ -40,7 +40,7 @@ Every GI pass binds the same surfel descriptor set. It is declared once in `engi
 
 ## State words
 
-`state[]` is an array of `int` counters. Its first 16 words are named `ST_*` in `surfels.glsl` and mirrored in `gi_math.rs`.
+`state[]` is an array of `int` counters. Its first 17 words are named `ST_*` in `surfels.glsl` and mirrored in `gi_math.rs`.
 
 | Word | Meaning |
 |---|---|
@@ -53,6 +53,7 @@ Every GI pass binds the same surfel descriptor set. It is declared once in `engi
 | `ST_GRID_ITEMS` | total bucket memberships |
 | `ST_TOTAL_FLUX`, `ST_LIGHT_COUNT` | end of the flux CDF, and how many entries it has |
 | `ST_MAX_FLUX`, `ST_PREV_MAX_FLUX` | largest light flux this frame and last frame (float bits) |
+| `ST_STABLE_FRAMES` | frames in a row without allocations, evictions, or dooms (chapter 9) |
 
 ## Light state
 

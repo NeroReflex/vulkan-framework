@@ -60,13 +60,14 @@ pub fn check(readback: &GiReadback) -> Report {
     let survivors = state[ST_SURVIVORS] as usize;
     let free_count = state[ST_FREE] as i32;
     report.info(format!(
-        "alive {alive_count} (survivors {survivors}, spawned screen {} ray {}, evicted {}, doomed {}, failed spawns {}), free {free_count}, grid items {}",
+        "alive {alive_count} (survivors {survivors}, spawned screen {} ray {}, evicted {}, doomed {}, failed spawns {}), free {free_count}, grid items {}, unchanged for {} frames",
         state[ST_SPAWN_SCREEN] as i32,
         state[ST_SPAWN_RAY] as i32,
         state[ST_EVICTED],
         state[ST_DOOMED],
         state[ST_SPAWN_FAILED],
         state[ST_GRID_ITEMS],
+        state[ST_STABLE_FRAMES],
     ));
 
     // ---- pool: every slot is either alive (listed once) or free (stacked once) ----

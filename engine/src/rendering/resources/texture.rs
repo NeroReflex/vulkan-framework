@@ -192,7 +192,7 @@ impl TextureManager {
             Filtering::Linear,
             Filtering::Linear,
             MipmapMode::ModeLinear,
-            1.0,
+            16.0,
         )?;
 
         let mut allocator = memory_manager.lock().unwrap();

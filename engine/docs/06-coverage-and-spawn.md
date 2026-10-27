@@ -27,6 +27,8 @@ Each tile also marks at most one surfel `DOOMED` per frame. Maintain evicts it n
 
 The first rule bounds the overlap, and with it the bucket lists and the cost of every query. The second rule replaces big surfels born far away with properly sized ones as the camera approaches. It only does so once the replacement cover exists, so pruning never opens a hole.
 
+A settled cache (chapter 9) does not prune. Even with a still camera, pruning and spawning keep replacing a few dozen surfels per frame, and the image cannot converge while its lights keep changing.
+
 ## Offscreen surfaces
 
 Coverage only sees the screen. The surfaces that light the screen from behind the camera, or around a corner, get surfels from the bounce rays of the surfel update (chapter 7).

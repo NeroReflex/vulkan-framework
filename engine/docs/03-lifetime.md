@@ -33,7 +33,7 @@ Maintain keeps a surfel only if all of these hold:
 - `ALIVE` is set and `DOOMED` is not (coverage sets `DOOMED`, chapter 6);
 - its instance still exists with the same `instance_generation` (chapter 13);
 - its new world center is within `SURFEL_MAX_DISTANCE` (6000) of the eye;
-- `frame_index - last_seen` is at most `SURFEL_UNSEEN_FRAMES` (240). Under pool pressure the limit is `SURFEL_PRESSURE_UNSEEN_FRAMES` (30). Pressure means fewer than `MAX_SURFELS / 8` free slots at frame begin.
+- `frame_index - last_seen` is at most `SURFEL_UNSEEN_FRAMES` (240). Under pool pressure the limit is `SURFEL_PRESSURE_UNSEEN_FRAMES` (30). Pressure means fewer than `MAX_SURFELS / 8` free slots at frame begin. A settled cache (chapter 9) skips this rule.
 
 An evicted surfel has its flags cleared, its light state emptied, and its slot pushed on the free stack.
 

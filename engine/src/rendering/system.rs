@@ -1387,10 +1387,12 @@ impl System {
             ),
         ];
 
+        let scene_animating = self.resources_manager.lock().unwrap().animating();
         let gi_status = self.gi_driver.begin_frame(
             &self.global_illumination_lighting,
             &self.debug,
             self.prev_frame_gi_reuse,
+            scene_animating,
             &camera_matrices[0],
             &camera_matrices[1],
             camera.position(),

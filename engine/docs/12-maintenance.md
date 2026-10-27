@@ -4,7 +4,7 @@ This pipeline usually breaks when one pass assumes something another pass no lon
 
 ## Invariants
 
-1. **Slot ids are stable, and payloads never move.** The overlay, reservoirs, light tiles, and grid all store ids. Only maintain frees slots. Only the surfel update and coverage allocate.
+1. **Slot ids are stable, and payloads never move.** The overlay, reservoirs, light tiles, and grid all store ids. Only maintain frees slots. Only the surfel update and coverage allocate. Any new way of allocating or freeing must also show up in `ST_FREE`, `ST_EVICTED`, or `ST_DOOMED`. Otherwise `ST_STABLE_FRAMES` keeps counting while the cache changes (chapter 9).
 2. **No pass both pushes and pops the free stack.** That is what makes `surfel_alloc()` safe without a lock (chapter 3). A pass that needs to free and allocate must be split in two with a barrier between.
 3. **The grid describes exactly the survivors.** Grid phase 0 freezes `ST_SURVIVORS`, and the surfel update launch is limited to it. Newborns are appended after the survivors and are found by queries only from the next frame. Never index the grid with `ST_ALIVE_OUT`.
 4. **Every allocation bumps `generation`, and every free clears the light record.** Reservoirs rely on both to detect a recycled slot. Pool reset keeps generations.
@@ -30,6 +30,11 @@ This pipeline usually breaks when one pass assumes something another pass no lon
 - **Truncating at an uncovered hit.** Each uncovered hit loses its indirect light. Path continuation (chapter 7) keeps multibounce within a few percent.
 - **Shrinking the emitting disk to \(\sqrt{A/\pi}\).** Tried, and it raises the error. The surfel center is not the centroid of the covered surface, so a smaller disk concentrates the power in the wrong place.
 - **Resetting the history on camera moves.** Everything is reprojected or in world space. A reset also empties the surfel pool.
+- **Converging a still image with a longer accumulation window alone.** The cache under it keeps changing and the reused samples are correlated, so the image keeps drifting by several percent per pixel. It converged only after the cache stopped changing and temporal reuse stopped (chapter 9).
+- **Switching the surfel estimates to running means as soon as the camera stops.** Surfels spawned during the settle phase carry noisy first samples, and a running mean keeps them for thousands of frames. Wait until the surfel set has stopped changing.
+- **Freezing offscreen spawns the moment the camera stops.** The pool is still filling up then. Freezing it at that point lost 5% of the indirect light, because missing offscreen surfels are missing lights.
+- **Turning the G-buffer normal toward the eye.** At silhouettes this flips smooth normals into the surface, and those pixels go black. Orient the normal by the rasterized face instead (chapter 1).
+- **A sampler with `max_lod = 0`.** Only mip 0 is ever read, which shows up as moiré on fine textures such as the curtains.
 
 ## Adding a pass
 

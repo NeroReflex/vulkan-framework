@@ -116,6 +116,8 @@ impl Sampler {
             .address_mode_v(ash::vk::SamplerAddressMode::REPEAT)
             .address_mode_w(ash::vk::SamplerAddressMode::REPEAT)
             .mipmap_mode(mipmap_mode.ash_flags())
+            .min_lod(0.0)
+            .max_lod(ash::vk::LOD_CLAMP_NONE)
             .mag_filter(mag_filter.ash_flags())
             .min_filter(min_filter.ash_flags());
 

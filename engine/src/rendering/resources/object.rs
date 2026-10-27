@@ -421,6 +421,13 @@ impl Manager {
         Ok(())
     }
 
+    pub fn animating(&self) -> bool {
+        self.skinned_assets
+            .iter()
+            .flatten()
+            .any(|asset| asset.play_state.clip.is_some())
+    }
+
     pub fn advance_animations(&mut self, delta_seconds: f32) {
         for asset in self.skinned_assets.iter_mut().flatten() {
             asset.play_state.advance(delta_seconds, &asset.clips);

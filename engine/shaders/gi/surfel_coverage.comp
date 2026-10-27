@@ -79,11 +79,14 @@ void main() {
             atomicMin(s_spawn_key, (uint(sum_ok * 1000.0) << 8u) | li);
         }
 
+        // Spawning into holes stays on when settled; pruning would reopen them.
         uint doom = INVALID_ID;
-        if (sum_all > SURFEL_OVER_COVERAGE) {
-            doom = smallest;
-        } else if (oversized != INVALID_ID && sum_ok >= 1.0) {
-            doom = oversized;
+        if (!cache_settled()) {
+            if (sum_all > SURFEL_OVER_COVERAGE) {
+                doom = smallest;
+            } else if (oversized != INVALID_ID && sum_ok >= 1.0) {
+                doom = oversized;
+            }
         }
         if (doom != INVALID_ID) {
             s_doom_id[li] = doom;

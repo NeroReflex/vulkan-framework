@@ -61,6 +61,8 @@ struct Surfel {
 // previous one scales the flux quantization of the CDF
 #define ST_MAX_FLUX 14
 #define ST_PREV_MAX_FLUX 15
+// frames in a row without allocations, evictions or dooms
+#define ST_STABLE_FRAMES 16
 
 layout(set = SURFEL_SET, binding = 0, std430) coherent buffer SurfelState { int state[]; };
 layout(set = SURFEL_SET, binding = 1, std430) buffer SurfelPool { Surfel surfels[]; };
@@ -128,6 +130,24 @@ layout(set = SURFEL_SET, binding = 19, r32ui) uniform uimage2D surfel_overlay;
 layout(set = SURFEL_SET, binding = 20, rgba32f) uniform image2D gi_images[GI_IMAGE_COUNT];
 
 // ---- pool --------------------------------------------------------------
+
+// With GI_FLAG_CONVERGE and a still view the cache settles: no pruning and no
+// unseen evictions, and offscreen spawns end after SURFEL_SETTLE_SPAWN_FRAMES,
+// so the surfel set stops changing once the remaining holes are filled.
+bool cache_settled() {
+    return (gi_data.flags & GI_FLAG_CONVERGE) != 0u && gi_data.still_frames >= SURFEL_SETTLE_FRAMES;
+}
+
+// Frames since a settled cache's surfel set stopped changing. From then on the
+// surfel estimates and the accumulated image are running means over
+// independent frames (no temporal reuse), which converge instead of
+// fluctuating; newborn surfels' first samples are already forgotten.
+uint cache_stable_frames() {
+    if (!cache_settled()) {
+        return 0u;
+    }
+    return min(uint(state[ST_STABLE_FRAMES]), gi_data.still_frames - SURFEL_SETTLE_FRAMES);
+}
 
 uint alive_in_base() {
     return (gi_data.frame_index & 1u) * MAX_SURFELS;
