@@ -19,11 +19,11 @@ use vulkan_framework::{
     shader_stage_access::ShaderStageAccessIn,
 };
 
-use crate::rendering::{RenderingError, RenderingResult};
 use crate::rendering::resources::ResourceError;
+use crate::rendering::{RenderingError, RenderingResult};
 use crate::scene::{
     AnimationClipInfo, AnimationGpuChannel, AnimationPlayState, ArmatureGpuElement,
-    SkeletonGpuElement, MAX_ANIMATION_CHANNELS,
+    MAX_ANIMATION_CHANNELS, SkeletonGpuElement,
 };
 
 #[derive(Debug, Deserialize)]
@@ -85,21 +85,31 @@ impl SkinnedTarLoader {
         device: Arc<vulkan_framework::device::Device>,
         memory_manager: &mut dyn MemoryManagerTrait,
     ) -> RenderingResult<SkinnedAsset> {
-        let original_bytes = self
-            .skeleton_original
-            .ok_or(RenderingError::ResourceError(ResourceError::InvalidObjectFormat))?;
-        let armature_bytes = self
-            .skeleton_armature
-            .ok_or(RenderingError::ResourceError(ResourceError::InvalidObjectFormat))?;
-        let meta = self
-            .meta
-            .ok_or(RenderingError::ResourceError(ResourceError::InvalidObjectFormat))?;
+        let original_bytes = self.skeleton_original.ok_or(RenderingError::ResourceError(
+            ResourceError::InvalidObjectFormat,
+        ))?;
+        let armature_bytes = self.skeleton_armature.ok_or(RenderingError::ResourceError(
+            ResourceError::InvalidObjectFormat,
+        ))?;
+        let meta = self.meta.ok_or(RenderingError::ResourceError(
+            ResourceError::InvalidObjectFormat,
+        ))?;
 
         let bone_count = meta.bone_count;
         let per_frame_bytes = (bone_count as u64) * 64;
 
-        let original = upload_storage(device.clone(), memory_manager, &original_bytes, "skin_original")?;
-        let armature = upload_storage(device.clone(), memory_manager, &armature_bytes, "skin_armature")?;
+        let original = upload_storage(
+            device.clone(),
+            memory_manager,
+            &original_bytes,
+            "skin_original",
+        )?;
+        let armature = upload_storage(
+            device.clone(),
+            memory_manager,
+            &armature_bytes,
+            "skin_armature",
+        )?;
         let per_frame = upload_storage(
             device.clone(),
             memory_manager,
@@ -110,7 +120,9 @@ impl SkinnedTarLoader {
         let skinned_vertices = if let Some(bytes) = self.skinned_vertices {
             upload_storage(device.clone(), memory_manager, &bytes, "skin_vertices")?
         } else {
-            return Err(RenderingError::ResourceError(ResourceError::MissingVertexBuffer));
+            return Err(RenderingError::ResourceError(
+                ResourceError::MissingVertexBuffer,
+            ));
         };
 
         let vertex_count = (skinned_vertices.size() / 64) as u32;
@@ -164,74 +176,52 @@ impl SkinnedTarLoader {
         let palette_set = DescriptorSet::new(pool.clone(), palette_layout.clone())?;
         let deform_set = DescriptorSet::new(pool.clone(), deform_layout.clone())?;
 
-        bind_pose_set.bind_resources(|writer| {
-            writer.bind_storage_buffers(
-                0,
-                [(
-                    original.clone() as Arc<dyn BufferTrait>,
-                    None,
-                    None,
-                )]
-                .as_slice(),
-            )?;
-            writer.bind_storage_buffers(
-                1,
-                [(
-                    per_frame.clone() as Arc<dyn BufferTrait>,
-                    None,
-                    None,
-                )]
-                .as_slice(),
-            )?;
-            writer.bind_storage_buffers(
-                2,
-                [(
-                    armature.clone() as Arc<dyn BufferTrait>,
-                    None,
-                    None,
-                )]
-                .as_slice(),
-            )?;
-            Ok::<(), vulkan_framework::prelude::VulkanError>(())
-        })
-        .map_err(|err| RenderingError::Unknown(err.to_string()))?;
+        bind_pose_set
+            .bind_resources(|writer| {
+                writer.bind_storage_buffers(
+                    0,
+                    [(original.clone() as Arc<dyn BufferTrait>, None, None)].as_slice(),
+                )?;
+                writer.bind_storage_buffers(
+                    1,
+                    [(per_frame.clone() as Arc<dyn BufferTrait>, None, None)].as_slice(),
+                )?;
+                writer.bind_storage_buffers(
+                    2,
+                    [(armature.clone() as Arc<dyn BufferTrait>, None, None)].as_slice(),
+                )?;
+                Ok::<(), vulkan_framework::prelude::VulkanError>(())
+            })
+            .map_err(|err| RenderingError::Unknown(err.to_string()))?;
 
-        palette_set.bind_resources(|writer| {
-            writer.bind_storage_buffers(
-                0,
-                [(
-                    per_frame.clone() as Arc<dyn BufferTrait>,
-                    None,
-                    None,
-                )]
-                .as_slice(),
-            )?;
-            Ok::<(), vulkan_framework::prelude::VulkanError>(())
-        })
-        .map_err(|err| RenderingError::Unknown(err.to_string()))?;
+        palette_set
+            .bind_resources(|writer| {
+                writer.bind_storage_buffers(
+                    0,
+                    [(per_frame.clone() as Arc<dyn BufferTrait>, None, None)].as_slice(),
+                )?;
+                Ok::<(), vulkan_framework::prelude::VulkanError>(())
+            })
+            .map_err(|err| RenderingError::Unknown(err.to_string()))?;
 
-        deform_set.bind_resources(|writer| {
-            writer.bind_storage_buffers(
-                1,
-                [(
-                    skinned_vertices.clone() as Arc<dyn BufferTrait>,
-                    None,
-                    None,
-                )]
-                .as_slice(),
-            )?;
-            writer.bind_storage_buffers(
-                2,
-                [(
-                    deformed_vertices.clone() as Arc<dyn BufferTrait>,
-                    None,
-                    None,
-                )]
-                .as_slice(),
-            )?;
-            Ok::<(), vulkan_framework::prelude::VulkanError>(())
-        })
-        .map_err(|err| RenderingError::Unknown(err.to_string()))?;
+        deform_set
+            .bind_resources(|writer| {
+                writer.bind_storage_buffers(
+                    1,
+                    [(skinned_vertices.clone() as Arc<dyn BufferTrait>, None, None)].as_slice(),
+                )?;
+                writer.bind_storage_buffers(
+                    2,
+                    [(
+                        deformed_vertices.clone() as Arc<dyn BufferTrait>,
+                        None,
+                        None,
+                    )]
+                    .as_slice(),
+                )?;
+                Ok::<(), vulkan_framework::prelude::VulkanError>(())
+            })
+            .map_err(|err| RenderingError::Unknown(err.to_string()))?;
 
         Ok(SkinnedAsset {
             bone_count,
@@ -289,7 +279,9 @@ impl SkinnedAsset {
             return Ok(set.clone());
         }
         let Some(channels) = self.channel_buffers.get(clip) else {
-            return Err(RenderingError::ResourceError(ResourceError::InvalidObjectFormat));
+            return Err(RenderingError::ResourceError(
+                ResourceError::InvalidObjectFormat,
+            ));
         };
         let set = DescriptorSet::new(self.descriptor_pool.clone(), self.channels_layout.clone())?;
         set.bind_resources(|writer| {
@@ -345,49 +337,51 @@ impl SkinnedAsset {
     pub fn bind_palette(&self, bone_palette: Arc<AllocatedBuffer>) -> RenderingResult<()> {
         let palette = bone_palette.clone();
         let deform_palette = bone_palette;
-        self.palette_set.bind_resources(|writer| {
-            writer.bind_storage_buffers(
-                0,
-                [(
-                    self.per_frame_skeleton.clone() as Arc<dyn BufferTrait>,
-                    None,
-                    None,
-                )]
-                .as_slice(),
-            )?;
-            writer.bind_storage_buffers(
-                1,
-                [(palette as Arc<dyn BufferTrait>, None, None)].as_slice(),
-            )?;
-            Ok::<(), vulkan_framework::prelude::VulkanError>(())
-        })
-        .map_err(|err| RenderingError::Unknown(err.to_string()))?;
-        self.deform_set.bind_resources(|writer| {
-            writer.bind_storage_buffers(
-                0,
-                [(deform_palette as Arc<dyn BufferTrait>, None, None)].as_slice(),
-            )?;
-            writer.bind_storage_buffers(
-                1,
-                [(
-                    self.skinned_vertices.clone() as Arc<dyn BufferTrait>,
-                    None,
-                    None,
-                )]
-                .as_slice(),
-            )?;
-            writer.bind_storage_buffers(
-                2,
-                [(
-                    self.deformed_vertices.clone() as Arc<dyn BufferTrait>,
-                    None,
-                    None,
-                )]
-                .as_slice(),
-            )?;
-            Ok::<(), vulkan_framework::prelude::VulkanError>(())
-        })
-        .map_err(|err| RenderingError::Unknown(err.to_string()))?;
+        self.palette_set
+            .bind_resources(|writer| {
+                writer.bind_storage_buffers(
+                    0,
+                    [(
+                        self.per_frame_skeleton.clone() as Arc<dyn BufferTrait>,
+                        None,
+                        None,
+                    )]
+                    .as_slice(),
+                )?;
+                writer.bind_storage_buffers(
+                    1,
+                    [(palette as Arc<dyn BufferTrait>, None, None)].as_slice(),
+                )?;
+                Ok::<(), vulkan_framework::prelude::VulkanError>(())
+            })
+            .map_err(|err| RenderingError::Unknown(err.to_string()))?;
+        self.deform_set
+            .bind_resources(|writer| {
+                writer.bind_storage_buffers(
+                    0,
+                    [(deform_palette as Arc<dyn BufferTrait>, None, None)].as_slice(),
+                )?;
+                writer.bind_storage_buffers(
+                    1,
+                    [(
+                        self.skinned_vertices.clone() as Arc<dyn BufferTrait>,
+                        None,
+                        None,
+                    )]
+                    .as_slice(),
+                )?;
+                writer.bind_storage_buffers(
+                    2,
+                    [(
+                        self.deformed_vertices.clone() as Arc<dyn BufferTrait>,
+                        None,
+                        None,
+                    )]
+                    .as_slice(),
+                )?;
+                Ok::<(), vulkan_framework::prelude::VulkanError>(())
+            })
+            .map_err(|err| RenderingError::Unknown(err.to_string()))?;
         Ok(())
     }
 
@@ -413,10 +407,7 @@ pub struct SkinDispatchView<'a> {
 impl SkinnedAsset {
     pub fn dispatch_view(&mut self) -> SkinDispatchView<'_> {
         let animated = self.play_state.clip.is_some();
-        let time_ticks = self
-            .play_state
-            .time_in_ticks(&self.clips)
-            .unwrap_or(0.0);
+        let time_ticks = self.play_state.time_in_ticks(&self.clips).unwrap_or(0.0);
         let channel_count = self.play_state.active_channel_count(&self.clips);
         let clip_name = self.play_state.clip.clone();
         let channels_set = clip_name
@@ -473,10 +464,30 @@ fn skin_channels_layout(
     DescriptorSetLayout::new(
         device,
         [
-            BindingDescriptor::new(compute, BindingType::Native(NativeBindingType::StorageBuffer), 0, 1),
-            BindingDescriptor::new(compute, BindingType::Native(NativeBindingType::StorageBuffer), 1, 1),
-            BindingDescriptor::new(compute, BindingType::Native(NativeBindingType::StorageBuffer), 2, 1),
-            BindingDescriptor::new(compute, BindingType::Native(NativeBindingType::StorageBuffer), 3, 1),
+            BindingDescriptor::new(
+                compute,
+                BindingType::Native(NativeBindingType::StorageBuffer),
+                0,
+                1,
+            ),
+            BindingDescriptor::new(
+                compute,
+                BindingType::Native(NativeBindingType::StorageBuffer),
+                1,
+                1,
+            ),
+            BindingDescriptor::new(
+                compute,
+                BindingType::Native(NativeBindingType::StorageBuffer),
+                2,
+                1,
+            ),
+            BindingDescriptor::new(
+                compute,
+                BindingType::Native(NativeBindingType::StorageBuffer),
+                3,
+                1,
+            ),
         ]
         .as_slice(),
     )
@@ -490,9 +501,24 @@ fn skin_bind_pose_layout(
     DescriptorSetLayout::new(
         device,
         [
-            BindingDescriptor::new(compute, BindingType::Native(NativeBindingType::StorageBuffer), 0, 1),
-            BindingDescriptor::new(compute, BindingType::Native(NativeBindingType::StorageBuffer), 1, 1),
-            BindingDescriptor::new(compute, BindingType::Native(NativeBindingType::StorageBuffer), 2, 1),
+            BindingDescriptor::new(
+                compute,
+                BindingType::Native(NativeBindingType::StorageBuffer),
+                0,
+                1,
+            ),
+            BindingDescriptor::new(
+                compute,
+                BindingType::Native(NativeBindingType::StorageBuffer),
+                1,
+                1,
+            ),
+            BindingDescriptor::new(
+                compute,
+                BindingType::Native(NativeBindingType::StorageBuffer),
+                2,
+                1,
+            ),
         ]
         .as_slice(),
     )
@@ -506,8 +532,18 @@ fn skin_palette_layout(
     DescriptorSetLayout::new(
         device,
         [
-            BindingDescriptor::new(compute, BindingType::Native(NativeBindingType::StorageBuffer), 0, 1),
-            BindingDescriptor::new(compute, BindingType::Native(NativeBindingType::StorageBuffer), 1, 1),
+            BindingDescriptor::new(
+                compute,
+                BindingType::Native(NativeBindingType::StorageBuffer),
+                0,
+                1,
+            ),
+            BindingDescriptor::new(
+                compute,
+                BindingType::Native(NativeBindingType::StorageBuffer),
+                1,
+                1,
+            ),
         ]
         .as_slice(),
     )
@@ -521,9 +557,24 @@ fn skin_deform_layout(
     DescriptorSetLayout::new(
         device,
         [
-            BindingDescriptor::new(compute, BindingType::Native(NativeBindingType::StorageBuffer), 0, 1),
-            BindingDescriptor::new(compute, BindingType::Native(NativeBindingType::StorageBuffer), 1, 1),
-            BindingDescriptor::new(compute, BindingType::Native(NativeBindingType::StorageBuffer), 2, 1),
+            BindingDescriptor::new(
+                compute,
+                BindingType::Native(NativeBindingType::StorageBuffer),
+                0,
+                1,
+            ),
+            BindingDescriptor::new(
+                compute,
+                BindingType::Native(NativeBindingType::StorageBuffer),
+                1,
+                1,
+            ),
+            BindingDescriptor::new(
+                compute,
+                BindingType::Native(NativeBindingType::StorageBuffer),
+                2,
+                1,
+            ),
         ]
         .as_slice(),
     )

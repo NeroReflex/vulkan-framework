@@ -172,10 +172,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     forward = glm::normalize(forward);
                     camera.apply_movement(forward, step * (0.65 + 0.35 * (t * 0.31).sin()));
                 }
-                let strafe = glm::normalize(glm::cross(
-                    glm::Vec3::new(0.0, 1.0, 0.0),
-                    forward,
-                ));
+                let strafe = glm::normalize(glm::cross(glm::Vec3::new(0.0, 1.0, 0.0), forward));
                 camera.apply_movement(strafe, step * 0.45 * (t * 0.23).cos());
                 renderer.change_camera(Arc::new(camera.clone()));
             } else if !locked {

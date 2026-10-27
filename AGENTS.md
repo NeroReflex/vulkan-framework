@@ -48,7 +48,7 @@ engine/shaders/gi/validate.sh  # compile + spirv-val every GI shader
 **Shaders are embedded with `inline_spirv!`, which does not track `#include`s.** After editing any `.glsl` header (or any shader at all, to be safe), touch the Rust files that embed them, or the old SPIR-V stays in the binary:
 
 ```bash
-touch engine/src/rendering/pipeline/global_illumination.rs engine/src/rendering/pipeline/mesh_rendering.rs
+touch engine/src/rendering/pipeline/global_illumination.rs engine/src/rendering/pipeline/mesh_rendering.rs engine/src/rendering/pipeline/ambient_occlusion.rs engine/src/rendering/pipeline/final_rendering.rs
 ```
 
 `validate.sh` covers the GI shaders and `final_rendering.frag`, not `mesh_rendering.frag`; mesh shader errors show up at build time.
@@ -73,7 +73,10 @@ Environment switches (all read in `engine/src`):
 | `ART_RTIC_BENCH_WANDER=1` | Fixed camera path for drift and performance runs. |
 | `ART_RTIC_GI_DISABLE=multibounce,temporal,spatial,accumulate,spawn,converge` | Turn GI switches off. |
 | `ART_RTIC_GI_REFERENCE=1` | Turn the path-traced reference on. |
-| `ART_RTIC_VIEW=<index>` | Start in a view mode (table in `engine/docs/10-composite.md`: 0 final … 5 reference, 7 difference). |
+| `ART_RTIC_VIEW=<index>` | Start in a view mode (table in `engine/docs/10-composite.md`: 0 final … 5 reference, 7 difference, 8 ambient occlusion). |
+| `ART_RTIC_AO=ssao\|rtao` | Ambient-occlusion algorithm. Default `ssao`. |
+| `ART_RTIC_AO_APPLY=1` | Multiply indirect light by the ambient-occlusion image. |
+| `ART_RTIC_AO_DUMP=path.pfm` | Write the ambient-occlusion image from frame 8. |
 | `ART_RTIC_NO_VALIDATION=1` | Debug build without the validation layer. |
 | `ART_RTIC_NO_PRESENT=1` | Diagnostic only; runs at ~1 FPS. Use `STOP_AFTER=hdr` for unthrottled runs instead. |
 | `ART_RTIC_FRAMES_IN_FLIGHT`, `ART_RTIC_QUEUE_COUNT`, `ART_RTIC_PREVIEW` | Experiments: frames in flight, queue count, preview. |

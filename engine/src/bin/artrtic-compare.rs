@@ -46,7 +46,16 @@ fn main() {
     let block = 16;
     let est_b = downsample(&e_ind, block);
     let ref_b = downsample(&e_ref, block);
-    let coverage_b = downsample(&albedo.map(|_, a| if luminance(a) > 0.0 { [1.0; 3] } else { [0.0; 3] }), block);
+    let coverage_b = downsample(
+        &albedo.map(|_, a| {
+            if luminance(a) > 0.0 {
+                [1.0; 3]
+            } else {
+                [0.0; 3]
+            }
+        }),
+        block,
+    );
     let block_mask: Vec<bool> = coverage_b.data.iter().map(|c| c[0] > 0.99).collect();
     let blocks = error_stats(&est_b, &ref_b, &block_mask);
 
@@ -61,7 +70,9 @@ fn main() {
     }
     ratios.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let pct = |p: f32| ratios[((ratios.len() - 1) as f32 * p) as usize];
-    let within = |t: f32| ratios.iter().filter(|r| (*r - 1.0).abs() <= t).count() as f32 / ratios.len() as f32;
+    let within = |t: f32| {
+        ratios.iter().filter(|r| (*r - 1.0).abs() <= t).count() as f32 / ratios.len() as f32
+    };
 
     // Direct vs indirect share, for scale.
     let dir_mean: f64 = e_dir
@@ -117,7 +128,12 @@ fn main() {
         }
     });
     // write_jpeg tonemaps v/(1+v): pre-invert so the colors land as written.
-    let heat = heat.map(|_, c| c.map(|v| { let v = v.clamp(0.0, 0.999); v / (1.0 - v) }));
+    let heat = heat.map(|_, c| {
+        c.map(|v| {
+            let v = v.clamp(0.0, 0.999);
+            v / (1.0 - v)
+        })
+    });
     let out = dir.join(format!("{tag}_ratio.jpg"));
     heat.write_jpeg(&out, 1.0).expect("write heatmap");
     println!("  heatmap: {}", out.display());
@@ -125,12 +141,18 @@ fn main() {
     let mut failed = false;
     if let Some(gate) = max_bias {
         let ok = (pixel.relative_bias * 100.0).abs() <= gate;
-        println!("  gate |bias| <= {gate}%: {}", if ok { "pass" } else { "FAIL" });
+        println!(
+            "  gate |bias| <= {gate}%: {}",
+            if ok { "pass" } else { "FAIL" }
+        );
         failed |= !ok;
     }
     if let Some(gate) = max_block_rmse {
         let ok = blocks.relative_rmse * 100.0 <= gate;
-        println!("  gate block RMSE <= {gate}%: {}", if ok { "pass" } else { "FAIL" });
+        println!(
+            "  gate block RMSE <= {gate}%: {}",
+            if ok { "pass" } else { "FAIL" }
+        );
         failed |= !ok;
     }
     if failed {

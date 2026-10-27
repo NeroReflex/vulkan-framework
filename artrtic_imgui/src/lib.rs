@@ -4,7 +4,7 @@ mod renderer;
 mod sdl2_input;
 
 pub use imgui;
-pub use renderer::{snapshot_draw_data, UiDrawSnapshot, VulkanUiRenderer};
+pub use renderer::{UiDrawSnapshot, VulkanUiRenderer, snapshot_draw_data};
 pub use sdl2_input::Sdl2Input;
 
 use imgui::{Context, TextureId};

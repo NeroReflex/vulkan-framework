@@ -92,11 +92,7 @@ impl DDSHeader {
     /// DDS stores `0` when only the base level is present (see UNIVR `dds_header.cpp`).
     pub fn mip_level_count(&self) -> u32 {
         let count = self.mip_map_count;
-        if count == 0 {
-            1
-        } else {
-            count
-        }
+        if count == 0 { 1 } else { count }
     }
 
     pub fn is_followed_by_dxt10_header(&self) -> bool {

@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use artrtic_imgui::{
-    attach_sdl2, ensure_font_atlas_built, imgui, snapshot_draw_data, Sdl2Input, UiDrawSnapshot,
-    VulkanUiRenderer,
+    Sdl2Input, UiDrawSnapshot, VulkanUiRenderer, attach_sdl2, ensure_font_atlas_built, imgui,
+    snapshot_draw_data,
 };
 use imgui::{ChildWindow, Condition, StyleColor};
 use sdl2::event::Event;
@@ -70,7 +70,12 @@ impl UiLayer {
         let mut composed_views = Vec::new();
         let dimensions = Image2DDimensions::new(width, height);
         for index in 0..frames_in_flight {
-            renderers.push(VulkanUiRenderer::new(device.clone(), memory_manager, width, height)?);
+            renderers.push(VulkanUiRenderer::new(
+                device.clone(),
+                memory_manager,
+                width,
+                height,
+            )?);
             let image = memory_manager.allocate_resources(
                 &MemoryType::device_local(),
                 &MemoryPoolFeatures::new(false),
@@ -79,7 +84,9 @@ impl UiLayer {
                         device.clone(),
                         ConcreteImageDescriptor::new(
                             ImageDimensions::from(dimensions),
-                            [ImageUseAs::ColorAttachment, ImageUseAs::Sampled].as_slice().into(),
+                            [ImageUseAs::ColorAttachment, ImageUseAs::Sampled]
+                                .as_slice()
+                                .into(),
                             ImageMultisampling::SamplesPerPixel1,
                             1,
                             1,
@@ -149,8 +156,7 @@ impl UiLayer {
         for renderer in &mut self.renderers {
             renderer.resize(memory_manager, width, height)?;
         }
-        self.composite =
-            UiComposite::new(self.device.clone(), self.output_format, width, height)?;
+        self.composite = UiComposite::new(self.device.clone(), self.output_format, width, height)?;
         let frames = self.composed_views.len();
         self.composed_views.clear();
         for index in 0..frames {
@@ -162,7 +168,9 @@ impl UiLayer {
                         self.device.clone(),
                         ConcreteImageDescriptor::new(
                             ImageDimensions::from(dimensions),
-                            [ImageUseAs::ColorAttachment, ImageUseAs::Sampled].as_slice().into(),
+                            [ImageUseAs::ColorAttachment, ImageUseAs::Sampled]
+                                .as_slice()
+                                .into(),
                             ImageMultisampling::SamplesPerPixel1,
                             1,
                             1,
@@ -229,9 +237,7 @@ impl UiLayer {
         let mut mesh_path_buf = self.mesh_path_buf.clone();
         let mut scene_save_path = self.scene_save_path.clone();
         let mut translation = selected.map(|index| {
-            system
-                .scene()
-                .nodes()[index]
+            system.scene().nodes()[index]
                 .local
                 .transform_point([0.0, 0.0, 0.0])
         });
@@ -241,11 +247,11 @@ impl UiLayer {
         let mut attach_error: Option<String> = None;
 
         ensure_font_atlas_built(&mut self.imgui);
-        let mouse_pos = self.cursor_pos.unwrap_or([
-            mouse_state.x() as f32,
-            mouse_state.y() as f32,
-        ]);
-        self.input.prepare_io(self.imgui.io_mut(), window, mouse_state, mouse_pos);
+        let mouse_pos = self
+            .cursor_pos
+            .unwrap_or([mouse_state.x() as f32, mouse_state.y() as f32]);
+        self.input
+            .prepare_io(self.imgui.io_mut(), window, mouse_state, mouse_pos);
         {
             let io = self.imgui.io_mut();
             io.want_capture_mouse = true;
@@ -255,7 +261,7 @@ impl UiLayer {
         // One shell window — two sibling ImGui windows were sharing focus/geometry when the
         // Scene title bar was clicked (Console appeared to "steal" Scene's layout).
         const SHELL_W: f32 = 584.0;
-        const SHELL_H: f32 = 720.0;
+        const SHELL_H: f32 = 800.0;
         imgui::Window::new("Editor##artrtic_editor_shell")
             .position([16.0, 16.0], Condition::Always)
             .size([SHELL_W, SHELL_H], Condition::Always)
@@ -356,14 +362,27 @@ impl UiLayer {
                 ui.separator();
                 ChildWindow::new("Debug body##artrtic_debug_body")
                     .border(true)
-                    .size([0.0, 254.0])
+                    .size([0.0, 330.0])
                     .movable(false)
                     .build(&ui, || {
-                        use crate::rendering::debug_state::ViewMode;
+                        use crate::rendering::debug_state::{AoAlgorithm, ViewMode};
                         let debug = system.debug_state();
                         let mut show_surfels = debug.show_surfels();
                         if ui.checkbox("Show surfels", &mut show_surfels) {
                             debug.set_show_surfels(show_surfels);
+                        }
+                        let mut apply_ao = debug.apply_ao();
+                        if ui.checkbox("Apply ambient occlusion", &mut apply_ao) {
+                            debug.set_apply_ao(apply_ao);
+                        }
+                        let ao_labels: Vec<&str> =
+                            AoAlgorithm::ALL.iter().map(|m| m.label()).collect();
+                        let mut ao_current = AoAlgorithm::ALL
+                            .iter()
+                            .position(|m| *m == debug.ao_algorithm())
+                            .unwrap_or(0);
+                        if ui.combo_simple_string("AO algorithm", &mut ao_current, &ao_labels) {
+                            debug.set_ao_algorithm(AoAlgorithm::ALL[ao_current]);
                         }
                         let labels: Vec<&str> = ViewMode::ALL.iter().map(|m| m.label()).collect();
                         let mut current = ViewMode::ALL
@@ -478,7 +497,9 @@ impl UiLayer {
                     tokens[4].parse::<f32>(),
                 ) {
                     if let Some(index) = system.scene().find_by_name(name) {
-                        system.scene_mut().set_local(index, Mat4::translation(x, y, z));
+                        system
+                            .scene_mut()
+                            .set_local(index, Mat4::translation(x, y, z));
                     }
                 }
             }
@@ -596,8 +617,7 @@ fn draw_scene_tree(
         let label = format!(
             "{}{}",
             node.name,
-            node
-                .object
+            node.object
                 .as_deref()
                 .map(|path| format!(" ({path})"))
                 .unwrap_or_default()

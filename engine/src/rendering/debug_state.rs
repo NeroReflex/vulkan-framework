@@ -7,10 +7,24 @@ pub struct DebugGpuBlock {
     pub flags: u32,
     pub view_mode: u32,
     pub exposure: f32,
-    pub padding: [u32; 5],
+    /// `AoAlgorithm` as `u32`.
+    pub ao_algorithm: u32,
+    pub padding: [u32; 4],
 }
 
 pub const DEBUG_FLAG_SHOW_SURFELS: u32 = 1 << 0;
+/// Multiply indirect light by the ambient-occlusion image.
+pub const DEBUG_FLAG_APPLY_AO: u32 = 1 << 1;
+
+/// Which pass fills the ambient-occlusion image. Must match the dispatch in
+/// `AmbientOcclusion::record_rendering_commands`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(u32)]
+pub enum AoAlgorithm {
+    #[default]
+    Ssao = 0,
+    Rtao = 1,
+}
 
 /// What the final composite shows. Must match `VIEW_*` in `debug.glsl`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -33,10 +47,38 @@ pub enum ViewMode {
     ReferenceIndirect = 6,
     /// relative luminance error of E_ind against E_ref: red = too bright, blue = too dark
     Difference = 7,
+    /// the ambient-occlusion image: white = open, black = occluded
+    AmbientOcclusion = 8,
+}
+
+impl AoAlgorithm {
+    pub const ALL: [AoAlgorithm; 2] = [AoAlgorithm::Ssao, AoAlgorithm::Rtao];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            AoAlgorithm::Ssao => "SSAO",
+            AoAlgorithm::Rtao => "RTAO",
+        }
+    }
+
+    /// `ART_RTIC_AO=ssao|rtao` selects the startup algorithm. Anything else is SSAO.
+    pub fn from_env() -> Self {
+        match std::env::var("ART_RTIC_AO") {
+            Ok(value) => match value.trim().to_ascii_lowercase().as_str() {
+                "" | "ssao" => AoAlgorithm::Ssao,
+                "rtao" => AoAlgorithm::Rtao,
+                other => {
+                    eprintln!("ART_RTIC_AO: unknown algorithm {other}");
+                    AoAlgorithm::Ssao
+                }
+            },
+            Err(_) => AoAlgorithm::Ssao,
+        }
+    }
 }
 
 impl ViewMode {
-    pub const ALL: [ViewMode; 8] = [
+    pub const ALL: [ViewMode; 9] = [
         ViewMode::Final,
         ViewMode::SurfelIds,
         ViewMode::Coverage,
@@ -45,6 +87,7 @@ impl ViewMode {
         ViewMode::Reference,
         ViewMode::ReferenceIndirect,
         ViewMode::Difference,
+        ViewMode::AmbientOcclusion,
     ];
 
     pub fn label(self) -> &'static str {
@@ -57,6 +100,7 @@ impl ViewMode {
             ViewMode::Reference => "Reference",
             ViewMode::ReferenceIndirect => "Reference indirect",
             ViewMode::Difference => "Difference vs reference",
+            ViewMode::AmbientOcclusion => "Ambient occlusion",
         }
     }
 
@@ -100,6 +144,8 @@ impl Default for GiSettings {
 pub struct DebugState {
     flags: u32,
     view_mode: ViewMode,
+    apply_ao: bool,
+    ao_algorithm: AoAlgorithm,
     pub gi: GiSettings,
 }
 
@@ -145,6 +191,8 @@ impl Default for DebugState {
         Self {
             flags: 0,
             view_mode: ViewMode::from_env(),
+            apply_ao: std::env::var("ART_RTIC_AO_APPLY").is_ok_and(|v| v != "0"),
+            ao_algorithm: AoAlgorithm::from_env(),
             gi: GiSettings::from_env(),
         }
     }
@@ -171,6 +219,22 @@ impl DebugState {
         self.view_mode = mode;
     }
 
+    pub fn apply_ao(&self) -> bool {
+        self.apply_ao
+    }
+
+    pub fn set_apply_ao(&mut self, enabled: bool) {
+        self.apply_ao = enabled;
+    }
+
+    pub fn ao_algorithm(&self) -> AoAlgorithm {
+        self.ao_algorithm
+    }
+
+    pub fn set_ao_algorithm(&mut self, algorithm: AoAlgorithm) {
+        self.ao_algorithm = algorithm;
+    }
+
     /// The reference path tracer runs when requested or when the view needs it.
     pub fn reference_active(&self) -> bool {
         self.gi.reference || self.view_mode.needs_reference()
@@ -182,11 +246,47 @@ impl DebugState {
         } else {
             self.view_mode
         };
+        let mut flags = self.flags;
+        if self.apply_ao {
+            flags |= DEBUG_FLAG_APPLY_AO;
+        }
         DebugGpuBlock {
-            flags: self.flags,
+            flags,
             view_mode: view_mode as u32,
             exposure: 1.0,
-            padding: [0; 5],
+            ao_algorithm: self.ao_algorithm as u32,
+            padding: [0; 4],
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn debug_block_matches_std140() {
+        assert_eq!(std::mem::size_of::<DebugGpuBlock>(), 32);
+        assert_eq!(std::mem::align_of::<DebugGpuBlock>(), 4);
+    }
+
+    #[test]
+    fn apply_ao_is_its_own_flag() {
+        let mut debug = DebugState {
+            flags: DEBUG_FLAG_SHOW_SURFELS,
+            view_mode: ViewMode::Final,
+            apply_ao: true,
+            ao_algorithm: AoAlgorithm::Rtao,
+            gi: GiSettings::default(),
+        };
+        let block = debug.gpu_block();
+        assert_eq!(
+            block.flags & DEBUG_FLAG_SHOW_SURFELS,
+            DEBUG_FLAG_SHOW_SURFELS
+        );
+        assert_eq!(block.flags & DEBUG_FLAG_APPLY_AO, DEBUG_FLAG_APPLY_AO);
+        assert_eq!(block.ao_algorithm, AoAlgorithm::Rtao as u32);
+        debug.set_apply_ao(false);
+        assert_eq!(debug.gpu_block().flags & DEBUG_FLAG_APPLY_AO, 0);
     }
 }

@@ -8,10 +8,10 @@ mod skin_gpu;
 
 pub use animation::{AnimationClipInfo, AnimationPlayState};
 pub use file::{load_scene_json, save_scene_json};
-pub use skin::{palette_from_locals, BoneLocal};
+pub use skin::{BoneLocal, palette_from_locals};
 pub use skin_gpu::{
-    AnimationGpuChannel, ArmatureGpuElement, SkeletonGpuElement, MAX_ANIMATION_CHANNELS,
-    MAX_ANIMATION_KEYS_PER_CHANNEL,
+    AnimationGpuChannel, ArmatureGpuElement, MAX_ANIMATION_CHANNELS,
+    MAX_ANIMATION_KEYS_PER_CHANNEL, SkeletonGpuElement,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]

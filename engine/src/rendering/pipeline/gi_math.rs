@@ -165,7 +165,11 @@ pub fn make_basis(n: [f32; 3]) -> ([f32; 3], [f32; 3]) {
 }
 
 fn cross(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
-    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
 }
 
 fn normalize(v: [f32; 3]) -> [f32; 3] {
@@ -235,7 +239,11 @@ pub fn disk_geometry(c: [f32; 3], nc: [f32; 3], r: f32, x: [f32; 3], nx: [f32; 3
         }
         if (da >= 0.0) != (db >= 0.0) {
             let f = da / (da - db);
-            poly.push([a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f]);
+            poly.push([
+                a[0] + (b[0] - a[0]) * f,
+                a[1] + (b[1] - a[1]) * f,
+                a[2] + (b[2] - a[2]) * f,
+            ]);
         }
     }
     let mut sum = 0.0f32;
@@ -381,7 +389,11 @@ mod tests {
             for _ in 0..8 {
                 let (dx, dy) = rng.disk();
                 let dz = (rng.next() - 0.5) * 2.0 * (1.0 - dx * dx - dy * dy).max(0.0).sqrt();
-                let p = [c[0] + dx * r * 0.999, c[1] + dy * r * 0.999, c[2] + dz * r * 0.999];
+                let p = [
+                    c[0] + dx * r * 0.999,
+                    c[1] + dy * r * 0.999,
+                    c[2] + dz * r * 0.999,
+                ];
                 let read = point_buckets(p, mask);
                 assert_eq!(read.len(), 1);
                 assert!(inserted.contains(&read[0]));
@@ -454,10 +466,24 @@ mod tests {
     }
 
     /// Brute-force polar integration of the disk's irradiance.
-    fn disk_irradiance_numeric(c: [f32; 3], nc: [f32; 3], r: f32, x: [f32; 3], nx: [f32; 3]) -> f64 {
-        let helper = if nc[0].abs() < 0.9 { [1.0, 0.0, 0.0] } else { [0.0, 1.0, 0.0] };
+    fn disk_irradiance_numeric(
+        c: [f32; 3],
+        nc: [f32; 3],
+        r: f32,
+        x: [f32; 3],
+        nx: [f32; 3],
+    ) -> f64 {
+        let helper = if nc[0].abs() < 0.9 {
+            [1.0, 0.0, 0.0]
+        } else {
+            [0.0, 1.0, 0.0]
+        };
         let cross = |a: [f32; 3], b: [f32; 3]| {
-            [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+            [
+                a[1] * b[2] - a[2] * b[1],
+                a[2] * b[0] - a[0] * b[2],
+                a[0] * b[1] - a[1] * b[0],
+            ]
         };
         let t = cross(nc, helper);
         let tl = dot(t, t).sqrt();
@@ -479,7 +505,10 @@ mod tests {
                 let cx: f64 = (0..3).map(|k| nx[k] as f64 * d[k] / dl).sum();
                 let cy: f64 = -(0..3).map(|k| nc[k] as f64 * d[k] / dl).sum::<f64>();
                 if cx > 0.0 && cy > 0.0 {
-                    sum += cx * cy / d2 * rho * (r as f64 / n as f64) * (std::f64::consts::TAU / n as f64);
+                    sum += cx * cy / d2
+                        * rho
+                        * (r as f64 / n as f64)
+                        * (std::f64::consts::TAU / n as f64);
                 }
             }
         }
@@ -493,20 +522,98 @@ mod tests {
         let s = std::f32::consts::FRAC_1_SQRT_2;
         // (center, normal, radius, receiver, receiver normal)
         let cases: [([f32; 3], [f32; 3], f32, [f32; 3], [f32; 3]); 13] = [
-            ([0.0; 3], [0.0, 0.0, 1.0], 1.0, [0.0, 0.0, 0.5], [0.0, 0.0, -1.0]),
-            ([0.0; 3], [0.0, 0.0, 1.0], 1.0, [1.5, 0.0, 0.5], [-1.0, 0.0, 0.0]),
-            ([0.0; 3], [0.0, 0.0, 1.0], 1.0, [1.1, 0.0, 0.2], [-1.0, 0.0, 0.0]),
-            ([0.0; 3], [0.0, 0.0, 1.0], 1.0, [1.0, 0.0, 1.0], [0.0, 0.0, -1.0]),
-            ([0.0; 3], [0.0, 0.0, 1.0], 1.0, [2.0, 0.0, 2.0], [-s, 0.0, -s]),
-            ([0.0; 3], [0.0, 0.0, 1.0], 1.0, [3.0, 1.0, 1.0], [-1.0, 0.0, 0.0]),
-            ([6.0, 0.0, 9.0], [-s, 0.0, -s], 1.0, [0.0; 3], [0.0, 0.0, 1.0]),
-            ([0.0, 0.0, 40.0], [0.0, 0.0, -1.0], 3.0, [5.0, -2.0, 0.0], [0.0, 0.0, 1.0]),
+            (
+                [0.0; 3],
+                [0.0, 0.0, 1.0],
+                1.0,
+                [0.0, 0.0, 0.5],
+                [0.0, 0.0, -1.0],
+            ),
+            (
+                [0.0; 3],
+                [0.0, 0.0, 1.0],
+                1.0,
+                [1.5, 0.0, 0.5],
+                [-1.0, 0.0, 0.0],
+            ),
+            (
+                [0.0; 3],
+                [0.0, 0.0, 1.0],
+                1.0,
+                [1.1, 0.0, 0.2],
+                [-1.0, 0.0, 0.0],
+            ),
+            (
+                [0.0; 3],
+                [0.0, 0.0, 1.0],
+                1.0,
+                [1.0, 0.0, 1.0],
+                [0.0, 0.0, -1.0],
+            ),
+            (
+                [0.0; 3],
+                [0.0, 0.0, 1.0],
+                1.0,
+                [2.0, 0.0, 2.0],
+                [-s, 0.0, -s],
+            ),
+            (
+                [0.0; 3],
+                [0.0, 0.0, 1.0],
+                1.0,
+                [3.0, 1.0, 1.0],
+                [-1.0, 0.0, 0.0],
+            ),
+            (
+                [6.0, 0.0, 9.0],
+                [-s, 0.0, -s],
+                1.0,
+                [0.0; 3],
+                [0.0, 0.0, 1.0],
+            ),
+            (
+                [0.0, 0.0, 40.0],
+                [0.0, 0.0, -1.0],
+                3.0,
+                [5.0, -2.0, 0.0],
+                [0.0, 0.0, 1.0],
+            ),
             // horizon cuts the disk (concave corners)
-            ([0.0; 3], [0.0, 0.0, 1.0], 1.0, [0.5, 0.0, 0.2], [-1.0, 0.0, 0.0]),
-            ([0.0; 3], [0.0, 0.0, 1.0], 1.0, [0.0, 0.0, 0.5], [-1.0, 0.0, 0.0]),
-            ([0.0; 3], [0.0, 0.0, 1.0], 1.0, [0.9, 0.0, 0.05], [-1.0, 0.0, 0.0]),
-            ([0.0; 3], [0.0, 0.0, 1.0], 1.0, [0.3, 0.0, 0.4], [-0.957826, 0.0, -0.287348]),
-            ([2.0, 1.0, 0.0], [0.0, 1.0, 0.0], 2.0, [2.5, 1.6, 0.4], [-0.6, -0.48, 0.64]),
+            (
+                [0.0; 3],
+                [0.0, 0.0, 1.0],
+                1.0,
+                [0.5, 0.0, 0.2],
+                [-1.0, 0.0, 0.0],
+            ),
+            (
+                [0.0; 3],
+                [0.0, 0.0, 1.0],
+                1.0,
+                [0.0, 0.0, 0.5],
+                [-1.0, 0.0, 0.0],
+            ),
+            (
+                [0.0; 3],
+                [0.0, 0.0, 1.0],
+                1.0,
+                [0.9, 0.0, 0.05],
+                [-1.0, 0.0, 0.0],
+            ),
+            (
+                [0.0; 3],
+                [0.0, 0.0, 1.0],
+                1.0,
+                [0.3, 0.0, 0.4],
+                [-0.957826, 0.0, -0.287348],
+            ),
+            (
+                [2.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+                2.0,
+                [2.5, 1.6, 0.4],
+                [-0.6, -0.48, 0.64],
+            ),
         ];
         for (c, nc, r, x, nx) in cases {
             let numeric = disk_irradiance_numeric(c, nc, r, x, nx);
@@ -517,8 +624,26 @@ mod tests {
             );
         }
         // Behind the disk or facing away: nothing.
-        assert_eq!(disk_geometry([0.0; 3], [0.0, 0.0, 1.0], 1.0, [0.0, 0.0, -1.0], [0.0, 0.0, 1.0]), 0.0);
-        assert_eq!(disk_geometry([0.0; 3], [0.0, 0.0, 1.0], 1.0, [0.0, 0.0, 1.0], [0.0, 0.0, 1.0]), 0.0);
+        assert_eq!(
+            disk_geometry(
+                [0.0; 3],
+                [0.0, 0.0, 1.0],
+                1.0,
+                [0.0, 0.0, -1.0],
+                [0.0, 0.0, 1.0]
+            ),
+            0.0
+        );
+        assert_eq!(
+            disk_geometry(
+                [0.0; 3],
+                [0.0, 0.0, 1.0],
+                1.0,
+                [0.0, 0.0, 1.0],
+                [0.0, 0.0, 1.0]
+            ),
+            0.0
+        );
     }
 
     /// The support test used for the Z of ReSTIR agrees with the geometry term,
@@ -527,7 +652,11 @@ mod tests {
     fn disk_support_matches_geometry() {
         let mut rng = Rng(7);
         let mut unit = |rng: &mut Rng| loop {
-            let v = [rng.next() * 2.0 - 1.0, rng.next() * 2.0 - 1.0, rng.next() * 2.0 - 1.0];
+            let v = [
+                rng.next() * 2.0 - 1.0,
+                rng.next() * 2.0 - 1.0,
+                rng.next() * 2.0 - 1.0,
+            ];
             let l = dot(v, v);
             if l > 1e-4 && l <= 1.0 {
                 let l = l.sqrt();
@@ -544,7 +673,11 @@ mod tests {
             let x = [d[0] * dist, d[1] * dist, d[2] * dist];
             let g = disk_geometry([0.0; 3], nc, r, x, nx);
             let s = disk_supports([0.0; 3], nc, r, x, nx);
-            assert_eq!(s, g > 0.0, "x {x:?} nx {nx:?} nc {nc:?} r {r}: geometry {g}");
+            assert_eq!(
+                s,
+                g > 0.0,
+                "x {x:?} nx {nx:?} nc {nc:?} r {r}: geometry {g}"
+            );
             if s {
                 supported += 1;
                 let extent = r * (1.0 - dot(nc, nx) * dot(nc, nx)).max(0.0).sqrt();
@@ -553,7 +686,10 @@ mod tests {
                 }
             }
         }
-        assert!(supported > 10_000 && cut > 1_000, "supported {supported} cut {cut}");
+        assert!(
+            supported > 10_000 && cut > 1_000,
+            "supported {supported} cut {cut}"
+        );
     }
 
     /// Every integer target maps to exactly q_i values for light i: the
@@ -563,7 +699,11 @@ mod tests {
         let fluxes = [0.0f32, 2.0, 0.0, 5.0e-6, 1.0, 0.0, 2.0, 1.0e3, 7.5];
         let scale = 1.0e3;
         let q: Vec<u32> = fluxes.iter().map(|f| quantize_flux(*f, scale)).collect();
-        assert!(q.iter().zip(fluxes.iter()).all(|(q, f)| (*q > 0) == (*f > 0.0)));
+        assert!(
+            q.iter()
+                .zip(fluxes.iter())
+                .all(|(q, f)| (*q > 0) == (*f > 0.0))
+        );
         let mut cdf = Vec::new();
         let mut acc = 0u32;
         for v in q.iter() {
@@ -676,7 +816,10 @@ mod tests {
         }
         let ris = ris / trials as f64;
         let merged = merged / trials as f64;
-        assert!((ris - exact as f64).abs() / (exact as f64) < 0.01, "RIS {ris} vs {exact}");
+        assert!(
+            (ris - exact as f64).abs() / (exact as f64) < 0.01,
+            "RIS {ris} vs {exact}"
+        );
         assert!(
             (merged - exact as f64).abs() / (exact as f64) < 0.01,
             "merge {merged} vs {exact}"

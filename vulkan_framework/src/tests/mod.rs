@@ -1,5 +1,7 @@
 mod acceleration_structure_lifetimes;
 mod animate_channels_dispatch;
+#[cfg(feature = "async")]
+mod async_synchronization;
 mod binding_tables;
 mod buffer_copy_map;
 mod common;
@@ -8,8 +10,6 @@ mod graphics_pipeline_offscreen;
 mod instance_device;
 mod queue_concurrency;
 mod raytracing_pipeline;
-#[cfg(feature = "async")]
-mod async_synchronization;
 mod submission_synchronization;
 mod submit_fence;
 mod swapchain;

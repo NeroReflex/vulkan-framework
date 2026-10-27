@@ -7,6 +7,8 @@ out="$(mktemp -d)"
 status=0
 for path in "$root"/engine/shaders/gi/*.comp "$root"/engine/shaders/gi/*.rgen \
     "$root"/engine/shaders/gi/*.rchit "$root"/engine/shaders/gi/*.rmiss \
+    "$root"/engine/shaders/ao/*.comp "$root"/engine/shaders/ao/*.rgen \
+    "$root"/engine/shaders/ao/*.rchit "$root"/engine/shaders/ao/*.rmiss \
     "$root"/engine/shaders/final_rendering/final_rendering.frag; do
     rel="${path#"$root"/}"
     ext="${path##*.}"

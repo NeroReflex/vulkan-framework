@@ -159,7 +159,8 @@ impl VulkanUiRenderer {
     ) -> Result<Self, vulkan_framework::prelude::VulkanError> {
         let dimensions = Image2DDimensions::new(width, height);
         let color_format = CommonImageFormat::r8g8b8a8_unorm.into();
-        let color_view = allocate_color_image(device.clone(), mem_manager, dimensions, color_format)?;
+        let color_view =
+            allocate_color_image(device.clone(), mem_manager, dimensions, color_format)?;
 
         let binding = BindingDescriptor::new(
             ShaderStagesAccess::graphics(),
@@ -167,8 +168,7 @@ impl VulkanUiRenderer {
             0,
             1,
         );
-        let descriptor_set_layout =
-            DescriptorSetLayout::new(device.clone(), [binding].as_slice())?;
+        let descriptor_set_layout = DescriptorSetLayout::new(device.clone(), [binding].as_slice())?;
 
         let push_access = [ShaderStageAccessIn::Vertex].as_slice().into();
         let pipeline_layout = PipelineLayout::new(
@@ -184,7 +184,10 @@ impl VulkanUiRenderer {
         let graphics_pipeline = GraphicsPipeline::new(
             None,
             DynamicRendering::new(
-                [DynamicRenderingColorDefinition::new_with_alpha_blend(color_format)].as_slice(),
+                [DynamicRenderingColorDefinition::new_with_alpha_blend(
+                    color_format,
+                )]
+                .as_slice(),
                 None,
                 None,
             ),
@@ -193,18 +196,16 @@ impl VulkanUiRenderer {
             None,
             None,
             pipeline_layout.clone(),
-            [
-                VertexInputBinding::new(
-                    VertexInputRate::PerVertex,
-                    20,
-                    [
-                        VertexInputAttribute::new(0, 0, AttributeType::Vec2),
-                        VertexInputAttribute::new(1, 8, AttributeType::Vec2),
-                        VertexInputAttribute::new(2, 16, AttributeType::Uint),
-                    ]
-                    .as_slice(),
-                ),
-            ]
+            [VertexInputBinding::new(
+                VertexInputRate::PerVertex,
+                20,
+                [
+                    VertexInputAttribute::new(0, 0, AttributeType::Vec2),
+                    VertexInputAttribute::new(1, 8, AttributeType::Vec2),
+                    VertexInputAttribute::new(2, 16, AttributeType::Uint),
+                ]
+                .as_slice(),
+            )]
             .as_slice(),
             Rasterizer::new(
                 PolygonMode::Fill,
@@ -380,14 +381,8 @@ impl VulkanUiRenderer {
                     self.color_dimensions.width() as f32 / width.max(1.0),
                     self.color_dimensions.height() as f32 / height.max(1.0),
                 ];
-                let imgui_viewport = Viewport::new(
-                    0.0,
-                    0.0,
-                    width * fb[0],
-                    height * fb[1],
-                    0.0,
-                    1.0,
-                );
+                let imgui_viewport =
+                    Viewport::new(0.0, 0.0, width * fb[0], height * fb[1], 0.0, 1.0);
                 let full_scissor = Scissor::new(
                     0,
                     0,
@@ -614,8 +609,9 @@ fn allocate_mesh_buffers(
     vertex_bytes: u64,
     index_bytes: u64,
 ) -> Result<(Arc<AllocatedBuffer>, Arc<AllocatedBuffer>), vulkan_framework::prelude::VulkanError> {
-    let usage =
-        vulkan_framework::buffer::BufferUsage::from([BufferUseAs::VertexBuffer, BufferUseAs::IndexBuffer].as_slice());
+    let usage = vulkan_framework::buffer::BufferUsage::from(
+        [BufferUseAs::VertexBuffer, BufferUseAs::IndexBuffer].as_slice(),
+    );
     let v = Buffer::new(
         device.clone(),
         ConcreteBufferDescriptor::new(usage, vertex_bytes),
@@ -699,7 +695,9 @@ fn upload_font_image(
         device.clone(),
         ConcreteImageDescriptor::new(
             ImageDimensions::from(dimensions),
-            [ImageUseAs::Sampled, ImageUseAs::TransferDst].as_slice().into(),
+            [ImageUseAs::Sampled, ImageUseAs::TransferDst]
+                .as_slice()
+                .into(),
             ImageMultisampling::SamplesPerPixel1,
             1,
             1,

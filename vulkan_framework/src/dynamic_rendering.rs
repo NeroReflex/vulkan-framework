@@ -95,7 +95,7 @@ impl From<&DynamicRenderingColorDefinition> for crate::ash::vk::PipelineColorBle
             .src_alpha_blend_factor(ash::vk::BlendFactor::ONE)
             .dst_alpha_blend_factor(ash::vk::BlendFactor::ONE)
             .alpha_blend_op(ash::vk::BlendOp::ADD);
-        
+
         if val.alpha_blend {
             color_blend.blend_enable = 1u32;
             color_blend.src_color_blend_factor = ash::vk::BlendFactor::SRC_ALPHA;

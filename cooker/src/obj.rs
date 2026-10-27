@@ -22,7 +22,11 @@ struct MeshPart {
     indices: Vec<u32>,
 }
 
-pub fn pack_obj(scene_dir: &Path, out_path: &Path, cook_bc7: fn(&Path, &Path) -> Result<(), String>) -> Result<(), String> {
+pub fn pack_obj(
+    scene_dir: &Path,
+    out_path: &Path,
+    cook_bc7: fn(&Path, &Path) -> Result<(), String>,
+) -> Result<(), String> {
     let obj_path = find_obj(scene_dir)?;
     let mtl_path = obj_path.with_extension("mtl");
     if !mtl_path.is_file() {
@@ -43,7 +47,10 @@ pub fn pack_obj(scene_dir: &Path, out_path: &Path, cook_bc7: fn(&Path, &Path) ->
 
     let mut cooked_textures: HashMap<String, Vec<u8>> = HashMap::new();
     for (archive_name, source_path) in texture_sources {
-        eprintln!("cooking texture {archive_name} from {}", source_path.display());
+        eprintln!(
+            "cooking texture {archive_name} from {}",
+            source_path.display()
+        );
         let dest = scratch.join(format!("{archive_name}.dds"));
         cook_bc7(&source_path, &dest)?;
         let bytes = std::fs::read(&dest).map_err(|err| err.to_string())?;
@@ -87,7 +94,11 @@ pub fn pack_obj(scene_dir: &Path, out_path: &Path, cook_bc7: fn(&Path, &Path) ->
             .iter()
             .flat_map(|index| index.to_le_bytes())
             .collect::<Vec<_>>();
-        append_bytes(&mut builder, &format!("models/{}/indexes", mesh.name), &index_bytes);
+        append_bytes(
+            &mut builder,
+            &format!("models/{}/indexes", mesh.name),
+            &index_bytes,
+        );
         append_symlink(
             &mut builder,
             &format!("models/{}/material", mesh.name),
@@ -153,8 +164,8 @@ fn collect_texture_paths(
             maps.displacement.as_ref(),
             maps.normal.as_ref(),
         ]
-            .into_iter()
-            .flatten()
+        .into_iter()
+        .flatten()
         {
             let archive = texture_archive_name(path);
             if !seen.insert(archive.clone()) {
@@ -284,7 +295,9 @@ fn parse_obj(path: &Path) -> Result<(Vec<u8>, Vec<MeshPart>), String> {
                 };
                 let corners: Vec<VertexKey> = parts
                     .iter()
-                    .map(|corner| parse_face_corner(corner, positions.len(), texcoords.len(), normals.len()))
+                    .map(|corner| {
+                        parse_face_corner(corner, positions.len(), texcoords.len(), normals.len())
+                    })
                     .collect::<Result<Vec<_>, String>>()?;
                 for tri in triangulate(&corners) {
                     for key in tri {

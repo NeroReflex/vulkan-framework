@@ -74,18 +74,14 @@ fn main() {
                 eprintln!("obj packing requires {COMPRESSONATOR}; missing {missing}");
                 std::process::exit(1);
             }
-            obj::pack_obj(
-                Path::new(&scene_dir),
-                Path::new(&output),
-                |source, dest| {
-                    let status = run_compressonator(source, dest).map_err(|err| err.to_string())?;
-                    if status.success() {
-                        Ok(())
-                    } else {
-                        Err(format!("compressonatorcli failed for {}", source.display()))
-                    }
-                },
-            )
+            obj::pack_obj(Path::new(&scene_dir), Path::new(&output), |source, dest| {
+                let status = run_compressonator(source, dest).map_err(|err| err.to_string())?;
+                if status.success() {
+                    Ok(())
+                } else {
+                    Err(format!("compressonatorcli failed for {}", source.display()))
+                }
+            })
             .unwrap_or_else(|err| {
                 eprintln!("obj pack failed: {err}");
                 std::process::exit(1);
@@ -123,7 +119,9 @@ fn main() {
             });
 
             if let Err(missing) = require_tools() {
-                eprintln!("creating a tar requires {COMPRESSONATOR} and {TOKTX}; missing {missing}");
+                eprintln!(
+                    "creating a tar requires {COMPRESSONATOR} and {TOKTX}; missing {missing}"
+                );
                 std::process::exit(1);
             }
 
@@ -205,8 +203,7 @@ fn cook_texture(texture: &TextureJob, scratch: &Path) -> Vec<u8> {
     match texture.format.as_str() {
         "bc7" => {
             let dest = scratch.join(format!("{}.dds", texture.name));
-            let status = run_compressonator(&texture.source, &dest)
-                .expect("compressonatorcli");
+            let status = run_compressonator(&texture.source, &dest).expect("compressonatorcli");
             if !status.success() {
                 panic!("compressonatorcli failed for {}", texture.name);
             }
@@ -306,9 +303,9 @@ mod tests {
     ];
 
     const MINIMAL_PNG_16: &[u8] = &[
-        137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 16, 0, 0, 0,
-        16, 8, 2, 0, 0, 0, 144, 145, 104, 54, 0, 0, 0, 22, 73, 68, 65, 84, 120, 218, 99, 56,
-        97, 100, 68, 18, 98, 24, 213, 48, 170, 97, 248, 106, 0, 0, 20, 4, 44, 16, 227, 99,
-        117, 140, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130,
+        137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 16, 0, 0, 0, 16, 8,
+        2, 0, 0, 0, 144, 145, 104, 54, 0, 0, 0, 22, 73, 68, 65, 84, 120, 218, 99, 56, 97, 100, 68,
+        18, 98, 24, 213, 48, 170, 97, 248, 106, 0, 0, 20, 4, 44, 16, 227, 99, 117, 140, 0, 0, 0, 0,
+        73, 69, 78, 68, 174, 66, 96, 130,
     ];
 }

@@ -19,8 +19,7 @@ use vulkan_framework::{
         CullMode, FrontFace, GraphicsPipeline, PolygonMode, Rasterizer, Scissor, Viewport,
     },
     image::{
-        Image2DDimensions, ImageFormat, ImageLayout, ImageLayoutSwapchainKHR,
-        ImageMultisampling,
+        Image2DDimensions, ImageFormat, ImageLayout, ImageLayoutSwapchainKHR, ImageMultisampling,
     },
     image_view::ImageView,
     memory_barriers::{ImageMemoryBarrier, MemoryAccess, MemoryAccessAs},
@@ -87,7 +86,12 @@ impl UiComposite {
         ImageLayout::ShaderReadOnlyOptimal
     }
 
-    pub fn new(device: Arc<Device>, output_format: ImageFormat, width: u32, height: u32) -> RenderingResult<Self> {
+    pub fn new(
+        device: Arc<Device>,
+        output_format: ImageFormat,
+        width: u32,
+        height: u32,
+    ) -> RenderingResult<Self> {
         let bindings = [
             BindingDescriptor::new(
                 ShaderStagesAccess::graphics(),
@@ -120,11 +124,23 @@ impl UiComposite {
             ),
             ImageMultisampling::SamplesPerPixel1,
             None,
-            Some(Viewport::new(0.0, 0.0, width as f32, height as f32, 0.0, 1.0)),
+            Some(Viewport::new(
+                0.0,
+                0.0,
+                width as f32,
+                height as f32,
+                0.0,
+                1.0,
+            )),
             Some(Scissor::new(0, 0, Image2DDimensions::new(width, height))),
             pipeline_layout.clone(),
             &[],
-            Rasterizer::new(PolygonMode::Fill, FrontFace::CounterClockwise, CullMode::None, None),
+            Rasterizer::new(
+                PolygonMode::Fill,
+                FrontFace::CounterClockwise,
+                CullMode::None,
+                None,
+            ),
             (vertex_shader, None),
             (fragment_shader, None),
             Some("ui_composite.pipeline"),
@@ -169,13 +185,21 @@ impl UiComposite {
                 binder
                     .bind_combined_images_samplers(
                         0,
-                        &[(ImageLayout::ShaderReadOnlyOptimal, hdr_image.clone(), self.sampler.clone())],
+                        &[(
+                            ImageLayout::ShaderReadOnlyOptimal,
+                            hdr_image.clone(),
+                            self.sampler.clone(),
+                        )],
                     )
                     .unwrap();
                 binder
                     .bind_combined_images_samplers(
                         1,
-                        &[(ImageLayout::ShaderReadOnlyOptimal, ui_image.clone(), self.sampler.clone())],
+                        &[(
+                            ImageLayout::ShaderReadOnlyOptimal,
+                            ui_image.clone(),
+                            self.sampler.clone(),
+                        )],
                     )
                     .unwrap();
             })

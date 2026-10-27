@@ -7,8 +7,9 @@ use std::path::PathBuf;
 use crate::rendering::{
     debug_state::DebugState,
     pipeline::global_illumination::{
-        GI_FLAG_ACCUMULATE, GI_FLAG_CAPTURE, GI_FLAG_CONVERGE, GI_FLAG_MULTIBOUNCE, GI_FLAG_REFERENCE,
-        GI_FLAG_SPATIAL, GI_FLAG_SPAWN, GI_FLAG_TEMPORAL, GILighting, GiReadback,
+        GI_FLAG_ACCUMULATE, GI_FLAG_CAPTURE, GI_FLAG_CONVERGE, GI_FLAG_MULTIBOUNCE,
+        GI_FLAG_REFERENCE, GI_FLAG_SPATIAL, GI_FLAG_SPAWN, GI_FLAG_TEMPORAL, GILighting,
+        GiReadback,
     },
 };
 
@@ -249,7 +250,10 @@ impl GiDriver {
                         .iter()
                         .map(|(label, s)| format!("{label} {:.3}", s / 120.0))
                         .collect();
-                    println!("GI GPU ms (avg of 120): total {total:.3} | {}", parts.join(" | "));
+                    println!(
+                        "GI GPU ms (avg of 120): total {total:.3} | {}",
+                        parts.join(" | ")
+                    );
                 }
                 for sum in self.timings.sums.iter_mut() {
                     sum.1 = 0.0;

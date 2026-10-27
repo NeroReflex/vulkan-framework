@@ -17,8 +17,12 @@ use crate::{
     },
 };
 
-use super::{mesh::MeshManager, skin_asset::{SkinnedAsset, SkinnedTarLoader, SkinDispatchView}, texture::TextureManager};
-use super::archive_layout::{classify, ArchiveEntry};
+use super::archive_layout::{ArchiveEntry, classify};
+use super::{
+    mesh::MeshManager,
+    skin_asset::{SkinDispatchView, SkinnedAsset, SkinnedTarLoader},
+    texture::TextureManager,
+};
 
 use vulkan_framework::{
     acceleration_structure::{
@@ -410,11 +414,17 @@ impl Manager {
     }
 
     pub fn play_animation(&mut self, object: usize, name: &str) -> RenderingResult<()> {
-        let Some(asset) = self.skinned_assets.get_mut(object).and_then(|slot| slot.as_mut()) else {
+        let Some(asset) = self
+            .skinned_assets
+            .get_mut(object)
+            .and_then(|slot| slot.as_mut())
+        else {
             return Err(RenderingError::ResourceError(ResourceError::NoMesh(object)));
         };
         if !asset.clips.contains_key(name) {
-            return Err(RenderingError::ResourceError(ResourceError::InvalidObjectFormat));
+            return Err(RenderingError::ResourceError(
+                ResourceError::InvalidObjectFormat,
+            ));
         }
         asset.play_state.clip = Some(name.to_string());
         asset.play_state.time_seconds = 0.0;
@@ -584,8 +594,7 @@ impl Manager {
                                 texture_decl.height = Some(cooked_header.height);
                                 texture_decl.miplevel = Some(cooked_header.mip_levels);
 
-                                let payload_bytes =
-                                    cooked_header.payload_bytes(total_size);
+                                let payload_bytes = cooked_header.payload_bytes(total_size);
 
                                 // Allocate the buffer that will be used to upload the vertex data to the vulkan device
                                 let buffer = Buffer::new(
@@ -901,19 +910,19 @@ impl Manager {
                 id
             } else {
                 match (&v.width, &v.height, &v.miplevel, &v.format, &v.data) {
-                (Some(width), Some(height), Some(miplevel), Some(format), Some(data)) => {
-                    self.texture_manager.load(
-                        format.into(),
-                        Image2DDimensions::new(*width, *height),
-                        (*miplevel).max(1),
-                        data.clone(),
-                    )?
-                }
-                _ => {
-                    return Err(crate::rendering::RenderingError::ResourceError(
-                        ResourceError::IncompleteTexture(k.clone()),
-                    ));
-                }
+                    (Some(width), Some(height), Some(miplevel), Some(format), Some(data)) => {
+                        self.texture_manager.load(
+                            format.into(),
+                            Image2DDimensions::new(*width, *height),
+                            (*miplevel).max(1),
+                            data.clone(),
+                        )?
+                    }
+                    _ => {
+                        return Err(crate::rendering::RenderingError::ResourceError(
+                            ResourceError::IncompleteTexture(k.clone()),
+                        ));
+                    }
                 }
             };
 
@@ -1194,8 +1203,7 @@ impl Manager {
             self.queue_family.get_parent_device(),
             ConcreteBufferDescriptor::new(
                 [BufferUseAs::StorageBuffer].as_slice().into(),
-                (core::mem::size_of::<TLASDescriptor>() as u64)
-                    * (buffer_instance_capacity as u64),
+                (core::mem::size_of::<TLASDescriptor>() as u64) * (buffer_instance_capacity as u64),
             ),
             None,
             Some("instance_buffer"),

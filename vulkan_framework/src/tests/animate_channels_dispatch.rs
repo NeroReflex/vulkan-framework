@@ -64,10 +64,7 @@ mod animate_channels_dispatch_tests {
         ]
     }
 
-    fn cpu_bind_pose(
-        original: &SkeletonGpuElement,
-        armature: &[ArmatureGpuElement],
-    ) -> [f32; 16] {
+    fn cpu_bind_pose(original: &SkeletonGpuElement, armature: &[ArmatureGpuElement]) -> [f32; 16] {
         let mut current = original.armature_node_index as usize;
         let mut global = identity_col_major();
         loop {
@@ -146,10 +143,19 @@ mod animate_channels_dispatch_tests {
 
         let per_frame = [0.0f32; 16];
         let buffers = [
-            (size_of::<SkeletonGpuElement>(), &original as *const _ as *const u8),
+            (
+                size_of::<SkeletonGpuElement>(),
+                &original as *const _ as *const u8,
+            ),
             (size_of::<[f32; 16]>(), per_frame.as_ptr() as *const u8),
-            (size_of::<ArmatureGpuElement>(), armature.as_ptr() as *const u8),
-            (size_of::<AnimationGpuChannel>(), &channel as *const _ as *const u8),
+            (
+                size_of::<ArmatureGpuElement>(),
+                armature.as_ptr() as *const u8,
+            ),
+            (
+                size_of::<AnimationGpuChannel>(),
+                &channel as *const _ as *const u8,
+            ),
         ];
 
         let mut allocated = Vec::new();
@@ -176,9 +182,7 @@ mod animate_channels_dispatch_tests {
         }
 
         {
-            let map = crate::memory_pool::MemoryMap::new(
-                allocated[0].get_backing_memory_pool(),
-            )?;
+            let map = crate::memory_pool::MemoryMap::new(allocated[0].get_backing_memory_pool())?;
             let mut range = map.range::<u8>(allocated[0].clone() as Arc<dyn MemoryPoolBacked>)?;
             unsafe {
                 std::ptr::copy_nonoverlapping(
@@ -189,9 +193,7 @@ mod animate_channels_dispatch_tests {
             }
         }
         {
-            let map = crate::memory_pool::MemoryMap::new(
-                allocated[2].get_backing_memory_pool(),
-            )?;
+            let map = crate::memory_pool::MemoryMap::new(allocated[2].get_backing_memory_pool())?;
             let mut range = map.range::<u8>(allocated[2].clone() as Arc<dyn MemoryPoolBacked>)?;
             unsafe {
                 std::ptr::copy_nonoverlapping(
@@ -202,9 +204,7 @@ mod animate_channels_dispatch_tests {
             }
         }
         {
-            let map = crate::memory_pool::MemoryMap::new(
-                allocated[3].get_backing_memory_pool(),
-            )?;
+            let map = crate::memory_pool::MemoryMap::new(allocated[3].get_backing_memory_pool())?;
             let mut range = map.range::<u8>(allocated[3].clone() as Arc<dyn MemoryPoolBacked>)?;
             unsafe {
                 std::ptr::copy_nonoverlapping(
@@ -261,7 +261,8 @@ mod animate_channels_dispatch_tests {
             &[push_range],
             Some("skin_channels_layout"),
         )?;
-        let shader = crate::shaders::compute_shader::ComputeShader::new(device.clone(), CHANNELS_SPV)?;
+        let shader =
+            crate::shaders::compute_shader::ComputeShader::new(device.clone(), CHANNELS_SPV)?;
         let pipeline = crate::compute_pipeline::ComputePipeline::new(
             None,
             pipeline_layout.clone(),

@@ -1,0 +1,101 @@
+// Screen-space ambient occlusion. Projects a fixed hemisphere kernel into the
+// G-buffer and estimates how much of the hemisphere is blocked within AO_RADIUS.
+#extension GL_GOOGLE_include_directive : enable
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+#define STATUS_DESCRIPTOR_SET 0
+#include "../status.glsl"
+
+#define GBUFFER_DESCRIPTOR_SET 1
+#include "../gbuffer.glsl"
+
+#include "../gi/common.glsl"
+#include "../gi/pixel.glsl"
+#include "ao.glsl"
+
+layout(set = 2, binding = 0, r16f) uniform image2D ao_raw;
+
+// Unit directions in tangent space, denser near the normal (z = sqrt(1-u)).
+const vec3 AO_KERNEL[AO_SAMPLE_COUNT] = vec3[](
+    vec3( 0.17678,  0.00000,  0.98425),
+    vec3(-0.22577,  0.20683,  0.95197),
+    vec3( 0.03456, -0.39377,  0.91856),
+    vec3( 0.28457,  0.37117,  0.88388),
+    vec3(-0.52222, -0.09237,  0.84779),
+    vec3( 0.49470, -0.31468,  0.81009),
+    vec3(-0.16547,  0.61553,  0.77055),
+    vec3(-0.31556, -0.60759,  0.72887),
+    vec3( 0.68464,  0.25003,  0.68465),
+    vec3(-0.71226,  0.29401,  0.63738),
+    vec3( 0.34335, -0.73373,  0.58630),
+    vec3( 0.25373,  0.80893,  0.53033),
+    vec3(-0.76475, -0.44319,  0.46771),
+    vec3( 0.89713, -0.19723,  0.39528),
+    vec3(-0.54751,  0.77877,  0.30619),
+    vec3(-0.12649, -0.97609,  0.17678)
+);
+
+void main() {
+    const ivec2 px = ivec2(gl_GlobalInvocationID.xy);
+    if (!in_render_area(px)) {
+        return;
+    }
+
+    vec3 pos, n, albedo;
+    uint inst;
+    float ao = 1.0;
+    if (load_pixel(px, pos, n, albedo, inst)) {
+        vec3 tangent, bitangent;
+        make_basis(n, tangent, bitangent);
+        // Stable per pixel: a frame-varying rotation would shimmer on a still camera.
+        uint seed = rng_seed(uint(px.x), uint(px.y), 0xA0A0u);
+        float ang = rng_float(seed) * 2.0 * PI;
+        float ca = cos(ang);
+        float sa = sin(ang);
+
+        float sum = 0.0;
+        for (int i = 0; i < AO_SAMPLE_COUNT; i++) {
+            vec3 k = AO_KERNEL[i];
+            vec2 xy = vec2(ca * k.x - sa * k.y, sa * k.x + ca * k.y);
+            vec3 dir = tangent * xy.x + bitangent * xy.y + n * k.z;
+            float t = (float(i) + 0.5) / float(AO_SAMPLE_COUNT);
+            float scale = mix(0.2, 1.0, t * t);
+            vec3 sample_pos = pos + dir * (AO_RADIUS * scale);
+
+            vec4 clip = camera.projectionMatrix * (camera.viewMatrix * vec4(sample_pos, 1.0));
+            if (clip.w <= 1e-4) {
+                continue;
+            }
+            vec2 ndc = clip.xy / clip.w;
+            if (any(lessThan(ndc, vec2(-1.0))) || any(greaterThan(ndc, vec2(1.0)))) {
+                continue;
+            }
+            ivec2 q = ivec2((ndc * 0.5 + 0.5) * vec2(render_size()));
+            if (!in_render_area(q)) {
+                continue;
+            }
+            vec3 qpos, qn, qalbedo;
+            uint qinst;
+            if (!load_pixel(q, qpos, qn, qalbedo, qinst)) {
+                continue;
+            }
+
+            vec3 v = qpos - pos;
+            float dist = length(v);
+            if (dist <= 1e-3 || dist > AO_RADIUS) {
+                continue;
+            }
+            float vn = dot(v, n);
+            if (vn <= AO_BIAS) {
+                continue;
+            }
+            float range = 1.0 - dist / AO_RADIUS;
+            sum += (vn / dist) * range * range;
+        }
+        float occ = max(0.0, sum / float(AO_SAMPLE_COUNT) - AO_SSAO_FLOOR);
+        ao = clamp(1.0 - occ * AO_SSAO_SCALE, 0.0, 1.0);
+    }
+
+    imageStore(ao_raw, px, vec4(ao, 0.0, 0.0, 1.0));
+}

@@ -4,6 +4,7 @@ use std::{
 };
 
 use vulkan_framework::{
+    ash::vk,
     buffer::{BufferSubresourceRange, BufferTrait},
     command_buffer::CommandBufferRecorder,
     descriptor_pool::{
@@ -12,7 +13,6 @@ use vulkan_framework::{
     descriptor_set::DescriptorSet,
     descriptor_set_layout::DescriptorSetLayout,
     device::{Device, DeviceOwned},
-    ash::vk,
     image::{
         CommonImageFormat, ConcreteImageDescriptor, Image, Image1DTrait, Image2DDimensions,
         Image2DTrait, ImageAspect, ImageAspects, ImageDimensions, ImageFlags, ImageFormat,

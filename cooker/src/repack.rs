@@ -11,7 +11,9 @@ pub fn is_texture_sidecar(path: &str) -> bool {
     if !trimmed.starts_with("textures/") {
         return false;
     }
-    SIDECAR_SUFFIXES.iter().any(|suffix| trimmed.ends_with(suffix))
+    SIDECAR_SUFFIXES
+        .iter()
+        .any(|suffix| trimmed.ends_with(suffix))
 }
 
 pub fn repack(input: &Path, output: &Path) -> Result<(), String> {
@@ -183,8 +185,10 @@ mod tests {
             builder.finish().unwrap();
         }
 
-        let in_path = std::env::temp_dir().join(format!("artrtic-repack-in-{}", std::process::id()));
-        let out_path = std::env::temp_dir().join(format!("artrtic-repack-out-{}", std::process::id()));
+        let in_path =
+            std::env::temp_dir().join(format!("artrtic-repack-in-{}", std::process::id()));
+        let out_path =
+            std::env::temp_dir().join(format!("artrtic-repack-out-{}", std::process::id()));
         std::fs::write(&in_path, &cursor.into_inner()).unwrap();
         repack(&in_path, &out_path).unwrap();
 

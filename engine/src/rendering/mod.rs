@@ -9,7 +9,7 @@ pub mod resources;
 pub mod surface;
 pub mod system;
 
-pub use debug_state::{DebugState, DEBUG_FLAG_SHOW_SURFELS};
+pub use debug_state::{DEBUG_FLAG_SHOW_SURFELS, DebugState};
 
 use sdl2::video::WindowBuildError;
 use thiserror::Error;

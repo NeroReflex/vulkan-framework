@@ -31,9 +31,7 @@ use vulkan_framework::{
     instance::InstanceOwned,
     memory_barriers::{BufferMemoryBarrier, MemoryAccessAs, MemoryBarrier},
     memory_heap::MemoryType,
-    memory_management::{
-        DefaultMemoryManager, MemoryManagementTags, MemoryManagerTrait,
-    },
+    memory_management::{DefaultMemoryManager, MemoryManagementTags, MemoryManagerTrait},
     memory_pool::MemoryPoolFeatures,
     pipeline_stage::{PipelineStage, PipelineStageRayTracingPipelineKHR, PipelineStages},
     prelude::{FrameworkError, VulkanError},
@@ -55,11 +53,12 @@ use crate::{
     core::{camera::CameraTrait, hdr::HDR, lights::directional::DirectionalLight},
     rendering::{
         MAX_DIRECTIONAL_LIGHTS, MAX_FRAMES_IN_FLIGHT_NO_MALLOC, RenderingError, RenderingResult,
-        queues::map_queues_to_frames,
         pipeline::{
-            final_rendering::FinalRendering, global_illumination::GILighting,
-            hdr_transform::HDRTransform, mesh_rendering::MeshRendering, renderquad::RenderQuad,
+            ambient_occlusion::AmbientOcclusion, final_rendering::FinalRendering,
+            global_illumination::GILighting, hdr_transform::HDRTransform,
+            mesh_rendering::MeshRendering, renderquad::RenderQuad,
         },
+        queues::map_queues_to_frames,
         rendering_dimensions::RenderingDimensions,
         resources::{
             directional_lights::DirectionalLights,
@@ -122,8 +121,7 @@ pub struct System {
         smallvec::SmallVec<[Arc<AllocatedBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
     status_buffers: smallvec::SmallVec<[Arc<AllocatedBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
 
-    debug_descriptor_sets:
-        smallvec::SmallVec<[Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
+    debug_descriptor_sets: smallvec::SmallVec<[Arc<DescriptorSet>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
     debug_buffers: smallvec::SmallVec<[Arc<AllocatedBuffer>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
     debug: crate::rendering::DebugState,
 
@@ -133,6 +131,7 @@ pub struct System {
 
     mesh_rendering: Arc<MeshRendering>,
     global_illumination_lighting: Arc<GILighting>,
+    ambient_occlusion: Arc<AmbientOcclusion>,
     final_rendering: Arc<FinalRendering>,
     hdr: Arc<HDRTransform>,
     renderquad: Arc<RenderQuad>,
@@ -170,6 +169,7 @@ impl Drop for System {
                 drop(fence_waiter)
             }
         }
+        self.ambient_occlusion.write_dump();
 
         // wait for every other device operation to terminate
         self.device().wait_idle().unwrap();
@@ -272,8 +272,10 @@ impl System {
         let columns = manager.instance_column_matrices();
         let generations = manager.instance_generations().to_vec();
         drop(manager);
-        self.global_illumination_lighting.set_node_matrices(&columns);
-        self.global_illumination_lighting.set_instance_generations(&generations);
+        self.global_illumination_lighting
+            .set_node_matrices(&columns);
+        self.global_illumination_lighting
+            .set_instance_generations(&generations);
         let node = &mut self.scene.nodes_mut()[node_index];
         node.object = Some(tar_path.to_string_lossy().into_owned());
         node.object_slot = Some(slot);
@@ -296,7 +298,8 @@ impl System {
         let columns = manager.instance_column_matrices();
         let generations = manager.instance_generations().to_vec();
         drop(manager);
-        self.global_illumination_lighting.set_node_matrices(&columns);
+        self.global_illumination_lighting
+            .set_node_matrices(&columns);
         self.global_illumination_lighting
             .set_instance_generations(&generations);
         self.scene.mark_moved();
@@ -317,7 +320,9 @@ impl System {
         let scene_base = path.parent().unwrap_or_else(|| std::path::Path::new("."));
         let mut scene = crate::scene::load_scene_json(&text).map_err(RenderingError::Unknown)?;
         let mut manager = self.resources_manager.lock().unwrap();
-        let worlds: Vec<_> = (0..scene.nodes().len()).map(|index| scene.world(index)).collect();
+        let worlds: Vec<_> = (0..scene.nodes().len())
+            .map(|index| scene.world(index))
+            .collect();
         for (index, world) in worlds.into_iter().enumerate() {
             let Some(object_path) = scene.nodes()[index].object.clone() else {
                 continue;
@@ -374,7 +379,8 @@ impl System {
             let columns = manager.instance_column_matrices();
             let generations = manager.instance_generations().to_vec();
             drop(manager);
-            self.global_illumination_lighting.set_node_matrices(&columns);
+            self.global_illumination_lighting
+                .set_node_matrices(&columns);
             self.global_illumination_lighting
                 .set_instance_generations(&generations);
             // Same as a camera cut: GI buffers only clear when reuse is 0; RT must bind the new TLAS.
@@ -1030,11 +1036,21 @@ impl System {
             gi_driver.readback_enabled(),
         )?);
 
+        let ambient_occlusion = Arc::new(AmbientOcclusion::new(
+            queue_family.clone(),
+            &render_area,
+            memory_manager.clone(),
+            rt_descriptor_set_layout.clone(),
+            mesh_rendering.descriptor_set_layout(),
+            status_descriptor_set_layout.clone(),
+        )?);
+
         let final_rendering = Arc::new(FinalRendering::new(
             memory_manager.clone(),
             mesh_rendering.descriptor_set_layout(),
             global_illumination_lighting.descriptor_set_layout(),
             debug_descriptor_set_layout.clone(),
+            ambient_occlusion.descriptor_set_layout(),
             &render_area,
             frames_in_flight,
         )?);
@@ -1063,6 +1079,7 @@ impl System {
         init_command_buffer.record_one_time_submit(|recorder| {
             mesh_rendering.record_init_commands(recorder);
             global_illumination_lighting.record_init_commands(recorder);
+            ambient_occlusion.record_init_commands(recorder);
             hdr.record_init_commands(recorder);
             renderquad.record_init_commands(recorder);
         })?;
@@ -1073,8 +1090,9 @@ impl System {
         let init_waiter =
             main_queue.submit(&[init_command_buffer.clone()], &[], &[], init_fence.clone())?;
 
-        let frames_in_flight: smallvec::SmallVec<[Option<FenceWaiter>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]> =
-            (0..frames_in_flight).map(|_| Option::None).collect();
+        let frames_in_flight: smallvec::SmallVec<
+            [Option<FenceWaiter>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC],
+        > = (0..frames_in_flight).map(|_| Option::None).collect();
         let prev_frame_gi_reuse = 0;
 
         // ART_RTIC_STOP_AFTER=none|mesh|gi|final|hdr|all is used to bisect
@@ -1169,6 +1187,7 @@ impl System {
 
             mesh_rendering,
             global_illumination_lighting,
+            ambient_occlusion,
             final_rendering,
             hdr,
             renderquad,
@@ -1428,359 +1447,375 @@ impl System {
 
             // here register the command buffer: command buffer at index i is associated with rendering_fences[i],
             // that I just awaited above, so thecommand buffer is surely NOT currently in use
-            let record_result = self.present_command_buffers[current_frame].record_one_time_submit(|recorder| {
-                // bisecting helper: when ART_RTIC_STOP_AFTER is "none" an empty
-                // command buffer is submitted to test the submission machinery
-                if debug_stop_after == StopAfter::None {
-                    return;
-                }
-
-                // Write status (view*projection matrix and directional lights) to GPU memory and
-                // wait for completion before using them to render the scene
-                {
-                    recorder.pipeline_barriers([
-                        BufferMemoryBarrier::new(
-                            [PipelineStage::TopOfPipe].as_slice().into(),
-                            [].as_slice().into(),
-                            [PipelineStage::Transfer].as_slice().into(),
-                            [MemoryAccessAs::TransferWrite].as_slice().into(),
-                            BufferSubresourceRange::new(
-                                self.view_projection_buffers[current_frame].clone(),
-                                0u64,
-                                self.view_projection_buffers[current_frame].size(),
-                            ),
-                            self.queue_family(),
-                            self.queue_family(),
-                        )
-                        .into(),
-                        BufferMemoryBarrier::new(
-                            [PipelineStage::TopOfPipe].as_slice().into(),
-                            [].as_slice().into(),
-                            [PipelineStage::Transfer].as_slice().into(),
-                            [MemoryAccessAs::TransferWrite].as_slice().into(),
-                            BufferSubresourceRange::new(
-                                self.directional_light_buffers[current_frame].clone(),
-                                0,
-                                self.directional_light_buffers[current_frame].size(),
-                            ),
-                            self.queue_family.clone(),
-                            self.queue_family.clone(),
-                        )
-                        .into(),
-                        BufferMemoryBarrier::new(
-                            [PipelineStage::TopOfPipe].as_slice().into(),
-                            [].as_slice().into(),
-                            [PipelineStage::Transfer].as_slice().into(),
-                            [MemoryAccessAs::TransferWrite].as_slice().into(),
-                            BufferSubresourceRange::new(
-                                self.status_buffers[current_frame].clone(),
-                                0,
-                                self.status_buffers[current_frame].size(),
-                            ),
-                            self.queue_family.clone(),
-                            self.queue_family.clone(),
-                        )
-                        .into(),
-                        BufferMemoryBarrier::new(
-                            [PipelineStage::TopOfPipe].as_slice().into(),
-                            [].as_slice().into(),
-                            [PipelineStage::Transfer].as_slice().into(),
-                            [MemoryAccessAs::TransferWrite].as_slice().into(),
-                            BufferSubresourceRange::new(
-                                self.debug_buffers[current_frame].clone(),
-                                0,
-                                self.debug_buffers[current_frame].size(),
-                            ),
-                            self.queue_family.clone(),
-                            self.queue_family.clone(),
-                        )
-                        .into(),
-                    ]);
-
-                    recorder.update_buffer(
-                        self.view_projection_buffers[current_frame].clone(),
-                        0,
-                        camera_matrices.as_slice(),
-                    );
-
-                    recorder.update_buffer(
-                        self.status_buffers[current_frame].clone(),
-                        0,
-                        gi_status.words().as_slice(),
-                    );
-
-                    let debug_block = self.debug.gpu_block();
-                    recorder.update_buffer(
-                        self.debug_buffers[current_frame].clone(),
-                        0,
-                        [
-                            debug_block.flags,
-                            debug_block.view_mode,
-                            debug_block.exposure.to_bits(),
-                            debug_block.padding[0],
-                            debug_block.padding[1],
-                            debug_block.padding[2],
-                            debug_block.padding[3],
-                            debug_block.padding[4],
-                        ]
-                        .as_slice(),
-                    );
-
-                    let mut light_index = 0u64;
-                    directional_lights.foreach(|dir_light| {
-                        recorder.copy_buffer(
-                            dir_light.clone(),
-                            self.directional_light_buffers[current_frame].clone(),
-                            [(0u64, light_index * size_of_light, size_of_light)].as_slice(),
-                        );
-
-                        light_index += 1u64;
-                    });
-
-                    let stub_buffer = (0..size_of_light).map(|_| 0u8).collect::<Vec<_>>();
-                    for light_unused_index in light_index..(MAX_DIRECTIONAL_LIGHTS as u64) {
-                        recorder.update_buffer(
-                            self.directional_light_buffers[current_frame].clone(),
-                            light_unused_index * size_of_light,
-                            stub_buffer.as_slice(),
-                        );
+            let record_result =
+                self.present_command_buffers[current_frame].record_one_time_submit(|recorder| {
+                    // bisecting helper: when ART_RTIC_STOP_AFTER is "none" an empty
+                    // command buffer is submitted to test the submission machinery
+                    if debug_stop_after == StopAfter::None {
+                        return;
                     }
 
-                    recorder.pipeline_barriers([
-                        BufferMemoryBarrier::new(
-                            [PipelineStage::Transfer].as_slice().into(),
-                            [MemoryAccessAs::TransferWrite].as_slice().into(),
-                            [
-                                PipelineStage::AllGraphics,
-                                PipelineStage::ComputeShader,
-                                PipelineStage::RayTracingPipelineKHR(
-                                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                    // Write status (view*projection matrix and directional lights) to GPU memory and
+                    // wait for completion before using them to render the scene
+                    {
+                        recorder.pipeline_barriers([
+                            BufferMemoryBarrier::new(
+                                [PipelineStage::TopOfPipe].as_slice().into(),
+                                [].as_slice().into(),
+                                [PipelineStage::Transfer].as_slice().into(),
+                                [MemoryAccessAs::TransferWrite].as_slice().into(),
+                                BufferSubresourceRange::new(
+                                    self.view_projection_buffers[current_frame].clone(),
+                                    0u64,
+                                    self.view_projection_buffers[current_frame].size(),
                                 ),
-                            ]
-                            .as_slice()
+                                self.queue_family(),
+                                self.queue_family(),
+                            )
                             .into(),
-                            [MemoryAccessAs::UniformRead].as_slice().into(),
-                            BufferSubresourceRange::new(
-                                self.view_projection_buffers[current_frame].clone(),
-                                0u64,
-                                self.view_projection_buffers[current_frame].size(),
-                            ),
-                            self.queue_family(),
-                            self.queue_family(),
-                        )
-                        .into(),
-                        BufferMemoryBarrier::new(
-                            [PipelineStage::Transfer].as_slice().into(),
-                            [MemoryAccessAs::TransferWrite].as_slice().into(),
-                            [
-                                PipelineStage::AllGraphics,
-                                PipelineStage::RayTracingPipelineKHR(
-                                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                            BufferMemoryBarrier::new(
+                                [PipelineStage::TopOfPipe].as_slice().into(),
+                                [].as_slice().into(),
+                                [PipelineStage::Transfer].as_slice().into(),
+                                [MemoryAccessAs::TransferWrite].as_slice().into(),
+                                BufferSubresourceRange::new(
+                                    self.directional_light_buffers[current_frame].clone(),
+                                    0,
+                                    self.directional_light_buffers[current_frame].size(),
                                 ),
-                            ]
-                            .as_slice()
+                                self.queue_family.clone(),
+                                self.queue_family.clone(),
+                            )
                             .into(),
+                            BufferMemoryBarrier::new(
+                                [PipelineStage::TopOfPipe].as_slice().into(),
+                                [].as_slice().into(),
+                                [PipelineStage::Transfer].as_slice().into(),
+                                [MemoryAccessAs::TransferWrite].as_slice().into(),
+                                BufferSubresourceRange::new(
+                                    self.status_buffers[current_frame].clone(),
+                                    0,
+                                    self.status_buffers[current_frame].size(),
+                                ),
+                                self.queue_family.clone(),
+                                self.queue_family.clone(),
+                            )
+                            .into(),
+                            BufferMemoryBarrier::new(
+                                [PipelineStage::TopOfPipe].as_slice().into(),
+                                [].as_slice().into(),
+                                [PipelineStage::Transfer].as_slice().into(),
+                                [MemoryAccessAs::TransferWrite].as_slice().into(),
+                                BufferSubresourceRange::new(
+                                    self.debug_buffers[current_frame].clone(),
+                                    0,
+                                    self.debug_buffers[current_frame].size(),
+                                ),
+                                self.queue_family.clone(),
+                                self.queue_family.clone(),
+                            )
+                            .into(),
+                        ]);
+
+                        recorder.update_buffer(
+                            self.view_projection_buffers[current_frame].clone(),
+                            0,
+                            camera_matrices.as_slice(),
+                        );
+
+                        recorder.update_buffer(
+                            self.status_buffers[current_frame].clone(),
+                            0,
+                            gi_status.words().as_slice(),
+                        );
+
+                        let debug_block = self.debug.gpu_block();
+                        recorder.update_buffer(
+                            self.debug_buffers[current_frame].clone(),
+                            0,
                             [
-                                MemoryAccessAs::MemoryRead,
-                                MemoryAccessAs::ShaderRead,
-                                MemoryAccessAs::UniformRead,
+                                debug_block.flags,
+                                debug_block.view_mode,
+                                debug_block.exposure.to_bits(),
+                                debug_block.ao_algorithm,
+                                debug_block.padding[0],
+                                debug_block.padding[1],
+                                debug_block.padding[2],
+                                debug_block.padding[3],
                             ]
-                            .as_slice()
-                            .into(),
-                            BufferSubresourceRange::new(
+                            .as_slice(),
+                        );
+
+                        let mut light_index = 0u64;
+                        directional_lights.foreach(|dir_light| {
+                            recorder.copy_buffer(
+                                dir_light.clone(),
                                 self.directional_light_buffers[current_frame].clone(),
-                                0,
-                                self.directional_light_buffers[current_frame].size(),
-                            ),
-                            self.queue_family.clone(),
-                            self.queue_family.clone(),
-                        )
-                        .into(),
-                        BufferMemoryBarrier::new(
-                            [PipelineStage::Transfer].as_slice().into(),
-                            [MemoryAccessAs::TransferWrite].as_slice().into(),
-                            [
-                                PipelineStage::AllGraphics,
-                                PipelineStage::ComputeShader,
-                                PipelineStage::RayTracingPipelineKHR(
-                                    PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                                [(0u64, light_index * size_of_light, size_of_light)].as_slice(),
+                            );
+
+                            light_index += 1u64;
+                        });
+
+                        let stub_buffer = (0..size_of_light).map(|_| 0u8).collect::<Vec<_>>();
+                        for light_unused_index in light_index..(MAX_DIRECTIONAL_LIGHTS as u64) {
+                            recorder.update_buffer(
+                                self.directional_light_buffers[current_frame].clone(),
+                                light_unused_index * size_of_light,
+                                stub_buffer.as_slice(),
+                            );
+                        }
+
+                        recorder.pipeline_barriers([
+                            BufferMemoryBarrier::new(
+                                [PipelineStage::Transfer].as_slice().into(),
+                                [MemoryAccessAs::TransferWrite].as_slice().into(),
+                                [
+                                    PipelineStage::AllGraphics,
+                                    PipelineStage::ComputeShader,
+                                    PipelineStage::RayTracingPipelineKHR(
+                                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                                    ),
+                                ]
+                                .as_slice()
+                                .into(),
+                                [MemoryAccessAs::UniformRead].as_slice().into(),
+                                BufferSubresourceRange::new(
+                                    self.view_projection_buffers[current_frame].clone(),
+                                    0u64,
+                                    self.view_projection_buffers[current_frame].size(),
                                 ),
-                            ]
-                            .as_slice()
+                                self.queue_family(),
+                                self.queue_family(),
+                            )
                             .into(),
-                            [MemoryAccessAs::UniformRead].as_slice().into(),
-                            BufferSubresourceRange::new(
-                                self.status_buffers[current_frame].clone(),
-                                0,
-                                self.status_buffers[current_frame].size(),
-                            ),
-                            self.queue_family.clone(),
-                            self.queue_family.clone(),
-                        )
-                        .into(),
-                        BufferMemoryBarrier::new(
-                            [PipelineStage::Transfer].as_slice().into(),
-                            [MemoryAccessAs::TransferWrite].as_slice().into(),
-                            [PipelineStage::AllGraphics].as_slice().into(),
-                            [MemoryAccessAs::UniformRead].as_slice().into(),
-                            BufferSubresourceRange::new(
-                                self.debug_buffers[current_frame].clone(),
-                                0,
-                                self.debug_buffers[current_frame].size(),
-                            ),
-                            self.queue_family.clone(),
-                            self.queue_family.clone(),
-                        )
-                        .into(),
-                    ]);
-                }
+                            BufferMemoryBarrier::new(
+                                [PipelineStage::Transfer].as_slice().into(),
+                                [MemoryAccessAs::TransferWrite].as_slice().into(),
+                                [
+                                    PipelineStage::AllGraphics,
+                                    PipelineStage::RayTracingPipelineKHR(
+                                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                                    ),
+                                ]
+                                .as_slice()
+                                .into(),
+                                [
+                                    MemoryAccessAs::MemoryRead,
+                                    MemoryAccessAs::ShaderRead,
+                                    MemoryAccessAs::UniformRead,
+                                ]
+                                .as_slice()
+                                .into(),
+                                BufferSubresourceRange::new(
+                                    self.directional_light_buffers[current_frame].clone(),
+                                    0,
+                                    self.directional_light_buffers[current_frame].size(),
+                                ),
+                                self.queue_family.clone(),
+                                self.queue_family.clone(),
+                            )
+                            .into(),
+                            BufferMemoryBarrier::new(
+                                [PipelineStage::Transfer].as_slice().into(),
+                                [MemoryAccessAs::TransferWrite].as_slice().into(),
+                                [
+                                    PipelineStage::AllGraphics,
+                                    PipelineStage::ComputeShader,
+                                    PipelineStage::RayTracingPipelineKHR(
+                                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                                    ),
+                                ]
+                                .as_slice()
+                                .into(),
+                                [MemoryAccessAs::UniformRead].as_slice().into(),
+                                BufferSubresourceRange::new(
+                                    self.status_buffers[current_frame].clone(),
+                                    0,
+                                    self.status_buffers[current_frame].size(),
+                                ),
+                                self.queue_family.clone(),
+                                self.queue_family.clone(),
+                            )
+                            .into(),
+                            BufferMemoryBarrier::new(
+                                [PipelineStage::Transfer].as_slice().into(),
+                                [MemoryAccessAs::TransferWrite].as_slice().into(),
+                                [PipelineStage::AllGraphics].as_slice().into(),
+                                [MemoryAccessAs::UniformRead].as_slice().into(),
+                                BufferSubresourceRange::new(
+                                    self.debug_buffers[current_frame].clone(),
+                                    0,
+                                    self.debug_buffers[current_frame].size(),
+                                ),
+                                self.queue_family.clone(),
+                                self.queue_family.clone(),
+                            )
+                            .into(),
+                        ]);
+                    }
 
-                static_meshes_resources.advance_animations(1.0 / 60.0);
-                if let Err(err) = static_meshes_resources.record_skinning(
-                    &self.global_illumination_lighting,
-                    recorder,
-                ) {
-                    panic!("skinning dispatch failed: {err}");
-                }
+                    static_meshes_resources.advance_animations(1.0 / 60.0);
+                    if let Err(err) = static_meshes_resources
+                        .record_skinning(&self.global_illumination_lighting, recorder)
+                    {
+                        panic!("skinning dispatch failed: {err}");
+                    }
 
-                // Record rendering commands to generate the gbuffer (position, normal and texture) for each
-                // pixel in the final image: this solves the visibility problem and provides data for later stager
-                // along the GPU pipeline
-                let gbuffer_descriptor_set = self.mesh_rendering.record_rendering_commands(
-                    self.status_descriptor_sets[current_frame].clone(),
-                    self.queue_family(),
-                    [
-                        PipelineStage::FragmentShader,
-                        PipelineStage::ComputeShader,
-                        PipelineStage::RayTracingPipelineKHR(
-                            PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                        ),
-                    ]
-                    .as_slice()
-                    .into(),
-                    [MemoryAccessAs::ShaderRead].as_slice().into(),
-                    current_frame,
-                    static_meshes_resources,
-                    recorder,
-                );
-
-                if debug_stop_after == StopAfter::Mesh {
-                    return;
-                }
-
-                // Upload semaphore waits provide the cross-queue dependency;
-                // include actual producers for any work recorded on this queue.
-                recorder.pipeline_barriers([MemoryBarrier::new(
-                    [PipelineStage::AllCommands].as_slice().into(),
-                    [MemoryAccessAs::MemoryWrite].as_slice().into(),
-                    [PipelineStage::RayTracingPipelineKHR(
-                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                    )]
-                    .as_slice()
-                    .into(),
-                    [
-                        MemoryAccessAs::MemoryRead,
-                        MemoryAccessAs::ShaderRead,
-                        MemoryAccessAs::AccelerationStructureRead,
-                    ]
-                    .as_slice()
-                    .into(),
-                )
-                .into()]);
-
-                let gibuffer_descriptor_set =
-                    self.global_illumination_lighting.record_rendering_commands(
-                        self.prev_frame_gi_reuse,
-                        gi_status.flags,
-                        gi_frame_index,
-                        current_frame,
-                        rt_descriptor_set.clone(),
-                        gbuffer_descriptor_set.clone(),
+                    // Record rendering commands to generate the gbuffer (position, normal and texture) for each
+                    // pixel in the final image: this solves the visibility problem and provides data for later stager
+                    // along the GPU pipeline
+                    let gbuffer_descriptor_set = self.mesh_rendering.record_rendering_commands(
                         self.status_descriptor_sets[current_frame].clone(),
-                        texture_descriptor_set,
-                        material_descriptor_set,
-                        [PipelineStage::FragmentShader].as_slice().into(),
-                        [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead]
-                            .as_slice()
-                            .into(),
+                        self.queue_family(),
+                        [
+                            PipelineStage::FragmentShader,
+                            PipelineStage::ComputeShader,
+                            PipelineStage::RayTracingPipelineKHR(
+                                PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                            ),
+                        ]
+                        .as_slice()
+                        .into(),
+                        [MemoryAccessAs::ShaderRead].as_slice().into(),
+                        current_frame,
+                        static_meshes_resources,
                         recorder,
                     );
 
-                if debug_stop_after == StopAfter::Gi {
-                    return;
-                }
+                    if debug_stop_after == StopAfter::Mesh {
+                        return;
+                    }
 
-                // make resources available for ray tracing pipeline(s)
-                recorder.pipeline_barriers([MemoryBarrier::new(
-                    [PipelineStage::RayTracingPipelineKHR(
-                        PipelineStageRayTracingPipelineKHR::RayTracingShader,
-                    )]
-                    .as_slice()
-                    .into(),
-                    [MemoryAccessAs::MemoryWrite].as_slice().into(),
-                    [PipelineStage::AllGraphics].as_slice().into(),
-                    [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead]
+                    // Upload semaphore waits provide the cross-queue dependency;
+                    // include actual producers for any work recorded on this queue.
+                    recorder.pipeline_barriers([MemoryBarrier::new(
+                        [PipelineStage::AllCommands].as_slice().into(),
+                        [MemoryAccessAs::MemoryWrite].as_slice().into(),
+                        [PipelineStage::RayTracingPipelineKHR(
+                            PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                        )]
                         .as_slice()
                         .into(),
-                )
-                .into()]);
+                        [
+                            MemoryAccessAs::MemoryRead,
+                            MemoryAccessAs::ShaderRead,
+                            MemoryAccessAs::AccelerationStructureRead,
+                        ]
+                        .as_slice()
+                        .into(),
+                    )
+                    .into()]);
 
-                // Record rendering commands to assemble the gbuffer and other resources into a an image
-                // ready to be post-processed to add effects
-                let final_rendering_output_image = self.final_rendering.record_rendering_commands(
-                    self.queue_family(),
-                    gbuffer_descriptor_set,
-                    gibuffer_descriptor_set,
-                    self.debug_descriptor_sets[current_frame].clone(),
-                    current_frame,
-                    recorder,
-                );
-
-                if debug_stop_after == StopAfter::Final {
-                    return;
-                }
-
-                let hdr_output_image = self.hdr.record_rendering_commands(
-                    self.queue_family(),
-                    hdr,
-                    final_rendering_output_image,
-                    recorder,
-                );
-
-                if debug_stop_after == StopAfter::Hdr {
-                    return;
-                }
-
-                let present_source = match &mut ui_layer {
-                    None => hdr_output_image.clone(),
-                    Some(ui) => {
-                        if !ui.visible {
-                            hdr_output_image.clone()
-                        } else if debug_stop_after == StopAfter::Ui {
-                            return;
-                        } else {
-                        let mut memory = memory_manager.lock().unwrap();
-                        ui.record_gpu(
+                    let gibuffer_descriptor_set =
+                        self.global_illumination_lighting.record_rendering_commands(
+                            self.prev_frame_gi_reuse,
+                            gi_status.flags,
+                            gi_frame_index,
                             current_frame,
-                            swapchain_extent,
-                            &mut *memory,
-                            queue_family.clone(),
+                            rt_descriptor_set.clone(),
+                            gbuffer_descriptor_set.clone(),
+                            self.status_descriptor_sets[current_frame].clone(),
+                            texture_descriptor_set,
+                            material_descriptor_set,
+                            [PipelineStage::FragmentShader].as_slice().into(),
+                            [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead]
+                                .as_slice()
+                                .into(),
                             recorder,
-                            hdr_output_image.clone(),
-                        )
-                        .expect("UI record failed")
-                        }
-                    }
-                };
+                        );
 
-                self.renderquad.record_rendering_commands(
-                    self.queue_family(),
-                    swapchain_extent,
-                    present_source,
-                    swapchain_imageviews[swapchain_index as usize].clone(),
-                    recorder,
-                );
-            });
+                    if debug_stop_after == StopAfter::Gi {
+                        return;
+                    }
+
+                    let ao_execute = self.debug.apply_ao()
+                        || self.debug.view_mode()
+                            == crate::rendering::debug_state::ViewMode::AmbientOcclusion
+                        || self.ambient_occlusion.dump_armed();
+                    let ao_descriptor_set = self.ambient_occlusion.record_rendering_commands(
+                        self.debug.ao_algorithm(),
+                        gi_frame_index,
+                        rt_descriptor_set.clone(),
+                        gbuffer_descriptor_set.clone(),
+                        self.status_descriptor_sets[current_frame].clone(),
+                        ao_execute,
+                        recorder,
+                    );
+
+                    // make resources available for ray tracing pipeline(s)
+                    recorder.pipeline_barriers([MemoryBarrier::new(
+                        [PipelineStage::RayTracingPipelineKHR(
+                            PipelineStageRayTracingPipelineKHR::RayTracingShader,
+                        )]
+                        .as_slice()
+                        .into(),
+                        [MemoryAccessAs::MemoryWrite].as_slice().into(),
+                        [PipelineStage::AllGraphics].as_slice().into(),
+                        [MemoryAccessAs::MemoryRead, MemoryAccessAs::ShaderRead]
+                            .as_slice()
+                            .into(),
+                    )
+                    .into()]);
+
+                    // Record rendering commands to assemble the gbuffer and other resources into a an image
+                    // ready to be post-processed to add effects
+                    let final_rendering_output_image =
+                        self.final_rendering.record_rendering_commands(
+                            self.queue_family(),
+                            gbuffer_descriptor_set,
+                            gibuffer_descriptor_set,
+                            self.debug_descriptor_sets[current_frame].clone(),
+                            ao_descriptor_set,
+                            current_frame,
+                            recorder,
+                        );
+
+                    if debug_stop_after == StopAfter::Final {
+                        return;
+                    }
+
+                    let hdr_output_image = self.hdr.record_rendering_commands(
+                        self.queue_family(),
+                        hdr,
+                        final_rendering_output_image,
+                        recorder,
+                    );
+
+                    if debug_stop_after == StopAfter::Hdr {
+                        return;
+                    }
+
+                    let present_source = match &mut ui_layer {
+                        None => hdr_output_image.clone(),
+                        Some(ui) => {
+                            if !ui.visible {
+                                hdr_output_image.clone()
+                            } else if debug_stop_after == StopAfter::Ui {
+                                return;
+                            } else {
+                                let mut memory = memory_manager.lock().unwrap();
+                                ui.record_gpu(
+                                    current_frame,
+                                    swapchain_extent,
+                                    &mut *memory,
+                                    queue_family.clone(),
+                                    recorder,
+                                    hdr_output_image.clone(),
+                                )
+                                .expect("UI record failed")
+                            }
+                        }
+                    };
+
+                    self.renderquad.record_rendering_commands(
+                        self.queue_family(),
+                        swapchain_extent,
+                        present_source,
+                        swapchain_imageviews[swapchain_index as usize].clone(),
+                        recorder,
+                    );
+                });
             self.ui = ui_layer;
             record_result?
         };
@@ -1853,15 +1888,12 @@ impl System {
             .end_frame(&camera_matrices[0], &camera_matrices[1]);
 
         if full_frame && !self.debug_no_present {
-            let present_out_of_date = match swapchain.queue_present(
-                frame_queue,
-                swapchain_index,
-                &[present_semaphore],
-            ) {
-                Ok(_) => false,
-                Err(VulkanError::Vulkan(vk::Result::ERROR_OUT_OF_DATE_KHR)) => true,
-                Err(err) => return Err(err.into()),
-            };
+            let present_out_of_date =
+                match swapchain.queue_present(frame_queue, swapchain_index, &[present_semaphore]) {
+                    Ok(_) => false,
+                    Err(VulkanError::Vulkan(vk::Result::ERROR_OUT_OF_DATE_KHR)) => true,
+                    Err(err) => return Err(err.into()),
+                };
             let (drawable_width, drawable_height) = self.window.drawable_size();
             let extent_changed = swapchain.images_extent()
                 != Image2DDimensions::new(drawable_width, drawable_height);

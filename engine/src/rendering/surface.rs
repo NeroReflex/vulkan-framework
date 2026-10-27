@@ -47,7 +47,11 @@ impl SurfaceHelper {
         )
     }
 
-    pub(crate) fn choose_frame_counts(preferred: u32, min_images: u32, max_images: u32) -> Option<(u32, u32)> {
+    pub(crate) fn choose_frame_counts(
+        preferred: u32,
+        min_images: u32,
+        max_images: u32,
+    ) -> Option<(u32, u32)> {
         if preferred == 0 || min_images == 0 || (max_images != 0 && max_images < min_images) {
             return None;
         }

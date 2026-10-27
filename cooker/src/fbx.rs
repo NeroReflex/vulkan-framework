@@ -13,8 +13,8 @@ use russimp::{Matrix4x4, Vector3D};
 use serde::Serialize;
 
 use crate::skin_format::{
-    AnimationGpuChannel, ArmatureGpuElement, SkeletonGpuElement, MAX_ANIMATION_CHANNELS,
-    MAX_ANIMATION_KEYS_PER_CHANNEL,
+    AnimationGpuChannel, ArmatureGpuElement, MAX_ANIMATION_CHANNELS,
+    MAX_ANIMATION_KEYS_PER_CHANNEL, SkeletonGpuElement,
 };
 use crate::tar_out::append_bytes;
 
@@ -56,15 +56,17 @@ pub fn pack_fbx(input: &Path, output: &Path) -> Result<(), String> {
     )
     .map_err(|err| err.to_string())?;
 
-    let root = scene
-        .root
-        .as_ref()
-        .ok_or("fbx has no root node")?
-        .clone();
+    let root = scene.root.as_ref().ok_or("fbx has no root node")?.clone();
 
     let mut armature_nodes = Vec::new();
     let mut name_to_armature = HashMap::new();
-    flatten_armature(&root, 0, &mut armature_nodes, &mut name_to_armature, &mut 0u32);
+    flatten_armature(
+        &root,
+        0,
+        &mut armature_nodes,
+        &mut name_to_armature,
+        &mut 0u32,
+    );
 
     let mut skeleton = Vec::new();
     let mut bone_name_to_index = HashMap::new();
@@ -311,12 +313,7 @@ fn pack_mesh_vertices(
                 *w /= weight_sum;
             }
         }
-        skinned_vertices.extend_from_slice(&pack_skinned_vertex(
-            pos,
-            &normal,
-            &uv,
-            &weights,
-        ));
+        skinned_vertices.extend_from_slice(&pack_skinned_vertex(pos, &normal, &uv, &weights));
     }
 
     let mut indices = Vec::new();
@@ -387,14 +384,17 @@ fn write_u32(dst: &mut [u8], value: u32) {
 
 fn assimp_to_glsl_mat4(m: &Matrix4x4) -> [f32; 16] {
     [
-        m.a1, m.b1, m.c1, m.d1, m.a2, m.b2, m.c2, m.d2, m.a3, m.b3, m.c3, m.d3, m.a4, m.b4,
-        m.c4, m.d4,
+        m.a1, m.b1, m.c1, m.d1, m.a2, m.b2, m.c2, m.d2, m.a3, m.b3, m.c3, m.d3, m.a4, m.b4, m.c4,
+        m.d4,
     ]
 }
 
 fn append_struct_slice<T: Copy>(builder: &mut tar::Builder<File>, path: &str, data: &[T]) {
     let bytes = unsafe {
-        std::slice::from_raw_parts(data.as_ptr().cast::<u8>(), data.len() * std::mem::size_of::<T>())
+        std::slice::from_raw_parts(
+            data.as_ptr().cast::<u8>(),
+            data.len() * std::mem::size_of::<T>(),
+        )
     };
     append_bytes(builder, path, bytes);
 }
@@ -406,7 +406,13 @@ fn sanitize_clip_name(name: &str) -> String {
     }
     trimmed
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
@@ -438,7 +444,9 @@ mod tests {
     #[ignore]
     fn minotaur_fbx_cooks() {
         let Some(input) = minotaur_fbx_path() else {
-            eprintln!("skipping minotaur_fbx_cooks: set ART_RTIC_MINOTAUR_FBX or install default path");
+            eprintln!(
+                "skipping minotaur_fbx_cooks: set ART_RTIC_MINOTAUR_FBX or install default path"
+            );
             return;
         };
         let out = std::env::temp_dir().join(format!("minotaur-{}.tar", std::process::id()));

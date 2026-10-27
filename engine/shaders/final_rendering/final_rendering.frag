@@ -17,6 +17,9 @@ layout(set = 1, binding = 0) uniform usampler2D surfels_buffer;
 #define GI_COVERAGE 3
 layout(set = 1, binding = 1) uniform sampler2D gibuffer[4];
 
+// ambient occlusion, 1 = open hemisphere. Written by SSAO or RTAO.
+layout(set = 3, binding = 0) uniform sampler2D ao_buffer;
+
 float luminance(vec3 c) {
     return dot(c, vec3(0.2126, 0.7152, 0.0722));
 }
@@ -37,12 +40,16 @@ void main() {
     const vec3 e_dir = texelFetch(gibuffer[GI_DIRECT], texel, 0).rgb;
     const vec3 e_ref = texelFetch(gibuffer[GI_REFERENCE], texel, 0).rgb;
     const vec4 coverage = texelFetch(gibuffer[GI_COVERAGE], texel, 0);
+    const float ao_value = clamp(texelFetch(ao_buffer, texel, 0).r, 0.0, 1.0);
+    // AO darkens indirect light only. Direct sun already has its own shadow ray.
+    const float ao = (debug_data.flags & DEBUG_APPLY_AO) != 0u ? ao_value : 1.0;
+    const vec3 lit = albedo * (e_dir + e_ind * ao);
 
     vec3 color;
     switch (debug_data.view_mode) {
     case VIEW_SURFEL_IDS: {
         const uint id = texelFetch(surfels_buffer, texel, 0).x;
-        const vec3 shade = albedo * (e_dir + e_ind);
+        const vec3 shade = lit;
         color = id == 0xFFFFFFFFu ? shade : mix(shade, id_color(id) * max(luminance(shade), 0.25), 0.6);
         break;
     }
@@ -59,10 +66,10 @@ void main() {
         break;
     }
     case VIEW_INDIRECT:
-        color = albedo * e_ind;
+        color = albedo * e_ind * ao;
         break;
     case VIEW_INDIRECT_IRRADIANCE:
-        color = e_ind;
+        color = e_ind * ao;
         break;
     case VIEW_REFERENCE:
         color = albedo * (e_dir + e_ref);
@@ -78,11 +85,14 @@ void main() {
         color = mix(color, vec3(0.08), 1.0 - clamp(abs(rel) * 4.0, 0.0, 1.0));
         break;
     }
+    case VIEW_AMBIENT_OCCLUSION:
+        color = vec3(ao_value);
+        break;
     default:
-        color = albedo * (e_dir + e_ind);
+        color = lit;
         break;
     }
-    if (sky && debug_data.view_mode != VIEW_COVERAGE) {
+    if (sky && debug_data.view_mode != VIEW_COVERAGE && debug_data.view_mode != VIEW_AMBIENT_OCCLUSION) {
         color = vec3(0.0);
     }
 

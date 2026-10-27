@@ -16,7 +16,7 @@ This pipeline usually breaks when one pass assumes something another pass no lon
 
 ## Shader traps
 
-- **`inline_spirv!` does not track includes.** Editing a `.glsl` header changes nothing until `global_illumination.rs` is rebuilt. Run `touch engine/src/rendering/pipeline/global_illumination.rs` before `cargo build`.
+- **`inline_spirv!` does not track includes.** Editing a `.glsl` header changes nothing until the Rust file that embeds it is rebuilt. Touch `global_illumination.rs` for GI shaders, `ambient_occlusion.rs` for AO shaders, and `final_rendering.rs` or `mesh_rendering.rs` for those passes.
 - **glslang emits invalid SPIR-V for a struct-valued ternary** that mixes a buffer element and a local struct (`c ? buf[i] : local`). The driver then rejects the module with `VUID-VkShaderModuleCreateInfo-pCode-08737` (`OpStore` type mismatch). Use `if`/`else`. `validate.sh` catches this.
 - **`payload` is overwritten by every trace,** including the shadow rays inside `direct_irradiance`. Copy what you need into locals right after `trace_closest`.
 - **Image arrays take one binding slot per element** in the framework's descriptor writer. A new binding goes after 27, not after 20.

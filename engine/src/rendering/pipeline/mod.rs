@@ -1,3 +1,4 @@
+pub mod ambient_occlusion;
 pub mod final_rendering;
 pub mod gi_math;
 pub mod global_illumination;

@@ -15,14 +15,23 @@ pub struct RgbImage {
 impl RgbImage {
     pub fn from_rgba(width: u32, height: u32, rgba: &[f32]) -> Self {
         let data = rgba.chunks_exact(4).map(|p| [p[0], p[1], p[2]]).collect();
-        Self { width, height, data }
+        Self {
+            width,
+            height,
+            data,
+        }
     }
 
     pub fn map(&self, f: impl Fn(usize, [f32; 3]) -> [f32; 3]) -> Self {
         Self {
             width: self.width,
             height: self.height,
-            data: self.data.iter().enumerate().map(|(i, p)| f(i, *p)).collect(),
+            data: self
+                .data
+                .iter()
+                .enumerate()
+                .map(|(i, p)| f(i, *p))
+                .collect(),
         }
     }
 
@@ -59,8 +68,14 @@ impl RgbImage {
         if parts.next() != Some("PF") {
             return Err(invalid());
         }
-        let width: u32 = parts.next().and_then(|v| v.parse().ok()).ok_or_else(invalid)?;
-        let height: u32 = parts.next().and_then(|v| v.parse().ok()).ok_or_else(invalid)?;
+        let width: u32 = parts
+            .next()
+            .and_then(|v| v.parse().ok())
+            .ok_or_else(invalid)?;
+        let height: u32 = parts
+            .next()
+            .and_then(|v| v.parse().ok())
+            .ok_or_else(invalid)?;
         let floats: Vec<f32> = bytes[header_end..]
             .chunks_exact(4)
             .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
@@ -75,7 +90,11 @@ impl RgbImage {
                 data[y * width as usize + x] = [floats[src], floats[src + 1], floats[src + 2]];
             }
         }
-        Ok(Self { width, height, data })
+        Ok(Self {
+            width,
+            height,
+            data,
+        })
     }
 
     /// Reinhard-tonemapped sRGB JPEG with a fixed exposure.
@@ -95,7 +114,12 @@ impl RgbImage {
         }
         let mut out = Vec::new();
         jpeg_encoder::Encoder::new(&mut out, 90)
-            .encode(&rgb, self.width as u16, self.height as u16, jpeg_encoder::ColorType::Rgb)
+            .encode(
+                &rgb,
+                self.width as u16,
+                self.height as u16,
+                jpeg_encoder::ColorType::Rgb,
+            )
             .map_err(|e| std::io::Error::other(e.to_string()))?;
         std::fs::write(path, out)
     }
@@ -141,8 +165,16 @@ pub fn error_stats(estimate: &RgbImage, reference: &RgbImage, mask: &[bool]) -> 
         pixels: n,
         mean_estimate: se / nf,
         mean_reference: mean_r,
-        relative_bias: if mean_r > 0.0 { (se / nf - mean_r) / mean_r } else { 0.0 },
-        relative_rmse: if mean_r > 0.0 { (sq / nf).sqrt() / mean_r } else { 0.0 },
+        relative_bias: if mean_r > 0.0 {
+            (se / nf - mean_r) / mean_r
+        } else {
+            0.0
+        },
+        relative_rmse: if mean_r > 0.0 {
+            (sq / nf).sqrt() / mean_r
+        } else {
+            0.0
+        },
     }
 }
 
@@ -166,7 +198,11 @@ pub fn downsample(image: &RgbImage, block: u32) -> RgbImage {
             data[(y * w + x) as usize] = [acc[0] * inv, acc[1] * inv, acc[2] * inv];
         }
     }
-    RgbImage { width: w, height: h, data }
+    RgbImage {
+        width: w,
+        height: h,
+        data,
+    }
 }
 
 pub fn write_capture(dir: &Path, readback: &GiReadback) -> std::io::Result<()> {
@@ -210,7 +246,11 @@ pub fn write_capture(dir: &Path, readback: &GiReadback) -> std::io::Result<()> {
         let a = albedo.data[i];
         let d = e_dir.data[i];
         let x = extra.data[i];
-        [a[0] * (d[0] + x[0]), a[1] * (d[1] + x[1]), a[2] * (d[2] + x[2])]
+        [
+            a[0] * (d[0] + x[0]),
+            a[1] * (d[1] + x[1]),
+            a[2] * (d[2] + x[2]),
+        ]
     };
     let final_image = e_dir.map(|i, _| total(i, &e_ind));
     let reference_image = e_dir.map(|i, _| total(i, &e_ref));
@@ -218,7 +258,10 @@ pub fn write_capture(dir: &Path, readback: &GiReadback) -> std::io::Result<()> {
     final_image.write_jpeg(&dir.join(format!("{tag}_final.jpg")), exposure)?;
     reference_image.write_jpeg(&dir.join(format!("{tag}_reference.jpg")), exposure)?;
     shade(&e_ind).write_jpeg(&dir.join(format!("{tag}_indirect.jpg")), exposure * 4.0)?;
-    shade(&e_ref).write_jpeg(&dir.join(format!("{tag}_reference_indirect.jpg")), exposure * 4.0)?;
+    shade(&e_ref).write_jpeg(
+        &dir.join(format!("{tag}_reference_indirect.jpg")),
+        exposure * 4.0,
+    )?;
     let ids = e_dir.map(|i, _| {
         let id = overlay[i];
         if id == u32::MAX {
@@ -240,7 +283,11 @@ pub fn write_capture(dir: &Path, readback: &GiReadback) -> std::io::Result<()> {
     let stats = error_stats(&e_ind, &e_ref, &mask);
     let block = 16;
     let coarse_mask: Vec<bool> = vec![true; ((w / block) * (h / block)) as usize];
-    let coarse = error_stats(&downsample(&e_ind, block), &downsample(&e_ref, block), &coarse_mask);
+    let coarse = error_stats(
+        &downsample(&e_ind, block),
+        &downsample(&e_ref, block),
+        &coarse_mask,
+    );
     let samples = reference_samples.iter().cloned().fold(0.0f32, f32::max);
     println!(
         "CAPTURE {tag}: reference frames {samples:.0}, pixels {}, mean E_ind {:.4} vs reference {:.4}, bias {:+.2}%, rel. RMSE {:.1}% (16x16 blocks: {:.1}%)",

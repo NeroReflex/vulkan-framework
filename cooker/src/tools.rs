@@ -61,9 +61,11 @@ fn tool_search_dirs() -> Vec<PathBuf> {
             if let Ok(entries) = std::fs::read_dir(&bin) {
                 for entry in entries.flatten() {
                     let path = entry.path();
-                    if path.is_dir() && path.file_name().is_some_and(|n| {
-                        n.to_string_lossy().starts_with("compressonatorcli")
-                    }) {
+                    if path.is_dir()
+                        && path
+                            .file_name()
+                            .is_some_and(|n| n.to_string_lossy().starts_with("compressonatorcli"))
+                    {
                         dirs.push(path);
                     }
                 }
@@ -74,17 +76,18 @@ fn tool_search_dirs() -> Vec<PathBuf> {
 }
 
 fn is_runnable(path: &Path) -> bool {
-    path.is_file() && std::fs::metadata(path).is_ok_and(|meta| {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            meta.permissions().mode() & 0o111 != 0
-        }
-        #[cfg(not(unix))]
-        {
-            true
-        }
-    })
+    path.is_file()
+        && std::fs::metadata(path).is_ok_and(|meta| {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                meta.permissions().mode() & 0o111 != 0
+            }
+            #[cfg(not(unix))]
+            {
+                true
+            }
+        })
 }
 
 fn which_on_path(tool: &str) -> Option<PathBuf> {
@@ -121,18 +124,13 @@ pub fn require_tools(names: &[&str]) -> Result<(), String> {
 
 pub fn run_tool(tool: &str, args: &[&str]) -> std::io::Result<std::process::ExitStatus> {
     let path = resolve_tool(tool).ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            format!("{tool} not found"),
-        )
+        std::io::Error::new(std::io::ErrorKind::NotFound, format!("{tool} not found"))
     })?;
     run_at_path(&path, args)
 }
 
 pub fn run_at_path(path: &Path, args: &[&str]) -> std::io::Result<std::process::ExitStatus> {
-    let use_bash = path
-        .extension()
-        .is_none_or(|ext| ext != "exe")
+    let use_bash = path.extension().is_none_or(|ext| ext != "exe")
         && std::fs::read(path)
             .ok()
             .and_then(|bytes| bytes.first().copied())

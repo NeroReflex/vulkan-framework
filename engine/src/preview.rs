@@ -70,7 +70,12 @@ pub fn publish_rgba(width: u32, height: u32, rgba32f: &[u8]) {
     let mut jpeg = Vec::new();
     let encoder = jpeg_encoder::Encoder::new(&mut jpeg, 70);
     if encoder
-        .encode(&rgb, width as u16, height as u16, jpeg_encoder::ColorType::Rgb)
+        .encode(
+            &rgb,
+            width as u16,
+            height as u16,
+            jpeg_encoder::ColorType::Rgb,
+        )
         .is_err()
     {
         return;
@@ -107,7 +112,11 @@ fn serve(mut stream: TcpStream) -> std::io::Result<()> {
             Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {}
             Err(_) => break,
         }
-        let jpeg = state().lock().ok().map(|preview| preview.jpeg.clone()).unwrap_or_default();
+        let jpeg = state()
+            .lock()
+            .ok()
+            .map(|preview| preview.jpeg.clone())
+            .unwrap_or_default();
         if !jpeg.is_empty() {
             write_binary_frame(&mut stream, &jpeg)?;
         }
@@ -133,7 +142,12 @@ fn store_client_text(frame: &[u8]) {
     if !masked || frame.len() < offset + 4 + len {
         return;
     }
-    let mask = [frame[offset], frame[offset + 1], frame[offset + 2], frame[offset + 3]];
+    let mask = [
+        frame[offset],
+        frame[offset + 1],
+        frame[offset + 2],
+        frame[offset + 3],
+    ];
     offset += 4;
     let text: String = frame[offset..offset + len]
         .iter()
@@ -144,10 +158,18 @@ fn store_client_text(frame: &[u8]) {
     if parts.next() != Some("look") {
         return;
     }
-    let Some(dx) = parts.next().and_then(|v| v.parse().ok()) else { return };
-    let Some(dy) = parts.next().and_then(|v| v.parse().ok()) else { return };
-    let Some(forward) = parts.next().and_then(|v| v.parse().ok()) else { return };
-    let Some(strafe) = parts.next().and_then(|v| v.parse().ok()) else { return };
+    let Some(dx) = parts.next().and_then(|v| v.parse().ok()) else {
+        return;
+    };
+    let Some(dy) = parts.next().and_then(|v| v.parse().ok()) else {
+        return;
+    };
+    let Some(forward) = parts.next().and_then(|v| v.parse().ok()) else {
+        return;
+    };
+    let Some(strafe) = parts.next().and_then(|v| v.parse().ok()) else {
+        return;
+    };
     if let Ok(mut preview) = state().lock() {
         preview.look = Some((dx, dy, forward, strafe));
     }
@@ -239,7 +261,9 @@ fn base64(bytes: &[u8]) -> String {
     let mut out = String::new();
     let mut index = 0;
     while index + 3 <= bytes.len() {
-        let n = ((bytes[index] as u32) << 16) | ((bytes[index + 1] as u32) << 8) | bytes[index + 2] as u32;
+        let n = ((bytes[index] as u32) << 16)
+            | ((bytes[index + 1] as u32) << 8)
+            | bytes[index + 2] as u32;
         out.push(TABLE[((n >> 18) & 63) as usize] as char);
         out.push(TABLE[((n >> 12) & 63) as usize] as char);
         out.push(TABLE[((n >> 6) & 63) as usize] as char);

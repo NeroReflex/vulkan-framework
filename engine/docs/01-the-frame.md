@@ -1,6 +1,6 @@
 # 1. The frame
 
-One command buffer per frame skins meshes, draws the G-buffer, runs the GI section, and composites the image. The GI section is recorded by `GILighting::record_rendering_commands` in `global_illumination.rs`. Each of its passes is separated from the next by a full compute and ray-tracing memory barrier, so every pass sees everything the previous one wrote.
+One command buffer per frame skins meshes, draws the G-buffer, runs the GI section, writes ambient occlusion, and composites the image. The GI section is recorded by `GILighting::record_rendering_commands` in `global_illumination.rs`. Each of its passes is separated from the next by a full compute and ray-tracing memory barrier, so every pass sees everything the previous one wrote.
 
 ## Order
 
@@ -22,10 +22,11 @@ flowchart TD
   acc["Accumulate E_ind"]
   ref["Reference path tracer<br/>only when requested"]
   copy["History copy, preview, readback"]
+  ao["Ambient occlusion<br/>SSAO or RTAO, then blur"]
   fin["Final shading"]
   hdr["HDR, UI, present"]
 
-  skin --> mesh --> reset --> begin --> maint --> grid --> upd --> cov --> pub --> pre --> temp --> spat --> shade --> acc --> ref --> copy --> fin --> hdr
+  skin --> mesh --> reset --> begin --> maint --> grid --> upd --> cov --> pub --> pre --> temp --> spat --> shade --> acc --> ref --> copy --> ao --> fin --> hdr
 ```
 
 | Pass | Shader | What it answers |
@@ -44,9 +45,10 @@ flowchart TD
 | Shade | `gi/restir_shade.rgen` | Direct sun light, and the selected surfel's light if it is visible. |
 | Accumulate | `gi/accumulate.comp` | Running mean of the indirect light over up to 32 reprojected frames. |
 | Reference | `gi/reference.rgen` | Ground-truth indirect light, accumulated while the view is still. |
-| Final | `final_rendering.frag` | `albedo * (E_dir + E_ind)`, or a debug view. |
+| Ambient occlusion | `ao/ssao.comp` or `ao/rtao.rgen`, then `ao/ao_blur.comp` | How much of the hemisphere within `AO_RADIUS` is blocked? |
+| Final | `final_rendering.frag` | `albedo * (E_dir + E_ind)`, or a debug view. The indirect term is multiplied by the AO image when the apply toggle is on. |
 
-Hardware ray tracing happens only in the three ray generation passes: surfel update, shade, and reference. All of them use the closest-hit shader `gi/hit.rchit`. It returns the interpolated shading normal facing the ray, the albedo sampled with `textureLod`, the instance id, and the hit distance.
+Hardware ray tracing happens in the surfel update, shade, and reference passes, and in ambient occlusion when RTAO is the selected algorithm. The three GI passes share the closest-hit shader `gi/hit.rchit`. It returns the interpolated shading normal facing the ray, the albedo sampled with `textureLod`, the instance id, and the hit distance. RTAO uses its own closest-hit shader, `ao/rtao.rchit`, which writes only the hit distance. The occlusion passes are recorded only when the image is applied or the ambient-occlusion view is selected. Otherwise the image stays at its cleared value, 1.
 
 The mesh pass orients the G-buffer normal by the side of the triangle that is rasterized: it builds the face normal from screen-space derivatives, turns it toward the eye, and flips the interpolated normal onto that side. Turning the interpolated normal itself toward the eye looks equivalent but is not. At silhouettes the smooth normal can face away from the eye while the triangle faces it, so the normal ends up pointing into the surface and the pixel gets no light at all. Material textures are sampled with their full mip chain and 16× anisotropy.
 

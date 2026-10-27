@@ -26,7 +26,11 @@ pub fn load_scene_json(text: &str) -> Result<SceneGraph, String> {
     let mut names = Vec::new();
     for node in &file.nodes {
         names.push(node.name.clone());
-        let local = Mat4::translation(node.translation[0], node.translation[1], node.translation[2]);
+        let local = Mat4::translation(
+            node.translation[0],
+            node.translation[1],
+            node.translation[2],
+        );
         scene.add_node(Node {
             name: node.name.clone(),
             parent: None,
@@ -40,7 +44,9 @@ pub fn load_scene_json(text: &str) -> Result<SceneGraph, String> {
             let parent = names
                 .iter()
                 .position(|name| name == parent_name)
-                .ok_or_else(|| format!("scene node '{}' has no parent '{parent_name}'", node.name))?;
+                .ok_or_else(|| {
+                    format!("scene node '{}' has no parent '{parent_name}'", node.name)
+                })?;
             scene.nodes_mut()[index].parent = Some(parent);
         }
     }
@@ -66,7 +72,9 @@ pub fn save_scene_json(scene: &SceneGraph, path: &Path) -> Result<(), String> {
     let nodes = scene.nodes();
     let mut out = Vec::new();
     for (index, node) in nodes.iter().enumerate() {
-        let parent = node.parent.map(|parent_index| nodes[parent_index].name.clone());
+        let parent = node
+            .parent
+            .map(|parent_index| nodes[parent_index].name.clone());
         let translation = node.local.transform_point([0.0, 0.0, 0.0]);
         out.push(SceneNodeFileOut {
             name: node.name.clone(),

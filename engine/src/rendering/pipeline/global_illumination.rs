@@ -51,8 +51,8 @@ use vulkan_framework::{
 };
 
 use super::gi_math::{
-    FLUX_SCAN_BLOCK, GRID_BUCKETS, GRID_MAX_ITEMS, GRID_SCAN_BLOCK, LIGHT_TILES, LIGHT_TILE_SIZE,
-    LIGHT_RECORD_STRIDE, MAX_SURFELS, RESERVOIR_STRIDE, STATE_WORDS, SURFEL_STRIDE,
+    FLUX_SCAN_BLOCK, GRID_BUCKETS, GRID_MAX_ITEMS, GRID_SCAN_BLOCK, LIGHT_RECORD_STRIDE,
+    LIGHT_TILE_SIZE, LIGHT_TILES, MAX_SURFELS, RESERVOIR_STRIDE, STATE_WORDS, SURFEL_STRIDE,
     TILE_ENTRY_STRIDE,
 };
 use crate::rendering::resources::skin_asset::SkinnedAsset;
@@ -606,7 +606,15 @@ fn storage_image(
 
 fn full_view(image: Arc<dyn ImageTrait>, name: &str) -> RenderingResult<Arc<ImageView>> {
     Ok(ImageView::new(
-        image, None, None, None, None, None, None, None, None,
+        image,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
         Some(name),
     )?)
 }
@@ -695,7 +703,8 @@ impl GILighting {
         ));
         let gi_set_layout = DescriptorSetLayout::new(device.clone(), gi_bindings.as_slice())?;
 
-        let push_range = PushConstanRange::new(0, 16, [ShaderStageAccessIn::Compute].as_slice().into());
+        let push_range =
+            PushConstanRange::new(0, 16, [ShaderStageAccessIn::Compute].as_slice().into());
         let compute_layout = PipelineLayout::new(
             device.clone(),
             [
@@ -772,10 +781,21 @@ impl GILighting {
                 })
                 .collect::<Vec<_>>()
         };
-        let skin_pipeline = |spv: &[u32], bindings: u32, push: u32, name: &str| -> RenderingResult<Arc<ComputePipeline>> {
-            let layout = DescriptorSetLayout::new(device.clone(), skin_storage_bindings(bindings).as_slice())?;
+        let skin_pipeline = |spv: &[u32],
+                             bindings: u32,
+                             push: u32,
+                             name: &str|
+         -> RenderingResult<Arc<ComputePipeline>> {
+            let layout = DescriptorSetLayout::new(
+                device.clone(),
+                skin_storage_bindings(bindings).as_slice(),
+            )?;
             let ranges: Vec<Arc<PushConstanRange>> = if push > 0 {
-                vec![PushConstanRange::new(0, push, [ShaderStageAccessIn::Compute].as_slice().into())]
+                vec![PushConstanRange::new(
+                    0,
+                    push,
+                    [ShaderStageAccessIn::Compute].as_slice().into(),
+                )]
             } else {
                 vec![]
             };
@@ -791,8 +811,12 @@ impl GILighting {
                 Some(name),
             )?)
         };
-        let skin_animate_channels_pipeline =
-            skin_pipeline(SKIN_ANIMATE_CHANNELS_SPV, 4, 8, "skin_animate_channels_pipeline")?;
+        let skin_animate_channels_pipeline = skin_pipeline(
+            SKIN_ANIMATE_CHANNELS_SPV,
+            4,
+            8,
+            "skin_animate_channels_pipeline",
+        )?;
         let skin_bind_pose_pipeline =
             skin_pipeline(SKIN_ANIMATE_BIND_POSE_SPV, 3, 0, "skin_bind_pose_pipeline")?;
         let skin_animate_pipeline = skin_pipeline(SKIN_ANIMATE_SPV, 2, 0, "skin_animate_pipeline")?;
@@ -820,9 +844,24 @@ impl GILighting {
                 &[],
                 "gi_light_tiles",
             )?,
-            storage_buffer(&device, 3 * pixels * RESERVOIR_STRIDE as u64, &[], "gi_reservoirs")?,
-            storage_buffer(&device, max * LIGHT_RECORD_STRIDE as u64, &[], "gi_light_records")?,
-            storage_image(&device, render_area, CommonImageFormat::r32_uint, "gi_surfel_overlay")?,
+            storage_buffer(
+                &device,
+                3 * pixels * RESERVOIR_STRIDE as u64,
+                &[],
+                "gi_reservoirs",
+            )?,
+            storage_buffer(
+                &device,
+                max * LIGHT_RECORD_STRIDE as u64,
+                &[],
+                "gi_light_records",
+            )?,
+            storage_image(
+                &device,
+                render_area,
+                CommonImageFormat::r32_uint,
+                "gi_surfel_overlay",
+            )?,
         ];
         for name in GI_IMAGE_NAMES {
             unallocated.push(storage_image(
@@ -864,7 +903,10 @@ impl GILighting {
             let overlay = full_view(allocated[16].image(), "gi_surfel_overlay_view")?;
             let mut gi_images = Vec::with_capacity(GI_IMAGE_COUNT);
             for (index, name) in GI_IMAGE_NAMES.iter().enumerate() {
-                gi_images.push(full_view(allocated[17 + index].image(), format!("{name}_view").as_str())?);
+                gi_images.push(full_view(
+                    allocated[17 + index].image(),
+                    format!("{name}_view").as_str(),
+                )?);
             }
             let sbt = |pipeline: &Arc<RaytracingPipeline>, mem: &mut dyn MemoryManagerTrait| {
                 RaytracingBindingTables::new(
@@ -878,10 +920,24 @@ impl GILighting {
             let surfel_update_sbt = sbt(&surfel_update_pipeline, mem_manager.deref_mut())?;
             let shade_sbt = sbt(&shade_pipeline, mem_manager.deref_mut())?;
             let reference_sbt = sbt(&reference_pipeline, mem_manager.deref_mut())?;
-            (buffers, overlay, gi_images, surfel_update_sbt, shade_sbt, reference_sbt)
+            (
+                buffers,
+                overlay,
+                gi_images,
+                surfel_update_sbt,
+                shade_sbt,
+                reference_sbt,
+            )
         };
 
-        let (node_world, bone_palette, instance_generation, instance_bone_base, preview_image, preview_buffer) = {
+        let (
+            node_world,
+            bone_palette,
+            instance_generation,
+            instance_bone_base,
+            preview_image,
+            preview_buffer,
+        ) = {
             let mut mem_manager = memory_manager.lock().unwrap();
             let matrix_bytes = (NODE_CAPACITY as u64) * 64;
             let bone_bytes = (MAX_PALETTE_BONES as u64) * 64;
@@ -924,16 +980,18 @@ impl GILighting {
             let preview_readback = mem_manager.allocate_resources(
                 &MemoryType::device_local_and_host_visible(),
                 &MemoryPoolFeatures::default(),
-                vec![Buffer::new(
-                    device.clone(),
-                    ConcreteBufferDescriptor::new(
-                        [BufferUseAs::TransferDst].as_slice().into(),
-                        (PREVIEW_WIDTH as u64) * (PREVIEW_HEIGHT as u64) * 16,
-                    ),
-                    None,
-                    Some("preview_readback"),
-                )?
-                .into()],
+                vec![
+                    Buffer::new(
+                        device.clone(),
+                        ConcreteBufferDescriptor::new(
+                            [BufferUseAs::TransferDst].as_slice().into(),
+                            (PREVIEW_WIDTH as u64) * (PREVIEW_HEIGHT as u64) * 16,
+                        ),
+                        None,
+                        Some("preview_readback"),
+                    )?
+                    .into(),
+                ],
                 MemoryManagementTags::default()
                     .with_name("preview_readback".to_string())
                     .with_size(MemoryManagementTagSize::MediumSmall),
@@ -982,16 +1040,18 @@ impl GILighting {
             let allocated = mem_manager.allocate_resources(
                 &MemoryType::host_visible_and_coherent(),
                 &MemoryPoolFeatures::default(),
-                vec![Buffer::new(
-                    device.clone(),
-                    ConcreteBufferDescriptor::new(
-                        [BufferUseAs::TransferDst].as_slice().into(),
-                        offset,
-                    ),
-                    None,
-                    Some("gi_readback"),
-                )?
-                .into()],
+                vec![
+                    Buffer::new(
+                        device.clone(),
+                        ConcreteBufferDescriptor::new(
+                            [BufferUseAs::TransferDst].as_slice().into(),
+                            offset,
+                        ),
+                        None,
+                        Some("gi_readback"),
+                    )?
+                    .into(),
+                ],
                 MemoryManagementTags::default()
                     .with_name("gi_readback".to_string())
                     .with_size(MemoryManagementTagSize::Small),
@@ -1049,10 +1109,18 @@ impl GILighting {
                     )
                     .unwrap();
                 binder
-                    .bind_storage_images_with_same_layout(19, ImageLayout::General, [overlay].as_slice())
+                    .bind_storage_images_with_same_layout(
+                        19,
+                        ImageLayout::General,
+                        [overlay].as_slice(),
+                    )
                     .unwrap();
                 binder
-                    .bind_storage_images_with_same_layout(20, ImageLayout::General, images.as_slice())
+                    .bind_storage_images_with_same_layout(
+                        20,
+                        ImageLayout::General,
+                        images.as_slice(),
+                    )
                     .unwrap();
             })?;
         }
@@ -1102,11 +1170,14 @@ impl GILighting {
             MipmapMode::ModeNearest,
             0.0,
         )?;
-        let gibuffer_descriptor_set =
-            DescriptorSet::new(gibuffer_descriptor_pool, gibuffer_descriptor_set_layout.clone())?;
+        let gibuffer_descriptor_set = DescriptorSet::new(
+            gibuffer_descriptor_pool,
+            gibuffer_descriptor_set_layout.clone(),
+        )?;
         {
             let overlay = overlay.clone();
-            let sampled: Vec<Arc<ImageView>> = GI_SAMPLED.iter().map(|&i| gi_images[i].clone()).collect();
+            let sampled: Vec<Arc<ImageView>> =
+                GI_SAMPLED.iter().map(|&i| gi_images[i].clone()).collect();
             gibuffer_descriptor_set.bind_resources(|binder| {
                 binder
                     .bind_combined_images_samplers_with_same_layout_and_sampler(
@@ -1127,7 +1198,10 @@ impl GILighting {
             })?;
         }
 
-        let timestamps = match TimestampQueryPool::new(device.clone(), frames_in_flight.max(1) * TIMESTAMPS_PER_FRAME) {
+        let timestamps = match TimestampQueryPool::new(
+            device.clone(),
+            frames_in_flight.max(1) * TIMESTAMPS_PER_FRAME,
+        ) {
             Ok(pool) => Some(pool),
             Err(err) => {
                 eprintln!("GI timestamps disabled: {err:?}");
@@ -1384,7 +1458,12 @@ impl GILighting {
         let items = self
             .readback_regions
             .iter()
-            .map(|r| (r.item, all[r.offset as usize..(r.offset + r.size) as usize].to_vec()))
+            .map(|r| {
+                (
+                    r.item,
+                    all[r.offset as usize..(r.offset + r.size) as usize].to_vec(),
+                )
+            })
             .collect();
         Some(GiReadback {
             width: self.renderarea_width,
@@ -1525,7 +1604,10 @@ impl GILighting {
                 self.overlay.image().into(),
             );
             for view in self.gi_images.iter() {
-                recorder.clear_color_image(ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0), view.image().into());
+                recorder.clear_color_image(
+                    ColorClearValues::Vec4(0.0, 0.0, 0.0, 0.0),
+                    view.image().into(),
+                );
             }
             recorder.pipeline_barriers(images.iter().map(|view| {
                 self.image_barrier(
@@ -1563,7 +1645,11 @@ impl GILighting {
         self.record_transform_upload(recorder);
 
         if let Some(pool) = &self.timestamps {
-            recorder.reset_query_pool(pool, frame_slot as u32 * TIMESTAMPS_PER_FRAME, TIMESTAMPS_PER_FRAME);
+            recorder.reset_query_pool(
+                pool,
+                frame_slot as u32 * TIMESTAMPS_PER_FRAME,
+                TIMESTAMPS_PER_FRAME,
+            );
             self.timestamps_written.lock().unwrap()[frame_slot] = true;
         }
         self.timestamp(recorder, frame_slot, 0);
@@ -1586,32 +1672,75 @@ impl GILighting {
 
         // ---- pool maintenance ----
         if reuse_previous_frame == 0 || gi_flags & GI_FLAG_RESET != 0 {
-            self.dispatch(recorder, &self.pool_reset_pipeline, &csets, 0, (surfel_groups, 1));
+            self.dispatch(
+                recorder,
+                &self.pool_reset_pipeline,
+                &csets,
+                0,
+                (surfel_groups, 1),
+            );
             Self::barrier(recorder);
         }
         self.dispatch(recorder, &self.frame_begin_pipeline, &csets, 0, (1, 1));
         Self::barrier(recorder);
-        self.dispatch(recorder, &self.maintain_pipeline, &csets, 0, (surfel_groups, 1));
+        self.dispatch(
+            recorder,
+            &self.maintain_pipeline,
+            &csets,
+            0,
+            (surfel_groups, 1),
+        );
         Self::barrier(recorder);
         self.timestamp(recorder, frame_slot, 1);
 
         // ---- hashed grid ----
         let scan_blocks = GRID_BUCKETS / GRID_SCAN_BLOCK;
-        self.dispatch(recorder, &self.grid_build_pipeline, &csets, 0, (GRID_BUCKETS / 256, 1));
+        self.dispatch(
+            recorder,
+            &self.grid_build_pipeline,
+            &csets,
+            0,
+            (GRID_BUCKETS / 256, 1),
+        );
         Self::barrier(recorder);
-        self.dispatch(recorder, &self.grid_build_pipeline, &csets, 1, (surfel_groups, 1));
+        self.dispatch(
+            recorder,
+            &self.grid_build_pipeline,
+            &csets,
+            1,
+            (surfel_groups, 1),
+        );
         Self::barrier(recorder);
         for phase in 0..3 {
             let groups = if phase == 1 { 1 } else { scan_blocks };
-            self.dispatch(recorder, &self.grid_scan_pipeline, &csets, phase, (groups, 1));
+            self.dispatch(
+                recorder,
+                &self.grid_scan_pipeline,
+                &csets,
+                phase,
+                (groups, 1),
+            );
             Self::barrier(recorder);
         }
-        self.dispatch(recorder, &self.grid_build_pipeline, &csets, 2, (surfel_groups, 1));
+        self.dispatch(
+            recorder,
+            &self.grid_build_pipeline,
+            &csets,
+            2,
+            (surfel_groups, 1),
+        );
         Self::barrier(recorder);
         self.timestamp(recorder, frame_slot, 2);
 
         // ---- surfel lighting ----
-        self.trace(recorder, &self.surfel_update_pipeline, &self.surfel_update_sbt, &rsets, MAX_SURFELS, 1);
+        self.trace(
+            recorder,
+            &self.surfel_update_pipeline,
+            &self.surfel_update_sbt,
+            &rsets,
+            MAX_SURFELS,
+            1,
+        );
         Self::barrier(recorder);
         self.timestamp(recorder, frame_slot, 3);
 
@@ -1649,7 +1778,14 @@ impl GILighting {
         self.dispatch(recorder, &self.spatial_pipeline, &csets, 0, tiles8);
         Self::barrier(recorder);
         self.timestamp(recorder, frame_slot, 7);
-        self.trace(recorder, &self.shade_pipeline, &self.shade_sbt, &rsets, width, height);
+        self.trace(
+            recorder,
+            &self.shade_pipeline,
+            &self.shade_sbt,
+            &rsets,
+            width,
+            height,
+        );
         Self::barrier(recorder);
         self.timestamp(recorder, frame_slot, 8);
         self.dispatch(recorder, &self.accumulate_pipeline, &csets, 0, tiles8);
@@ -1657,7 +1793,14 @@ impl GILighting {
         self.timestamp(recorder, frame_slot, 9);
 
         if gi_flags & GI_FLAG_REFERENCE != 0 {
-            self.trace(recorder, &self.reference_pipeline, &self.reference_sbt, &rsets, width, height);
+            self.trace(
+                recorder,
+                &self.reference_pipeline,
+                &self.reference_sbt,
+                &rsets,
+                width,
+                height,
+            );
             Self::barrier(recorder);
         }
         self.timestamp(recorder, frame_slot, 10);
@@ -1672,7 +1815,8 @@ impl GILighting {
                 .into(),
         )
         .into()]);
-        let color_layers = ImageSubresourceLayers::new(ImageAspects::from([ImageAspect::Color].as_ref()), 0, 0, 1);
+        let color_layers =
+            ImageSubresourceLayers::new(ImageAspects::from([ImageAspect::Color].as_ref()), 0, 0, 1);
         recorder.copy_image(
             ImageLayout::General,
             color_layers.clone(),
@@ -1874,7 +2018,8 @@ impl GILighting {
             };
             recorder.bind_compute_pipeline(self.skin_animate_channels_pipeline.clone());
             recorder.bind_descriptor_sets_for_compute_pipeline(
-                self.skin_animate_channels_pipeline.get_parent_pipeline_layout(),
+                self.skin_animate_channels_pipeline
+                    .get_parent_pipeline_layout(),
                 0,
                 [channels_set].as_slice(),
             );
@@ -1882,7 +2027,8 @@ impl GILighting {
             push[0..4].copy_from_slice(&view.time_ticks.to_le_bytes());
             push[4..8].copy_from_slice(&view.channel_count.to_le_bytes());
             recorder.push_constant(
-                self.skin_animate_channels_pipeline.get_parent_pipeline_layout(),
+                self.skin_animate_channels_pipeline
+                    .get_parent_pipeline_layout(),
                 [ShaderStageAccessIn::Compute].as_slice().into(),
                 0,
                 &push,
@@ -1919,18 +2065,16 @@ impl GILighting {
             (view.bone_count + SKIN_PALETTE_GROUP_SIZE - 1) / SKIN_PALETTE_GROUP_SIZE;
         recorder.dispatch(palette_groups.max(1), 1, 1);
 
-        recorder.pipeline_barriers([
-            BufferMemoryBarrier::new(
-                [PipelineStage::ComputeShader].as_slice().into(),
-                [MemoryAccessAs::ShaderWrite].as_slice().into(),
-                [PipelineStage::ComputeShader].as_slice().into(),
-                [MemoryAccessAs::ShaderRead].as_slice().into(),
-                BufferSubresourceRange::new(self.bone_palette.clone(), 0, self.bone_palette.size()),
-                self.queue_family.clone(),
-                self.queue_family.clone(),
-            )
-            .into(),
-        ]);
+        recorder.pipeline_barriers([BufferMemoryBarrier::new(
+            [PipelineStage::ComputeShader].as_slice().into(),
+            [MemoryAccessAs::ShaderWrite].as_slice().into(),
+            [PipelineStage::ComputeShader].as_slice().into(),
+            [MemoryAccessAs::ShaderRead].as_slice().into(),
+            BufferSubresourceRange::new(self.bone_palette.clone(), 0, self.bone_palette.size()),
+            self.queue_family.clone(),
+            self.queue_family.clone(),
+        )
+        .into()]);
 
         recorder.bind_compute_pipeline(self.skin_deform_pipeline.clone());
         recorder.bind_descriptor_sets_for_compute_pipeline(
@@ -2002,8 +2146,12 @@ impl GILighting {
         }
         let src = self.gi_images[IMG_EIND].image();
         let dst = self.preview_image.image();
-        let src_range = ImageSubresourceRange::from(src.clone() as Arc<dyn vulkan_framework::image::ImageTrait>);
-        let dst_range = ImageSubresourceRange::from(dst.clone() as Arc<dyn vulkan_framework::image::ImageTrait>);
+        let src_range = ImageSubresourceRange::from(
+            src.clone() as Arc<dyn vulkan_framework::image::ImageTrait>
+        );
+        let dst_range = ImageSubresourceRange::from(
+            dst.clone() as Arc<dyn vulkan_framework::image::ImageTrait>
+        );
         recorder.pipeline_barriers([
             ImageMemoryBarrier::new(
                 [
@@ -2065,12 +2213,7 @@ impl GILighting {
         recorder.copy_image_to_buffer(
             dst,
             ImageLayout::TransferSrcOptimal,
-            ImageSubresourceLayers::new(
-                ImageAspects::from([ImageAspect::Color].as_ref()),
-                0,
-                0,
-                1,
-            ),
+            ImageSubresourceLayers::new(ImageAspects::from([ImageAspect::Color].as_ref()), 0, 0, 1),
             self.preview_buffer.clone() as Arc<dyn BufferTrait>,
             0,
             ImageDimensions::from(Image2DDimensions::new(PREVIEW_WIDTH, PREVIEW_HEIGHT)),

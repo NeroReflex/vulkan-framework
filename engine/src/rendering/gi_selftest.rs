@@ -25,7 +25,12 @@ impl Report {
 }
 
 fn word(bytes: &[u8], offset: usize) -> u32 {
-    u32::from_le_bytes([bytes[offset], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3]])
+    u32::from_le_bytes([
+        bytes[offset],
+        bytes[offset + 1],
+        bytes[offset + 2],
+        bytes[offset + 3],
+    ])
 }
 
 fn float(bytes: &[u8], offset: usize) -> f32 {
@@ -87,7 +92,10 @@ pub fn check(readback: &GiReadback) -> Report {
         }
         owner[id as usize] += 1;
         let flags = word(surfels, id as usize * SURFEL_STRIDE + SURFEL_OFFSET_FLAGS);
-        report.check(flags & SURFEL_FLAG_ALIVE != 0, format!("alive id {id} without ALIVE flag"));
+        report.check(
+            flags & SURFEL_FLAG_ALIVE != 0,
+            format!("alive id {id} without ALIVE flag"),
+        );
         let r = float(surfels, id as usize * SURFEL_STRIDE + SURFEL_OFFSET_RADIUS);
         report.check(
             (SURFEL_MIN_RADIUS..=SURFEL_MAX_RADIUS).contains(&r),
@@ -101,7 +109,10 @@ pub fn check(readback: &GiReadback) -> Report {
         }
         owner[id as usize] += 2;
         let flags = word(surfels, id as usize * SURFEL_STRIDE + SURFEL_OFFSET_FLAGS);
-        report.check(flags & SURFEL_FLAG_ALIVE == 0, format!("free id {id} still ALIVE"));
+        report.check(
+            flags & SURFEL_FLAG_ALIVE == 0,
+            format!("free id {id} still ALIVE"),
+        );
     }
     let bad_owner = owner.iter().filter(|&&o| o != 1 && o != 2).count();
     report.check(
@@ -144,20 +155,32 @@ pub fn check(readback: &GiReadback) -> Report {
         expected_items == total_items,
         format!("grid holds {total_items} items, expected {expected_items}"),
     );
-    report.check(missing == 0, format!("{missing} surfel/bucket memberships missing"));
+    report.check(
+        missing == 0,
+        format!("{missing} surfel/bucket memberships missing"),
+    );
     report.check(
         level_mask == state[ST_LEVEL_MASK],
-        format!("level mask {level_mask:#x} vs GPU {:#x}", state[ST_LEVEL_MASK]),
+        format!(
+            "level mask {level_mask:#x} vs GPU {:#x}",
+            state[ST_LEVEL_MASK]
+        ),
     );
     let strays = grid_items[..total_items.min(grid_items.len())]
         .iter()
         .filter(|&&id| (id as usize) >= max || !is_survivor[id as usize])
         .count();
-    report.check(strays == 0, format!("{strays} grid items are not survivors"));
+    report.check(
+        strays == 0,
+        format!("{strays} grid items are not survivors"),
+    );
 
     // ---- lights: records, integer CDF and presampled tiles ----
     let light_count = state[ST_LIGHT_COUNT] as usize;
-    report.check(light_count == alive_count, "light count differs from the alive count");
+    report.check(
+        light_count == alive_count,
+        "light count differs from the alive count",
+    );
     let lum = |c: &[f32]| 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
     let mut lit = 0usize;
     let mut area_violations = 0usize;
@@ -202,10 +225,17 @@ pub fn check(readback: &GiReadback) -> Report {
         stale_free_records == 0,
         format!("{stale_free_records} free slots still carry a light record"),
     );
-    report.check(area_violations == 0, format!("{area_violations} surfels with area above pi r^2"));
+    report.check(
+        area_violations == 0,
+        format!("{area_violations} surfels with area above pi r^2"),
+    );
     report.check(
         f32::from_bits(state[ST_MAX_FLUX]) == max_flux,
-        format!("max flux {} vs GPU {}", max_flux, f32::from_bits(state[ST_MAX_FLUX])),
+        format!(
+            "max flux {} vs GPU {}",
+            max_flux,
+            f32::from_bits(state[ST_MAX_FLUX])
+        ),
     );
     // The CDF is an integer prefix sum of q_i in [1, FLUX_QUANT_MAX] for lights
     // (0 otherwise), each within one unit of the CPU quantization (GPU division
@@ -228,7 +258,10 @@ pub fn check(readback: &GiReadback) -> Report {
         }
         acc = flux_cdf[i] as u64;
     }
-    report.check(cdf_errors == 0, format!("{cdf_errors} flux CDF entries are inconsistent"));
+    report.check(
+        cdf_errors == 0,
+        format!("{cdf_errors} flux CDF entries are inconsistent"),
+    );
     report.check(
         light_count == 0 || state[ST_TOTAL_FLUX] as u64 == acc,
         format!("total {} vs CDF end {acc}", state[ST_TOTAL_FLUX]),
@@ -305,8 +338,14 @@ pub fn check(readback: &GiReadback) -> Report {
         }
         let _ = albedo[i * 4];
     }
-    report.check(bad_ids == 0, format!("{bad_ids} overlay pixels reference dead surfels"));
-    report.check(bad_values == 0, format!("{bad_values} negative or non-finite irradiance values"));
+    report.check(
+        bad_ids == 0,
+        format!("{bad_ids} overlay pixels reference dead surfels"),
+    );
+    report.check(
+        bad_values == 0,
+        format!("{bad_values} negative or non-finite irradiance values"),
+    );
     let coverage_ratio = covered as f64 / valid_pixels.max(1) as f64;
     report.info(format!(
         "coverage: {:.2}% of {valid_pixels} surface pixels have weight >= 0.5",

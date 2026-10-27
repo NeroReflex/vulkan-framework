@@ -71,7 +71,12 @@ pub fn level_byte_size(format: vk::Format, width: u32, height: u32) -> Option<u6
 
 /// Tightly packed levels, largest first. This is the DDS payload order and the
 /// order the mapped staging buffer uses before `copy_buffer_to_image`.
-pub fn mip_chain(format: vk::Format, width: u32, height: u32, levels: u32) -> Option<Vec<MipLevel>> {
+pub fn mip_chain(
+    format: vk::Format,
+    width: u32,
+    height: u32,
+    levels: u32,
+) -> Option<Vec<MipLevel>> {
     if levels == 0 {
         return None;
     }
@@ -115,6 +120,9 @@ mod tests {
     fn astc_4x4_block_is_sixteen_bytes() {
         let footprint = block_footprint(vk::Format::ASTC_4X4_SRGB_BLOCK).unwrap();
         assert_eq!(footprint.bytes_per_block, 16);
-        assert_eq!(level_byte_size(vk::Format::ASTC_4X4_SRGB_BLOCK, 4, 4), Some(16));
+        assert_eq!(
+            level_byte_size(vk::Format::ASTC_4X4_SRGB_BLOCK, 4, 4),
+            Some(16)
+        );
     }
 }

@@ -1,0 +1,62 @@
+// Edge-aware blur of the raw ambient-occlusion image.
+#extension GL_GOOGLE_include_directive : enable
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+#define STATUS_DESCRIPTOR_SET 0
+#include "../status.glsl"
+
+#define GBUFFER_DESCRIPTOR_SET 1
+#include "../gbuffer.glsl"
+
+#include "../gi/common.glsl"
+#include "../gi/pixel.glsl"
+#include "ao.glsl"
+
+layout(set = 2, binding = 0, r16f) uniform readonly image2D ao_raw;
+layout(set = 2, binding = 1, r16f) uniform writeonly image2D ao_out;
+
+void main() {
+    const ivec2 px = ivec2(gl_GlobalInvocationID.xy);
+    if (!in_render_area(px)) {
+        return;
+    }
+
+    float center = imageLoad(ao_raw, px).r;
+    vec3 pos, n, albedo;
+    uint inst;
+    if (!load_pixel(px, pos, n, albedo, inst)) {
+        imageStore(ao_out, px, vec4(center, 0.0, 0.0, 1.0));
+        return;
+    }
+
+    float dist_eye = distance(get_eye_position(), pos);
+    float sum = 0.0;
+    float wsum = 0.0;
+    for (int dy = -AO_BLUR_RADIUS; dy <= AO_BLUR_RADIUS; dy++) {
+        for (int dx = -AO_BLUR_RADIUS; dx <= AO_BLUR_RADIUS; dx++) {
+            ivec2 q = px + ivec2(dx, dy);
+            if (!in_render_area(q)) {
+                continue;
+            }
+            vec3 qpos, qn, qalbedo;
+            uint qinst;
+            if (!load_pixel(q, qpos, qn, qalbedo, qinst)) {
+                continue;
+            }
+            if (dot(n, qn) < AO_BLUR_NORMAL_COS) {
+                continue;
+            }
+            if (abs(dot(qpos - pos, n)) > AO_BLUR_PLANE * dist_eye) {
+                continue;
+            }
+            float d2 = float(dx * dx + dy * dy);
+            float w = exp(-d2 / (2.0 * AO_BLUR_SIGMA * AO_BLUR_SIGMA));
+            sum += imageLoad(ao_raw, q).r * w;
+            wsum += w;
+        }
+    }
+
+    float ao = wsum > 0.0 ? sum / wsum : center;
+    imageStore(ao_out, px, vec4(ao, 0.0, 0.0, 1.0));
+}

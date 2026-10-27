@@ -112,7 +112,10 @@ impl Sdl2Input {
 
     pub fn prepare_render(&mut self, ui: &Ui, window: &Window) {
         let io = ui.io();
-        if io.config_flags.contains(ConfigFlags::NO_MOUSE_CURSOR_CHANGE) {
+        if io
+            .config_flags
+            .contains(ConfigFlags::NO_MOUSE_CURSOR_CHANGE)
+        {
             return;
         }
         let mouse_util = window.subsystem().sdl().mouse();

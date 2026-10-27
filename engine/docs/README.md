@@ -35,6 +35,7 @@ Nothing in this pipeline sorts or moves surfels. A surfel keeps its slot from bi
 | Surfel record, bindings, grid, lights | `engine/shaders/gi/surfels.glsl` |
 | Every GI pass | `engine/shaders/gi/*.comp`, `*.rgen` |
 | Final shading and debug views | `engine/shaders/final_rendering/final_rendering.frag` |
+| Ambient occlusion | `engine/src/rendering/pipeline/ambient_occlusion.rs`, `engine/shaders/ao/` |
 | Self-test, capture writer, compare tool | `engine/src/rendering/gi_selftest.rs`, `gi_capture.rs`, `engine/src/bin/artrtic-compare.rs` |
 
 ## Quick checks

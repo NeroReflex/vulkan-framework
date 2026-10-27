@@ -1,0 +1,58 @@
+// Ray-traced ambient occlusion. Cosine-weighted rays of length AO_RADIUS.
+// A hit contributes (1 - t/radius)^2, so a nearby surface occludes more than
+// one at the end of the ray. The average of those weights is the occlusion.
+#extension GL_EXT_ray_tracing : require
+#extension GL_GOOGLE_include_directive : enable
+
+#define RT_DESCRIPTOR_SET 0
+#include "../rt_descriptor_set.glsl"
+
+#define STATUS_DESCRIPTOR_SET 1
+#include "../status.glsl"
+
+#define GBUFFER_DESCRIPTOR_SET 2
+#include "../gbuffer.glsl"
+
+#include "../gi/common.glsl"
+#include "../gi/pixel.glsl"
+#include "ao.glsl"
+
+layout(location = 0) rayPayloadEXT float ao_hit_t;
+
+layout(set = 3, binding = 0, r16f) uniform image2D ao_raw;
+
+void main() {
+    const ivec2 px = ivec2(gl_LaunchIDEXT.xy);
+    if (!in_render_area(px)) {
+        return;
+    }
+
+    vec3 pos, n, albedo;
+    uint inst;
+    float ao = 1.0;
+    if (load_pixel(px, pos, n, albedo, inst)) {
+        vec3 origin = offset_origin(pos, n);
+        uint seed = rng_seed(uint(px.x), uint(px.y), 0xA0A0u);
+        float occ = 0.0;
+        for (int i = 0; i < RTAO_RAYS; i++) {
+            vec3 dir = sample_cosine(n, rng_float(seed), rng_float(seed));
+            ao_hit_t = -1.0;
+            traceRayEXT(
+                topLevelAS,
+                gl_RayFlagsOpaqueEXT,
+                0xff, 0, 0, 0,
+                origin, RAY_T_MIN, dir, AO_RADIUS,
+                0
+            );
+            float t = ao_hit_t;
+            if (t >= 0.0) {
+                float u = clamp(t / AO_RADIUS, 0.0, 1.0);
+                float w = 1.0 - u;
+                occ += w * w;
+            }
+        }
+        ao = clamp(1.0 - occ / float(RTAO_RAYS), 0.0, 1.0);
+    }
+
+    imageStore(ao_raw, px, vec4(ao, 0.0, 0.0, 1.0));
+}

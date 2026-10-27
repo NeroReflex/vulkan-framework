@@ -142,9 +142,7 @@ pub fn validate_data_blob(data: &[u8]) -> std::result::Result<(), String> {
         if payload_len != expected {
             return Err(format!(
                 "DDS payload is {payload_len} bytes, expected {expected} for {}x{} {} mips",
-                header.width,
-                header.height,
-                header.mip_levels
+                header.width, header.height, header.mip_levels
             ));
         }
     }
@@ -189,6 +187,9 @@ mod tests {
             });
             validated += 1;
         }
-        assert_eq!(validated, 42, "expected 42 BC7 textures in crytek_sponza.tar");
+        assert_eq!(
+            validated, 42,
+            "expected 42 BC7 textures in crytek_sponza.tar"
+        );
     }
 }
