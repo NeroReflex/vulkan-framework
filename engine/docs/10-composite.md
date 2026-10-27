@@ -6,6 +6,14 @@ After the GI section, `system.rs` runs final shading, HDR, the optional UI compo
 
 `final_rendering.frag` reads the G-buffer albedo, the overlay (`surfels_buffer`), and four GI images (`gibuffer[4]` = `IMG_EIND`, `IMG_EDIR`, `IMG_EREF`, `IMG_COVERAGE`). What it writes depends on `debug_data.view_mode`:
 
+```mermaid
+flowchart LR
+  gb["G-buffer albedo"] --> fin
+  ov["surfel_overlay<br/>dominant id"] --> fin
+  gi["IMG_EIND, IMG_EDIR,<br/>IMG_EREF, IMG_COVERAGE"] --> fin["final_rendering.frag"]
+  fin --> out["view_mode"]
+```
+
 | View | Index | Output |
 |---|---|---|
 | Final | 0 | \(\rho\,(E_\text{dir} + E_\text{ind})\) |
@@ -20,6 +28,8 @@ After the GI section, `system.rs` runs final shading, HDR, the optional UI compo
 Sky pixels are black in every view except coverage. The three reference views switch the path tracer on automatically (`DebugState::reference_active`). They are meaningful only once it has accumulated for a while: it restarts whenever the camera moves. The GI image does not converge to the reference. With the camera still it converges to the surfel cache's own answer, which differs from the reference by the error measured in chapter 11.
 
 "Show surfels" with the Final view selects the surfel-id view.
+
+That view is a map of **who wins at this pixel**, not a drawing of the disks. Coverage stores the dominant surfel id in `surfel_overlay`; the shader hashes the id into a color and mixes it over the shaded image. Adjacent pixels of the same color share the same winner. The disks are larger than those color patches and overlap (chapter 6): several kernels can be nonzero at one point, and the partition of unity splits the point among them. A surface that is a continuous quilt of colors is covered. Gaps in the tint are holes (`id == 0xFFFFFFFF`). The coverage view (index 2) shows the kernel sum itself, which is the quantity spawn and prune actually use.
 
 ## The debug panel
 

@@ -6,6 +6,17 @@ A surfel is a slot index into `surfels[]`. It is allocated from a free stack, li
 
 `free_ids[0 .. state[ST_FREE])` is a stack of free slots.
 
+```mermaid
+flowchart LR
+  subgraph stack["free_ids"]
+    direction LR
+    A["[0]"] --- B["…"] --- T["[ST_FREE − 1]<br/>top"]
+  end
+  pop["surfel_alloc<br/>update, coverage"] -->|"atomicAdd(ST_FREE, −1)"| T
+  T -->|"id"| pop
+  maint["maintain"] -->|"atomicAdd(ST_FREE, +1)"| stack
+```
+
 - **Pop** is `surfel_alloc()`: `atomicAdd(state[ST_FREE], -1)`, then read `free_ids[prev - 1]`. When the counter was already 0, the pop puts the 1 back, counts `ST_SPAWN_FAILED`, and returns `INVALID_ID`. Only the surfel update and coverage passes pop.
 - **Push** happens only in maintain: `free_ids[atomicAdd(state[ST_FREE], 1)] = id`.
 
@@ -17,6 +28,25 @@ No pass both pushes and pops, so within a pass the counter only goes down, apart
 
 `alive_ids` holds two lists of `MAX_SURFELS` ids. `alive_in_base()` and `alive_out_base()` pick them by `frame_index` parity.
 
+```mermaid
+flowchart TD
+  begin["frame begin<br/>ST_ALIVE_IN ← ST_ALIVE_OUT"]
+  in["alive_ids[in_base .. in_base + ST_ALIVE_IN)"]
+  maint["maintain"]
+  surv["output[0 .. ST_SURVIVORS)<br/>survivors"]
+  born["output[ST_SURVIVORS .. ST_ALIVE_OUT)<br/>newborns this frame"]
+  grid["grid + surfel update<br/>exactly the survivors"]
+  lights["publish CDF<br/>survivors and newborns"]
+  begin --> in --> maint
+  maint -->|keep| surv
+  maint -->|evict| free["free stack"]
+  surv --> grid
+  surv --> born
+  update["surfel update, coverage"] -->|alloc + init| born
+  surv --> lights
+  born --> lights
+```
+
 1. **Frame begin** copies `ST_ALIVE_OUT` into `ST_ALIVE_IN` and zeroes the per-frame counters.
 2. **Maintain** walks the input list. Survivors are appended to the output list with `surfel_push_alive`.
 3. **Grid build** phase 0 freezes `ST_SURVIVORS = ST_ALIVE_OUT`. The grid and the surfel update launch cover exactly those ids.
@@ -27,6 +57,19 @@ No pass both pushes and pops, so within a pass the counter only goes down, apart
 `surfel_init()` writes a complete record and its mirrors. It bumps `generation`, sets `area = πr²` with `area_n = 0` (the first area sample replaces it), clears `surfel_light` and `light_rec`, and pushes the id on the output list. A screen-spawned surfel starts with `e_dir_n = 0`: it is not a light until its first update has measured its direct light. A ray-spawned surfel is born with the direct light measured at the hit, so it is a light in the same frame.
 
 ## Eviction
+
+```mermaid
+flowchart TD
+  id["alive_ids[in][i]"] --> flags{"ALIVE and not DOOMED?"}
+  flags -->|no| evict
+  flags -->|yes| inst{"instance still there<br/>same generation?"}
+  inst -->|no| evict
+  inst -->|yes| dist{"|c − eye| ≤ 6000?"}
+  dist -->|no| evict
+  dist -->|yes| seen{"last_seen recent enough?<br/>skipped if cache_settled"}
+  seen -->|no| evict["clear flags and light<br/>push id on free stack"]
+  seen -->|yes| keep["write world c, n<br/>refresh geo, nrm<br/>push id on output list"]
+```
 
 Maintain keeps a surfel only if all of these hold:
 

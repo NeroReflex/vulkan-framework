@@ -18,6 +18,19 @@ A uniform point `q` on the disk serves both the area and the direct estimate. A 
 
 The hit point of the second ray is where the surface actually is under `q`. That point, raised by `RAY_NORMAL_OFFSET`, becomes the origin `ou` for the direct and indirect rays.
 
+```mermaid
+flowchart TD
+  c["center c, normal n, radius r"] --> q["uniform disk point q"]
+  q --> probe["visibility: c + n h  →  q + n h"]
+  probe -->|blocked| air["off surface: area 0"]
+  probe -->|clear| down["closest: q + n h  along −n, t ≤ 2h"]
+  down -->|miss or n disagree| air
+  down -->|hit| on["on surface at payload.position<br/>albedo_q, origin ou"]
+  on --> dir["direct EMA at ou"]
+  on --> area["area and albedo EMA"]
+  on --> bounce["cosine bounce from ou"]
+```
+
 ## Direct light
 
 \(E_\text{dir}\) at `ou` is the sum over directional lights of `cos · intensity`, with one shadow ray each (`direct_irradiance` in `gi/rt.glsl`). It feeds the EMA only when `q` is on the surface. The exception is a surfel without any sample yet, which takes one from its center so that it can become a light. The result is the mean direct irradiance over the part of the disk that really is surface. Parts hanging in the air, which would see the sun unobstructed, are not counted.
@@ -29,6 +42,19 @@ The hit point of the second ray is where the surface actually is under `q`. That
 The albedo found by the `-n` ray at an on-surface `q` feeds the albedo EMA. A surfel's light is then \(\rho/\pi\) times its irradiance, with the mean albedo under its disk rather than the single texel it was born on. A born-on texel can be a dark seam or a bright fleck, and on a textured curtain that varies from surfel to surfel.
 
 ## Indirect light and discovery
+
+```mermaid
+flowchart TD
+  ray["cosine ray from ou"] --> hit{"hit?"}
+  hit -->|no| zero["sample 0"]
+  hit -->|yes| cache{"w_lit > 0?"}
+  cache -->|yes| L["π L_cache(h)"]
+  cache -->|no| spawn{"on-screen shooter, spawn on,<br/>no pressure, budget left?"}
+  spawn -->|yes| birth["alloc at hit, radius min(r*, 0.5 t)<br/>born unseen"]
+  spawn -->|no| path
+  birth --> path["path continuation, up to 3 hops"]
+  path --> L2["L = ρ/π E_dir + ρ L_next<br/>until cache or truncate"]
+```
 
 Every surfel that is on screen (touched by coverage within 2 frames) traces one cosine-weighted ray from `ou`. With multibounce on, every other surfel traces one too. Where it lands:
 

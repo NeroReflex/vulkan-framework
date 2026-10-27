@@ -12,7 +12,30 @@ k(p) = \left(1 - \frac{|p-c|^2}{r^2}\right)^2 \quad\text{when } |p-c| < r,\ n_p 
 
 and 0 otherwise. The normal test keeps surfels from leaking around corners. The plane test keeps a surfel on a floor from claiming the underside of a thin slab above it.
 
-Weights are normalized wherever they are used, so overlapping surfels form a **partition of unity**: the fraction of a point that belongs to surfel `j` is \(k_j(p) / \sum_k k_k(p)\).
+```mermaid
+flowchart TD
+  p["point p, normal n_p"] --> d{"|p − c| < r ?"}
+  d -->|no| z["k = 0"]
+  d -->|yes| n{"n_p · n_c ≥ 0.5 ?"}
+  n -->|no| z
+  n -->|yes| pl{"|(p − c) · n_c| ≤ 0.25 r ?"}
+  pl -->|no| z
+  pl -->|yes| k["k = (1 − |p−c|² / r²)²"]
+```
+
+Weights are normalized wherever they are used, so overlapping surfels form a **partition of unity**: the fraction of a point that belongs to surfel `j` is \(k_j(p) / \sum_k k_k(p)\). Overlap is the intended packing. Spawn never rejects a candidate because another disk is nearby (chapter 6); the kernel and this normalization are what keep the extra coverage from double-counting light.
+
+```mermaid
+flowchart LR
+  subgraph disks["two overlapping disks at p"]
+    A["k_A"]
+    B["k_B"]
+  end
+  A --> wA["share A = k_A / (k_A + k_B)"]
+  B --> wB["share B = k_B / (k_A + k_B)"]
+  wA --> one["shares sum to 1"]
+  wB --> one
+```
 
 ## Coverage of a pixel
 

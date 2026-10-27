@@ -24,6 +24,17 @@ E_j(x) = L_j A_j \cdot G(c, n_c, r;\ x, n_x)
 
 at a receiver `x` with normal \(n_x\), where `G` is the disk's irradiance per unit radiance, divided by \(\pi r^2\) (`disk_geometry` in `surfels.glsl` and `gi_math.rs`). `G` is 0 behind the disk.
 
+```mermaid
+flowchart TD
+  rec["receiver x, n_x"] --> front{"part of disk in front of itself<br/>and above the horizon?"}
+  front -->|no| z["G = 0, not supported"]
+  front -->|yes| cut{"disk cut by horizon?"}
+  cut -->|no| closed["closed-form disk irradiance"]
+  cut -->|yes| poly["clip 16-gon to horizon<br/>Lambert polygon / π r²"]
+  closed --> floor["max(G, DISK_SUPPORT_FLOOR)"]
+  poly --> floor
+```
+
 - **Disk entirely above the receiver's horizon**: the closed form of the disk's vector irradiance. With \(h\) the height of `x` over the disk plane, \(\vec\rho\) its in-plane offset, \(T = |x-c|^2 + r^2\), and \(S = \sqrt{T^2 - 4\rho^2 r^2}\):
   \[
   G = -\frac{(n_x\cdot n_c)(S + T - 2\rho^2) + 2h\,(n_x\cdot\vec\rho)}{S\,(S+T)}.
@@ -45,11 +56,25 @@ q_j = \text{clamp}\!\left(\left\lceil \frac{\Phi_j}{\Phi_\text{max,prev}} \cdot 
 
 where \(\Phi_\text{max,prev}\) is the previous frame's largest flux (`ST_PREV_MAX_FLUX`). The scan is integer arithmetic: a 1024-wide block scan, a scan of the block totals, and an offset add. The CDF is therefore exactly monotonic, and its total \(Q\) fits in 32 bits because `MAX_SURFELS × 65535 < 2^32`.
 
+```mermaid
+flowchart LR
+  alive["alive_ids[0 .. count)"] --> q["q_i = quantized Φ_i"]
+  q --> scan["inclusive integer scan"]
+  scan --> cdf["flux_cdf[i] = q_0 + … + q_i"]
+  cdf --> Q["Q = flux_cdf[count − 1]"]
+```
+
 Quantization only changes how closely the sampling follows the flux. It never changes correctness, because the stored pmf is the exact selection probability of the integer draw. Every light with \(\Phi > 0\) gets \(q \ge 1\), so no light has zero probability.
 
 ## Light tiles
 
 `gi/presample.comp` draws `LIGHT_TILES × LIGHT_TILE_SIZE` = 32 768 lights per frame:
+
+```mermaid
+flowchart TD
+  t["uniform t in [0, Q)"] --> bs["binary search<br/>smallest i with cdf[i] > t"]
+  bs --> e["TileEntry: sphere, id, n, Φ, pmf = q_i / Q"]
+```
 
 1. Draw an exactly uniform integer `t` in `[0, Q)`: take random bits masked to the next power of two, and reject values ≥ Q (64 tries; the chance of exhausting them is below \(2^{-64}\)).
 2. Binary-search the smallest `i` with `cdf[i] > t`. That is \(\lceil\log_2 n\rceil\) reads, 16 for a full pool.

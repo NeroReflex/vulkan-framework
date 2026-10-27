@@ -2,6 +2,14 @@
 
 Skinned object archives carry `skeleton/original`, `skeleton/armature`, optional `animations/<clip>/channels`, and a `skinned_vertex_buffer` for the deform pass. A model whose tar entry is `models/<name>/skin` gets a BLAS built with `PREFER_FAST_BUILD | ALLOW_UPDATE`. Static meshes stay on the 32-byte vertex stream with `PREFER_FAST_TRACE`.
 
+```mermaid
+flowchart LR
+  ch["animate_channels<br/>or bind pose"] --> pal["animate.comp<br/>palette = global · inverse_bind"]
+  pal --> def["deform.comp"]
+  def --> blas["skinned BLAS update"]
+  def --> mesh["G-buffer"]
+```
+
 Each frame, before the G-buffer, `record_skinning` runs:
 
 1. **`animate_channels.comp` or `animate_bind_pose.comp`** writes the bone skinning matrices into a per-frame SSBO (`per_frame_skeleton`). Push constants supply the animation time in ticks and the active channel count.

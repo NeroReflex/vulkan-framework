@@ -15,6 +15,19 @@ by selecting one surfel light per frame with resampled importance sampling and r
 - **Reservoir** `{y, gen, W, M, pos, n}`: selected light and its slot generation, unbiased contribution weight, candidate count, and the surface it was built for.
 - **Estimate**: \(E_\text{ind}(x) \approx E_y(x)\,V(x, y)\,W\).
 
+```mermaid
+flowchart LR
+  tile["one light tile<br/>256 entries, pmf = q/Q"] --> ris["RIS, 8 candidates<br/>w = p̂_x(j) / p(j)"]
+  prev["previous reservoir<br/>reprojected, similar_surface"] --> merge["merge, Z-normalize"]
+  ris --> merge
+  merge --> temp["RES_TEMP"]
+  nb["4 neighbours<br/>in 30 px disk"] --> spat["merge again, Z over domains"]
+  temp --> spat
+  spat --> cur["res_current()"]
+  cur --> shade["E_y · W · V(center)"]
+  shade --> acc["running mean → IMG_EIND"]
+```
+
 ## Initial candidates and temporal reuse
 
 `gi/restir_temporal.comp` runs on 8 × 8 work groups. A group picks one light tile by hashing its group id with the frame. Each pixel then draws `RESTIR_INITIAL_CANDIDATES` (8) entries from that tile and runs weighted reservoir sampling with weights \(w = \hat p_x(j) / p(j)\).
@@ -54,6 +67,16 @@ With `GI_FLAG_CONVERGE` (on by default, "Converge when still" in the UI), a stil
 - **The cache keeps changing.** Pruning and eviction remove about 90 surfels per frame, and spawns add about as many, so the lights under a pixel keep being replaced.
 - **The surfel EMAs forget.** Each light keeps fluctuating at the noise level of its last 20 to 50 samples.
 - **Temporal reuse correlates frames.** A selected surfel survives for up to about 20 frames, and the visibility ray to its center repeats the same answer. A long average of correlated frames holds only about one twentieth as many independent samples.
+
+```mermaid
+flowchart TD
+  still{"still_frames ≥ 128<br/>and GI_FLAG_CONVERGE?"}
+  still -->|no| live["normal: prune, evict, EMA floors,<br/>temporal reuse, 32-frame window"]
+  still -->|yes| set["settled: no prune, no unseen evict<br/>offscreen spawn for up to 256 more frames"]
+  set --> ch{"alloc / evict / doom this frame?"}
+  ch -->|yes| set
+  ch -->|no| stab["stable: ST_STABLE_FRAMES grows<br/>running means, no temporal reuse<br/>window = 32 + stable frames"]
+```
 
 So a still view goes through two stages.
 

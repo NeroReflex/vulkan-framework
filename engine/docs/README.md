@@ -1,6 +1,6 @@
 # Surfel global illumination
 
-This book describes the renderer as it runs today. Read it in order the first time. After that, each chapter stands on its own.
+This book describes the renderer as it runs today. Read it in order the first time. After that, each chapter stands on its own. The diagrams are mermaid: they render in GitHub, Cursor, and most Markdown previews.
 
 Indirect light comes from a cache of **surfels**: small disks laid on the scene's surfaces. Each surfel estimates the light arriving at its patch of surface and re-emits it as a Lambertian **disk light**. Every pixel then picks one surfel light per frame with **ReSTIR**: resampled importance sampling, temporal and spatial reuse, and one visibility ray. The result is accumulated over a few frames.
 
@@ -13,7 +13,7 @@ Nothing in this pipeline sorts or moves surfels. A surfel keeps its slot from bi
 3. [Lifetime](03-lifetime.md) — the free stack, the alive lists, maintenance, eviction, and slot generations.
 4. [Spatial hash](04-spatial-hash.md) — the 8-level hashed grid and why a lookup is O(1).
 5. [Queries](05-queries.md) — the surfel kernel, the partition of unity, and the three lookups built on it.
-6. [Coverage and spawn](06-coverage-and-spawn.md) — how the screen gets covered, and how over-coverage is pruned.
+6. [Coverage and spawn](06-coverage-and-spawn.md) — how the screen gets covered, why disks overlap, and how over-coverage is pruned.
 7. [Surfel update](07-surfel-update.md) — direct light, area, indirect light, and offscreen surfels.
 8. [Surfel lights](08-surfel-lights.md) — radiance, the disk geometry term, the integer flux CDF, and light tiles.
 9. [ReSTIR](09-restir.md) — initial candidates, temporal and spatial reuse, Z-normalization, shading, accumulation, and how a still view converges.

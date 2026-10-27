@@ -6,6 +6,15 @@ A surfel is born on a surface that can move. The slot does not move; the world c
 
 `surfel_init` writes the hit in the instance's space: `bind_position = inverse(node_world[instance]) * p`, and `normal_bind` is the normal transformed by the transpose of the model matrix. Every frame, maintain recomputes the world center and normal from the current node matrix (the normal through the inverse transpose) and refreshes `geo[]` and `nrm[]`. The grid is rebuilt from those afterwards. Moving instances therefore stay searchable without any special case, and their surfels keep their light estimates while they move. The EMAs follow the changed lighting.
 
+```mermaid
+flowchart LR
+  birth["birth: p, n in world"] --> bind["bind_position, normal_bind<br/>in instance space"]
+  node["node_world[instance]<br/>this frame"] --> world["c = M · bind_position<br/>n = inverse-transpose · normal_bind"]
+  bind --> world
+  world --> geo["geo[], nrm[]"]
+  geo --> grid["grid rebuild"]
+```
+
 `instance_generation` is copied from `instance_generation[instance]` at birth. When the scene replaces or removes an instance, its generation changes, and maintain evicts every surfel still pointing at the old one. No surfel ever follows an instance index that now means something else.
 
 The node buffer has 4096 matrices, one per TLAS instance, in TLAS order. A scene node with many meshes writes the same world matrix into each of their slots. The raster shader builds the matrix with `row_major_3x4`, matching Vulkan's row-major 3×4 instance transform.

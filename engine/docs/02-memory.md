@@ -22,6 +22,24 @@ Every GI pass binds the same surfel descriptor set. It is declared once in `engi
 
 `struct Surfel` is 128 bytes (`SURFEL_STRIDE`), and there are `MAX_SURFELS` = 65536 slots. A record never moves. Passes that only need the shape read two compact mirrors instead: `geo[id] = (center, radius)` and `nrm[id]`, the octahedral world normal. Maintain refreshes both every frame.
 
+Every other per-surfel array is indexed by the same slot. An id stored in the overlay, a reservoir, or a light tile is a subscript into all of them.
+
+```mermaid
+flowchart LR
+  subgraph slot["slot id"]
+    S["surfels[id]<br/>128 B record"]
+    G["geo[id] = (c, r)"]
+    N["nrm[id]"]
+    L["surfel_light[id] = (L A, A)"]
+    R["light_rec[id]"]
+  end
+  id["id"] --> S
+  id --> G
+  id --> N
+  id --> L
+  id --> R
+```
+
 | Field | Written by | Meaning |
 |---|---|---|
 | `position`, `normal` | maintain, init | world center and normal this frame |
@@ -69,9 +87,31 @@ Presample fills **`light_tiles`**: 128 tiles × 256 `TileEntry` of 32 bytes. Eac
 
 `grid_count`, `grid_start` (`GRID_BUCKETS + 1` entries), `grid_cursor`, and `grid_items` (at most `8 × MAX_SURFELS` ids) form a CSR table over 2^18 hashed buckets (chapter 4). `scan_blocks` is scratch for the grid and flux scans.
 
+```mermaid
+flowchart LR
+  b["bucket b"] --> C["grid_count[b] = n"]
+  C --> St["grid_start[b]"]
+  St --> I["grid_items[start .. start+n)<br/>ids, any order"]
+```
+
 ## Reservoirs
 
 `reservoirs[]` holds three regions of `W × H` entries, each 32 bytes (`RESERVOIR_STRIDE`): `{id, gen, W, M, pos, packed normal}`. Two regions ping-pong between frames and hold the final, spatially reused reservoirs; `res_current()` selects one by `frame_index` parity. The third region, `RES_TEMP`, holds the temporal result of the current frame before spatial reuse. `M = 0` marks a pixel with no surface.
+
+```mermaid
+flowchart TD
+  subgraph buf["reservoirs[]"]
+    P0["region 0  W×H<br/>spatial result, even frames"]
+    P1["region 1  W×H<br/>spatial result, odd frames"]
+    T["RES_TEMP  W×H<br/>this frame after temporal"]
+  end
+  tempPass["restir_temporal"] --> T
+  T --> spatPass["restir_spatial"]
+  spatPass --> P0
+  spatPass --> P1
+  P0 -->|"next frame, odd"| tempPass
+  P1 -->|"next frame, even"| tempPass
+```
 
 ## Bindings
 
