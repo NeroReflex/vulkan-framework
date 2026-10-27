@@ -203,5 +203,11 @@ Ideas that look right and are wrong (all tried):
 3. Self-test plus accuracy gates at both poses, one bounce and multibounce, in the debug build; no validation messages.
 4. If the change affects still images, run the convergence check; if it affects cost, the wander timing run.
 5. Inspect images for the affected area.
-6. Update `engine/docs/` (the chapter for the area, chapter 11 numbers, chapter 12 for new invariants or traps) and the baselines above.
+6. Update `engine/docs/` (the chapter for the area, chapter 11 numbers, chapter 12 for new invariants or traps) and the baselines above. Use drawings and schematics when describing data structures and algorithms.
 7. Report measured before/after numbers and images, including anything that got worse.
+
+## Hard rule
+
+You DO NOT ignore bugs, you DO NOT postpone fixing them: as soon as you hit a bug that is not in code to be deleted you fix it right away.
+
+The math, algorithm and data structure MUST BE suitable for very large worlds, not just the example Sponza scene. Do not make assumptions on what will be rendered or how big the world is.
