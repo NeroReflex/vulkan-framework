@@ -1,0 +1,64 @@
+// Draws LIGHT_TILES * LIGHT_TILE_SIZE surfels proportionally to their
+// quantized flux (binary search on the integer CDF). Each entry stores the
+// probability mass of the drawn surfel, which is exactly the selection
+// probability of the search, and a copy of its light record.
+#include "compute.glsl"
+
+layout(local_size_x = 256) in;
+
+void store_empty(uint k) {
+    TileEntry e;
+    e.sphere = vec4(0.0);
+    e.info = uvec4(INVALID_ID, 0u, 0u, 0u);
+    light_tiles[k] = e;
+}
+
+void main() {
+    const uint k = gl_GlobalInvocationID.x;
+    if (k >= LIGHT_TILES * LIGHT_TILE_SIZE) {
+        return;
+    }
+    const uint count = uint(state[ST_LIGHT_COUNT]);
+    if (count == 0u) {
+        store_empty(k);
+        return;
+    }
+    const uint total = flux_cdf[count - 1u];
+    if (total == 0u) {
+        store_empty(k);
+        return;
+    }
+    uint rng = rng_seed(k, gi_data.frame_index, 0x51ed270bu);
+
+    // Exactly uniform integer in [0, total): mask to the next power of two and reject.
+    const int msb = findMSB(total - 1u);
+    const uint mask = msb >= 31 ? 0xFFFFFFFFu : ((1u << uint(msb + 1)) - 1u);
+    uint target = rng_next(rng) & mask;
+    for (uint attempt = 0u; attempt < 64u && target >= total; attempt++) {
+        target = rng_next(rng) & mask;
+    }
+    if (target >= total) {
+        store_empty(k);
+        return;
+    }
+
+    // smallest i with cdf[i] > target
+    uint lo = 0u;
+    uint hi = count - 1u;
+    while (lo < hi) {
+        const uint mid = (lo + hi) >> 1u;
+        if (flux_cdf[mid] > target) {
+            hi = mid;
+        } else {
+            lo = mid + 1u;
+        }
+    }
+    const uint below = lo > 0u ? flux_cdf[lo - 1u] : 0u;
+    const float pmf = float(flux_cdf[lo] - below) / float(total);
+    const uint id = alive_ids[alive_out_base() + lo];
+    const LightRecord rec = light_rec[id];
+    TileEntry e;
+    e.sphere = rec.sphere;
+    e.info = uvec4(id, rec.info.x, rec.info.y, floatBitsToUint(pmf));
+    light_tiles[k] = e;
+}

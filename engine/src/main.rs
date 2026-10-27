@@ -64,14 +64,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut frame_times_s = Vec::<f32>::new();
 
     let hdr = artrtic::core::hdr::HDR::default();
+    // ART_RTIC_CAMERA="x,y,z,horizontal,vertical" pins the camera (input and wander are ignored).
+    let fixed_pose = std::env::var("ART_RTIC_CAMERA").ok().and_then(|value| {
+        let v: Vec<f32> = value
+            .split(',')
+            .filter_map(|c| c.trim().parse::<f32>().ok())
+            .collect();
+        (v.len() == 5).then(|| (glm::vec3(v[0], v[1], v[2]), v[3], v[4]))
+    });
+    let (position, horizontal, vertical) =
+        fixed_pose.unwrap_or((glm::vec3(152.0, 650.0, -8.5), -17.249_994, -0.029_999_956));
+    let bench_wander = bench_wander && fixed_pose.is_none();
     let mut camera = SpectatorCamera::new(
-        glm::vec3(152.0, 650.0, -8.5),
-        HEAD_DOWN,
-        1.0,
-        10000.0,
-        -17.249_994,
-        -0.029_999_956,
-        65.0,
+        position, HEAD_DOWN, 1.0, 10000.0, horizontal, vertical, 65.0,
     );
 
     // set initial camera
@@ -136,7 +141,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // Update camera position (disabled while the editor UI is visible).
-        if !ui_active {
+        if !ui_active && fixed_pose.is_none() {
             if let Some((dx, dy, forward, strafe)) = artrtic::preview::take_look() {
                 camera.apply_horizontal_rotation(dx);
                 camera.apply_vertical_rotation(dy);
@@ -251,6 +256,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     print_frame_stats(&frame_times_s);
+    let selftest_failures = renderer.gi_selftest_failures();
+    drop(renderer);
+    if selftest_failures > 0 {
+        eprintln!("GI self-test: {selftest_failures} failed checks");
+        std::process::exit(2);
+    }
     Ok(())
 }
 

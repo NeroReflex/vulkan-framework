@@ -356,12 +356,40 @@ impl UiLayer {
                 ui.separator();
                 ChildWindow::new("Debug body##artrtic_debug_body")
                     .border(true)
-                    .size([0.0, 72.0])
+                    .size([0.0, 230.0])
                     .movable(false)
                     .build(&ui, || {
-                        let mut show_surfels = system.debug_state().show_surfels();
+                        use crate::rendering::debug_state::ViewMode;
+                        let debug = system.debug_state();
+                        let mut show_surfels = debug.show_surfels();
                         if ui.checkbox("Show surfels", &mut show_surfels) {
-                            system.debug_state().set_show_surfels(show_surfels);
+                            debug.set_show_surfels(show_surfels);
+                        }
+                        let labels: Vec<&str> = ViewMode::ALL.iter().map(|m| m.label()).collect();
+                        let mut current = ViewMode::ALL
+                            .iter()
+                            .position(|m| *m == debug.view_mode())
+                            .unwrap_or(0);
+                        if ui.combo_simple_string("View", &mut current, &labels) {
+                            debug.set_view_mode(ViewMode::ALL[current]);
+                        }
+                        let before = debug.gi;
+                        let gi = &mut debug.gi;
+                        ui.checkbox("Multi-bounce", &mut gi.multibounce);
+                        ui.checkbox("ReSTIR temporal reuse", &mut gi.temporal_reuse);
+                        ui.checkbox("ReSTIR spatial reuse", &mut gi.spatial_reuse);
+                        ui.checkbox("Accumulate indirect", &mut gi.accumulate);
+                        ui.checkbox("Spawn surfels", &mut gi.spawn);
+                        ui.checkbox("Path traced reference", &mut gi.reference);
+                        let after = *gi;
+                        // The reference only adds a pass; every other switch changes what the history means.
+                        let mut history_before = before;
+                        history_before.reference = after.reference;
+                        if history_before != after {
+                            system.reset_gi_accumulation();
+                        }
+                        if ui.button("Reset GI") {
+                            system.reset_gi_accumulation();
                         }
                     });
                 ui.text("Console");
@@ -372,7 +400,7 @@ impl UiLayer {
                     .movable(false)
                     .build(&ui, || {
                         ui.text_wrapped(
-                            "Commands: load NAME PATH | move NODE x y z | list | play NODE INDEX | lock | unlock",
+                            "Commands: load NAME PATH | move NODE x y z | list | play NODE INDEX | lock | unlock | resetsurfels",
                         );
                         ChildWindow::new("Log##artrtic_console_log")
                             .border(true)
@@ -480,6 +508,13 @@ impl UiLayer {
             }
             "lock" => self.camera_locked = true,
             "unlock" => self.camera_locked = false,
+            "resetsurfels" => {
+                system.reset_gi_accumulation();
+                self.console_lines.push(
+                    "GI reuse reset; first SURFEL_ALLOCATION_FRAMES frames will spawn surfels."
+                        .into(),
+                );
+            }
             _ => {}
         }
     }

@@ -1,139 +1,94 @@
 # 2. Memory
 
-All surfel state is a handful of device buffers created in `GILighting::new`. Shaders see them through one descriptor set (`output_descriptor_set`). Binding numbers below are that set.
+Every GI pass binds the same surfel descriptor set. It is declared once in `engine/shaders/gi/surfels.glsl` and built in `GILighting::new`. Compute passes see it as set 2 (`gi/compute.glsl`) and ray generation passes as set 3. The status block is set 0 or 1.
+
+## The status block
+
+`gi_data` (`status.glsl`, std140) is written by `GiDriver::begin_frame` (`gi_driver.rs`) with `update_buffer` at the start of every frame.
+
+| Field | Meaning |
+|---|---|
+| `gi_reuse_frames` | frames since the history was invalidated (chapter 1) |
+| `frame_index` | frame counter; parity selects ping-pong buffers |
+| `still_frames` | frames with an unchanged pose; 0 restarts the reference |
+| `flags` | `GI_FLAG_*`: multibounce, reference, temporal, spatial, capture, reset, spawn, accumulate |
+| `reference_bounces` | 8 with multibounce, 1 without |
+| `render_width`, `render_height` | render area (1920 × 1080) |
+| `pixel_angle` | angle one pixel subtends at the image center: `2 atan(1 / P[1][1]) / H` |
+| `eye_position` | camera position |
+| `prev_view`, `prev_proj` | last frame's matrices, used for reprojection |
 
 ## The surfel record
 
-`struct Surfel` in `surfel.glsl` is 23 scalar fields, 92 bytes, matching `SURFEL_SIZE` in Rust (`23 * 4`).
+`struct Surfel` is 128 bytes (`SURFEL_STRIDE`), and there are `MAX_SURFELS` = 65536 slots. A record never moves. Passes that only need the shape read two compact mirrors instead: `geo[id] = (center, radius)` and `nrm[id]`, the octahedral world normal. Maintain refreshes both every frame.
 
-| Field | Role |
+| Field | Written by | Meaning |
+|---|---|---|
+| `position`, `normal` | maintain, init | world center and normal this frame |
+| `radius` | init | fixed at birth |
+| `bind_position`, `normal_bind` | init | center and normal in the instance's space |
+| `instance_id`, `instance_generation`, `bone` | init | what the surfel is attached to (chapter 13) |
+| `generation` | init | bumped every time the slot is allocated |
+| `albedo` | init | albedo of the surface it was born on |
+| `area`, `area_n` | update | partition-of-unity area (EMA) and sample count |
+| `e_dir`, `e_dir_n` | update | direct irradiance (EMA) and sample count |
+| `e_ind`, `e_ind_n` | update | indirect irradiance (EMA) and sample count |
+| `flags` | init, coverage, maintain | `ALIVE`, `DOOMED` |
+| `last_seen` | coverage, update | last frame it mattered (chapter 3) |
+| `spawn_frame` | init | birth frame |
+| `lit_frame` | publish | first frame it was a light (`INVALID_ID` before) |
+
+## State words
+
+`state[]` is an array of `int` counters. Its first 16 words are named `ST_*` in `surfels.glsl` and mirrored in `gi_math.rs`.
+
+| Word | Meaning |
 |---|---|
-| `instance_id` | Draw instance that owns the surface. A hit on a different instance is not a match. The same id indexes the node-matrix buffer. |
-| `position_*` | World-space center. `surfel_world.comp` rewrites it from `bind_*` before mark and again before the hash. |
-| `bind_*` | Center in the instance's local space at spawn (`inverse(node) * world hit`). |
-| `bone` | `0xFFFFFFFF` for a rigid instance. Otherwise the palette joint whose matrix writes the world center. |
-| `radius` | World-space sphere radius. Mark may rewrite it when the camera distance changes. |
-| `normal` | Octahedral unit normal (`compress.glsl`). |
-| `diffuse_*` | Albedo copied from the G-buffer at spawn. |
-| `irradiance_*` | Sum of indirect samples. Divide by `contributions`. |
-| `direct_light_*` | Sum of unoccluded directional light at spawn. |
-| `contributions` | How many indirect samples have been added. |
-| `frame_contributions` | How many primary rays `surfel_rt` has finished for this surfel. Caps at 16. |
-| `flags` | See below. |
-| `latest_contribution` | Frames since discovery or spawn last touched this surfel. |
+| `ST_ALIVE_IN`, `ST_ALIVE_OUT` | length of last frame's alive list and of this frame's |
+| `ST_SURVIVORS` | how many of this frame's ids came from maintain; the grid and the update pass cover exactly these |
+| `ST_FREE`, `ST_FREE_AT_BEGIN` | free stack height, now and at frame begin |
+| `ST_SPAWN_SCREEN`, `ST_SPAWN_RAY`, `ST_SPAWN_FAILED` | spawn attempts this frame, and pops that found the stack empty |
+| `ST_EVICTED`, `ST_DOOMED` | evictions and prune marks this frame |
+| `ST_LEVEL_MASK` | bit `l` set when grid level `l` holds a surfel |
+| `ST_GRID_ITEMS` | total bucket memberships |
+| `ST_TOTAL_FLUX`, `ST_LIGHT_COUNT` | end of the flux CDF, and how many entries it has |
+| `ST_MAX_FLUX`, `ST_PREV_MAX_FLUX` | largest light flux this frame and last frame (float bits) |
 
-Flags, from `surfel.glsl`:
+## Light state
 
-| Bit | Name | Meaning |
-|---|---|---|
-| 0 | `SURFEL_FLAG_LOCKED` | One invocation holds the record for a read-modify-write. |
-| 1 | `SURFEL_FLAG_PRIMARY` | Reserved. Not required by the hash. |
-| 2 | `SURFEL_FLAG_READY` | Payload is published. Readers must ignore the slot until this is set. |
-| 3 | `SURFEL_FLAG_DEAD` | Slot is a hole. The hash must not return it. The payload stays until commit reuses the slot. |
+Publish turns each surfel into a light (chapter 8). It writes three things.
 
-`lock_surfel` tries once, with an atomic compare-exchange. It does not spin. A failed lock means "someone else owns this surfel this frame"; the caller stops. `unlock_surfel` clears the bit with a release, so the payload writes from the critical section are visible first.
+- **`surfel_light[id] = (L·A, A)`**: emitted radiance times area, and the area. It is kept even when the radiance is 0, because a dark surfel is still a valid cache entry.
+- **`light_rec[id]`**, a 32-byte `LightRecord`. It holds `sphere = geo[id]`, plus `info = (packed normal, flux bits, generation, lit_frame)` with flux `= luminance(L·A)`. This is all that ReSTIR reads about a light. A record with flux 0 is not a light. Records are cleared by `empty_light_record()` on init, eviction, and pool reset, so a stale reservoir never finds a matching generation.
+- **`flux_cdf[i]`**: inclusive prefix sum of quantized flux over the alive list.
 
-## Stats block
+Presample fills **`light_tiles`**: 128 tiles × 256 `TileEntry` of 32 bytes. Each entry holds the light's sphere, id, packed normal, flux, and the exact probability with which it was drawn.
 
-Binding 0, eight 32-bit words. The CPU zeros them at init and sets `total_surfels` to `MAX_SURFELS` (65536) and `index_topology_dirty` to 1 so the first frame builds a hash.
+## Grid
 
-```text
-word 0  total_surfels           capacity of the whole Surfel array (65536)
-word 1  unordered_surfels       how many staging slots were reserved this frame
-word 2  live_count              how many committed surfels are not dead
-word 3  high_water              exclusive end of the committed region
-word 4  global_reserve_counter  used only if POPULATE_VISIBLE_SURFELS_LIST is 1
-word 5  discovered_surfels      same
-word 6  remaining_holes         dead slots left after commit
-word 7  index_topology_dirty    1 if the hash must be rebuilt
-```
+`grid_count`, `grid_start` (`GRID_BUCKETS + 1` entries), `grid_cursor`, and `grid_items` (at most `8 × MAX_SURFELS` ids) form a CSR table over 2^18 hashed buckets (chapter 4). `scan_blocks` is scratch for the grid and flux scans.
 
-`live_count` is not "the length of a packed array of surfels". The committed region can contain dead holes. `live_count` is the count of slots in `[0, high_water)` whose `DEAD` bit is clear.
+## Reservoirs
 
-## Two halves
+`reservoirs[]` holds three regions of `W × H` entries, each 32 bytes (`RESERVOIR_STRIDE`): `{id, gen, W, M, pos, packed normal}`. Two regions ping-pong between frames and hold the final, spatially reused reservoirs; `res_current()` selects one by `frame_index` parity. The third region, `RES_TEMP`, holds the temporal result of the current frame before spatial reuse. `M = 0` marks a pixel with no surface.
 
-`total_surfels` is 65536. The array is split in half. This is not a spatial split. It is a lifetime split.
+## Bindings
 
-```text
-index 0                         32768                        65535
-|---- committed region ---------|-------- staging region ---------|
-     [0, high_water)  live or dead     filled this frame only
-     in the hash                      NOT in the hash
-```
-
-- The **committed half** is what the hash indexes. Slots here keep their index for the life of the surfel. Killing a surfel sets `DEAD`. It does not slide the tail down.
-- The **staging half** is a scratch pad for surfels created during spawn and surfel RT. Slot `32768 + i` is the i-th reservation this frame (`unordered_surfels`). At most `MAX_SURFELS_PER_FRAME` (256) reservations succeed. Next frame, commit copies those records into holes or onto the end of `high_water`, then the staging count is zeroed.
-
-Why the copy exists: a slot that is still named by the current hash must not be overwritten. New surfels are born outside the hash. Commit runs at the start of the next frame, before the hash is rebuilt, and only then do those ids become searchable as committed surfels.
-
-Same-frame lookups of newborns do not use the hash. They scan the dense staging prefix `[32768, 32768 + unordered_surfels)`. That scan is at most 256 records.
-
-## Other buffers
-
-| Binding | Buffer | Contents |
-|---|---|---|
-| 1 | `surfels` | `Surfel[65536]` |
-| 2 | `tree` | `BVHNode` array. **Not written by the live path.** Kept so old shaders still link. |
-| 3 | `discovered` | Optional list of visible surfel ids. Unused while `POPULATE_VISIBLE_SURFELS_LIST` is 0. |
-| 4 | `surfelOverlappingImage` | `r32ui`, one id per pixel. |
-| 5 | `outputImage[2]` | `[0]` indirect, `[1]` direct. `rgba32f`. |
-| 7 | `build_words` | Scratch. Layout in chapter 4 and below. |
-| 8 | `node_world` | 4096 column-major matrices, one per draw instance. Identity until a scene node moves. |
-| 9 | `bone_palette` | 256 skinning matrices. Rigid surfels never read it. |
-
-Binding 6 is not part of this set.
-
-## Scratch words
-
-`build_layout.glsl` is the map. `BUILD_HALF` is 32768. `BUILD_BLOCKS` is 128 (32768 / 256).
-
-```text
-word
-0                  header (see below)
-8                  per-block sums for the prefix pass
-8+128              per-block exclusive prefixes
-OFF_HOLES          dead slot ids, packed
-OFF_IDS_A          live slot ids, packed          <-- hash insert reads this
-OFF_KEYS_A         HASH HEADS, then NEXT, then IDS
-...                leftover radix / AABB words from the old tree builder
-```
-
-Header words that the live path still uses:
-
-| Word | Name | Meaning |
-|---|---|---|
-| 1 | `HDR_HOLE_COUNT` | Number of ids in `OFF_HOLES`. |
-| 3 | `HDR_KEY_COUNT` | `live_count` from the last hash build. The plan compares against this. |
-| 7 | `HDR_BUILD_ACTIVE` | 1 if this frame must rebuild the hash. |
-
-`HDR_ROOT`, `HDR_HEAP_P`, and `HDR_HEAP_LEAF0` belong to the unused tree builder.
-
-The hash occupies the old key region:
-
-```text
-OFF_HASH_HEAD = OFF_KEYS_A
-  3 levels * 8192 buckets of uint heads
-
-OFF_HASH_NEXT = heads + 3*8192
-  one uint per live-list slot (not per surfel id)
-
-OFF_HASH_IDS  = next + 32768
-  the surfel id stored at that live-list slot
-```
-
-`HASH_EMPTY` is `0xFFFFFFFF`. A head with that value has an empty chain. Slot 0 is a valid live-list index, so empty cannot be 0.
-
-## G-buffer
-
-The mesh fragment shader writes, per pixel:
-
-| Target | Contents |
+| Binding | Contents |
 |---|---|
-| 0 | World position |
-| 1 | World normal |
-| 2 | Diffuse albedo |
-| 3 | Specular |
-| 4 | `uvec4(mesh_id, instance_id, ...)` |
-| depth | Hardware depth |
+| 0 | `state[]` |
+| 1 | `surfels[]` |
+| 2 | `free_ids[]` |
+| 3 | `alive_ids[]`, two lists of `MAX_SURFELS` |
+| 4, 5 | `geo[]`, `nrm[]` |
+| 6 | `surfel_light[]` |
+| 7–10 | grid count, start, cursor, items |
+| 11, 12 | `flux_cdf[]`, `scan_blocks[]` |
+| 13 | `light_tiles[]` |
+| 14 | `reservoirs[]` |
+| 15–18 | node matrices, bone palette, instance generations, instance bone bases (read only) |
+| 19 | `surfel_overlay` (r32ui) |
+| 20–26 | `gi_images[7]` (rgba32f) |
+| 27 | `light_rec[]` |
 
-`mesh_id == 0xFFFFFFFF` means sky or a cleared pixel. Discovery and spawn both refuse those pixels. A hash probe from a far-plane sky point would not be wrong so much as useless, and it would still cost the probe.
+The light records sit at 27, not 21. The framework's descriptor writer gives each element of an image array its own consecutive binding slot, so `gi_images[7]` really occupies 20 through 26.

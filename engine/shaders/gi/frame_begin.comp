@@ -1,0 +1,18 @@
+// Single thread: last frame's output list becomes this frame's input list.
+#include "compute.glsl"
+
+layout(local_size_x = 1) in;
+
+void main() {
+    state[ST_ALIVE_IN] = state[ST_ALIVE_OUT];
+    state[ST_ALIVE_OUT] = 0;
+    state[ST_SURVIVORS] = 0;
+    state[ST_SPAWN_SCREEN] = 0;
+    state[ST_SPAWN_RAY] = 0;
+    state[ST_EVICTED] = 0;
+    state[ST_SPAWN_FAILED] = 0;
+    state[ST_DOOMED] = 0;
+    state[ST_FREE_AT_BEGIN] = state[ST_FREE];
+    state[ST_PREV_MAX_FLUX] = state[ST_MAX_FLUX];
+    state[ST_MAX_FLUX] = 0;
+}

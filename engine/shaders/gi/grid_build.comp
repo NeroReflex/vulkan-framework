@@ -1,0 +1,41 @@
+// Builds the multi-level hashed grid (CSR) over this frame's survivors.
+//   phase 0: clear bucket counts           (GRID_BUCKETS / 256 groups)
+//   phase 1: count bucket memberships      (MAX_SURFELS / 256 groups)
+//   phase 2: scatter ids into the buckets  (MAX_SURFELS / 256 groups)
+// The exclusive scan between 1 and 2 is grid_scan.comp.
+#include "compute.glsl"
+
+layout(local_size_x = 256) in;
+
+void main() {
+    const uint gid = gl_GlobalInvocationID.x;
+    if (pc.phase == 0u) {
+        if (gid == 0u) {
+            state[ST_SURVIVORS] = state[ST_ALIVE_OUT];
+            state[ST_LEVEL_MASK] = 0;
+        }
+        if (gid < GRID_BUCKETS) {
+            grid_count[gid] = 0u;
+        }
+        return;
+    }
+
+    if (gid >= uint(state[ST_SURVIVORS])) {
+        return;
+    }
+    const uint id = alive_ids[alive_out_base() + gid];
+    const vec4 g = geo[id];
+    uint buckets[8];
+    const uint count = surfel_buckets(g.xyz, g.w, buckets);
+    if (pc.phase == 1u) {
+        atomicOr(state[ST_LEVEL_MASK], int(1u << grid_level(g.w)));
+        for (uint k = 0u; k < count; k++) {
+            atomicAdd(grid_count[buckets[k]], 1u);
+        }
+    } else {
+        for (uint k = 0u; k < count; k++) {
+            const uint slot = atomicAdd(grid_cursor[buckets[k]], 1u);
+            grid_items[slot] = id;
+        }
+    }
+}

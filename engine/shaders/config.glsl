@@ -1,58 +1,98 @@
 #ifndef _CONFIG_
 #define _CONFIG_
 
-// keep in sync with sources
+// Every constant marked "rust" is mirrored in
+// engine/src/rendering/pipeline/gi_math.rs and must stay identical.
+
+// rust: MAX_DIRECTIONAL_LIGHTS
 #define MAX_DIRECTIONAL_LIGHTS 8
 
-#define ENABLE_SURFELS 1
+// ---- surfel pool -------------------------------------------------------
+// rust: MAX_SURFELS (power of two)
+#define MAX_SURFELS 65536u
+// Target surfel radius in pixels at spawn time.
+#define SURFEL_SCREEN_RADIUS_PX 24.0
+#define SURFEL_MIN_RADIUS 2.0
+// Must stay <= GRID_BASE_CELL * 2^(GRID_LEVELS-1) / 2 so a surfel's AABB
+// spans at most 2 cells per axis on its level.
+#define SURFEL_MAX_RADIUS 256.0
+// Surfels farther than this from the eye are evicted and never spawned.
+#define SURFEL_MAX_DISTANCE 6000.0
+// Frames without being the dominant surfel of any sampled pixel or ray hit.
+#define SURFEL_UNSEEN_FRAMES 240u
+#define SURFEL_PRESSURE_UNSEEN_FRAMES 30u
+// Pool pressure: free slots below MAX_SURFELS / SURFEL_PRESSURE_DIVISOR.
+#define SURFEL_PRESSURE_DIVISOR 8u
+#define SURFEL_SCREEN_SPAWN_BUDGET 2048
+#define SURFEL_RAY_SPAWN_BUDGET 256
+// Extra path bounces from an uncovered indirect hit before truncating.
+#define SURFEL_PATH_CONTINUATION 3u
+// a ray-spawned surfel's radius is at most this fraction of the ray length
+#define SURFEL_RAY_RADIUS_FRACTION 0.5
+// a surfel touched by the coverage pass within this many frames counts as on screen
+#define SURFEL_RECENT_FRAMES 2u
+// A pixel spawns a surfel when its partition-of-unity weight sum is below this.
+#define SURFEL_SPAWN_COVERAGE 0.5
+// A pixel dooms its smallest surfel when the weight sum exceeds this.
+#define SURFEL_OVER_COVERAGE 4.0
+// A surfel this many times larger than the local target radius is doomed
+// once the properly sized surfels around it cover the pixel.
+#define SURFEL_OVERSIZE_FACTOR 2.5
 
-// this is for difficult scenes where once a path of light
-// is found, it is very unlikely that new paths will be found
-// or the same path is (quickly) found again.
-//
-// Enabling this vastly increases the memory pressure on the same
-// memory area, accessed with atomic updates: a very expensive operation.
-#define FORCE_ALLOCATION 0
+// Kernel support: normals must agree and the point must be near the disk plane.
+#define SURFEL_KERNEL_MIN_COS 0.5
+#define SURFEL_KERNEL_PLANE_FRACTION 0.25
 
-// Keep in sync wit rust side
-#define MAX_SURFELS_PER_FRAME 256
+// EMA floors: the running mean is exact until 1/alpha samples, then forgets.
+#define EMA_MIN_ALPHA_DIRECT 0.05
+#define EMA_MIN_ALPHA_INDIRECT 0.03
+#define EMA_MIN_ALPHA_AREA 0.02
 
-// If this is enabled surfel that haven't contributed to the final image
-// in N frames are deleted
-#define DELETE_NOT_CONTRIBUTING_SURFELS 120
+// ---- hashed grid -------------------------------------------------------
+// rust: GRID_LEVELS, GRID_BASE_CELL, GRID_BUCKETS
+#define GRID_LEVELS 8u
+#define GRID_BASE_CELL 4.0
+#define GRID_BUCKETS (1u << 18u)
+#define GRID_MAX_ITEMS (MAX_SURFELS * 8u)
+// Each grid scan workgroup covers this many buckets.
+#define GRID_SCAN_BLOCK 1024u
 
-#define MIN_SURFEL_RADIUS 10.0
-#define MAX_SURFEL_RADIUS 120.0
-#define DELETE_ON_RADIUS_DIFFERENCE 15.0
+// ---- light sampling ----------------------------------------------------
+// rust: LIGHT_TILES, LIGHT_TILE_SIZE
+#define LIGHT_TILES 128u
+#define LIGHT_TILE_SIZE 256u
+#define FLUX_SCAN_BLOCK 1024u
+// MAX_SURFELS * FLUX_QUANT_MAX < 2^32 keeps the integer flux CDF exact.
+#define FLUX_QUANT_MAX 65535u
 
-#define POPULATE_VISIBLE_SURFELS_LIST 0
+// ---- ReSTIR ------------------------------------------------------------
+#define RESTIR_INITIAL_CANDIDATES 8u
+#define RESTIR_TEMPORAL_M_CAP 20.0
+#define RESTIR_SPATIAL_NEIGHBORS 4u
+#define RESTIR_SPATIAL_RADIUS 30.0
+#define RESTIR_NORMAL_THRESHOLD 0.9
+// Plane distance allowed for reuse, relative to the distance from the eye.
+#define RESTIR_PLANE_THRESHOLD 0.02
 
-#define SHOW_SURFELS 0
+// ---- accumulation ------------------------------------------------------
+#define ACCUM_MAX_HISTORY 32.0
+// Reference path tracer samples per pixel per frame.
+#define REFERENCE_SPP 2u
 
-#define SURFEL_IMPORTANCE_SAMPLES 4
+// ---- rays --------------------------------------------------------------
+// Offset along the normal for secondary ray origins, in world units.
+#define RAY_NORMAL_OFFSET 0.25
+#define RAY_T_MIN 0.01
+#define RAY_T_MAX 100000.0
 
-#define CLOSEST_INTERSECTION_DISTANCE 0.4
-
-// This MUST be kept in sync with rust side
-#define MAX_USABLE_SURFELS 8182
-
-#define USED_SURFEL_MISSING 0xFFFFFFFFu
-
-#define VIRTUAL_POINT_LIGHTS_PER_PIXEL 4u
-
-#define MAX_BVH_STACK_DEPTH 96
-
-// Discovery must cover every pixel (surfel_rt reads overlapping per texel).
-#define SURFEL_DISCOVERY_QUERY_STRIDE 1u
-// VPL may use a coarser stride (2 = quarter dispatch count).
-#define SURFEL_VPL_QUERY_STRIDE 2u
-
-// Set to 1 only to time the surfel index without software ray tracing.
-// Keep 0 unless you are actively debugging a shader: enabling the
-// GL_EXT_debug_printf extension makes GPU-AV instrument the pass, which
-// currently TDR's this pipeline (millions of invocations per frame).
-#ifndef ENABLE_DEBUG_PRINTF
-#define ENABLE_DEBUG_PRINTF 0
-#endif
+// ---- status flags (rust: GI_FLAG_*) ------------------------------------
+#define GI_FLAG_MULTIBOUNCE (1u << 0u)
+#define GI_FLAG_REFERENCE (1u << 1u)
+#define GI_FLAG_TEMPORAL (1u << 2u)
+#define GI_FLAG_SPATIAL (1u << 3u)
+#define GI_FLAG_CAPTURE (1u << 4u)
+#define GI_FLAG_RESET (1u << 5u)
+#define GI_FLAG_SPAWN (1u << 6u)
+#define GI_FLAG_ACCUMULATE (1u << 7u)
 
 #endif // _CONFIG_

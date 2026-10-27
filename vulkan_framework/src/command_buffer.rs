@@ -1021,6 +1021,39 @@ impl<'a> CommandBufferRecorder<'a> {
             ));
     }
 
+    pub fn reset_query_pool(
+        &mut self,
+        pool: &crate::query_pool::TimestampQueryPool,
+        first: u32,
+        count: u32,
+    ) {
+        unsafe {
+            self.device.ash_handle().cmd_reset_query_pool(
+                self.command_buffer.ash_handle(),
+                pool.ash_handle(),
+                first,
+                count,
+            )
+        }
+    }
+
+    /// Writes a timestamp once every command before it completed `stage`.
+    pub fn write_timestamp(
+        &mut self,
+        pool: &crate::query_pool::TimestampQueryPool,
+        stage: crate::pipeline_stage::PipelineStage,
+        index: u32,
+    ) {
+        unsafe {
+            self.device.ash_handle().cmd_write_timestamp2(
+                self.command_buffer.ash_handle(),
+                stage.into(),
+                pool.ash_handle(),
+                index,
+            )
+        }
+    }
+
     pub fn dispatch(&mut self, group_count_x: u32, group_count_y: u32, group_count_z: u32) {
         unsafe {
             self.device.ash_handle().cmd_dispatch(

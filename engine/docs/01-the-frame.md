@@ -1,74 +1,76 @@
 # 1. The frame
 
-One submitted command buffer draws the mesh, builds or reuses the surfel index, lights the surfels, and composites the image. Frames in flight share the surfel buffers. The GPU orders those frames with the usual frame fences, so two GI passes do not run on the same surfel memory at once.
-
-`gi_reuse_frames` is a CPU counter (`prev_frame_gi_reuse` in `system.rs`). It starts at 0 and increments by one after every presented frame. It is not reset when the camera moves. Passes use it as "how many frames has this view been accumulating", not as a camera-cut detector.
+One command buffer per frame skins meshes, draws the G-buffer, runs the GI section, and composites the image. The GI section is recorded by `GILighting::record_rendering_commands` in `global_illumination.rs`. Each of its passes is separated from the next by a full compute and ray-tracing memory barrier, so every pass sees everything the previous one wrote.
 
 ## Order
 
 ```mermaid
 flowchart TD
+  skin["Skinning compute<br/>palette and deformed vertices"]
   mesh["Mesh pass<br/>G-buffer"]
-  clear["Clear overlapping image<br/>to 0xFFFFFFFF"]
-  world["Write world centers<br/>from node or bone"]
-  mark["Mark deaths"]
-  holes["Prefix-sum dead slots"]
-  commit["Commit staging surfels<br/>into holes or the high-water mark"]
-  world2["Write world centers<br/>including newborns"]
-  plan["Index plan<br/>rebuild or skip"]
-  live["Prefix-sum live ids<br/>skipped when the plan says so"]
-  hash["Hash clear, then insert<br/>skipped when the plan says so"]
-  disc["Discovery<br/>one thread per pixel"]
-  spawn["Spawn ray generation<br/>direct light and new surfels"]
-  srt["Surfel RT<br/>indirect light into the surfel"]
-  gi["GI ray generation<br/>empty while ENABLE_SURFELS is 1"]
-  vpl["Virtual point lights<br/>stride 2"]
+  reset["Pool reset<br/>only when history restarts"]
+  begin["Frame begin<br/>counters"]
+  maint["Maintain<br/>follow instances, evict, alive list"]
+  grid["Grid build<br/>count, scan, scatter"]
+  upd["Surfel update<br/>direct, area, indirect, offscreen spawn"]
+  cov["Coverage<br/>per-pixel cover, screen spawn, prune"]
+  pub["Publish<br/>lights and integer flux CDF"]
+  pre["Presample<br/>light tiles"]
+  temp["ReSTIR initial + temporal"]
+  spat["ReSTIR spatial"]
+  shade["Shade<br/>sun shadows, one surfel visibility ray"]
+  acc["Accumulate E_ind"]
+  ref["Reference path tracer<br/>only when requested"]
+  copy["History copy, preview, readback"]
   fin["Final shading"]
-  hdr["HDR"]
-  quad["Present quad"]
+  hdr["HDR, UI, present"]
 
-  mesh --> clear --> world --> mark --> holes --> commit --> world2 --> plan --> live --> hash --> disc --> spawn --> srt --> gi --> vpl --> fin --> hdr --> quad
+  skin --> mesh --> reset --> begin --> maint --> grid --> upd --> cov --> pub --> pre --> temp --> spat --> shade --> acc --> ref --> copy --> fin --> hdr
 ```
 
-`ART_RTIC_STOP_AFTER` in `system.rs` can return after `mesh`, `gi`, `final`, or `hdr`. That cuts the command buffer short. It does not change the order of the passes that still run.
-
-## What each pass is for
-
-| Pass | Shader | Question it answers |
+| Pass | Shader | What it answers |
 |---|---|---|
-| Mesh | `mesh_rendering.frag` | What world position, normal, albedo, and instance is at this pixel? |
-| Mark | `surfel_mark.comp` | Which committed surfels are too old, too far, or the wrong size? |
-| Hole prefix | `surfel_prefix.comp` kind 0 | Where are the dead slots inside `[0, high_water)`? |
-| Commit | `surfel_commit.comp` | Where do last frame's new surfels live permanently? |
-| Plan | `surfel_index_plan.comp` | Did the set of live surfels change? |
-| Live prefix | `surfel_prefix.comp` kind 1 | What is the compact list of live ids? |
-| Hash | `surfel_keys.comp` | Which cell contains each live center? |
-| Discovery | `surfel_discovery.comp` | Which committed surfel covers this pixel? |
-| Spawn | `surfel_spawn.rgen` | If nothing covers it, may I create one? Also: direct light on frame 0. |
-| Surfel RT | `surfel_rt.rgen` | What indirect light does this surfel gather? |
-| GI raygen | `global_illumination.rgen` | Nothing, while surfels are enabled. The `#if ENABLE_SURFELS` body is empty. |
-| VPL | `surfel_vpl.comp` | Which surfel would light this pixel as a point light? The result is not stored yet. |
-| Final | `final_rendering.frag` | Direct image plus GI image, plus a red tint where a surfel overlaps. |
-| HDR / quad | `hdr_transform`, `renderquad` | Tonemap and present. |
+| Mesh | `mesh_rendering.frag` | Which position, normal, albedo, and instance are at this pixel? |
+| Pool reset | `gi/pool_reset.comp` | Empty the pool (history restart only). |
+| Frame begin | `gi/frame_begin.comp` | Last frame's output list becomes this frame's input; counters return to zero. |
+| Maintain | `gi/maintain.comp` | Where is each surfel now, and does it survive? |
+| Grid | `gi/grid_build.comp`, `gi/grid_scan.comp` | Which surfels can contain a given point? |
+| Surfel update | `gi/surfel_update.rgen` | How much light reaches each surfel, how much surface does it own, and which offscreen surfaces need surfels? |
+| Coverage | `gi/surfel_coverage.comp` | How well is each pixel covered, which surfel dominates it, and where should surfels be added or removed? |
+| Publish | `gi/publish.comp` | How much power does each surfel emit, and what is the CDF over that power? |
+| Presample | `gi/presample.comp` | 32768 surfels drawn in proportion to power, for the ReSTIR candidates. |
+| Temporal | `gi/restir_temporal.comp` | Initial RIS over 8 candidates, merged with the reprojected reservoir. |
+| Spatial | `gi/restir_spatial.comp` | Merge with 4 neighbouring reservoirs. |
+| Shade | `gi/restir_shade.rgen` | Direct sun light, and the selected surfel's light if it is visible. |
+| Accumulate | `gi/accumulate.comp` | Running mean of the indirect light over up to 32 reprojected frames. |
+| Reference | `gi/reference.rgen` | Ground-truth indirect light, accumulated while the view is still. |
+| Final | `final_rendering.frag` | `albedo * (E_dir + E_ind)`, or a debug view. |
 
-Hardware ray tracing against the mesh acceleration structure happens in spawn (shadow rays, frame 0 only) and in surfel RT (bounce rays). Discovery and the hash never trace rays. They only read the G-buffer and the surfel buffers.
+Hardware ray tracing happens only in the three ray generation passes: surfel update, shade, and reference. All of them use the closest-hit shader `gi/hit.rchit`. It returns the interpolated shading normal facing the ray, the albedo sampled with `textureLod`, the instance id, and the hit distance.
+
+## Counters that control history
+
+Three numbers in the status block (`gi_data`, chapter 2) decide what may be reused.
+
+- **`gi_reuse_frames`** is `prev_frame_gi_reuse` in `system.rs`. It is 0 on the first frame and after `reset_gi_accumulation()`, a scene change, or a TLAS rebuild. Otherwise it counts frames. When it is 0, the GI images are cleared, the pool is reset, and temporal reuse and accumulation are skipped for that frame. Moving the camera does **not** reset it: surfels live in world space and every per-pixel history is reprojected.
+- **`frame_index`** increases by one every recorded frame. Its parity selects which alive list and which reservoir buffer are this frame's output. It also seeds every random number generator.
+- **`still_frames`** counts frames with an unchanged view and projection. 0 restarts the reference accumulation.
+
+The UI toggles (chapter 10) call `reset_gi_accumulation()` when they change what the history means. Turning the reference on or off does not, because the reference only adds a pass.
 
 ## Images that survive the frame
 
-```mermaid
-flowchart LR
-  gb["G-buffer<br/>position, normal, diffuse, specular, instance, depth"]
-  ov["surfelOverlappingImage<br/>one surfel id per pixel"]
-  dl["outputImage 1<br/>direct light"]
-  giimg["outputImage 0<br/>indirect light"]
-  fin["shaded color"]
+| Image | Writer | Reader |
+|---|---|---|
+| `IMG_EDIR` | shade | final |
+| `IMG_EIND_RAW` | shade | accumulate |
+| `IMG_EIND` | accumulate | final; copied to `IMG_EIND_HISTORY` at the end of the frame |
+| `IMG_EIND_HISTORY` | copy | accumulate (next frame, reprojected) |
+| `IMG_EREF` | reference | final, capture |
+| `IMG_COVERAGE` | coverage | final (coverage view) |
+| `IMG_ALBEDO` | shade, only on capture frames | capture |
+| `surfel_overlay` | coverage: dominant surfel id per pixel | final (surfel-id view), self-test |
 
-  gb --> fin
-  ov --> fin
-  dl --> fin
-  giimg --> fin
-```
+## Bisecting
 
-The overlapping image is cleared to `0xFFFFFFFF` at the start of every GI pass. Discovery is the only writer that fills it back in. Final shading treats `0xFFFFFFFF` as "no surfel on this pixel".
-
-Direct and indirect images are cleared only when `gi_reuse_frames == 0`. Later frames read the previous contents and blend. Spawn writes direct light only on frame 0. Surfel RT accumulates indirect light into the surfel records themselves. The GI image is what final shading samples as `gibuffer[0]`. With surfels enabled, the GI ray generator does not write that image. Indirect light reaches the picture only if some other pass stored it. Today that store is incomplete: surfel RT updates surfel irradiance, and the VPL pass computes a color it does not write. The red overlay (`SHOW_SURFELS`) is independent of that. It only tests the overlapping id.
+`ART_RTIC_STOP_AFTER=none|mesh|gi|final|hdr|ui|all` ends the command buffer after the named stage. Any value other than `all` also skips acquire and present, so the loop runs unthrottled. That is handy for GPU timing (chapter 11).

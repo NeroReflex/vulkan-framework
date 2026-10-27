@@ -1,0 +1,52 @@
+// Per pixel: direct sun irradiance, and the indirect irradiance carried by the
+// reservoir's surfel: E_j(x) * W * V(x, y_j).
+#extension GL_EXT_ray_tracing : require
+#extension GL_GOOGLE_include_directive : enable
+
+#define RT_DESCRIPTOR_SET 0
+#include "../rt_descriptor_set.glsl"
+
+#define STATUS_DESCRIPTOR_SET 1
+#include "../status.glsl"
+
+#define GBUFFER_DESCRIPTOR_SET 2
+#include "../gbuffer.glsl"
+
+#define SURFEL_SET 3
+#include "surfels.glsl"
+#include "pixel.glsl"
+#include "reservoir.glsl"
+#include "rt.glsl"
+
+void main() {
+    const ivec2 px = ivec2(gl_LaunchIDEXT.xy);
+    if (!in_render_area(px)) {
+        return;
+    }
+    vec3 x, n, albedo;
+    uint inst;
+    vec3 e_dir = vec3(0.0);
+    vec3 e_ind = vec3(0.0);
+    if (load_pixel(px, x, n, albedo, inst)) {
+        const vec3 origin = offset_origin(x, n);
+        e_dir = direct_irradiance(origin, n);
+
+        const Reservoir r = reservoirs[res_index(res_current(), px)];
+        if (r.W > 0.0 && reservoir_sample_valid(r)) {
+            const vec3 e = surfel_irradiance(r.id, x, n);
+            if (max(e.r, max(e.g, e.b)) > 0.0) {
+                const vec3 target = offset_origin(geo[r.id].xyz, decompress_unit_vec(nrm[r.id]));
+                const vec3 d = target - origin;
+                const float len = length(d);
+                if (len > 1e-4 && trace_visible(origin, d / len, len * 0.999)) {
+                    e_ind = e * r.W;
+                }
+            }
+        }
+    }
+    imageStore(gi_images[IMG_EDIR], px, vec4(e_dir, 1.0));
+    imageStore(gi_images[IMG_EIND_RAW], px, vec4(e_ind, 1.0));
+    if ((gi_data.flags & GI_FLAG_CAPTURE) != 0u) {
+        imageStore(gi_images[IMG_ALBEDO], px, vec4(albedo, 1.0));
+    }
+}

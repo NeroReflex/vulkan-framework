@@ -5,14 +5,145 @@
 #[derive(Clone, Copy, Debug, Default)]
 pub struct DebugGpuBlock {
     pub flags: u32,
-    pub padding: [u32; 7],
+    pub view_mode: u32,
+    pub exposure: f32,
+    pub padding: [u32; 5],
 }
 
 pub const DEBUG_FLAG_SHOW_SURFELS: u32 = 1 << 0;
 
-#[derive(Clone, Debug, Default)]
+/// What the final composite shows. Must match `VIEW_*` in `debug.glsl`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(u32)]
+pub enum ViewMode {
+    /// albedo * (E_dir + E_ind)
+    #[default]
+    Final = 0,
+    /// albedo shading tinted by the dominant surfel id
+    SurfelIds = 1,
+    /// partition-of-unity weight sum: red = uncovered, green = 1, blue = over-covered
+    Coverage = 2,
+    /// albedo * E_ind
+    Indirect = 3,
+    /// E_ind (irradiance, no albedo)
+    IndirectIrradiance = 4,
+    /// albedo * (E_dir + E_ref), the path traced reference
+    Reference = 5,
+    /// albedo * E_ref
+    ReferenceIndirect = 6,
+    /// relative luminance error of E_ind against E_ref: red = too bright, blue = too dark
+    Difference = 7,
+}
+
+impl ViewMode {
+    pub const ALL: [ViewMode; 8] = [
+        ViewMode::Final,
+        ViewMode::SurfelIds,
+        ViewMode::Coverage,
+        ViewMode::Indirect,
+        ViewMode::IndirectIrradiance,
+        ViewMode::Reference,
+        ViewMode::ReferenceIndirect,
+        ViewMode::Difference,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            ViewMode::Final => "Final",
+            ViewMode::SurfelIds => "Surfel ids",
+            ViewMode::Coverage => "Surfel coverage",
+            ViewMode::Indirect => "Indirect (albedo x E_ind)",
+            ViewMode::IndirectIrradiance => "Indirect irradiance",
+            ViewMode::Reference => "Reference",
+            ViewMode::ReferenceIndirect => "Reference indirect",
+            ViewMode::Difference => "Difference vs reference",
+        }
+    }
+
+    pub fn needs_reference(self) -> bool {
+        matches!(
+            self,
+            ViewMode::Reference | ViewMode::ReferenceIndirect | ViewMode::Difference
+        )
+    }
+}
+
+/// Switches of the GI pipeline. Toggling any of them restarts the GI history.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GiSettings {
+    pub multibounce: bool,
+    pub temporal_reuse: bool,
+    pub spatial_reuse: bool,
+    pub accumulate: bool,
+    pub spawn: bool,
+    /// Run the path traced reference every frame (expensive).
+    pub reference: bool,
+}
+
+impl Default for GiSettings {
+    fn default() -> Self {
+        Self {
+            multibounce: true,
+            temporal_reuse: true,
+            spatial_reuse: true,
+            accumulate: true,
+            spawn: true,
+            reference: false,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct DebugState {
     flags: u32,
+    view_mode: ViewMode,
+    pub gi: GiSettings,
+}
+
+impl GiSettings {
+    /// Defaults with `ART_RTIC_GI_DISABLE=multibounce,temporal,spatial,accumulate,spawn`
+    /// switches turned off and `ART_RTIC_GI_REFERENCE=1` turning the reference on.
+    pub fn from_env() -> Self {
+        let mut settings = Self::default();
+        if let Ok(list) = std::env::var("ART_RTIC_GI_DISABLE") {
+            for name in list.split(',').map(str::trim) {
+                match name {
+                    "multibounce" => settings.multibounce = false,
+                    "temporal" => settings.temporal_reuse = false,
+                    "spatial" => settings.spatial_reuse = false,
+                    "accumulate" => settings.accumulate = false,
+                    "spawn" => settings.spawn = false,
+                    "" => {}
+                    other => eprintln!("ART_RTIC_GI_DISABLE: unknown switch {other}"),
+                }
+            }
+        }
+        if std::env::var("ART_RTIC_GI_REFERENCE").is_ok_and(|v| v != "0") {
+            settings.reference = true;
+        }
+        settings
+    }
+}
+
+impl ViewMode {
+    /// `ART_RTIC_VIEW=<index into ViewMode::ALL>` selects the startup view.
+    pub fn from_env() -> Self {
+        std::env::var("ART_RTIC_VIEW")
+            .ok()
+            .and_then(|v| v.trim().parse::<usize>().ok())
+            .and_then(|index| Self::ALL.get(index).copied())
+            .unwrap_or_default()
+    }
+}
+
+impl Default for DebugState {
+    fn default() -> Self {
+        Self {
+            flags: 0,
+            view_mode: ViewMode::from_env(),
+            gi: GiSettings::from_env(),
+        }
+    }
 }
 
 impl DebugState {
@@ -28,10 +159,30 @@ impl DebugState {
         }
     }
 
+    pub fn view_mode(&self) -> ViewMode {
+        self.view_mode
+    }
+
+    pub fn set_view_mode(&mut self, mode: ViewMode) {
+        self.view_mode = mode;
+    }
+
+    /// The reference path tracer runs when requested or when the view needs it.
+    pub fn reference_active(&self) -> bool {
+        self.gi.reference || self.view_mode.needs_reference()
+    }
+
     pub fn gpu_block(&self) -> DebugGpuBlock {
+        let view_mode = if self.view_mode == ViewMode::Final && self.show_surfels() {
+            ViewMode::SurfelIds
+        } else {
+            self.view_mode
+        };
         DebugGpuBlock {
             flags: self.flags,
-            padding: [0; 7],
+            view_mode: view_mode as u32,
+            exposure: 1.0,
+            padding: [0; 5],
         }
     }
 }

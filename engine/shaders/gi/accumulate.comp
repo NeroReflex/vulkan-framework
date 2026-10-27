@@ -1,0 +1,37 @@
+// Temporal accumulation of the per-pixel indirect irradiance: a running mean
+// over at most ACCUM_MAX_HISTORY reprojected frames.
+#include "compute.glsl"
+#include "pixel.glsl"
+#include "reservoir.glsl"
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+void main() {
+    const ivec2 px = ivec2(gl_GlobalInvocationID.xy);
+    if (!in_render_area(px)) {
+        return;
+    }
+    const Reservoir cur = reservoirs[res_index(res_current(), px)];
+    if (cur.M <= 0.0) {
+        imageStore(gi_images[IMG_EIND], px, vec4(0.0));
+        return;
+    }
+    const vec3 x = cur.pos;
+    const vec3 n = decompress_unit_vec(cur.nrm);
+    const vec3 sample_e = imageLoad(gi_images[IMG_EIND_RAW], px).rgb;
+
+    vec3 history = vec3(0.0);
+    float count = 0.0;
+    ivec2 q;
+    const bool accumulate = (gi_data.flags & GI_FLAG_ACCUMULATE) != 0u && gi_data.gi_reuse_frames > 0u;
+    if (accumulate && reproject(x, q)) {
+        const Reservoir prev = reservoirs[res_index(res_previous(), q)];
+        if (prev.M > 0.0 && similar_surface(x, n, prev.pos, decompress_unit_vec(prev.nrm))) {
+            const vec4 h = imageLoad(gi_images[IMG_EIND_HISTORY], q);
+            history = h.rgb;
+            count = h.a;
+        }
+    }
+    count = min(count + 1.0, ACCUM_MAX_HISTORY);
+    imageStore(gi_images[IMG_EIND], px, vec4(mix(history, sample_e, 1.0 / count), count));
+}

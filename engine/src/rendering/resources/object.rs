@@ -225,6 +225,8 @@ pub struct Manager {
 
     objects: LoadedMeshesType,
     skinned_assets: Vec<Option<SkinnedAsset>>,
+    /// One generation counter per TLAS draw instance (same order as `instance_column_matrices`).
+    instance_generations: Vec<u32>,
 }
 
 /// This struct represents what the GPU has access to when indexing buffers
@@ -349,7 +351,44 @@ impl Manager {
 
             objects,
             skinned_assets,
+            instance_generations: Vec::new(),
         })
+    }
+
+    pub fn instance_generations(&self) -> &[u32] {
+        &self.instance_generations
+    }
+
+    fn flat_draw_count(objects: &LoadedMeshesType) -> usize {
+        objects
+            .iter()
+            .map(|loaded_obj| match loaded_obj {
+                Some((obj_meshes, obj_instances)) => {
+                    obj_meshes.meshes.len() * obj_instances.instances.len()
+                }
+                None => 0_usize,
+            })
+            .sum()
+    }
+
+    fn draw_indices_for_instance(&self, object: usize, instance_index: usize) -> Vec<usize> {
+        let mut offset = 0usize;
+        for (oi, loaded) in self.objects.iter().enumerate() {
+            let Some((meshes, instances)) = loaded else {
+                continue;
+            };
+            let mesh_count = meshes.meshes.len();
+            let instance_count = instances.instances.len();
+            if oi == object {
+                let mut indices = Vec::with_capacity(mesh_count);
+                for k in 0..mesh_count {
+                    indices.push(offset + k * instance_count + instance_index);
+                }
+                return indices;
+            }
+            offset += mesh_count * instance_count;
+        }
+        Vec::new()
     }
 
     pub fn list_animations(&self, object: usize) -> Vec<String> {
@@ -1448,6 +1487,12 @@ impl Manager {
             }
         };
         self.objects = objects;
+        let draw_count = Self::flat_draw_count(&self.objects);
+        if self.instance_generations.len() < draw_count {
+            self.instance_generations.resize(draw_count, 0);
+        } else if self.instance_generations.len() > draw_count {
+            self.instance_generations.truncate(draw_count);
+        }
         Ok(())
     }
 
@@ -1467,6 +1512,11 @@ impl Manager {
             return false;
         }
         instances.instances[instance_index] = instance;
+        for draw_index in self.draw_indices_for_instance(object, instance_index) {
+            if draw_index < self.instance_generations.len() {
+                self.instance_generations[draw_index] += 1;
+            }
+        }
         true
     }
 

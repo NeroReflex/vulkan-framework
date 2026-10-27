@@ -26,6 +26,7 @@ pub mod pipeline_layout;
 pub mod pipeline_stage;
 pub mod prelude;
 pub mod push_constant_range;
+pub mod query_pool;
 pub mod queue;
 pub mod queue_family;
 pub mod raytracing_pipeline;

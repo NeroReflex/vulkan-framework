@@ -36,7 +36,7 @@ void main() {
     const mat4 MVP = camera.projectionMatrix * camera.viewMatrix * ModelMatrix; 
 
     // Get the eye position
-	const vec4 eye_position = vec4(camera.viewMatrix[3][0], camera.viewMatrix[3][1], camera.viewMatrix[3][2], 1.0);
+	const vec4 eye_position = vec4(-(transpose(mat3(camera.viewMatrix)) * camera.viewMatrix[3].xyz), 1.0);
 	eyePosition_worldspace = eye_position;
 
 	vec4 vPosition_worldspace = ModelMatrix * vec4(vertex_position_modelspace, 1.0);

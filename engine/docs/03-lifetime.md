@@ -1,100 +1,49 @@
 # 3. Lifetime
 
-A surfel is born in the staging half, copied into a stable committed slot, found by the hash, and eventually marked dead. The slot index does not change between birth in the committed region and death. Nothing in the live path sorts surfel payloads.
+A surfel is a slot index into `surfels[]`. It is allocated from a free stack, listed in an alive list every frame it survives, and pushed back on the stack when it is evicted. Its payload never moves, so nothing that stores an id (overlay, reservoirs, light tiles) needs fixing up.
 
-```mermaid
-stateDiagram-v2
-  [*] --> Staging: spawn or surfel RT reserves a slot
-  Staging --> Committed: next frame's commit copies the record
-  Committed --> Committed: discovery or spawn resets latest_contribution
-  Committed --> Dead: mark sets DEAD
-  Dead --> Committed: a later commit reuses the hole for a new record
-  Dead --> Dead: stays a hole until reused
-```
+## Free stack
 
-## Mark
+`free_ids[0 .. state[ST_FREE])` is a stack of free slots.
 
-`surfel_mark.comp`. One thread per slot in `[0, high_water)`. Staging slots are not visited.
+- **Pop** is `surfel_alloc()`: `atomicAdd(state[ST_FREE], -1)`, then read `free_ids[prev - 1]`. When the counter was already 0, the pop puts the 1 back, counts `ST_SPAWN_FAILED`, and returns `INVALID_ID`. Only the surfel update and coverage passes pop.
+- **Push** happens only in maintain: `free_ids[atomicAdd(state[ST_FREE], 1)] = id`.
 
-A thread returns immediately if the slot is already `DEAD` or not yet `READY`.
+No pass both pushes and pops, so within a pass the counter only goes down, apart from undoing failed pops. Once it has reached 0 it never becomes positive again, because each undo only cancels that pop's own decrement. Successful pops therefore see distinct positive counter values, and so distinct slots.
 
-Otherwise, in order:
+`pool_reset.comp` fills the stack with every slot and zeroes every state word. It runs on the first frame and whenever `gi_reuse_frames` is 0, which is also when the image history is cleared.
 
-1. **Age.** `latest_contribution` increments by one. Discovery and a successful spawn set it back to 0 when they use the surfel. If it reaches `DELETE_NOT_CONTRIBUTING_SURFELS` (120), the slot is marked `DEAD` and `index_topology_dirty` is set. A surfel that covers no pixel for about two seconds at 60 FPS disappears.
-2. **Radius.** The ideal radius is a linear map from camera distance: near plane maps to `MIN_SURFEL_RADIUS` (10), far plane maps to `MAX_SURFEL_RADIUS` (120). If the stored radius differs by more than `DELETE_ON_RADIUS_DIFFERENCE` (15), mark **writes the new radius in place**. It does not set `DEAD` and it does not set `index_topology_dirty`. The hash is not rebuilt for a radius edit. See chapter 11 for the consequence.
-3. **Range.** If the distance from the eye to the center is greater than the far plane, the slot is marked `DEAD` and the index is dirty. This is a sphere around the eye, not a sliding axis-aligned box.
+## Alive lists
 
-Mark never compacts. Dead slots remain inside `[0, high_water)` until commit reuses them.
+`alive_ids` holds two lists of `MAX_SURFELS` ids. `alive_in_base()` and `alive_out_base()` pick them by `frame_index` parity.
 
-## Hole prefix
+1. **Frame begin** copies `ST_ALIVE_OUT` into `ST_ALIVE_IN` and zeroes the per-frame counters.
+2. **Maintain** walks the input list. Survivors are appended to the output list with `surfel_push_alive`.
+3. **Grid build** phase 0 freezes `ST_SURVIVORS = ST_ALIVE_OUT`. The grid and the surfel update launch cover exactly those ids.
+4. **Surfel update** and **coverage** append newborns to the output list behind the survivors. Newborns are part of this frame's light CDF but not of this frame's grid. They become searchable next frame.
 
-`surfel_prefix.comp` with `kind = 0`, three dispatches separated by compute barriers.
+## Birth
 
-The predicate is "slot `< high_water` and `DEAD`".
+`surfel_init()` writes a complete record and its mirrors. It bumps `generation`, sets `area = πr²` with `area_n = 0` (the first area sample replaces it), clears `surfel_light` and `light_rec`, and pushes the id on the output list. A screen-spawned surfel starts with `e_dir_n = 0`: it is not a light until its first update has measured its direct light. A ray-spawned surfel is born with the direct light measured at the hit, so it is a light in the same frame.
 
-| Phase | Dispatch | Work |
-|---|---|---|
-| 0 | 128 groups of 256 | Each group counts its dead slots and writes a block sum. |
-| 1 | 1 thread | Exclusive scan of the 128 block sums. Stores `HDR_HOLE_COUNT`. |
-| 2 | 128 groups of 256 | Each dead slot writes its id into `OFF_HOLES` at its exclusive index. |
+## Eviction
 
-This is a standard three-kernel scan. The block sums are not read across workgroups inside one dispatch. That cross-group read is the bug that made the old radix sort flicker. The barriers between phases are the fix, and the hole scan still uses them.
+Maintain keeps a surfel only if all of these hold:
 
-## Commit
+- `ALIVE` is set and `DOOMED` is not (coverage sets `DOOMED`, chapter 6);
+- its instance still exists with the same `instance_generation` (chapter 13);
+- its new world center is within `SURFEL_MAX_DISTANCE` (6000) of the eye;
+- `frame_index - last_seen` is at most `SURFEL_UNSEEN_FRAMES` (240). Under pool pressure the limit is `SURFEL_PRESSURE_UNSEEN_FRAMES` (30). Pressure means fewer than `MAX_SURFELS / 8` free slots at frame begin.
 
-`surfel_commit.comp`. One group of 256 threads. At most 256 staging surfels exist, so one group covers the copy.
+An evicted surfel has its flags cleared, its light state emptied, and its slot pushed on the free stack.
 
-Thread 0 snapshots `high_water`, `HDR_HOLE_COUNT`, and `unordered_surfels` into shared memory. Every thread then copies one staging record:
+## Being seen
 
-```text
-src = 32768 + lane
-dst = OFF_HOLES[lane]              if lane < hole count
-      high_water + lane - holes    otherwise
-```
+`last_seen` is the only thing that keeps a surfel alive, and two passes write it.
 
-The copy is a full `Surfel` assignment, then `DEAD` is cleared on the destination. The source staging record is left behind and ignored, because `unordered_surfels` is set to 0 before anyone reads it again.
+- **Coverage** sets `last_seen = frame` on the dominant surfel of every fourth pixel in each direction. A surfel touched within `SURFEL_RECENT_FRAMES` (2) counts as *on screen*.
+- **Surfel update**: when an on-screen surfel's bounce ray hits a surface, the dominant surfel at the hit gets `last_seen = frame - 3` unless it is already more recent. That keeps the lights of visible surfaces alive without marking them as on screen. If they counted as on screen, their own rays would spawn more offscreen surfels and the cache would grow without bound.
 
-Thread 0 then publishes:
+## Generations
 
-```text
-appended   = how many staging surfels did not fit in holes, clamped to the room under 32768
-placed     = min(staging count, holes + appended)
-high_water = old high_water + appended
-live_count = (old high_water - holes) + placed
-remaining_holes = holes left over
-unordered_surfels = 0
-```
-
-If `placed > 0`, `index_topology_dirty` is set. The hash will be rebuilt this frame, after the live-id scan, so it sees the new slots.
-
-Commit also clears the discovered-list and the reserve counter. Those matter only when `POPULATE_VISIBLE_SURFELS_LIST` is turned on.
-
-## Index plan
-
-`surfel_index_plan.comp`. One thread.
-
-```text
-HDR_BUILD_ACTIVE = 1  if live_count != HDR_KEY_COUNT or index_topology_dirty != 0
-                 = 0  otherwise
-```
-
-`HDR_KEY_COUNT` is the live count stored by the last hash insert. A quiet frame, with no births and no deaths, skips the live-id scan and the hash. Queries keep using the previous chains. That is safe only because centers do not move and the live set is identical.
-
-The plan runs **before** the live-id prefix. The prefix for `kind = 1` returns immediately when `HDR_BUILD_ACTIVE` is 0, so it does not overwrite `OFF_IDS_A` while the hash still points at the old list.
-
-## Live-id prefix
-
-Same shader as the hole scan, `kind = 1`. The predicate is "slot `< high_water` and not `DEAD`".
-
-Phase 1 stores the total into `live_count` again (it should match what commit wrote, modulo races that this single-queue pass does not have). Phase 2 writes the packed ids to `OFF_IDS_A`. Hash insert reads `OFF_IDS_A[0 .. live_count)`.
-
-## What "stable index" means
-
-```text
-frame N spawn          writes surfels[32768 + k]
-frame N+1 commit       copies that record to slot S in the committed half
-frame N+1 hash         links S into a cell
-frame N+2 .. N+k       S stays at that index, hash unchanged, until a death or a new commit
-```
-
-Do not compact the committed array. Do not swap two live surfels. Every overlapping pixel, every RT hit, and every hash node stores the slot index and expects the payload to stay there.
+`generation` changes on every allocation and is never reset, not even by a pool reset. Reservoirs and light records carry it. `reservoir_light()` returns an empty record unless the stored generation equals the light record's, and evicted slots have their records cleared. So a reservoir that points at a recycled slot is simply invalid, never wrong.

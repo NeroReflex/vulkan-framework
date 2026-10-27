@@ -1,0 +1,54 @@
+// Exclusive scan of grid_count into grid_start (and grid_cursor).
+//   phase 0: per-block totals           (GRID_BUCKETS / GRID_SCAN_BLOCK groups)
+//   phase 1: scan of the block totals    (1 group)
+//   phase 2: per-block scan + offset     (GRID_BUCKETS / GRID_SCAN_BLOCK groups)
+#include "compute.glsl"
+
+layout(local_size_x = 1024) in;
+
+shared uint s_scan[1024];
+
+// Inclusive Hillis-Steele scan of s_scan.
+void block_scan(uint li) {
+    for (uint offset = 1u; offset < 1024u; offset <<= 1u) {
+        barrier();
+        const uint add = li >= offset ? s_scan[li - offset] : 0u;
+        barrier();
+        s_scan[li] += add;
+    }
+    barrier();
+}
+
+void main() {
+    const uint li = gl_LocalInvocationID.x;
+    const uint block = gl_WorkGroupID.x;
+    const uint blocks = GRID_BUCKETS / GRID_SCAN_BLOCK;
+
+    if (pc.phase == 1u) {
+        const uint value = li < blocks ? scan_blocks[li] : 0u;
+        s_scan[li] = value;
+        block_scan(li);
+        if (li < blocks) {
+            scan_blocks[li] = s_scan[li] - value;
+        }
+        if (li == 1023u) {
+            grid_start[GRID_BUCKETS] = s_scan[1023];
+            state[ST_GRID_ITEMS] = int(s_scan[1023]);
+        }
+        return;
+    }
+
+    const uint b = block * GRID_SCAN_BLOCK + li;
+    const uint value = grid_count[b];
+    s_scan[li] = value;
+    block_scan(li);
+    if (pc.phase == 0u) {
+        if (li == 1023u) {
+            scan_blocks[block] = s_scan[1023];
+        }
+    } else {
+        const uint start = scan_blocks[block] + s_scan[li] - value;
+        grid_start[b] = start;
+        grid_cursor[b] = start;
+    }
+}

@@ -1,0 +1,88 @@
+// Merges the pixel's temporal reservoir with RESTIR_SPATIAL_NEIGHBORS random
+// neighbours on a similar surface. Z counts only the domains whose target at
+// their own surface is nonzero for the selected surfel.
+#include "compute.glsl"
+#include "pixel.glsl"
+#include "reservoir.glsl"
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+#define DOMAINS (RESTIR_SPATIAL_NEIGHBORS + 1u)
+
+void main() {
+    const ivec2 px = ivec2(gl_GlobalInvocationID.xy);
+    if (!in_render_area(px)) {
+        return;
+    }
+    const Reservoir center = reservoirs[res_index(RES_TEMP, px)];
+    const uint out_index = res_index(res_current(), px);
+    if (center.M <= 0.0) {
+        reservoirs[out_index] = center;
+        return;
+    }
+    const vec3 x = center.pos;
+    const vec3 n = decompress_unit_vec(center.nrm);
+    uint rng = rng_seed(uint(px.x) + uint(px.y) * gi_data.render_width, gi_data.frame_index, 0x7f4a7c15u);
+
+    vec3 dom_pos[DOMAINS];
+    vec3 dom_nrm[DOMAINS];
+    float dom_m[DOMAINS];
+    uint domains = 0u;
+
+    LightRecord y_rec = reservoir_light(center);
+    uint y = center.id;
+    float py = record_target(y_rec, x, n);
+    float wsum = py * center.W * center.M;
+    float M = center.M;
+    dom_pos[0] = x;
+    dom_nrm[0] = n;
+    dom_m[0] = center.M;
+    domains = 1u;
+
+    if ((gi_data.flags & GI_FLAG_SPATIAL) != 0u) {
+        for (uint k = 0u; k < RESTIR_SPATIAL_NEIGHBORS; k++) {
+            const float radius = RESTIR_SPATIAL_RADIUS * sqrt(rng_float(rng));
+            const float angle = 2.0 * PI * rng_float(rng);
+            const ivec2 q = px + ivec2(round(radius * vec2(cos(angle), sin(angle))));
+            if (q == px || !in_render_area(q)) {
+                continue;
+            }
+            const Reservoir nb = reservoirs[res_index(RES_TEMP, q)];
+            if (nb.M <= 0.0) {
+                continue;
+            }
+            const vec3 nb_n = decompress_unit_vec(nb.nrm);
+            if (!similar_surface(x, n, nb.pos, nb_n)) {
+                continue;
+            }
+            const LightRecord nb_rec = reservoir_light(nb);
+            const float p = record_target(nb_rec, x, n);
+            const float w = p * nb.W * nb.M;
+            wsum += w;
+            M += nb.M;
+            if (w > 0.0 && rng_float(rng) * wsum < w) {
+                y = nb.id;
+                py = p;
+                y_rec = nb_rec;
+            }
+            dom_pos[domains] = nb.pos;
+            dom_nrm[domains] = nb_n;
+            dom_m[domains] = nb.M;
+            domains++;
+        }
+    }
+
+    Reservoir r = empty_reservoir(x, n, M);
+    if (py > 0.0 && wsum > 0.0) {
+        float Z = 0.0;
+        for (uint k = 0u; k < domains; k++) {
+            if (record_supports(y_rec, dom_pos[k], dom_nrm[k])) {
+                Z += dom_m[k];
+            }
+        }
+        r.id = y;
+        r.gen = y_rec.info.z;
+        r.W = Z > 0.0 ? wsum / (Z * py) : 0.0;
+    }
+    reservoirs[out_index] = r;
+}

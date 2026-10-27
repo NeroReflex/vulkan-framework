@@ -1,0 +1,25 @@
+// Empties the pool: every slot becomes free, every counter returns to zero.
+// Slot generations are kept so reservoirs from before the reset never match.
+#include "compute.glsl"
+
+layout(local_size_x = 256) in;
+
+void main() {
+    const uint id = gl_GlobalInvocationID.x;
+    if (id == 0u) {
+        for (uint k = 0u; k < 64u; k++) {
+            state[k] = 0;
+        }
+        state[ST_FREE] = int(MAX_SURFELS);
+    }
+    if (id >= MAX_SURFELS) {
+        return;
+    }
+    // Popping from the top hands out low ids first.
+    free_ids[id] = MAX_SURFELS - 1u - id;
+    surfels[id].flags = 0u;
+    geo[id] = vec4(0.0);
+    nrm[id] = 0u;
+    surfel_light[id] = vec4(0.0);
+    light_rec[id] = empty_light_record();
+}

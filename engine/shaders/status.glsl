@@ -25,15 +25,29 @@ layout(std430, set = STATUS_DESCRIPTOR_SET, binding = 1) readonly buffer directi
     light_t light[];
 };
 
+// rust: GiStatusBlock in rendering/gi_driver.rs (std140)
 layout(std140, set = STATUS_DESCRIPTOR_SET, binding = 2) uniform status_buffer
 {
+    // frames since the GI history was last invalidated (0 = cleared this frame)
     uint gi_reuse_frames;
-
-    uint padding[7];
+    // monotonically increasing frame counter; its parity selects ping-pong buffers
+    uint frame_index;
+    // frames the camera and the scene have been still; 0 restarts the reference
+    uint still_frames;
+    // GI_FLAG_* bits
+    uint flags;
+    uint reference_bounces;
+    uint render_width;
+    uint render_height;
+    // angle subtended by one pixel at the image center, in radians
+    float pixel_angle;
+    vec4 eye_position;
+    mat4 prev_view;
+    mat4 prev_proj;
 } gi_data;
 
 vec3 get_eye_position() {
-    return vec3(camera.viewMatrix[3][0], camera.viewMatrix[3][1], camera.viewMatrix[3][2]);
+    return gi_data.eye_position.xyz;
 }
 
 vec2 reconstructNearFarFromCamera()

@@ -1,0 +1,98 @@
+// Turns every alive surfel into a light and builds the flux CDF over the
+// alive list (including this frame's newborns).
+//   phase 0: L = rho/pi (E_dir + E_ind); light = (L A, A); light record;
+//            quantized flux; block-local scan
+//   phase 1: scan of the block totals (1 group)
+//   phase 2: add block offsets -> inclusive CDF
+// The CDF is integer: the pmf of the presampled lights is then exactly the
+// selection probability of the search. The quantization scale (previous
+// frame's largest flux) only affects how well the pmf follows the flux.
+#include "compute.glsl"
+
+layout(local_size_x = 1024) in;
+
+shared uint s_scan[1024];
+
+void block_scan(uint li) {
+    for (uint offset = 1u; offset < 1024u; offset <<= 1u) {
+        barrier();
+        const uint add = li >= offset ? s_scan[li - offset] : 0u;
+        barrier();
+        s_scan[li] += add;
+    }
+    barrier();
+}
+
+uint quantize_flux(float flux) {
+    if (!(flux > 0.0)) {
+        return 0u;
+    }
+    const float scale = intBitsToFloat(state[ST_PREV_MAX_FLUX]);
+    if (!(scale > 0.0)) {
+        return 1u;
+    }
+    return uint(clamp(ceil(flux / scale * float(FLUX_QUANT_MAX)), 1.0, float(FLUX_QUANT_MAX)));
+}
+
+void main() {
+    const uint li = gl_LocalInvocationID.x;
+    const uint block = gl_WorkGroupID.x;
+    const uint blocks = MAX_SURFELS / FLUX_SCAN_BLOCK;
+    const uint count = uint(state[ST_ALIVE_OUT]);
+
+    if (pc.phase == 1u) {
+        const uint value = li < blocks ? scan_blocks[li] : 0u;
+        s_scan[li] = value;
+        block_scan(li);
+        if (li < blocks) {
+            scan_blocks[li] = s_scan[li] - value;
+        }
+        if (li == 1023u) {
+            state[ST_TOTAL_FLUX] = int(s_scan[1023]);
+            state[ST_LIGHT_COUNT] = int(count);
+        }
+        return;
+    }
+
+    const uint i = block * FLUX_SCAN_BLOCK + li;
+    if (pc.phase == 2u) {
+        if (i < count) {
+            flux_cdf[i] += scan_blocks[block];
+        }
+        return;
+    }
+
+    uint q = 0u;
+    if (i < count) {
+        const uint id = alive_ids[alive_out_base() + i];
+        vec4 la = vec4(0.0);
+        float flux = 0.0;
+        // Surfels without a direct light sample yet are not lights.
+        if (surfels[id].e_dir_n > 0.0) {
+            const vec3 L = surfels[id].albedo / PI * (surfels[id].e_dir + surfels[id].e_ind);
+            const float area = surfels[id].area;
+            la = vec4(L * area, area);
+            flux = max(luminance(la.rgb), 0.0);
+            if (surfels[id].lit_frame == INVALID_ID) {
+                surfels[id].lit_frame = gi_data.frame_index;
+            }
+        }
+        surfel_light[id] = la;
+        LightRecord rec;
+        rec.sphere = geo[id];
+        rec.info = uvec4(nrm[id], floatBitsToUint(flux), surfels[id].generation, surfels[id].lit_frame);
+        light_rec[id] = rec;
+        if (flux > 0.0) {
+            atomicMax(state[ST_MAX_FLUX], floatBitsToInt(flux));
+        }
+        q = quantize_flux(flux);
+    }
+    s_scan[li] = q;
+    block_scan(li);
+    if (i < MAX_SURFELS) {
+        flux_cdf[i] = s_scan[li];
+    }
+    if (li == 1023u) {
+        scan_blocks[block] = s_scan[1023];
+    }
+}

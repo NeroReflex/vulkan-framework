@@ -1,4 +1,7 @@
 pub mod debug_state;
+pub mod gi_capture;
+pub mod gi_driver;
+pub mod gi_selftest;
 pub mod pipeline;
 pub mod queues;
 pub mod rendering_dimensions;

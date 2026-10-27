@@ -148,6 +148,7 @@ pub struct System {
     // has been moved/added/removed from the scene in addition to when
     // no light has been changed/added/removed.
     prev_frame_gi_reuse: u32,
+    gi_driver: crate::rendering::gi_driver::GiDriver,
 
     frames_in_flight: smallvec::SmallVec<[Option<FenceWaiter>; MAX_FRAMES_IN_FLIGHT_NO_MALLOC]>,
 
@@ -236,6 +237,21 @@ impl System {
         &mut self.debug
     }
 
+    /// Waits every frame in flight and processes its pending GI readback and timings.
+    pub fn gi_selftest_failures(&mut self) -> u32 {
+        for slot in 0..self.frames_in_flight.len() {
+            drop(self.frames_in_flight[slot].take());
+            self.gi_driver
+                .after_fence(&self.global_illumination_lighting, slot);
+        }
+        self.gi_driver.selftest_failures()
+    }
+
+    /// Drops every surfel, reservoir and accumulated image on the next frame.
+    pub fn reset_gi_accumulation(&mut self) {
+        self.prev_frame_gi_reuse = 0;
+    }
+
     pub fn attach_object_to_node(
         &mut self,
         node_index: usize,
@@ -254,8 +270,10 @@ impl System {
         };
         manager.add_instance(slot, matrix, TLASRebuildDevice::GPU)?;
         let columns = manager.instance_column_matrices();
+        let generations = manager.instance_generations().to_vec();
         drop(manager);
         self.global_illumination_lighting.set_node_matrices(&columns);
+        self.global_illumination_lighting.set_instance_generations(&generations);
         let node = &mut self.scene.nodes_mut()[node_index];
         node.object = Some(tar_path.to_string_lossy().into_owned());
         node.object_slot = Some(slot);
@@ -274,13 +292,13 @@ impl System {
             manager.clear_object_instances(object_slot)?;
             manager.wait_blocking()?;
         }
-        let columns = self
-            .resources_manager
-            .lock()
-            .unwrap()
-            .instance_column_matrices();
+        let manager = self.resources_manager.lock().unwrap();
+        let columns = manager.instance_column_matrices();
+        let generations = manager.instance_generations().to_vec();
+        drop(manager);
         self.global_illumination_lighting.set_node_matrices(&columns);
-        self.global_illumination_lighting.mark_surfel_index_dirty();
+        self.global_illumination_lighting
+            .set_instance_generations(&generations);
         self.scene.mark_moved();
         self.commit_raytracing_scene();
         Ok(())
@@ -318,9 +336,12 @@ impl System {
             scene.nodes_mut()[index].object_slot = Some(slot);
         }
         let columns = manager.instance_column_matrices();
+        let generations = manager.instance_generations().to_vec();
         drop(manager);
         self.global_illumination_lighting
             .set_node_matrices(&columns);
+        self.global_illumination_lighting
+            .set_instance_generations(&generations);
         scene.take_moved();
         self.scene = scene;
         self.scene_base = scene_base.to_path_buf();
@@ -351,9 +372,11 @@ impl System {
         if changed {
             let _ = manager.rebuild_tlas_now();
             let columns = manager.instance_column_matrices();
+            let generations = manager.instance_generations().to_vec();
             drop(manager);
             self.global_illumination_lighting.set_node_matrices(&columns);
-            self.global_illumination_lighting.mark_surfel_index_dirty();
+            self.global_illumination_lighting
+                .set_instance_generations(&generations);
             // Same as a camera cut: GI buffers only clear when reuse is 0; RT must bind the new TLAS.
             self.prev_frame_gi_reuse = 0;
             self.commit_raytracing_scene();
@@ -423,9 +446,10 @@ impl System {
         self.prev_frame_gi_reuse = 0;
     }
 
+    /// Surfels live in world space and the reservoirs are reprojected, so a camera
+    /// move keeps the GI history.
     pub fn change_camera(&mut self, camera: Arc<dyn CameraTrait>) {
         self.active_camera = Some(camera);
-        self.prev_frame_gi_reuse = 0;
     }
 
     pub fn new(
@@ -660,7 +684,7 @@ impl System {
                         [BufferUseAs::UniformBuffer, BufferUseAs::TransferDst]
                             .as_slice()
                             .into(),
-                        4u64 * 8u64,
+                        crate::rendering::gi_driver::GI_STATUS_BYTES,
                     ),
                     None,
                     Some(format!("status_buffers[{index}]").as_str()),
@@ -840,6 +864,7 @@ impl System {
                 ),
                 BindingDescriptor::new(
                     [
+                        ShaderStageAccessIn::Compute,
                         ShaderStageAccessIn::Fragment,
                         ShaderStageAccessIn::RayTracing(ShaderStageAccessInRayTracingKHR::RayGen),
                     ]
@@ -991,6 +1016,7 @@ impl System {
             &render_area,
         )?);
 
+        let gi_driver = crate::rendering::gi_driver::GiDriver::from_env();
         let global_illumination_lighting = Arc::new(GILighting::new(
             queue_family.clone(),
             &render_area,
@@ -1000,6 +1026,8 @@ impl System {
             status_descriptor_set_layout.clone(),
             obj_manager.textures_descriptor_set_layout(),
             obj_manager.materials_descriptor_set_layout(),
+            frames_in_flight,
+            gi_driver.readback_enabled(),
         )?);
 
         let final_rendering = Arc::new(FinalRendering::new(
@@ -1150,6 +1178,7 @@ impl System {
             active_camera,
 
             prev_frame_gi_reuse,
+            gi_driver,
             scene: crate::scene::SceneGraph::new(),
             scene_base: PathBuf::from("."),
             memory_manager,
@@ -1286,6 +1315,8 @@ impl System {
         let frame_counter = self.current_frame.load(Ordering::SeqCst);
         let current_frame = frame_counter % self.frames_in_flight.len();
         drop(self.frames_in_flight[current_frame].take());
+        self.gi_driver
+            .after_fence(&self.global_illumination_lighting, current_frame);
 
         if crate::preview::enabled() && current_frame == 0 {
             if self.global_illumination_lighting.preview_copies() > 0 {
@@ -1355,6 +1386,18 @@ impl System {
                 swapchain.images_extent().height(),
             ),
         ];
+
+        let gi_status = self.gi_driver.begin_frame(
+            &self.global_illumination_lighting,
+            &self.debug,
+            self.prev_frame_gi_reuse,
+            &camera_matrices[0],
+            &camera_matrices[1],
+            camera.position(),
+            self.global_illumination_lighting.render_width(),
+            self.global_illumination_lighting.render_height(),
+        );
+        let gi_frame_index = self.gi_driver.frame_index();
 
         let mut frame_loading_waits = Vec::new();
         {
@@ -1461,7 +1504,7 @@ impl System {
                     recorder.update_buffer(
                         self.status_buffers[current_frame].clone(),
                         0,
-                        [self.prev_frame_gi_reuse].as_slice(),
+                        gi_status.words().as_slice(),
                     );
 
                     let debug_block = self.debug.gpu_block();
@@ -1470,13 +1513,13 @@ impl System {
                         0,
                         [
                             debug_block.flags,
+                            debug_block.view_mode,
+                            debug_block.exposure.to_bits(),
                             debug_block.padding[0],
                             debug_block.padding[1],
                             debug_block.padding[2],
                             debug_block.padding[3],
                             debug_block.padding[4],
-                            debug_block.padding[5],
-                            debug_block.padding[6],
                         ]
                         .as_slice(),
                     );
@@ -1556,6 +1599,7 @@ impl System {
                             [MemoryAccessAs::TransferWrite].as_slice().into(),
                             [
                                 PipelineStage::AllGraphics,
+                                PipelineStage::ComputeShader,
                                 PipelineStage::RayTracingPipelineKHR(
                                     PipelineStageRayTracingPipelineKHR::RayTracingShader,
                                 ),
@@ -1645,6 +1689,9 @@ impl System {
                 let gibuffer_descriptor_set =
                     self.global_illumination_lighting.record_rendering_commands(
                         self.prev_frame_gi_reuse,
+                        gi_status.flags,
+                        gi_frame_index,
+                        current_frame,
                         rt_descriptor_set.clone(),
                         gbuffer_descriptor_set.clone(),
                         self.status_descriptor_sets[current_frame].clone(),
@@ -1800,6 +1847,8 @@ impl System {
         )?);
 
         self.current_frame.fetch_add(1, Ordering::SeqCst);
+        self.gi_driver
+            .end_frame(&camera_matrices[0], &camera_matrices[1]);
 
         if full_frame && !self.debug_no_present {
             let present_out_of_date = match swapchain.queue_present(

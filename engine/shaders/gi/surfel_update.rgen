@@ -1,0 +1,185 @@
+// One invocation per surviving surfel (launch width MAX_SURFELS).
+//   direct   : sun irradiance at a uniform point of the disk (EMA)
+//   area     : partition-of-unity area, pi r^2 k_j(u) / sum_k k_k(u) (EMA)
+//   indirect : one cosine ray; pi * L_cache(hit) (EMA). Uncovered hits spawn a
+//              surfel there and continue the path until it reaches the cache.
+#extension GL_EXT_ray_tracing : require
+#extension GL_GOOGLE_include_directive : enable
+
+#define RT_DESCRIPTOR_SET 0
+#include "../rt_descriptor_set.glsl"
+
+#define STATUS_DESCRIPTOR_SET 1
+#include "../status.glsl"
+
+#define SURFEL_SET 3
+#include "surfels.glsl"
+#include "rt.glsl"
+
+float ema_alpha(float n, float min_alpha) {
+    return max(1.0 / (n + 1.0), min_alpha);
+}
+
+float ema_count(float n, float min_alpha) {
+    return min(n + 1.0, 1.0 / min_alpha);
+}
+
+void main() {
+    const uint i = gl_LaunchIDEXT.x;
+    if (i >= uint(state[ST_SURVIVORS])) {
+        return;
+    }
+    const uint id = alive_ids[alive_out_base() + i];
+    const vec3 c = surfels[id].position;
+    const vec3 n = surfels[id].normal;
+    const float r = surfels[id].radius;
+    uint rng = rng_seed(id, surfels[id].generation, gi_data.frame_index);
+
+    vec3 t, b;
+    make_basis(n, t, b);
+
+    // One uniform disk point q serves the area and the direct estimates. It
+    // counts only where the surfel's surface really is: reachable from the
+    // center along the surface (no wall in between) and found again by a short
+    // ray along -n (no ledge drop-off). Disk parts hanging off the surface
+    // neither emit nor collect light.
+    const vec3 v = sample_disk(t, b, rng_float(rng), rng_float(rng));
+    const vec3 q = c + r * v;
+    const vec3 oc = offset_origin(c, n);
+    bool on_surface = true;
+    vec3 surface_q = c;
+    {
+        // Both rays run at height h over the tangent plane: curved (concave)
+        // surfaces within the kernel's plane tolerance stay below them.
+        const float h = SURFEL_KERNEL_PLANE_FRACTION * r + RAY_NORMAL_OFFSET;
+        const vec3 d = (q - c);
+        const float len = length(d);
+        if (len > 1e-3) {
+            on_surface = trace_visible(c + n * h, d / len, len);
+        }
+        if (on_surface) {
+            on_surface = trace_closest_range(q + n * h, -n, 2.0 * h)
+                && dot(payload.normal, n) >= SURFEL_KERNEL_MIN_COS;
+            surface_q = payload.position;
+        }
+    }
+    const vec3 ou = on_surface ? offset_origin(surface_q, n) : oc;
+
+    // direct: mean sun irradiance over the surface part of the disk
+    if (on_surface || surfels[id].e_dir_n == 0.0) {
+        const vec3 e = direct_irradiance(ou, n);
+        const float cnt = surfels[id].e_dir_n;
+        surfels[id].e_dir = mix(surfels[id].e_dir, e, ema_alpha(cnt, EMA_MIN_ALPHA_DIRECT));
+        surfels[id].e_dir_n = ema_count(cnt, EMA_MIN_ALPHA_DIRECT);
+    }
+
+    // area: pi r^2 [q on surface] k_self(q) / sum_k k_k(q)
+    {
+        float a = 0.0;
+        if (on_surface) {
+            const float self_t = 1.0 - dot(v, v);
+            const float k_self = self_t * self_t;
+            float k_sum = k_self;
+            uint buckets[GRID_LEVELS];
+            const uint bucket_count = point_buckets(q, buckets);
+            for (uint k = 0u; k < bucket_count; k++) {
+                const uint bk = buckets[k];
+                const uint end = grid_start[bk + 1u];
+                for (uint j = grid_start[bk]; j < end; j++) {
+                    const uint other = grid_items[j];
+                    if (other != id) {
+                        k_sum += surfel_kernel_id(other, q, n);
+                    }
+                }
+            }
+            a = k_sum > 0.0 ? PI * r * r * k_self / k_sum : 0.0;
+        }
+        const float cnt = surfels[id].area_n;
+        surfels[id].area = mix(surfels[id].area, a, ema_alpha(cnt, EMA_MIN_ALPHA_AREA));
+        surfels[id].area_n = ema_count(cnt, EMA_MIN_ALPHA_AREA);
+    }
+
+    // indirect bounce (multi-bounce) and discovery of the offscreen surfaces
+    // that light the visible ones (always: they are the lights of every bounce)
+    const bool multibounce = (gi_data.flags & GI_FLAG_MULTIBOUNCE) != 0u;
+    const bool recently_seen = gi_data.frame_index - surfels[id].last_seen <= SURFEL_RECENT_FRAMES;
+    const bool discover = recently_seen && (gi_data.flags & GI_FLAG_SPAWN) != 0u;
+    vec3 e = vec3(0.0);
+    if (multibounce || discover) {
+        const vec3 dir = sample_cosine(n, rng_float(rng), rng_float(rng));
+        if (trace_closest(ou, dir)) {
+            const vec3 hp = payload.position;
+            const vec3 hn = payload.normal;
+            const vec3 h_albedo = payload.albedo;
+            const uint h_inst = payload.instance_id;
+            const float h_t = payload.t;
+
+            float w_sum, w_lit;
+            uint dominant;
+            vec3 radiance = cache_radiance(hp, hn, w_sum, w_lit, dominant);
+            // Keeps the hit surfel alive without making it count as on screen.
+            const uint kept = gi_data.frame_index - (SURFEL_RECENT_FRAMES + 1u);
+            if (recently_seen && dominant != INVALID_ID
+                && gi_data.frame_index - surfels[dominant].last_seen > SURFEL_RECENT_FRAMES + 1u) {
+                surfels[dominant].last_seen = kept;
+            }
+            if (w_lit <= 0.0) {
+                const vec3 h_dir = direct_irradiance(offset_origin(hp, hn), hn);
+                radiance = h_albedo / PI * h_dir;
+                const float h_dist = distance(get_eye_position(), hp);
+                // Offscreen spawns never use the slots reserved for on-screen coverage.
+                const bool pressure = uint(state[ST_FREE_AT_BEGIN]) < MAX_SURFELS / SURFEL_PRESSURE_DIVISOR;
+                const bool spawn = discover
+                    && !pressure
+                    && w_sum < SURFEL_SPAWN_COVERAGE
+                    && h_dist <= SURFEL_MAX_DISTANCE;
+                if (spawn && atomicAdd(state[ST_SPAWN_RAY], 1) < SURFEL_RAY_SPAWN_BUDGET) {
+                    const uint fresh = surfel_alloc();
+                    if (fresh != INVALID_ID) {
+                        // Also resolve the near field of the surfel that found it.
+                        const float radius = clamp(
+                            min(target_radius(h_dist), SURFEL_RAY_RADIUS_FRACTION * h_t),
+                            SURFEL_MIN_RADIUS, SURFEL_MAX_RADIUS);
+                        surfel_init(fresh, h_inst, hp, hn, h_albedo, radius, h_dir, 1.0);
+                        // Born unseen: its own rays must not spawn further offscreen surfels.
+                        surfels[fresh].last_seen = gi_data.frame_index - (SURFEL_RECENT_FRAMES + 1u);
+                    }
+                }
+                // Uncovered hit: L(h) = rho/pi E_dir(h) + rho L(h'), with h' found by
+                // a cosine ray, until the path reaches the cache.
+                if (multibounce) {
+                    vec3 throughput = h_albedo;
+                    vec3 p = hp;
+                    vec3 pn = hn;
+                    for (uint k = 0u; k < SURFEL_PATH_CONTINUATION; k++) {
+                        const vec3 d = sample_cosine(pn, rng_float(rng), rng_float(rng));
+                        if (!trace_closest(offset_origin(p, pn), d)) {
+                            break;
+                        }
+                        p = payload.position;
+                        pn = payload.normal;
+                        const vec3 p_albedo = payload.albedo;
+                        float p_sum, p_lit;
+                        uint p_dominant;
+                        const vec3 cached = cache_radiance(p, pn, p_sum, p_lit, p_dominant);
+                        if (p_lit > 0.0) {
+                            radiance += throughput * cached;
+                            break;
+                        }
+                        radiance += throughput * p_albedo / PI * direct_irradiance(offset_origin(p, pn), pn);
+                        throughput *= p_albedo;
+                    }
+                }
+            }
+            e = PI * radiance;
+        }
+    }
+    if (multibounce) {
+        const float cnt = surfels[id].e_ind_n;
+        surfels[id].e_ind = mix(surfels[id].e_ind, e, ema_alpha(cnt, EMA_MIN_ALPHA_INDIRECT));
+        surfels[id].e_ind_n = ema_count(cnt, EMA_MIN_ALPHA_INDIRECT);
+    } else {
+        surfels[id].e_ind = vec3(0.0);
+        surfels[id].e_ind_n = 0.0;
+    }
+}

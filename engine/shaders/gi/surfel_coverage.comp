@@ -1,0 +1,111 @@
+// Per pixel: partition-of-unity weight of the surfels covering the primary hit.
+// Per 16x16 tile and frame: spawn one surfel at the least covered pixel and
+// doom at most one surfel (the smallest one where the cover is excessive, or
+// one far larger than the local target radius once the others cover it).
+#include "compute.glsl"
+#include "pixel.glsl"
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+shared uint s_spawn_key;
+shared uint s_doom_key;
+shared uint s_doom_id[256];
+
+void main() {
+    const ivec2 px = ivec2(gl_GlobalInvocationID.xy);
+    const uint li = gl_LocalInvocationIndex;
+    if (li == 0u) {
+        s_spawn_key = 0xFFFFFFFFu;
+        s_doom_key = 0u;
+    }
+    barrier();
+
+    vec3 p, n, albedo;
+    uint inst;
+    const bool inside = in_render_area(px);
+    const bool valid = inside && load_pixel(px, p, n, albedo, inst);
+
+    float sum_ok = 0.0;
+    float sum_all = 0.0;
+    float r_star = 0.0;
+    float dist = 0.0;
+    if (valid) {
+        dist = distance(get_eye_position(), p);
+        r_star = target_radius(dist);
+
+        uint best = INVALID_ID;
+        float best_w = 0.0;
+        uint smallest = INVALID_ID;
+        float smallest_r = 3.4e38;
+        uint oversized = INVALID_ID;
+
+        uint buckets[GRID_LEVELS];
+        const uint bucket_count = point_buckets(p, buckets);
+        for (uint k = 0u; k < bucket_count; k++) {
+            const uint b = buckets[k];
+            const uint end = grid_start[b + 1u];
+            for (uint i = grid_start[b]; i < end; i++) {
+                const uint id = grid_items[i];
+                const vec4 g = geo[id];
+                const float w = surfel_kernel(p, n, g.xyz, decompress_unit_vec(nrm[id]), g.w);
+                if (w <= 0.0) {
+                    continue;
+                }
+                sum_all += w;
+                if (g.w > SURFEL_OVERSIZE_FACTOR * r_star) {
+                    oversized = id;
+                } else {
+                    sum_ok += w;
+                }
+                if (w > best_w) {
+                    best_w = w;
+                    best = id;
+                }
+                if (g.w < smallest_r) {
+                    smallest_r = g.w;
+                    smallest = id;
+                }
+            }
+        }
+
+        imageStore(surfel_overlay, px, uvec4(best));
+        imageStore(gi_images[IMG_COVERAGE], px, vec4(sum_ok, sum_all, r_star, 0.0));
+        if (best != INVALID_ID && (px.x & 3) == 0 && (px.y & 3) == 0) {
+            surfels[best].last_seen = gi_data.frame_index;
+        }
+
+        const bool spawn_allowed = (gi_data.flags & GI_FLAG_SPAWN) != 0u && dist <= SURFEL_MAX_DISTANCE;
+        if (spawn_allowed && sum_ok < SURFEL_SPAWN_COVERAGE) {
+            atomicMin(s_spawn_key, (uint(sum_ok * 1000.0) << 8u) | li);
+        }
+
+        uint doom = INVALID_ID;
+        if (sum_all > SURFEL_OVER_COVERAGE) {
+            doom = smallest;
+        } else if (oversized != INVALID_ID && sum_ok >= 1.0) {
+            doom = oversized;
+        }
+        if (doom != INVALID_ID) {
+            s_doom_id[li] = doom;
+            atomicMax(s_doom_key, ((uint(min(sum_all, 1000.0) * 100.0) + 1u) << 8u) | li);
+        }
+    } else if (inside) {
+        imageStore(surfel_overlay, px, uvec4(INVALID_ID));
+        imageStore(gi_images[IMG_COVERAGE], px, vec4(0.0));
+    }
+
+    barrier();
+
+    if (valid && s_spawn_key != 0xFFFFFFFFu && (s_spawn_key & 0xFFu) == li) {
+        if (atomicAdd(state[ST_SPAWN_SCREEN], 1) < SURFEL_SCREEN_SPAWN_BUDGET) {
+            const uint id = surfel_alloc();
+            if (id != INVALID_ID) {
+                surfel_init(id, inst, p, n, albedo, r_star, vec3(0.0), 0.0);
+            }
+        }
+    }
+    if (valid && s_doom_key != 0u && (s_doom_key & 0xFFu) == li) {
+        atomicOr(surfels[s_doom_id[li]].flags, SURFEL_FLAG_DOOMED);
+        atomicAdd(state[ST_DOOMED], 1);
+    }
+}

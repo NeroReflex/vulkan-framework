@@ -1,0 +1,86 @@
+// Initial RIS over RESTIR_INITIAL_CANDIDATES flux-proportional surfels, then
+// merge with the reprojected reservoir of the previous frame. The target is
+// the unshadowed irradiance luminance; weights are Z-normalized.
+#include "compute.glsl"
+#include "pixel.glsl"
+#include "reservoir.glsl"
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+void main() {
+    const ivec2 px = ivec2(gl_GlobalInvocationID.xy);
+    if (!in_render_area(px)) {
+        return;
+    }
+    const uint out_index = res_index(RES_TEMP, px);
+    vec3 x, n, albedo;
+    uint inst;
+    if (!load_pixel(px, x, n, albedo, inst)) {
+        reservoirs[out_index] = empty_reservoir(vec3(0.0), vec3(0.0, 1.0, 0.0), 0.0);
+        return;
+    }
+
+    uint rng = rng_seed(uint(px.x) + uint(px.y) * gi_data.render_width, gi_data.frame_index, 0x2c1b3c6du);
+    const float m_init = float(RESTIR_INITIAL_CANDIDATES);
+
+    uint y = INVALID_ID;
+    float py = 0.0;
+    float wsum = 0.0;
+
+    // One tile per 8x8 block (one work group) keeps the candidates in cache.
+    const uint tile = hash_combine(hash_combine(gl_WorkGroupID.x, gl_WorkGroupID.y), gi_data.frame_index) % LIGHT_TILES;
+    for (uint k = 0u; k < RESTIR_INITIAL_CANDIDATES; k++) {
+        const TileEntry e = light_tiles[tile * LIGHT_TILE_SIZE + (rng_next(rng) % LIGHT_TILE_SIZE)];
+        if (e.info.x == INVALID_ID) {
+            continue;
+        }
+        const float p = disk_target(e.sphere, e.info.y, uintBitsToFloat(e.info.z), x, n);
+        const float w = p / uintBitsToFloat(e.info.w);
+        wsum += w;
+        if (w > 0.0 && rng_float(rng) * wsum < w) {
+            y = e.info.x;
+            py = p;
+        }
+    }
+    float M = m_init;
+    float Z = m_init;
+    LightRecord y_rec = empty_light_record();
+    if (y != INVALID_ID) {
+        y_rec = light_rec[y];
+    }
+
+    const bool temporal = (gi_data.flags & GI_FLAG_TEMPORAL) != 0u && gi_data.gi_reuse_frames > 0u;
+    ivec2 q;
+    if (temporal && reproject(x, q)) {
+        const Reservoir prev = reservoirs[res_index(res_previous(), q)];
+        const vec3 prev_n = decompress_unit_vec(prev.nrm);
+        if (prev.M > 0.0 && similar_surface(x, n, prev.pos, prev_n)) {
+            const float m_prev = min(prev.M, RESTIR_TEMPORAL_M_CAP * m_init);
+            const LightRecord prev_rec = reservoir_light(prev);
+            const float p = record_target(prev_rec, x, n);
+            const float w = p * prev.W * m_prev;
+            wsum += w;
+            M += m_prev;
+            if (w > 0.0 && rng_float(rng) * wsum < w) {
+                y = prev.id;
+                py = p;
+                y_rec = prev_rec;
+            }
+            // The previous domain could have produced y only if y was already
+            // a light then and has nonzero target at the previous surface.
+            if (y != INVALID_ID
+                && y_rec.info.w < gi_data.frame_index
+                && record_supports(y_rec, prev.pos, prev_n)) {
+                Z += m_prev;
+            }
+        }
+    }
+
+    Reservoir r = empty_reservoir(x, n, M);
+    if (y != INVALID_ID && py > 0.0) {
+        r.id = y;
+        r.gen = y_rec.info.z;
+        r.W = wsum / (Z * py);
+    }
+    reservoirs[out_index] = r;
+}
